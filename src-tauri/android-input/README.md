@@ -16,7 +16,12 @@ does not uninstall the keyboard or erase phone data.
 `artifact.json` records their SHA-256 digests, the APK digest, the signing
 certificate fingerprint and the actual build-tool versions. A Rust test rejects
 source/artifact mismatches; runtime checks the bundled APK digest before sending
-it to the owned guest. A matching installed APK is reused across boots.
+it to the owned guest. A matching installed APK is reused across boots. After installation, native
+startup waits up to 15 seconds for Android to list the keyboard before enabling
+and selecting it. Package installation can finish before the input-method
+registry processes the package change. This wait is cancellable and preserves
+the same-transport device and generation checks; selection still requires an
+authenticated readiness response from the keyboard.
 
 Git attributes preserve the verified source bytes even when a Windows checkout
 enables automatic line-ending conversion. Keep those attributes with this folder.

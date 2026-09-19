@@ -10,6 +10,7 @@ use std::{
 
 const LIMIT: usize = 1024 * 1024;
 const VERSION: &str = "0029";
+const INPUT_METHOD: &str = "org.simplebench.input/.SimpleBenchInput";
 
 struct Connection {
     socket: TcpStream,
@@ -189,16 +190,48 @@ impl Guest {
             .map(|text| text.trim() == "1")
     }
 
-    pub fn enable_input(&self) -> Result<(), String> {
+    fn wait_for_input_registration(
+        &self,
+        cancel: &Arc<AtomicBool>,
+        deadline: Instant,
+    ) -> Result<(), String> {
+        let command = self.guard()? + "ime list -a -s";
+        loop {
+            if cancel.load(Ordering::Acquire) {
+                return Err("Android input setup cancelled".into());
+            }
+            if Instant::now() >= deadline {
+                return Err("Android has not registered the SimpleBench keyboard after installation. Stop and Start the phone to retry input setup; its apps and data are preserved.".into());
+            }
+            let methods = self.shell_until(&command, deadline, Some(cancel))?;
+            if methods.lines().any(|method| method.trim() == INPUT_METHOD) {
+                return Ok(());
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
+
+    pub fn enable_input(&self, cancel: &Arc<AtomicBool>) -> Result<(), String> {
         let guard = self.guard()?;
-        self.shell(&(guard.clone() + "ime disable org.simplebench.input/.SimpleBenchInput"))?;
+        // Package installation can finish before InputMethodManager processes its
+        // package-change notification. Poll its registry before enabling the IME.
+        self.wait_for_input_registration(cancel, Instant::now() + Duration::from_secs(15))?;
+        self.shell_until(
+            &(guard.clone() + "ime disable org.simplebench.input/.SimpleBenchInput"),
+            Instant::now() + Duration::from_secs(5),
+            Some(cancel),
+        )?;
         // Package replacement disconnects the old service. Wait for Android's settings
         // observer before selecting the same component again, or it can keep a dead binding.
         let deadline = Instant::now() + Duration::from_secs(5);
         while self
-            .shell(&(guard.clone() + "settings get secure default_input_method"))?
+            .shell_until(
+                &(guard.clone() + "settings get secure default_input_method"),
+                deadline,
+                Some(cancel),
+            )?
             .trim()
-            == "org.simplebench.input/.SimpleBenchInput"
+            == INPUT_METHOD
         {
             if Instant::now() >= deadline {
                 return Err(
@@ -208,9 +241,16 @@ impl Guest {
             }
             std::thread::sleep(Duration::from_millis(100));
         }
-        self.shell(&(guard + "ime enable org.simplebench.input/.SimpleBenchInput && ime set org.simplebench.input/.SimpleBenchInput"))?;
+        self.shell_until(
+            &(guard + "ime enable org.simplebench.input/.SimpleBenchInput && ime set org.simplebench.input/.SimpleBenchInput"),
+            Instant::now() + Duration::from_secs(5),
+            Some(cancel),
+        )?;
         let deadline = Instant::now() + Duration::from_secs(10);
         loop {
+            if cancel.load(Ordering::Acquire) {
+                return Err("Android input setup cancelled".into());
+            }
             match self.text("ping", "") {
                 Ok(()) => return Ok(()),
                 Err(error) if Instant::now() >= deadline => return Err(format!("The Android keyboard did not become ready: {error}. Stop and Start the phone to retry input setup.")),
@@ -262,7 +302,21 @@ impl Guest {
     }
 
     fn shell(&self, command: &str) -> Result<String, String> {
+        self.shell_until(command, Instant::now() + Duration::from_secs(5), None)
+    }
+
+    fn shell_until(
+        &self,
+        command: &str,
+        deadline: Instant,
+        cancel: Option<&Arc<AtomicBool>>,
+    ) -> Result<String, String> {
+        if cancel.is_some_and(|cancel| cancel.load(Ordering::Acquire)) {
+            return Err("Android operation cancelled".into());
+        }
         let mut socket = self.server.select(self.console_port)?;
+        socket.deadline = deadline;
+        socket.cancel = cancel.cloned();
         request(&mut socket, &("shell,v2,raw:".to_string() + command))?;
         let mut output = Vec::new();
         loop {
@@ -354,7 +408,7 @@ impl Guest {
         if cancel.load(std::sync::atomic::Ordering::Acquire) {
             return Err("Android input setup cancelled".into());
         }
-        self.enable_input()
+        self.enable_input(cancel)
     }
 
     fn install_bytes(
@@ -472,6 +526,156 @@ mod tests {
     }
     use super::*;
     use std::{net::TcpListener, thread};
+
+    fn input_fixture(
+        replies: Vec<(&'static str, &'static str, u8)>,
+        ping: bool,
+    ) -> (Guest, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let guest = Guest {
+            server: Server {
+                port: listener.local_addr().unwrap().port(),
+            },
+            console_port: 5580,
+            device_id: "00000000-0000-0000-0000-000000000001".into(),
+            generation_key: "00000000-0000-0000-0000-000000000002".into(),
+        };
+        let guard = guest.guard().unwrap();
+        let worker = thread::spawn(move || {
+            let transport = || {
+                let (mut socket, _) = listener.accept().unwrap();
+                socket
+                    .set_read_timeout(Some(Duration::from_secs(2)))
+                    .unwrap();
+                assert_eq!(read_string(&mut socket, 256).unwrap(), "host:version");
+                socket.write_all(b"OKAY00040029").unwrap();
+                let (mut socket, _) = listener.accept().unwrap();
+                socket
+                    .set_read_timeout(Some(Duration::from_secs(2)))
+                    .unwrap();
+                assert_eq!(
+                    read_string(&mut socket, 256).unwrap(),
+                    "host:transport:emulator-5580"
+                );
+                socket.write_all(b"OKAY").unwrap();
+                socket
+            };
+            for (command, output, exit) in replies {
+                let mut socket = transport();
+                assert_eq!(
+                    read_string(&mut socket, 2048).unwrap(),
+                    format!("shell,v2,raw:{guard}{command}")
+                );
+                socket.write_all(b"OKAY").unwrap();
+                socket.write_all(&[1]).unwrap();
+                socket
+                    .write_all(&(output.len() as u32).to_le_bytes())
+                    .unwrap();
+                socket.write_all(output.as_bytes()).unwrap();
+                socket.write_all(&[3, 1, 0, 0, 0, exit]).unwrap();
+            }
+            if ping {
+                let mut socket = transport();
+                assert_eq!(
+                    read_string(&mut socket, 256).unwrap(),
+                    "localabstract:simplebench.input.v1"
+                );
+                socket.write_all(b"OKAY").unwrap();
+                let mut length = [0; 4];
+                socket.read_exact(&mut length).unwrap();
+                let mut bytes = vec![0; u32::from_be_bytes(length) as usize];
+                socket.read_exact(&mut bytes).unwrap();
+                let message: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+                assert_eq!(message["action"], "ping");
+                assert_eq!(message["deviceId"], "00000000-0000-0000-0000-000000000001");
+                assert_eq!(
+                    message["generationKey"],
+                    "00000000-0000-0000-0000-000000000002"
+                );
+                let reply = br#"{"version":1,"id":1,"ok":true}"#;
+                socket
+                    .write_all(&(reply.len() as u32).to_be_bytes())
+                    .unwrap();
+                socket.write_all(reply).unwrap();
+            }
+        });
+        (guest, worker)
+    }
+
+    #[test]
+    fn input_setup_waits_for_registration_before_selecting_and_authenticating_keyboard() {
+        let (guest, worker) = input_fixture(vec![
+            ("ime list -a -s", "com.android.inputmethod.latin/.LatinIME\n", 0),
+            ("ime list -a -s", "org.simplebench.input/.SimpleBenchInputOther\n", 0),
+            ("ime list -a -s", "org.simplebench.input/.SimpleBenchInput\n", 0),
+            ("ime disable org.simplebench.input/.SimpleBenchInput", "disabled", 0),
+            ("settings get secure default_input_method", INPUT_METHOD, 0),
+            ("settings get secure default_input_method", "com.android.inputmethod.latin/.LatinIME", 0),
+            ("ime enable org.simplebench.input/.SimpleBenchInput && ime set org.simplebench.input/.SimpleBenchInput", "enabled and selected", 0),
+        ], true);
+        guest
+            .enable_input(&Arc::new(AtomicBool::new(false)))
+            .unwrap();
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn input_registration_timeout_and_identity_failure_never_enable_keyboard() {
+        for (exit, expected) in [(0, "has not registered"), (77, "no longer belongs")] {
+            let (guest, worker) = input_fixture(vec![("ime list -a -s", "", exit)], false);
+            let result = guest.wait_for_input_registration(
+                &Arc::new(AtomicBool::new(false)),
+                Instant::now() + Duration::from_millis(80),
+            );
+            assert!(result.unwrap_err().contains(expected));
+            worker.join().unwrap();
+        }
+    }
+
+    #[test]
+    fn input_registration_can_be_cancelled_while_android_is_not_responding() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let guest = Guest {
+            server: Server {
+                port: listener.local_addr().unwrap().port(),
+            },
+            console_port: 5580,
+            device_id: "00000000-0000-0000-0000-000000000001".into(),
+            generation_key: "00000000-0000-0000-0000-000000000002".into(),
+        };
+        let cancel = Arc::new(AtomicBool::new(false));
+        let stop = cancel.clone();
+        let guard = guest.guard().unwrap();
+        let worker = thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            assert_eq!(read_string(&mut socket, 256).unwrap(), "host:version");
+            socket.write_all(b"OKAY00040029").unwrap();
+            let (mut socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .unwrap();
+            assert_eq!(
+                read_string(&mut socket, 256).unwrap(),
+                "host:transport:emulator-5580"
+            );
+            socket.write_all(b"OKAY").unwrap();
+            assert_eq!(
+                read_string(&mut socket, 2048).unwrap(),
+                format!("shell,v2,raw:{guard}ime list -a -s")
+            );
+            socket.write_all(b"OKAY").unwrap();
+            stop.store(true, Ordering::Release);
+            let mut byte = [0];
+            assert_eq!(socket.read(&mut byte).unwrap(), 0);
+        });
+        let started = Instant::now();
+        assert!(guest
+            .enable_input(&cancel)
+            .unwrap_err()
+            .contains("cancelled"));
+        assert!(started.elapsed() < Duration::from_secs(2));
+        worker.join().unwrap();
+    }
 
     #[test]
     fn incompatible_server_receives_only_read_only_preflight() {
@@ -626,7 +830,9 @@ mod tests {
                 .install_apk(&mut file, &Arc::new(AtomicBool::new(false)))
                 .unwrap();
         }
-        guest.enable_input().unwrap();
+        guest
+            .enable_input(&Arc::new(AtomicBool::new(false)))
+            .unwrap();
         guest.open_settings().unwrap();
         guest
             .shell(&(guest.guard().unwrap() + "am start -n org.simplebench.inputtest/.InputTest"))

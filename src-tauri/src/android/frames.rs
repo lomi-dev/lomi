@@ -606,7 +606,7 @@ mod tests {
             let restarted_guest = guest.clone();
             tokio::task::spawn_blocking(move || -> Result<(), String> {
                 for _ in 0..4 {
-                    restarted_guest.enable_input()?;
+                    restarted_guest.enable_input(&Arc::new(std::sync::atomic::AtomicBool::new(false)))?;
                     restarted_guest.text("ping", "")?;
                 }
                 Ok(())
