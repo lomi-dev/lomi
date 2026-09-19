@@ -207,6 +207,21 @@ mod tests {
     use super::*;
     use std::net::TcpListener;
 
+    fn read_request(stream: &mut TcpStream) {
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        let mut request = Vec::new();
+        while !request.ends_with(b"\r\n\r\n") {
+            assert!(request.len() < 4096);
+            let mut byte = [0];
+            stream.read_exact(&mut byte).unwrap();
+            request.push(byte[0]);
+        }
+        assert!(request.starts_with(b"OPTIONS / HTTP/1.1\r\n"));
+        // Closing a socket with unread request bytes can reset it on Windows.
+    }
+
     #[test]
     fn reports_http_servers_before_unresponsive_ports_finish() {
         use std::sync::mpsc;
@@ -222,11 +237,7 @@ mod tests {
         });
         let http_server = std::thread::spawn(move || {
             let (mut stream, _) = http.accept().unwrap();
-            let mut request = [0; 10];
-            stream
-                .set_read_timeout(Some(Duration::from_secs(5)))
-                .unwrap();
-            stream.read_exact(&mut request).unwrap();
+            read_request(&mut stream);
             stream
                 .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
                 .unwrap();
@@ -281,12 +292,7 @@ mod tests {
         let address = listener.local_addr().unwrap();
         let server = std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
-            stream
-                .set_read_timeout(Some(Duration::from_secs(5)))
-                .unwrap();
-            let mut request = [0; 10];
-            stream.read_exact(&mut request).unwrap();
-            assert_eq!(&request, b"OPTIONS / ");
+            read_request(&mut stream);
             stream
                 .write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n")
                 .unwrap();
@@ -301,6 +307,7 @@ mod tests {
         let address = listener.local_addr().unwrap();
         let server = std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
+            read_request(&mut stream);
             stream.write_all(b"SSH-2.0-test\r\n").unwrap();
         });
         assert!(!responds_to_http(address).unwrap());

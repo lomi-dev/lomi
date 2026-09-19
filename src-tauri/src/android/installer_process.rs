@@ -177,7 +177,7 @@ mod tests {
     fn installer_output_is_bounded_and_cancellation_waits_for_exit() {
         let mut child = fixture("output", Duration::from_secs(5));
         let result = finish(&mut child);
-        assert!(result.success);
+        assert!(result.success, "{result:?}");
         assert!(result.output.len() <= OUTPUT_LIMIT);
         assert!(result.output.contains("xxxxxxxx"));
         let mut child = fixture("wait", Duration::from_secs(5));

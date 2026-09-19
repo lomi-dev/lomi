@@ -29,6 +29,12 @@ fn changed_directories(
     ) {
         return HashSet::new();
     }
+    // ReadDirectoryChangesW reports content/attribute writes as Modify(Any).
+    // Create, remove and rename have distinct events and still refresh listings.
+    #[cfg(windows)]
+    if matches!(event.kind, EventKind::Modify(ModifyKind::Any)) {
+        return HashSet::new();
+    }
     event
         .paths
         .iter()
@@ -180,6 +186,8 @@ mod tests {
         for kind in [
             EventKind::Access(notify::event::AccessKind::Any),
             EventKind::Modify(ModifyKind::Data(notify::event::DataChange::Any)),
+            #[cfg(windows)]
+            EventKind::Modify(ModifyKind::Any),
         ] {
             assert!(changed_directories(
                 Ok(notify::Event::new(kind).add_path("/project/file".into())),

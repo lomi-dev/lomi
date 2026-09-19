@@ -765,12 +765,24 @@ mod tests {
         manager.installer.state.lock().unwrap().catalog = Some(repository::Snapshot {
             revision: "test".into(),
             packages: vec![],
-            licenses: vec![license],
+            licenses: vec![license.clone()],
         });
-        let plan = manager
-            .installer
-            .plan(&manager, "test", vec![], true)
-            .unwrap();
+        // Consent/revision rejection must be testable without host virtualization.
+        // Seed only the pending plan; both start attempts still use production guards.
+        let plan = Plan {
+            id: auth::new_id().unwrap(),
+            catalog_revision: "test".into(),
+            packages: vec![],
+            licenses: vec![license],
+            bootstrap: None,
+            download_bytes: 0,
+        };
+        manager.installer.state.lock().unwrap().plan = Some(PendingPlan {
+            plan: plan.clone(),
+            created: Instant::now(),
+            manifest_revision: 0,
+            devices_revision: 0,
+        });
         assert!(manager
             .installer
             .start(&manager, &plan.id, vec![])

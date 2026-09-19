@@ -427,13 +427,13 @@ pub async fn signal(webview: Webview, signal: Signal) -> Result<(), String> {
             }
         }
     } else {
-        if !app
+        if app
             .state::<Browsers>()
             .pages
             .lock()
             .map_err(|e| e.to_string())?
             .get(id)
-            .is_some_and(|page| page.bounds.is_some())
+            .is_none_or(|page| page.bounds.is_none())
         {
             return Ok(());
         }

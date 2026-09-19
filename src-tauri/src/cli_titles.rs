@@ -443,9 +443,9 @@ fn enable(cli: TitleCli, path: &Path, expected: Option<&str>) -> Result<(), Stri
         let mut doc = json_document(cli, source.as_deref())?;
         match cli {
             TitleCli::Agy => {
-                if !doc["title"]["command"]
+                if doc["title"]["command"]
                     .as_str()
-                    .is_some_and(|command| !command.trim().is_empty())
+                    .is_none_or(|command| command.trim().is_empty())
                 {
                     doc["title"]["type"] = json!("command");
                     doc["title"]["command"] = json!(agy_command()?);

@@ -254,6 +254,9 @@ or acronym.
   open intents and Start on the toolchain qualification flag. Read, Stop and
   recovery remain available. In particular, Windows' launcher spawns a separate
   QEMU child; qualify both process identities and cleanup before enabling it.
+  The Windows preflight in `docs/android-windows-qualification.md` is NO-GO
+  because WHPX is unavailable. `tests/native/android-windows-preflight.ps1`
+  records read-only host and artifact checks; it does not qualify the product.
   `tests/native/android-*` and `run-android-product.mjs` are
   isolated opt-in fixtures behind `android-probe`/`native-smoke`; never distribute
   those features. Default builds include the lazy production backend and bindings.

@@ -7,6 +7,32 @@ covers only the macOS ARM64 host recorded in
 [the architecture guide](../../docs/android-architecture.md#native-qualification).
 Linux, Windows and other Mac architectures remain unverified.
 
+## Windows preflight
+
+Before downloading Android tools, run the read-only host and artifact checks
+from PowerShell with a new evidence directory (the script refuses overwrite):
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/native/android-windows-preflight.ps1 -OutputDirectory android-test/trials.local/preflight-UNIQUE
+```
+
+The execution-policy setting applies only to this child process. The script
+does not enable Windows features, accept licenses, start Android or modify user
+configuration. It records WMI hardware, disk, installed WebView2, system DPI,
+the real `WHvGetCapability` result and IME/protobuf hashes. Environment variable
+names are recorded without values. Optional-feature inspection needs an
+administrator; its failure is recorded separately from the WHPX API result.
+System DPI is not a substitute for per-window DPR measurements in WebView2.
+Exit 2 means unavailable/unreadable WHPX or an artifact integrity failure.
+A successful preflight is not native product qualification.
+
+When WHPX is unavailable, an administrator must enable **Windows Hypervisor
+Platform** in Windows Features and restart Windows before repeating preflight.
+See [Google's acceleration instructions](https://developer.android.com/studio/run/emulator-acceleration).
+Do not remove the platform guards or reuse the macOS product runner as Windows
+evidence. The [Windows trial report](../../docs/android-windows-qualification.md)
+records the current blockers and independent checks.
+
 The selected transport is authenticated emulator gRPC → Rust → binary Tauri
 Channel → retained WebGL Canvas, with source scaling and a 720 × 1280 ceiling.
 The original feasibility runner also contains rejected JPEG/2D experiments.

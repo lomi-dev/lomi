@@ -233,7 +233,7 @@ fn search(
                     .nth(240)
                     .map_or(line.len(), |(index, _)| found.start() + index);
                 result.matches.push(SearchMatch {
-                    relative: relative.to_owned(),
+                    relative: relative.replace(std::path::MAIN_SEPARATOR, "/"),
                     line: line_index + 1,
                     column: line[..found.start()].encode_utf16().count() + 1,
                     length: found.as_str().encode_utf16().count(),

@@ -509,7 +509,10 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         crate::git::checked(root.path(), &["init"]).unwrap();
         let path = root.path().to_str().unwrap();
+        #[cfg(not(windows))]
         let filename = "odd [x]* #.txt";
+        #[cfg(windows)]
+        let filename = "odd [x] #.txt";
         fs::write(root.path().join(filename), "contents").unwrap();
         fs::write(root.path().join(".gitignore"), "# keep this comment").unwrap();
         ignore_item(path, filename, false).unwrap();
@@ -524,6 +527,7 @@ mod tests {
         assert!(
             crate::git::checked(root.path(), &["check-ignore", "--", "odd x123 #.txt"]).is_err()
         );
+        assert!(crate::git::checked(root.path(), &["check-ignore", "--", "odd x #.txt"]).is_err());
         fs::create_dir(root.path().join("local")).unwrap();
         ignore_item(path, "local", true).unwrap();
         assert!(fs::read_to_string(root.path().join(".git/info/exclude"))
