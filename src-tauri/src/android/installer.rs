@@ -55,6 +55,7 @@ pub enum Phase {
 #[serde(rename_all = "camelCase")]
 pub struct Progress {
     pub operation_id: String,
+    pub package_ids: Vec<String>,
     pub phase: Phase,
     pub stage: String,
     pub received: u64,
@@ -326,6 +327,12 @@ impl Installer {
         let pending = state.plan.take().unwrap();
         let progress = Progress {
             operation_id: lease.id.clone(),
+            package_ids: pending
+                .plan
+                .packages
+                .iter()
+                .map(|package| package.id.clone())
+                .collect(),
             phase: Phase::Running,
             stage: "Preparing installation".into(),
             received: 0,
@@ -404,6 +411,7 @@ impl Installer {
         let lease = manager.begin_mutation(matches!(work, Work::Maintenance(_)))?;
         let progress = Progress {
             operation_id: lease.id.clone(),
+            package_ids: Vec::new(),
             phase: Phase::Running,
             stage: "Preparing Android operation".into(),
             received: 0,
@@ -751,6 +759,47 @@ mod tests {
         );
     }
     use super::*;
+
+    #[test]
+    fn package_identity_survives_progress_snapshots_and_guarded_cancellation() {
+        let package_ids =
+            vec!["system-images;android-37.2;google_apis_playstore_ps16k;arm64-v8a".into()];
+        let (sender, _) = watch::channel(Progress {
+            operation_id: "download-1".into(),
+            package_ids: package_ids.clone(),
+            phase: Phase::Running,
+            stage: "Preparing installation".into(),
+            received: 0,
+            total: 0,
+            error: None,
+            device_id: None,
+        });
+        let (cancel, _) = watch::channel(false);
+        let operation = Arc::new(Operation {
+            progress: sender,
+            cancel,
+            manager: std::sync::Weak::new(),
+        });
+        let installer = Installer::default();
+        installer.state.lock().unwrap().operation = Some(operation.clone());
+        operation.progress("Downloading image", 25, 100);
+        let snapshot = installer.progress().unwrap();
+        assert_eq!(snapshot.package_ids, package_ids);
+        assert_eq!(snapshot.received, 25);
+        assert_eq!(
+            serde_json::to_value(snapshot).unwrap()["packageIds"],
+            serde_json::json!(package_ids)
+        );
+        operation.progress("Verifying image", 0, 0);
+        assert!(installer.cancel("previous-download").is_err());
+        assert!(!*operation.cancel.borrow());
+        installer.cancel("download-1").unwrap();
+        let snapshot = installer.progress().unwrap();
+        assert_eq!(snapshot.phase, Phase::Cancelling);
+        assert_eq!(snapshot.package_ids, package_ids);
+        assert_eq!(snapshot.total, 0);
+        assert!(*operation.cancel.borrow());
+    }
 
     #[test]
     fn consent_and_stale_metadata_are_checked_before_starting_any_tool() {

@@ -3,7 +3,7 @@ import Select from "../Select";
 import { DisclosureSummary, Modal } from "../ui";
 import { errorMessage } from "../api";
 import {
-  imageLabel,
+  imageTitle,
   imageDescription,
   compareImages,
   compareProfiles,
@@ -102,77 +102,79 @@ export default function DeviceForm({
             .finally(() => setBusy(false));
         }}
       >
-        <label htmlFor={`${id}-name`}>Name</label>
-        <input
-          id={`${id}-name`}
-          autoFocus
-          value={name}
-          onChange={(event) => {
-            setName(event.target.value);
-            setCustomName(true);
-          }}
-          required
-          disabled={busy}
-        />
-        <label htmlFor={`${id}-image`}>Android version</label>
-        <Select
-          id={`${id}-image`}
-          value={image}
-          disabled={busy || !!device}
-          aria-describedby={`${id}-image-help`}
-          onChange={(value) => {
-            setImage(value);
-            const next = images.find((item) => item.id === value);
-            if (next && (!selected || !compatibleProfile(selected, next)))
-              chooseProfile(
-                profiles.find((item) => compatibleProfile(item, next))?.id ??
-                  "",
-              );
-          }}
-          options={images.map((pkg) => ({
-            value: pkg.id,
-            label: imageLabel({ ...pkg, image: null }),
-          }))}
-        />
-        <p id={`${id}-image-help`} className="settings-help">
-          {selectedImage
-            ? imageDescription(selectedImage)
-            : "Download an Android version from System images first."}
-        </p>
-        {device && (
-          <p className="settings-help">
-            To change Android version, variant, architecture or data capacity,
-            create a new device. Existing apps and data stay on this phone.
+        <div className="android-form-field">
+          <label htmlFor={`${id}-name`}>Name</label>
+          <input
+            id={`${id}-name`}
+            autoFocus
+            value={name}
+            onChange={(event) => {
+              setName(event.target.value);
+              setCustomName(true);
+            }}
+            required
+            disabled={busy}
+          />
+        </div>
+        <div className="android-form-field">
+          <label htmlFor={`${id}-image`}>Android version</label>
+          <Select
+            id={`${id}-image`}
+            value={image}
+            disabled={busy || !!device}
+            aria-describedby={`${id}-image-help`}
+            onChange={(value) => {
+              setImage(value);
+              const next = images.find((item) => item.id === value);
+              if (next && (!selected || !compatibleProfile(selected, next)))
+                chooseProfile(
+                  profiles.find((item) => compatibleProfile(item, next))?.id ??
+                    "",
+                );
+            }}
+            options={images.map((pkg) => ({
+              value: pkg.id,
+              label: imageTitle(pkg),
+            }))}
+          />
+          <p id={`${id}-image-help`} className="settings-help">
+            {selectedImage
+              ? imageDescription(selectedImage)
+              : "Download an Android version first."}
           </p>
-        )}
-        <label htmlFor={`${id}-profile`}>Phone profile</label>
-        <Select
-          id={`${id}-profile`}
-          value={profile}
-          disabled={busy}
-          aria-describedby={`${id}-profile-help`}
-          onChange={chooseProfile}
-          options={profiles.map((item) => ({
-            value: item.id,
-            label:
-              selectedImage && compatibleProfile(item, selectedImage)
-                ? item.name
-                : `${item.name} · needs ${androidVersion(item.minApi, item.minMinorApi)}`,
-            disabled: !selectedImage || !compatibleProfile(item, selectedImage),
-          }))}
-        />
-        {selected && (
-          <p className="settings-help" id={`${id}-profile-help`}>
-            {selected.width} × {selected.height} · {selected.dpi} DPI · API{" "}
-            {selected.minApi}
-            {selected.minMinorApi ? `.${selected.minMinorApi}` : ""} or newer.
-            The profile defines screen size and density, not the manufacturer’s
-            complete hardware or exclusive apps. Foldable and resizable profiles
-            are not available yet.
-          </p>
-        )}
-        <details>
-          <DisclosureSummary>Hardware and startup</DisclosureSummary>
+          {device && (
+            <p className="settings-help">
+              To use another Android version, create a new phone.
+            </p>
+          )}
+        </div>
+        <div className="android-form-field">
+          <label htmlFor={`${id}-profile`}>Phone profile</label>
+          <Select
+            id={`${id}-profile`}
+            value={profile}
+            disabled={busy}
+            aria-describedby={`${id}-profile-help`}
+            onChange={chooseProfile}
+            options={profiles.map((item) => ({
+              value: item.id,
+              label:
+                selectedImage && compatibleProfile(item, selectedImage)
+                  ? item.name
+                  : `${item.name} · needs ${androidVersion(item.minApi, item.minMinorApi)}`,
+              disabled:
+                !selectedImage || !compatibleProfile(item, selectedImage),
+            }))}
+          />
+          {selected && (
+            <p className="settings-help" id={`${id}-profile-help`}>
+              {selected.width} × {selected.height} · {selected.dpi} DPI · Screen
+              size and density only.
+            </p>
+          )}
+        </div>
+        <details className="android-form-advanced">
+          <DisclosureSummary>Advanced settings</DisclosureSummary>
           <div className="android-form-grid">
             {(
               [
@@ -218,37 +220,38 @@ export default function DeviceForm({
             </label>
           </div>
           <p className="settings-help">
-            Host GPU is recommended for responsive graphics. Automatic can
-            select software rendering when the emulator has no window; software
-            rendering uses more CPU.
+            Host GPU gives the best performance. Software rendering uses more
+            CPU.
           </p>
           <p className="settings-help">
-            Cold boot is used for this configuration. Quick Boot is not
-            qualified. Audio, cameras, microphone and additional SD storage are
+            Phones start with a cold boot. Audio, cameras and microphone are
             disabled.
           </p>
         </details>
         {device && (
           <p className="settings-help">
-            Name changes apply immediately. Hardware changes apply on the next
-            start after Stop; the running phone keeps its current settings.
+            Hardware changes apply after you stop and start the phone.
           </p>
         )}
-        <label className="android-checkbox">
-          <input
-            type="checkbox"
-            checked={input}
-            disabled={busy || !!device}
-            onChange={(event) => setInput(event.target.checked)}
-            required
-          />
-          Enable SimpleBench text input
-        </label>
-        <p className="settings-help">
-          SimpleBench installs and selects its bundled input method in this
-          virtual phone for Unicode and composition. Typed text stays local and
-          is sent only to the focused Android panel.
-        </p>
+        {!device && (
+          <div className="android-input-consent">
+            <label className="android-checkbox">
+              <input
+                type="checkbox"
+                checked={input}
+                disabled={busy}
+                onChange={(event) => setInput(event.target.checked)}
+                required
+                aria-describedby={`${id}-input-help`}
+              />
+              Enable SimpleBench text input
+            </label>
+            <p id={`${id}-input-help`} className="settings-help">
+              Installs and selects the SimpleBench keyboard in this phone so you
+              can type in any language. Typed text stays local.
+            </p>
+          </div>
+        )}
         {error && (
           <p className="keybindings-error" role="alert">
             {error}
@@ -264,7 +267,7 @@ export default function DeviceForm({
             Cancel
           </button>
           <button
-            className="button primary"
+            className="button button-primary"
             disabled={busy || !input || !image || !profile || !compatible}
           >
             {busy ? "Saving…" : device ? "Save configuration" : "Create device"}

@@ -8,11 +8,21 @@ import {
 import { readText } from "@tauri-apps/plugin-clipboard-manager";
 import type { AndroidTab } from "../model";
 import { api, errorMessage } from "../api";
-import { ArrowLeft, Circle, Square, Ellipsis, X, RotateCw } from "../icons";
+import {
+  ArrowLeft,
+  Camera,
+  Circle,
+  Import,
+  Power,
+  Square,
+  Ellipsis,
+  X,
+  RotateCw,
+} from "../icons";
 import { IconButton, Modal } from "../ui";
 import ContextMenu from "../ContextMenu";
-import Select from "../Select";
-import { ZOOM_STEPS } from "./zoom";
+import PhonePicker from "./PhonePicker";
+import PhoneStartup from "./PhoneStartup";
 import { previewSize } from "./frame";
 import { androidRuntime, openAndroidSettings } from "./service";
 import { refreshAndroid, useAndroid } from "./state";
@@ -71,13 +81,30 @@ export default function AndroidPane({
     runtime?.subscribeRuntime ?? noopSubscribe,
     () => runtime?.viewZoom(tab.id) ?? "fit",
   );
+  const launchPending = useSyncExternalStore(
+    runtime?.subscribeRuntime ?? noopSubscribe,
+    () =>
+      !!tab.deviceId &&
+      (!runtime || runtime.launchPending(tab.id, tab.deviceId)),
+  );
+  const stopPending = useSyncExternalStore(
+    runtime?.subscribeRuntime ?? noopSubscribe,
+    () => runtime?.stopPending(tab.deviceId ?? "") ?? false,
+  );
   const fullPreview = status?.display ? previewSize(...status.display) : null;
   const scaledPreview =
     fullPreview &&
     status?.display &&
     (fullPreview.width !== status.display[0] ||
       fullPreview.height !== status.display[1]);
-  const running = status?.phase === "running";
+  const stopping = stopPending || status?.phase === "stopping";
+  const starting =
+    !stopping &&
+    (status?.phase === "starting" ||
+      status?.phase === "booting" ||
+      (launchPending && !status?.processAlive && !transportError));
+  const running = status?.phase === "running" && !stopping;
+  const connecting = running && (!stream || stream.phase === "connecting");
   useEffect(() => {
     let current = true;
     void androidRuntime().then((value) => {
@@ -133,13 +160,36 @@ export default function AndroidPane({
   const control = (event: InputEvent) => {
     if (focusPhone()) enqueueInput(tab.id, event);
   };
+  const rotatePhone = () => {
+    if (!running || overview || !device) return;
+    control({
+      type: "rotate",
+      quarterTurns: ((runtime?.rotation(device.id) ?? 0) + 1) % 4,
+    });
+  };
+  const fileAction = (
+    command: "android_install_apk" | "android_save_screenshot",
+  ) => {
+    if (!running || overview || !device || !status?.generation) return;
+    void act(() =>
+      api(command, { deviceId: device.id, generation: status.generation }),
+    );
+  };
   const setup = () =>
     void act(async () => {
       await releaseInput();
       await openAndroidSettings(tab.id);
     });
   const title = device?.name ?? "Android";
-  const issue = error || state.error || transportError || status?.error;
+  const issue =
+    error || state.error || transportError || (!launchPending && status?.error);
+  const stopPhone = () => {
+    if (!device || stopping) return;
+    setError("");
+    void androidRuntime()
+      .then((runtime) => runtime.stop(device.id))
+      .catch((reason) => setError(errorMessage(reason)));
+  };
   const ready =
     snapshot?.toolchainReady &&
     snapshot.requiredTools.every((id) => snapshot.packages?.packages[id]);
@@ -150,78 +200,90 @@ export default function AndroidPane({
       aria-label={title}
       onPointerDown={onFocus}
     >
-      <header className="android-toolbar" data-pane-drag-handle>
-        <span className="android-pane-title" title={title}>
-          {title}
-        </span>
-        <span className="android-pane-phase" role="status">
-          {status?.phase ?? (device ? "stopped" : "setup")}
-        </span>
-        <div className="android-navigation" aria-label="Android navigation">
-          <IconButton
-            title="Android Back"
-            disabled={!running || overview}
-            onClick={() => control({ type: "navigation", key: "GoBack" })}
-          >
-            <ArrowLeft size={14} />
-          </IconButton>
-          <IconButton
-            title="Android Home"
-            disabled={!running || overview}
-            onClick={() => control({ type: "navigation", key: "GoHome" })}
-          >
-            <Circle size={13} />
-          </IconButton>
-          <IconButton
-            title="Android Recent apps"
-            disabled={!running || overview}
-            onClick={() => control({ type: "navigation", key: "AppSwitch" })}
-          >
-            <Square size={12} />
-          </IconButton>
-        </div>
-        <Select
-          className="android-zoom"
-          aria-label="Screen zoom"
-          value={String(zoom)}
-          disabled={!running || overview}
-          onChange={(value) =>
-            runtime?.setZoom(tab.id, value === "fit" ? "fit" : Number(value))
-          }
-          options={[
-            { value: "fit", label: "Fit" },
-            ...[
-              ...new Set([
-                ...ZOOM_STEPS,
-                ...(typeof zoom === "number" ? [zoom] : []),
-              ]),
-            ]
-              .sort((a, b) => a - b)
-              .map((value) => ({ value: String(value), label: `${value}%` })),
-          ]}
-        />
-        <button
-          ref={button}
-          type="button"
-          className="icon-button"
-          title="Android actions"
-          aria-label="Android actions"
-          aria-haspopup="menu"
-          aria-expanded={!!menu}
-          disabled={overview}
-          onClick={() => {
-            const rect = button.current!.getBoundingClientRect();
-            setMenu({ x: rect.right, y: rect.bottom });
-          }}
-        >
-          <Ellipsis size={16} />
-        </button>
+      <aside
+        className="android-toolbar"
+        aria-label="Phone controls"
+        data-pane-drag-handle
+      >
         {onClose && (
-          <IconButton title="Close Android panel" onClick={onClose}>
+          <IconButton
+            className="icon-button android-toolbar-close"
+            title="Close Android panel"
+            onClick={onClose}
+          >
             <X size={14} />
           </IconButton>
         )}
-      </header>
+        <div className="android-toolbar-controls">
+          <div className="android-navigation" aria-label="Android navigation">
+            <IconButton
+              title="Android Back"
+              disabled={!running || overview}
+              onClick={() => control({ type: "navigation", key: "GoBack" })}
+            >
+              <ArrowLeft size={14} />
+            </IconButton>
+            <IconButton
+              title="Android Home"
+              disabled={!running || overview}
+              onClick={() => control({ type: "navigation", key: "GoHome" })}
+            >
+              <Circle size={13} />
+            </IconButton>
+            <IconButton
+              title="Android Recent apps"
+              disabled={!running || overview}
+              onClick={() => control({ type: "navigation", key: "AppSwitch" })}
+            >
+              <Square size={12} />
+            </IconButton>
+          </div>
+          <IconButton
+            title="Toggle phone screen"
+            disabled={!running || overview}
+            onClick={() => control({ type: "navigation", key: "Power" })}
+          >
+            <Power size={16} />
+          </IconButton>
+          <IconButton
+            title="Rotate phone"
+            disabled={!running || overview}
+            onClick={rotatePhone}
+          >
+            <RotateCw size={16} />
+          </IconButton>
+          <IconButton
+            title="Install APK…"
+            disabled={busy || !running || overview}
+            onClick={() => fileAction("android_install_apk")}
+          >
+            <Import size={16} />
+          </IconButton>
+          <IconButton
+            title="Save screenshot…"
+            disabled={busy || !running || overview}
+            onClick={() => fileAction("android_save_screenshot")}
+          >
+            <Camera size={16} />
+          </IconButton>
+          <button
+            ref={button}
+            type="button"
+            className="icon-button"
+            title="Android actions"
+            aria-label="Android actions"
+            aria-haspopup="menu"
+            aria-expanded={!!menu}
+            disabled={overview}
+            onClick={() => {
+              const rect = button.current!.getBoundingClientRect();
+              setMenu({ x: rect.right, y: rect.bottom });
+            }}
+          >
+            <Ellipsis size={16} />
+          </button>
+        </div>
+      </aside>
       {issue && (
         <div className="android-pane-error" role="alert">
           <span>{issue}</span>
@@ -277,54 +339,25 @@ export default function AndroidPane({
                 </button>
               </>
             ) : !device ? (
-              <>
-                <p>
-                  {tab.deviceId
-                    ? "This phone is unavailable. Select another device or recover it in Settings."
-                    : "Choose a virtual phone. Views of the same phone share its apps and data."}
-                </p>
-                {snapshot?.devices?.devices.map((device) => (
-                  <button
-                    key={device.id}
-                    className="button"
-                    disabled={busy}
-                    onClick={() =>
-                      void act(async () =>
-                        (await androidRuntime()).choose(tab.id, device.id),
-                      )
-                    }
-                  >
-                    {device.name}
-                  </button>
-                ))}
-                <button className="button" onClick={setup}>
-                  Manage devices
-                </button>
-              </>
-            ) : ["starting", "booting", "stopping"].includes(
-                status?.phase ?? "",
-              ) ? (
-              <>
-                <p role="status">
-                  {status?.phase === "stopping"
-                    ? "Stopping Android and saving device data…"
-                    : "Starting Android…"}
-                </p>
-                {status?.phase !== "stopping" && (
-                  <button
-                    className="button"
-                    onClick={() =>
-                      void act(async () =>
-                        (await androidRuntime()).stop(device.id),
-                      )
-                    }
-                  >
-                    Cancel start
-                  </button>
-                )}
-              </>
-            ) : running && (!stream || stream.phase === "connecting") ? (
-              <p role="status">Connecting to the Android screen…</p>
+              snapshot && (
+                <PhonePicker
+                  snapshot={snapshot}
+                  missing={!!tab.deviceId}
+                  disabled={busy}
+                  onChoose={(id) =>
+                    void act(async () =>
+                      (await androidRuntime()).choose(tab.id, id),
+                    )
+                  }
+                  onManage={setup}
+                />
+              )
+            ) : starting || stopping || connecting ? (
+              <PhoneStartup
+                step={running ? 2 : status?.phase === "booting" ? 1 : 0}
+                stopping={stopping}
+                onCancel={stopPhone}
+              />
             ) : running && stream?.phase === "sleeping" ? (
               <>
                 <p>The phone screen is asleep.</p>
@@ -409,6 +442,8 @@ export default function AndroidPane({
               label: "Start",
               disabled:
                 busy ||
+                starting ||
+                stopping ||
                 !device ||
                 !snapshot?.qualified ||
                 !!status?.processAlive,
@@ -419,13 +454,13 @@ export default function AndroidPane({
             },
             {
               label: "Stop",
-              disabled: busy || !status?.processAlive,
-              run: () =>
-                void act(async () => (await androidRuntime()).stop(device!.id)),
+              disabled: stopping || (!starting && !status?.processAlive),
+              run: stopPhone,
             },
             {
               label: "Restart (cold boot)",
-              disabled: busy || !device || !snapshot?.qualified,
+              disabled:
+                busy || starting || stopping || !device || !snapshot?.qualified,
               run: () =>
                 void act(async () =>
                   (await androidRuntime()).restart(device!.id),
@@ -433,13 +468,8 @@ export default function AndroidPane({
             },
             {
               label: "Rotate phone",
-              icon: <RotateCw size={14} />,
               disabled: !running,
-              run: () =>
-                control({
-                  type: "rotate",
-                  quarterTurns: ((runtime?.rotation(device!.id) ?? 0) + 1) % 4,
-                }),
+              run: rotatePhone,
             },
             {
               label: "Power",
@@ -477,24 +507,12 @@ export default function AndroidPane({
             {
               label: "Install APK…",
               disabled: busy || !running,
-              run: () =>
-                void act(() =>
-                  api("android_install_apk", {
-                    deviceId: device!.id,
-                    generation: status!.generation,
-                  }),
-                ),
+              run: () => fileAction("android_install_apk"),
             },
             {
               label: "Save screenshot…",
               disabled: busy || !running,
-              run: () =>
-                void act(() =>
-                  api("android_save_screenshot", {
-                    deviceId: device!.id,
-                    generation: status!.generation,
-                  }),
-                ),
+              run: () => fileAction("android_save_screenshot"),
             },
             {
               label: "Phone settings",

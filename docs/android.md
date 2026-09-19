@@ -18,14 +18,14 @@ according to SDK compatibility; they have not all been individually tested.
 ## Prepare a phone
 
 1. Choose **+ → New android symulator** and then **Set up Android**.
-2. In **Settings → Android**, check Environment and any required system
-   preparation. Hardware virtualization may require an administrator outside
-   SimpleBench.
+2. In **Settings → Android**, follow the setup card. It shows the next step:
+   install tools, download an Android version, then create a phone. Any required
+   system preparation appears above it.
 3. Choose **Install Android tools**, review the provider terms and approve
    the required licenses. SimpleBench downloads its own SDK tools and private
    Java runtime into its local application data. It does not change the
    system PATH, JAVA_HOME, shell profiles or another application's SDK.
-4. Browse **System images**. Recent stable versions appear first, with filters
+4. Open **Android versions**. Recent stable versions appear first, with filters
    for Android version and included apps. Choose **Google Play** for Play Store
    and Google services, **Google APIs** for services without the store, or
    **AOSP** for a minimal open-source system. Images marked **16 KB** require
@@ -36,16 +36,38 @@ according to SDK compatibility; they have not all been individually tested.
    inside this virtual phone. Profiles come from the installed official tools,
    including recent Pixel models. Profiles needing a newer Android version are
    disabled with an explanation. The name initially follows your chosen phone;
-   you can change it. Hardware options remain under **Hardware and startup**.
+   you can change it. Hardware options remain under **Advanced settings**.
    Host GPU and cold boot are the tested configuration.
-6. Set the device as default if wanted, then choose **Open in workspace** to
-   return to the waiting tab. **Open in new tab** creates an additional view.
+6. Choose **Open** next to your phone to return to the workspace. The phone’s
+   **…** menu contains configuration, default phone selection, cold boot,
+   wipe and delete. During setup, **Open in new tab** creates an additional
+   view if the original panel has been closed.
 
-The installer shows its current stage and download progress where available.
+Once set up, **Your phones** is the main view. Running phones have a **Stop**
+button. **Android versions** holds downloads and installed systems; **Advanced**
+holds SDK details, storage, repair and recovery. Optional hardware settings stay
+collapsed in the device form. Deleting or wiping a phone still requires typing
+its exact name.
+
+Image downloads show their current stage, progress, transferred bytes and a
+**Cancel** button beside the Android version in **Android versions**. The active
+download stays visible when filters change or Settings reopens. Verification
+and installation show an indeterminate bar until the native operation finishes.
 Closing Settings keeps an explicitly started installation running. Closing
 SimpleBench safely settles or cancels the installation before exiting.
 
 ## Use the panel
+
+Without a default phone, a new panel lists your phones with their Android
+version and current state. Select a row to open that phone. A configured default
+still opens automatically; a missing saved phone lets you select a replacement.
+
+Startup shows three stages: **Prepare phone**, **Start Android** and **Connect
+screen**. Stages follow the actual startup and screen connection; they do not
+estimate a percentage. **Cancel start** stays available while startup is pending,
+including before Android reports its first status. The panel waits for a
+confirmed stop before offering Start again. Multiple views share one pending
+start, and switching tabs after cancellation does not restart the phone.
 
 Click and drag on the screen to touch, scroll to swipe, or Alt-drag for a
 mirrored two-finger gesture. Type while the phone has focus; Tab leaves the
@@ -53,8 +75,10 @@ phone. Application shortcuts and ordinary form fields keep their normal roles.
 Use **Paste** to transfer the host clipboard intentionally. Typing does not
 use the clipboard, and there is no background clipboard synchronization.
 
-The toolbar provides Android navigation and a **Screen zoom** control. Choose
-**Fit** to see the whole phone or 25–300% to enlarge its preview. Pinch or
+The vertical toolbar on the right provides Android navigation, screen power,
+rotation, APK installation and screenshot capture. Close stays pinned at the
+top; the other controls scroll in short panels. Use **Zoom in**, **Zoom out**
+or **Fit to panel** in the actions menu to resize the preview. Pinch or
 Ctrl/Cmd-scroll over the phone to zoom around the pointer. Middle-drag or
 Shift-scroll pans an enlarged preview; ordinary scrolling swipes in Android.
 Each view keeps its own zoom and position across docking and workspace changes

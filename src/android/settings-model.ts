@@ -57,16 +57,17 @@ export function imageFamily(image: Pick<ImageChoice, "id" | "image">) {
       : "aosp";
 }
 
+export function imageTitle(image: Pick<ImageChoice, "id" | "image">) {
+  const info = imageInfo(image);
+  const label = { play: "Google Play", google: "Google APIs", aosp: "AOSP" }[
+    imageFamily(image)
+  ];
+  return `${androidVersion(info.api, info.minorApi)} · ${label}${info.tag.endsWith("_ps16k") ? " · 16 KB" : ""}`;
+}
+
 export function imageLabel(image: ImageChoice) {
   const info = imageInfo(image);
-  const family = imageFamily(image);
-  const label =
-    family === "play"
-      ? "Google Play"
-      : family === "google"
-        ? "Google APIs"
-        : "AOSP";
-  return `${androidVersion(info.api, info.minorApi)} · ${label}${info.tag.endsWith("_ps16k") ? " · 16 KB" : ""} · ${info.abi} · r${image.revision}`;
+  return `${imageTitle(image)} · ${info.abi} · r${image.revision}`;
 }
 
 export function imageDescription(image: Pick<ImageChoice, "id" | "image">) {

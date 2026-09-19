@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { mockDesktop } from "./desktop";
 import { mockAndroid } from "./android-mock";
 import {
@@ -16,6 +16,337 @@ async function openAndroid(page: Page) {
     .click();
 }
 
+async function maximizePhoneZoom(page: Page, pane: Locator) {
+  for (const label of [
+    "Preview size (100%)",
+    "Zoom in",
+    "Zoom in",
+    "Zoom in",
+  ]) {
+    await pane
+      .getByRole("button", { name: "Android actions", exact: true })
+      .click();
+    await page.getByRole("menuitem", { name: label, exact: true }).click();
+  }
+  await pane
+    .getByRole("button", { name: "Android actions", exact: true })
+    .click();
+  await expect(
+    page.getByRole("menuitem", { name: "Zoom in", exact: true }),
+  ).toBeDisabled();
+  await page.keyboard.press("Escape");
+  return pane
+    .locator(".android-screen")
+    .evaluate((screen) => screen.style.width);
+}
+
+for (const theme of ["light", "dark"] as const)
+  test(`phone toolbar shortcuts work and close stays pinned in ${theme}`, async ({
+    page,
+  }, info) => {
+    await page.setViewportSize({ width: 900, height: 720 });
+    await page.emulateMedia({ colorScheme: theme });
+    await mockDesktop(page, false);
+    await mockAndroid(page, true);
+    await page.goto("/");
+    await openAndroid(page);
+    await expect(page.locator(".android-screen")).toBeVisible();
+    const toolbar = page.getByRole("complementary", { name: "Phone controls" });
+    await toolbar.getByRole("button", { name: "Toggle phone screen" }).click();
+    await toolbar
+      .getByRole("button", { name: "Rotate phone", exact: true })
+      .click();
+    await expect
+      .poll(() => page.evaluate(() => (window as any).__androidTest.input))
+      .toEqual([
+        { type: "navigation", key: "Power" },
+        { type: "rotate", quarterTurns: 1 },
+      ]);
+    await page.evaluate(() => {
+      (window as any).__androidTest.holdFileAction = true;
+    });
+    const install = toolbar.getByRole("button", {
+      name: "Install APK…",
+      exact: true,
+    });
+    const screenshot = toolbar.getByRole("button", {
+      name: "Save screenshot…",
+      exact: true,
+    });
+    await install.click();
+    await expect(install).toBeDisabled();
+    await expect(screenshot).toBeDisabled();
+    await page.evaluate(() => {
+      (window as any).__androidTest.holdFileAction = false;
+      (window as any).__androidTest.finishFileAction();
+    });
+    await expect(screenshot).toBeEnabled();
+    await screenshot.click();
+    await expect(install).toBeEnabled();
+    const calls = await page.evaluate(() =>
+      (window as any).__nativeTest.calls.filter((call: any) =>
+        ["android_install_apk", "android_save_screenshot"].includes(
+          call.command,
+        ),
+      ),
+    );
+    expect(calls).toEqual(
+      ["android_install_apk", "android_save_screenshot"].map((command) => ({
+        command,
+        args: {
+          deviceId: "12345678-1234-4567-8123-123456789abc",
+          generation: "87654321-4321-4765-8321-cba987654321",
+        },
+      })),
+    );
+    await page.screenshot({
+      path: info.outputPath(`toolbar-shortcuts-${theme}.png`),
+    });
+    await page.setViewportSize({ width: 560, height: 420 });
+    const close = toolbar.getByRole("button", { name: "Close Android panel" });
+    const initialClose = (await close.boundingBox())!;
+    const rail = (await toolbar.boundingBox())!;
+    expect(initialClose.y - rail.y).toBeLessThanOrEqual(10);
+    await toolbar.locator(".android-toolbar-controls").evaluate((el) => {
+      el.scrollTop = el.scrollHeight;
+    });
+    await expect(close).toBeInViewport();
+    expect((await close.boundingBox())!.y).toBe(initialClose.y);
+    await toolbar
+      .getByRole("button", { name: "Android actions", exact: true })
+      .click();
+    await page.getByRole("menuitem", { name: "Stop", exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: "Start", exact: true }),
+    ).toBeEnabled();
+    for (const name of [
+      "Toggle phone screen",
+      "Rotate phone",
+      "Install APK…",
+      "Save screenshot…",
+    ])
+      await expect(
+        toolbar.getByRole("button", { name, exact: true }),
+      ).toBeDisabled();
+    await expect(close).toBeEnabled();
+    await page.screenshot({
+      path: info.outputPath(`toolbar-pinned-close-${theme}.png`),
+    });
+    await close.click();
+    await expect(page.locator(".android-pane")).toHaveCount(0);
+  });
+
+async function phonePhase(page: Page, phase: "starting" | "booting") {
+  await page.evaluate(async (phase) => {
+    const fixture = (window as any).__androidTest;
+    const status = {
+      deviceId: fixture.deviceId,
+      generation: fixture.generation,
+      phase,
+      processAlive: true,
+      serial: "emulator-5588",
+      error: null,
+      display: null,
+    };
+    fixture.state.statuses = [status];
+    await (window as any).__nativeTest.emitEvent("android-changed", {
+      kind: "status",
+      value: status,
+    });
+  }, phase);
+}
+
+for (const theme of ["light", "dark"] as const)
+  test(`phone selection and startup follow real stages in ${theme}`, async ({
+    page,
+  }, info) => {
+    await page.setViewportSize({ width: 900, height: 720 });
+    await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
+    await mockDesktop(page, false);
+    await mockAndroid(page, true);
+    await page.addInitScript(() => {
+      const fixture = (window as any).__androidTest;
+      fixture.holdStart = true;
+      fixture.holdScreen = true;
+      fixture.state.preferences.defaultDeviceId = null;
+      fixture.state.devices.devices.push({
+        ...fixture.state.devices.devices[0],
+        id: "12345678-1234-4567-8123-123456789abd",
+        name: "Pixel 10 Pro XL",
+        image:
+          "system-images;android-37.2;google_apis_playstore_ps16k;arm64-v8a",
+      });
+      fixture.state.statuses.push({
+        deviceId: "12345678-1234-4567-8123-123456789abd",
+        generation: fixture.generation,
+        phase: "running",
+        processAlive: true,
+        serial: "emulator-5590",
+        error: null,
+        display: [1344, 2992],
+      });
+    });
+    await page.goto("/");
+    await openAndroid(page);
+    const choices = page.getByRole("list", { name: "Available phones" });
+    await expect(
+      choices.getByRole("button", { name: "Open Test phone" }),
+    ).toContainText("Android 16 (API 36) · AOSP");
+    const pixel = choices.getByRole("button", { name: "Open Pixel 10 Pro XL" });
+    await expect(pixel).toContainText(
+      "Android 17 (API 37.2) · Google Play · 16 KB",
+    );
+    await expect(pixel).toContainText("Running");
+    await page.screenshot({
+      path: info.outputPath(`phone-picker-${theme}.png`),
+    });
+    await choices.getByRole("button", { name: "Open Test phone" }).focus();
+    await page.keyboard.press("Enter");
+    const steps = page.getByRole("list", { name: "Phone startup" });
+    await expect(steps.locator('[aria-current="step"]')).toContainText(
+      "Prepare phone",
+    );
+    await expect(
+      page.getByText("Android is stopped. Its apps and data are kept."),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Cancel start" }),
+    ).toBeEnabled();
+    await phonePhase(page, "starting");
+    await expect(steps.locator('[aria-current="step"]')).toContainText(
+      "Prepare phone",
+    );
+    await phonePhase(page, "booting");
+    await expect(steps.locator('[aria-current="step"]')).toContainText(
+      "Start Android",
+    );
+    await page.screenshot({
+      path: info.outputPath(`phone-startup-${theme}.png`),
+    });
+    await page.setViewportSize({ width: 560, height: 420 });
+    await expect(
+      page.getByRole("button", { name: "Cancel start" }),
+    ).toBeInViewport();
+    await page.screenshot({
+      path: info.outputPath(`phone-startup-small-${theme}.png`),
+    });
+    await page.setViewportSize({ width: 900, height: 720 });
+    await page.evaluate(() => (window as any).__androidTest.finishStart());
+    await expect(steps.locator('[aria-current="step"]')).toContainText(
+      "Connect screen",
+    );
+    await expect
+      .poll(() =>
+        page.evaluate(() => typeof (window as any).__androidTest.connectScreen),
+      )
+      .toBe("function");
+    await page.evaluate(() => (window as any).__androidTest.connectScreen());
+    await expect(steps).toHaveCount(0);
+    await expect(page.locator(".android-screen")).toBeVisible();
+    expect(
+      await page.evaluate(() => (window as any).__androidTest.startRequests),
+    ).toBe(1);
+  });
+
+test("startup can be cancelled before status arrives and during a manual retry", async ({
+  page,
+}) => {
+  await mockDesktop(page, false);
+  await mockAndroid(page, true);
+  await page.addInitScript(() => {
+    (window as any).__androidTest.holdStart = true;
+    (window as any).__androidTest.stopDelay = 200;
+  });
+  await page.goto("/");
+  await openAndroid(page);
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as any).__androidTest.startRequests),
+    )
+    .toBe(1);
+  await page.getByRole("button", { name: "Cancel start" }).click();
+  await expect(
+    page.getByRole("button", { name: "Stopping…", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Start", exact: true }),
+  ).toBeEnabled();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await page.getByRole("tab", { name: "Terminal", exact: true }).click();
+  await page.getByRole("tab", { name: "Test phone", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Start", exact: true }),
+  ).toBeEnabled();
+  expect(
+    await page.evaluate(() => (window as any).__androidTest.startRequests),
+  ).toBe(1);
+  await page.getByRole("button", { name: "Start", exact: true }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as any).__androidTest.startRequests),
+    )
+    .toBe(2);
+  await phonePhase(page, "booting");
+  await page.getByRole("button", { name: "Cancel start" }).click();
+  await expect(
+    page.getByRole("button", { name: "Start", exact: true }),
+  ).toBeEnabled();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__androidTest.stops)).toBe(
+    2,
+  );
+});
+
+test("shared views coalesce pending startup and preserve a real failure for retry", async ({
+  page,
+}) => {
+  await mockDesktop(page, false);
+  await mockAndroid(page, true);
+  await page.addInitScript(() => {
+    (window as any).__androidTest.holdStart = true;
+  });
+  await page.goto("/");
+  await openAndroid(page);
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as any).__androidTest.startRequests),
+    )
+    .toBe(1);
+  await phonePhase(page, "booting");
+  await openAndroid(page);
+  await expect(
+    page.getByRole("tab", { name: "Test phone", exact: true }),
+  ).toHaveCount(2);
+  await expect(
+    page.getByRole("button", { name: "Cancel start" }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() => (window as any).__androidTest.startRequests),
+  ).toBe(1);
+  await page.evaluate(async () => {
+    const fixture = (window as any).__androidTest;
+    const status = {
+      ...fixture.state.statuses[0],
+      phase: "failed",
+      error: "Android boot timed out",
+    };
+    fixture.state.statuses = [status];
+    await (window as any).__nativeTest.emitEvent("android-changed", {
+      kind: "status",
+      value: status,
+    });
+    fixture.failStart(new Error("Android boot timed out"));
+    fixture.failStop = true;
+  });
+  await expect(page.getByRole("alert")).toContainText("Android boot timed out");
+  await page.getByRole("button", { name: "Retry Stop" }).click();
+  await expect(page.getByRole("alert")).toContainText("Phone is still running");
+  await expect(page.getByRole("button", { name: "Retry Stop" })).toBeEnabled();
+  expect(
+    await page.evaluate(() => (window as any).__androidTest.startRequests),
+  ).toBe(1);
+});
+
 test("modern phone zoom stays bounded, preserves position and maps input to guest pixels", async ({
   page,
 }) => {
@@ -26,11 +357,11 @@ test("modern phone zoom stays bounded, preserves position and maps input to gues
   });
   await page.goto("/");
   await openAndroid(page);
-  const zoom = page.getByRole("combobox", { name: "Screen zoom" });
   await expect(page.locator(".android-screen")).toBeVisible();
-  await zoom.click();
-  await page.getByRole("option", { name: "300%", exact: true }).click();
-  await expect(zoom).toHaveText("300%");
+  const zoomedWidth = await maximizePhoneZoom(
+    page,
+    page.locator(".android-pane"),
+  );
   const point = await page.locator(".android-screen").evaluate((canvas) => {
     const host = canvas.parentElement!;
     host.scrollTop = 300;
@@ -79,7 +410,11 @@ test("modern phone zoom stays bounded, preserves position and maps input to gues
     .evaluate((host) => ({ left: host.scrollLeft, top: host.scrollTop }));
   await page.getByRole("tab", { name: "Terminal", exact: true }).click();
   await page.getByRole("tab", { name: "Test phone", exact: true }).click();
-  await expect(zoom).toHaveText("300%");
+  await expect
+    .poll(() =>
+      page.locator(".android-screen").evaluate((screen) => screen.style.width),
+    )
+    .toBe(zoomedWidth);
   await expect
     .poll(() =>
       page
@@ -94,7 +429,11 @@ test("modern phone zoom stays bounded, preserves position and maps input to gues
     clientX: point.x,
     clientY: point.y,
   });
-  await expect(zoom).not.toHaveText("300%");
+  await expect
+    .poll(() =>
+      page.locator(".android-screen").evaluate((screen) => screen.style.width),
+    )
+    .not.toBe(zoomedWidth);
   await page.keyboard.insertText("żółw");
   await expect
     .poll(() =>
@@ -252,8 +591,17 @@ test("system images explain variants and filter recent versions without hiding i
   await mockDesktop(page, false);
   await mockAndroid(page, true);
   await modernCatalog(page);
+  await page.addInitScript(() => {
+    const { state } = (window as any).__androidTest;
+    for (const id of Object.keys(state.packages.packages))
+      if (
+        id.startsWith("system-images;") &&
+        !state.devices.devices.some((device: any) => device.image === id)
+      )
+        delete state.packages.packages[id];
+  });
   await page.goto("/?window=settings&page=android");
-  await page.getByRole("button", { name: "Browse available images" }).click();
+  await page.getByRole("button", { name: /^Android versions/ }).click();
   const list = page.locator(".android-image-list");
   await expect(list.locator(".android-row").first()).toContainText(
     "Android 17 (API 37.2)",
@@ -279,7 +627,7 @@ for (const appearance of ["light", "dark"] as const)
     await mockAndroid(page, true);
     await modernCatalog(page);
     await page.goto("/?window=settings&page=android");
-    await page.getByRole("button", { name: "Browse available images" }).click();
+    await page.getByRole("button", { name: /^Android versions/ }).click();
     const version = page.getByRole("combobox", {
       name: "Filter Android version",
     });
@@ -405,19 +753,23 @@ test("an unqualified host preserves devices but cannot install or start Android"
     page.getByRole("menuitem", { name: "Restart (cold boot)", exact: true }),
   ).toBeDisabled();
   await page.goto("/?window=settings&page=android");
-  for (const name of [
-    "Repair tools",
-    "Create device",
-    "Open in workspace",
-    "Cold boot",
-    "Wipe data…",
-  ]) {
+  for (const name of ["Create device", "Open"]) {
     await expect(
       page.getByRole("button", { name, exact: true }),
     ).toBeDisabled();
   }
+  await page.getByRole("button", { name: /^Advanced/ }).click();
   await expect(
-    page.getByRole("button", { name: "Delete device…", exact: true }),
+    page.getByRole("button", { name: "Repair tools", exact: true }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "Options for Test phone" }).click();
+  for (const name of ["Cold boot", "Wipe data…"]) {
+    await expect(
+      page.getByRole("menuitem", { name, exact: true }),
+    ).toBeDisabled();
+  }
+  await expect(
+    page.getByRole("menuitem", { name: "Delete device…", exact: true }),
   ).toBeEnabled();
   expect(
     await page.evaluate(() =>
@@ -672,8 +1024,7 @@ test("docked phones retain independent zoom and scroll across workspace teardown
   await page.goto("/");
   await expect(page.locator(".android-screen")).toHaveCount(2);
   const pane = page.locator(`[data-android-pane-id="${second.id}"]`);
-  await pane.getByRole("combobox", { name: "Screen zoom" }).click();
-  await pane.getByRole("option", { name: "300%", exact: true }).click();
+  const zoomedWidth = await maximizePhoneZoom(page, pane);
   await pane.locator(".android-viewport").evaluate((host) => {
     host.scrollLeft = 35;
     host.scrollTop = 70;
@@ -696,15 +1047,17 @@ test("docked phones retain independent zoom and scroll across workspace teardown
     .filter({ hasText: "Default" })
     .click();
   await expect(page.locator(".android-screen")).toHaveCount(2);
-  await expect(pane.getByRole("combobox", { name: "Screen zoom" })).toHaveText(
-    "300%",
-  );
+  await expect
+    .poll(() =>
+      pane.locator(".android-screen").evaluate((screen) => screen.style.width),
+    )
+    .toBe(zoomedWidth);
   await expect.poll(position).toEqual({ left: 35, top: 70 });
   await expect(
     page
       .locator(`[data-android-pane-id="${first.id}"]`)
-      .getByRole("combobox", { name: "Screen zoom" }),
-  ).toHaveText("Fit");
+      .locator(".android-viewport"),
+  ).toHaveClass(/is-fit/);
   expect(
     await page.evaluate(() => (window as any).__androidTest.live.size),
   ).toBe(1);
@@ -749,10 +1102,10 @@ test("two docked views share a stream, preserve identity and stop only after the
   ).toBe(1);
   const source = page.locator(`[data-android-pane-id="${first.id}"]`);
   const target = page.locator(`[data-android-pane-id="${second.id}"]`);
-  const handle = (await source.locator(".android-pane-title").boundingBox())!;
+  const handle = (await source.locator(".android-toolbar").boundingBox())!;
   const destination = (await target.boundingBox())!;
   await page.keyboard.down("Control");
-  await page.mouse.move(handle.x + 10, handle.y + handle.height / 2);
+  await page.mouse.move(handle.x + 4, handle.y + 4);
   await page.mouse.down();
   await page.mouse.move(
     destination.x + destination.width / 2,
@@ -951,7 +1304,7 @@ test("provider terms precede installation and cancellation survives leaving Andr
   });
   await expect(review.getByText(/Fixture terms shown in full/)).toBeVisible();
   await expect(
-    review.getByRole("button", { name: "Install selected components" }),
+    review.getByRole("button", { name: "Accept and install" }),
   ).toBeDisabled();
   expect(
     await page.evaluate(() =>
@@ -963,9 +1316,7 @@ test("provider terms precede installation and cancellation survives leaving Andr
   await review
     .getByRole("checkbox", { name: "I accept android-sdk-license" })
     .check();
-  await review
-    .getByRole("button", { name: "Install selected components" })
-    .click();
+  await review.getByRole("button", { name: "Accept and install" }).click();
   await expect(page.getByRole("progressbar")).toHaveAttribute(
     "value",
     "250000",
@@ -989,9 +1340,11 @@ test("devices require explicit text-input consent and destructive confirmation",
   await mockDesktop(page, false);
   await mockAndroid(page, true);
   await page.goto("/?window=settings&page=android");
+  await page.getByRole("button", { name: /^Android versions/ }).click();
   await expect(
     page.getByRole("button", { name: "Remove image", exact: true }),
   ).toBeDisabled();
+  await page.getByRole("button", { name: /^Android versions/ }).click();
   await page
     .getByRole("button", { name: "Create device", exact: true })
     .click();
@@ -1007,7 +1360,8 @@ test("devices require explicit text-input consent and destructive confirmation",
     .check();
   await form.getByRole("button", { name: "Create device" }).click();
   const card = page.getByRole("article", { name: "Żółty telefon" });
-  await card.getByRole("button", { name: "Delete device…" }).click();
+  await card.getByRole("button", { name: "Options for Żółty telefon" }).click();
+  await page.getByRole("menuitem", { name: "Delete device…" }).click();
   const confirmation = page.getByRole("dialog", {
     name: "Delete device",
     exact: true,
@@ -1094,7 +1448,10 @@ for (const theme of ["light", "dark"] as const)
     await page.screenshot({
       path: info.outputPath(`android-settings-${theme}.png`),
     });
-    await page.getByRole("button", { name: "Configure", exact: true }).click();
+    await page.getByRole("button", { name: "Options for Test phone" }).click();
+    await page
+      .getByRole("menuitem", { name: "Configure", exact: true })
+      .click();
     await expect(page.getByRole("dialog")).toBeVisible();
     await page
       .getByRole("button", { name: "Save configuration" })
@@ -1112,4 +1469,342 @@ for (const theme of ["light", "dark"] as const)
     await page.screenshot({
       path: info.outputPath(`android-device-${theme}.png`),
     });
+  });
+
+test("Android setup advances from tools to a version to a phone without exposing maintenance", async ({
+  page,
+}, info) => {
+  await mockDesktop(page, false);
+  await mockAndroid(page, true);
+  await page.addInitScript(() => {
+    const { state } = (window as any).__androidTest;
+    state.devices.devices = [];
+    state.toolchainReady = false;
+    state.packages.packages = {};
+  });
+  await page.setViewportSize({ width: 900, height: 720 });
+  await page.goto("/?window=settings&page=android");
+  const setup = page.getByRole("region", { name: "Android setup" });
+  await expect(setup).toContainText("Step 1 of 3");
+  await expect(
+    page.getByRole("button", { name: "Repair tools", exact: true }),
+  ).not.toBeVisible();
+  expect(
+    await page.evaluate(() =>
+      (window as any).__nativeTest.calls.some(
+        (call: any) => call.command === "android_catalog",
+      ),
+    ),
+  ).toBe(false);
+  await page.screenshot({ path: info.outputPath("android-first-setup.png") });
+  await setup
+    .getByRole("button", { name: "Install Android tools", exact: true })
+    .click();
+  const review = page.getByRole("dialog", {
+    name: "Review Android installation",
+  });
+  await review.getByRole("checkbox").check();
+  await review.getByRole("button", { name: "Accept and install" }).click();
+  await expect(page.getByRole("progressbar")).toBeVisible();
+  await page.evaluate(async () => {
+    const { state, catalog } = (window as any).__androidTest;
+    state.toolchainReady = true;
+    state.operation.phase = "succeeded";
+    for (const pkg of catalog.packages.filter((pkg: any) => !pkg.image))
+      state.packages.packages[pkg.id] = {
+        id: pkg.id,
+        revision: pkg.revision,
+        archiveSha1: pkg.sha1,
+      };
+    await (window as any).__nativeTest.emitEvent("android-changed", {
+      kind: "metadata",
+    });
+  });
+  await expect(setup).toContainText("Step 2 of 3");
+  await setup.getByRole("button", { name: "Choose Android version" }).click();
+  await expect(
+    page.getByRole("button", { name: /^Android versions/ }),
+  ).toHaveAttribute("aria-expanded", "true");
+  await page
+    .getByRole("button", { name: "Download image", exact: true })
+    .click();
+  await expect(review).toBeVisible();
+  await expect(
+    review.getByRole("button", { name: "Accept and install" }),
+  ).toBeDisabled();
+  await review.getByRole("checkbox").check();
+  await review.getByRole("button", { name: "Accept and install" }).click();
+  await page.evaluate(async () => {
+    const { state, catalog } = (window as any).__androidTest;
+    const pkg = catalog.packages.find((pkg: any) => pkg.image);
+    state.packages.packages[pkg.id] = {
+      id: pkg.id,
+      revision: pkg.revision,
+      archiveSha1: pkg.sha1,
+    };
+    state.operation.phase = "succeeded";
+    await (window as any).__nativeTest.emitEvent("android-changed", {
+      kind: "metadata",
+    });
+  });
+  await expect(setup).toContainText("Step 3 of 3");
+  await setup
+    .getByRole("button", { name: "Create device", exact: true })
+    .click();
+  const form = page.getByRole("dialog", { name: "Create Android device" });
+  await expect(form.getByRole("spinbutton")).toHaveCount(0);
+  await form
+    .getByRole("checkbox", { name: "Enable SimpleBench text input" })
+    .check();
+  await form
+    .getByRole("button", { name: "Create device", exact: true })
+    .click();
+  await expect(setup).toHaveCount(0);
+  await expect(
+    page.getByRole("article", { name: "Small Phone" }),
+  ).toBeVisible();
+});
+
+test("phone actions preserve setup targets and restore keyboard focus", async ({
+  page,
+}, info) => {
+  await mockDesktop(page, false);
+  await mockAndroid(page, true);
+  await page.addInitScript(() => {
+    const android = (window as any).__androidTest;
+    android.setup = { requestId: "pending-setup" };
+    android.state.statuses = [
+      {
+        deviceId: android.deviceId,
+        generation: android.generation,
+        phase: "running",
+        processAlive: true,
+        serial: "emulator-5588",
+        error: null,
+        display: [720, 1280],
+      },
+    ];
+  });
+  await page.setViewportSize({ width: 900, height: 720 });
+  await page.goto("/?window=settings&page=android");
+  const phone = page.getByRole("article", { name: "Test phone" });
+  await expect(
+    phone.getByRole("button", { name: "Stop", exact: true }),
+  ).toBeVisible();
+  await page.screenshot({ path: info.outputPath("android-phones.png") });
+  await phone.getByRole("button", { name: "Open", exact: true }).click();
+  const options = phone.getByRole("button", { name: "Options for Test phone" });
+  await options.click();
+  await expect(
+    page.getByRole("menuitem", { name: "Configure", exact: true }),
+  ).toBeFocused();
+  await expect(
+    page.getByRole("menuitem", { name: "Delete device…" }),
+  ).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(options).toBeFocused();
+  await options.press("Enter");
+  await page.getByRole("menuitem", { name: "Open in new tab" }).click();
+  expect(
+    await page.evaluate(() =>
+      (window as any).__nativeTest.calls
+        .filter((call: any) => call.command === "android_request_open")
+        .map((call: any) => call.args),
+    ),
+  ).toEqual([
+    {
+      requestId: "pending-setup",
+      deviceId: "12345678-1234-4567-8123-123456789abc",
+      coldBoot: false,
+    },
+    {
+      requestId: null,
+      deviceId: "12345678-1234-4567-8123-123456789abc",
+      coldBoot: false,
+    },
+  ]);
+  await phone.getByRole("button", { name: "Stop", exact: true }).click();
+  await expect(phone.getByText("Stopped", { exact: true })).toBeVisible();
+  await expect(
+    phone.getByRole("button", { name: "Stop", exact: true }),
+  ).toHaveCount(0);
+});
+
+test("image downloads keep progress and cancellation beside the selected version", async ({
+  page,
+}, info) => {
+  await mockDesktop(page, false);
+  await mockAndroid(page, true);
+  await modernCatalog(page);
+  const imageId =
+    "system-images;android-37.2;google_apis_playstore_ps16k;arm64-v8a";
+  await page.addInitScript((id) => {
+    delete (window as any).__androidTest.state.packages.packages[id];
+  }, imageId);
+  await page.setViewportSize({ width: 900, height: 720 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto("/?window=settings&page=android");
+  await page.getByRole("button", { name: /^Android versions/ }).click();
+  await page
+    .locator(`[data-android-package="${imageId}"]`)
+    .getByRole("button", { name: "Download image", exact: true })
+    .click();
+  const review = page.getByRole("dialog", {
+    name: "Review Android installation",
+  });
+  await review.getByRole("checkbox").check();
+  await review.getByRole("button", { name: "Accept and install" }).click();
+  const download = page.getByRole("region", {
+    name: "Android 17 (API 37.2) · Google Play · 16 KB installation",
+    exact: true,
+  });
+  await expect(download.getByRole("progressbar")).toHaveAttribute(
+    "value",
+    "250000",
+  );
+  await expect(download).toContainText("25%");
+  await expect(
+    page.getByRole("region", { name: "Android operation", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    download.getByRole("button", { name: "Cancel download" }),
+  ).toBeInViewport();
+  await page.evaluate(async () => {
+    const progress = (window as any).__androidTest.state.operation;
+    progress.received = 750000;
+    await (window as any).__nativeTest.emitEvent("android-changed", {
+      kind: "operation",
+      value: progress,
+    });
+  });
+  await expect(download).toContainText("75%");
+  await page.screenshot({
+    path: info.outputPath("android-inline-download.png"),
+  });
+  await page.getByRole("combobox", { name: "Filter included apps" }).click();
+  await page.getByRole("option", { name: "AOSP", exact: true }).click();
+  await expect(download).toBeVisible();
+  await page.getByRole("button", { name: "Keybinds", exact: true }).click();
+  await page.getByRole("button", { name: "Android", exact: true }).click();
+  await expect(download).toContainText("75%");
+  await expect(
+    download.getByRole("button", { name: "Cancel download" }),
+  ).toBeInViewport();
+  expect(
+    await page.evaluate(() =>
+      (window as any).__nativeTest.calls.some(
+        (call: any) => call.command === "android_cancel_operation",
+      ),
+    ),
+  ).toBe(false);
+  await page.evaluate(() => {
+    (window as any).__androidTest.cancelError = "Could not cancel. Try again.";
+  });
+  await download.getByRole("button", { name: "Cancel download" }).click();
+  await expect(download.getByRole("alert")).toHaveText(
+    "Could not cancel. Try again.",
+  );
+  await page.evaluate(() => {
+    (window as any).__androidTest.cancelError = null;
+    (window as any).__androidTest.cancelDelay = 600;
+  });
+  await download.getByRole("button", { name: "Cancel download" }).click();
+  await expect(
+    download.getByRole("button", { name: "Cancelling…" }),
+  ).toBeDisabled();
+  await expect(download).toContainText("Cancelled safely");
+  await expect(download.getByRole("progressbar")).toHaveCount(0);
+  const cancelled = await page.evaluate(() => {
+    const native = (window as any).__nativeTest;
+    return {
+      operation: (window as any).__androidTest.state.operation.operationId,
+      calls: native.calls
+        .filter((call: any) => call.command === "android_cancel_operation")
+        .map((call: any) => call.args.operationId),
+    };
+  });
+  expect(cancelled.calls).toEqual([cancelled.operation, cancelled.operation]);
+  await download.getByRole("button", { name: "Download again" }).click();
+  await expect(review).toBeVisible();
+  await expect(
+    review.getByRole("button", { name: "Accept and install" }),
+  ).toBeDisabled();
+});
+
+for (const appearance of ["light", "dark"] as const)
+  test(`restored image downloads remain visible through verification and completion in ${appearance}`, async ({
+    page,
+  }, info) => {
+    await mockDesktop(page, false);
+    await mockAndroid(page, true);
+    await page.addInitScript(() => {
+      (window as any).__androidTest.state.operation = {
+        operationId: "restored-download",
+        packageIds: [
+          "system-images;android-37.2;google_apis_playstore_ps16k;arm64-v8a",
+        ],
+        phase: "running",
+        stage: "Downloading Android system image",
+        received: 250000000,
+        total: 1000000000,
+        error: null,
+        deviceId: null,
+      };
+    });
+    await page.setViewportSize({ width: 560, height: 420 });
+    await page.emulateMedia({ colorScheme: appearance });
+    await page.goto("/?window=settings&page=android");
+    const download = page.getByRole("region", {
+      name: "Android 17 (API 37.2) · Google Play · 16 KB installation",
+      exact: true,
+    });
+    await expect(
+      download.getByRole("button", { name: "Cancel download" }),
+    ).toBeInViewport();
+    await expect(download).toContainText("25%");
+    expect(
+      await page.evaluate(() =>
+        (window as any).__nativeTest.calls.some(
+          (call: any) => call.command === "android_catalog",
+        ),
+      ),
+    ).toBe(false);
+    await page.screenshot({
+      path: info.outputPath(`android-download-${appearance}.png`),
+    });
+    await page.evaluate(async () => {
+      const progress = (window as any).__androidTest.state.operation;
+      progress.received = 0;
+      progress.total = 0;
+      progress.stage = "Verifying downloaded files";
+      await (window as any).__nativeTest.emitEvent("android-changed", {
+        kind: "operation",
+        value: progress,
+      });
+    });
+    await expect(download).toContainText("Verifying downloaded files");
+    await expect(download.getByRole("progressbar")).not.toHaveAttribute(
+      "value",
+    );
+    await expect(download).not.toContainText("100%");
+    await page.evaluate(async () => {
+      const state = (window as any).__androidTest.state;
+      const id = state.operation.packageIds[0];
+      state.packages.packages[id] = {
+        id,
+        revision: "5",
+        archiveSha1: "a".repeat(40),
+      };
+      state.operation.phase = "succeeded";
+      await (window as any).__nativeTest.emitEvent("android-changed", {
+        kind: "metadata",
+      });
+    });
+    await expect(download).toHaveCount(0);
+    await expect(
+      page.getByRole("region", { name: "Android versions", exact: true }),
+    ).toContainText("Android 17 (API 37.2)");
+    await expect(
+      page.getByRole("button", { name: "Cancel download" }),
+    ).toHaveCount(0);
   });

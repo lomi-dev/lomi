@@ -119,10 +119,12 @@ export async function mockAndroid(page: Page, prepared = false) {
       let epoch = 0;
       const live = new Map<number, any>();
       let lease = "";
+      let selectedPackages: string[] = [];
       desktop.__androidTest = {
         state,
         catalog,
         starts: 0,
+        startRequests: 0,
         stops: 0,
         subscribers: 0,
         live,
@@ -148,14 +150,17 @@ export async function mockAndroid(page: Page, prepared = false) {
             },
           };
         if (command === "android_catalog") return structuredClone(catalog);
-        if (command === "android_setup_context") return null;
+        if (command === "android_setup_context")
+          return desktop.__androidTest.setup ?? null;
+        if (command === "android_request_open") return "open-request";
         if (command === "android_prepare_setup")
           return (desktop.__androidTest.setup = {
             requestId: crypto.randomUUID(),
             workspaceId: args.workspaceId,
             panelId: args.panelId,
           });
-        if (command === "android_install_plan")
+        if (command === "android_install_plan") {
+          selectedPackages = args.packages.map((pkg: any) => pkg.id);
           return {
             id: "reviewed-plan",
             catalogRevision: catalog.revision,
@@ -166,11 +171,13 @@ export async function mockAndroid(page: Page, prepared = false) {
             bootstrap: args.prepareTools ? state.toolchain : null,
             downloadBytes: 3000200,
           };
+        }
         if (command === "android_install") {
           if (args.accepted.join() !== "license-digest")
             throw new Error("Provider consent is required");
           state.operation = {
-            operationId: "install-1",
+            operationId: crypto.randomUUID(),
+            packageIds: selectedPackages,
             phase: "running",
             stage: "Downloading verified components",
             received: 250000,
@@ -182,6 +189,15 @@ export async function mockAndroid(page: Page, prepared = false) {
           return state.operation;
         }
         if (command === "android_cancel_operation") {
+          if (desktop.__androidTest.cancelError)
+            throw new Error(desktop.__androidTest.cancelError);
+          if (state.operation.operationId !== args.operationId)
+            throw new Error("Stale operation");
+          state.operation.phase = "cancelling";
+          await changed();
+          await new Promise((resolve) =>
+            setTimeout(resolve, desktop.__androidTest.cancelDelay ?? 0),
+          );
           state.operation.phase = "cancelled";
           state.operation.stage = "Installation cancelled";
           await changed();
@@ -213,6 +229,7 @@ export async function mockAndroid(page: Page, prepared = false) {
           state.devices.revision++;
           state.operation = {
             operationId: "manage-1",
+            packageIds: [],
             phase: "succeeded",
             stage: "Device updated",
             received: 0,
@@ -224,6 +241,7 @@ export async function mockAndroid(page: Page, prepared = false) {
           return state.operation;
         }
         if (command === "android_start") {
+          desktop.__androidTest.startRequests++;
           if (
             !state.statuses.some(
               (status) =>
@@ -231,6 +249,14 @@ export async function mockAndroid(page: Page, prepared = false) {
             )
           )
             desktop.__androidTest.starts++;
+          if (desktop.__androidTest.holdStart)
+            await new Promise<void>((resolve, reject) => {
+              desktop.__androidTest.finishStart = resolve;
+              desktop.__androidTest.failStart = reject;
+            }).finally(() => {
+              desktop.__androidTest.finishStart = undefined;
+              desktop.__androidTest.failStart = undefined;
+            });
           const status = {
             deviceId: args.deviceId,
             generation,
@@ -252,6 +278,9 @@ export async function mockAndroid(page: Page, prepared = false) {
         }
         if (command === "android_stop") {
           desktop.__androidTest.stops++;
+          desktop.__androidTest.failStart?.(
+            new Error("Android start was cancelled by Stop"),
+          );
           await new Promise((resolve) =>
             setTimeout(resolve, desktop.__androidTest.stopDelay),
           );
@@ -274,6 +303,10 @@ export async function mockAndroid(page: Page, prepared = false) {
           return status;
         }
         if (command === "android_subscribe_frames") {
+          if (desktop.__androidTest.holdScreen)
+            await new Promise<void>((resolve) => {
+              desktop.__androidTest.connectScreen = resolve;
+            });
           const current = ++epoch;
           live.clear();
           live.set(current, args.frames);
@@ -321,6 +354,15 @@ export async function mockAndroid(page: Page, prepared = false) {
           return;
         }
         if (command === "android_ack_frame") return;
+        if (
+          ["android_install_apk", "android_save_screenshot"].includes(command)
+        ) {
+          if (desktop.__androidTest.holdFileAction)
+            await new Promise<void>((resolve) => {
+              desktop.__androidTest.finishFileAction = resolve;
+            });
+          return;
+        }
         if (command === "android_input") {
           if (args.input.type === "focus") lease = crypto.randomUUID();
           if (args.input.type === "send")

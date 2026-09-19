@@ -54,6 +54,11 @@ const viewSettings = new Map<
   { deviceId: string; zoom: ScreenZoom; left: number; top: number }
 >();
 const restarting = new Set<string>();
+const starts = new Map<
+  string,
+  { promise: Promise<void>; cancelled: boolean }
+>();
+const stops = new Map<string, Promise<void>>();
 let descriptors: AndroidTab[] = [];
 let stopEvents: (() => void) | undefined;
 let nativeEvents: (() => void) | undefined;
@@ -73,7 +78,17 @@ export function runtimeError(id: string) {
 }
 function error(id: string, message: string) {
   errors.set(id, message);
+  notify();
+}
+function notify() {
   for (const observer of observers) observer();
+}
+
+export function launchPending(viewId: string, deviceId: string) {
+  return starts.has(deviceId) || visited.get(viewId) !== deviceId;
+}
+export function stopPending(deviceId: string) {
+  return stops.has(deviceId);
 }
 
 export function retain(tabs: AndroidTab[]) {
@@ -91,21 +106,55 @@ export function retain(tabs: AndroidTab[]) {
     if (!tabs.some((tab) => tab.id === id && tab.deviceId === view.deviceId))
       detach(view);
 }
-export async function start(deviceId: string) {
+export function start(deviceId: string): Promise<void> {
+  if (stops.has(deviceId))
+    return Promise.reject(
+      new Error("Wait for the phone to stop before starting it again."),
+    );
+  const existing = starts.get(deviceId);
+  if (existing) return existing.promise;
+  const request = { promise: Promise.resolve(), cancelled: false };
+  starts.set(deviceId, request);
   error(deviceId, "");
-  try {
-    await api("android_start", { deviceId });
-    await refreshAndroid();
-    schedule();
-  } catch (reason) {
-    error(deviceId, errorMessage(reason));
-    throw reason;
-  }
+  request.promise = (async () => {
+    try {
+      await api("android_start", { deviceId });
+      await refreshAndroid();
+      schedule();
+    } catch (reason) {
+      const message = errorMessage(reason);
+      if (request.cancelled && /start.*cancelled/i.test(message)) return;
+      error(deviceId, message);
+      throw reason;
+    } finally {
+      starts.delete(deviceId);
+      notify();
+    }
+  })();
+  return request.promise;
 }
-export async function stop(deviceId: string, force = false) {
-  await releaseInput();
-  await api("android_stop", { deviceId, force });
-  await refreshAndroid();
+export function stop(deviceId: string, force = false): Promise<void> {
+  const existing = stops.get(deviceId);
+  if (existing) return existing;
+  const starting = starts.get(deviceId);
+  if (starting) starting.cancelled = true;
+  // Also cancel first visits that are still waiting for their metadata refresh.
+  for (const tab of descriptors)
+    if (tab.deviceId === deviceId) visited.set(tab.id, deviceId);
+  const operation = (async () => {
+    try {
+      await releaseInput();
+      await api("android_stop", { deviceId, force });
+      await starting?.promise.catch(() => {});
+      await refreshAndroid();
+    } finally {
+      stops.delete(deviceId);
+      notify();
+    }
+  })();
+  stops.set(deviceId, operation);
+  notify();
+  return operation;
 }
 export async function restart(deviceId: string) {
   if (restarting.has(deviceId)) return;

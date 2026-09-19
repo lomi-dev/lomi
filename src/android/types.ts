@@ -80,6 +80,7 @@ export interface Plan {
 }
 export interface Progress {
   operationId: string;
+  packageIds: string[];
   phase: "running" | "cancelling" | "succeeded" | "cancelled" | "failed";
   stage: string;
   received: number;
