@@ -2,8 +2,10 @@ BEGIN IMMEDIATE;
 CREATE TABLE conversations (
   id TEXT PRIMARY KEY, title TEXT NOT NULL, origin TEXT NOT NULL,
   config TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 0,
-  active_leaf TEXT, updated_at INTEGER NOT NULL
+  active_leaf TEXT, updated_at INTEGER NOT NULL,
+  pinned INTEGER NOT NULL DEFAULT 0 CHECK(pinned IN (0,1))
 );
+CREATE INDEX conversation_history_order ON conversations(pinned DESC,updated_at DESC,id);
 CREATE TABLE messages (
   id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
   parent_id TEXT, role TEXT NOT NULL CHECK(role IN ('user','assistant')),
@@ -39,5 +41,5 @@ CREATE TABLE draft_attachments (
   PRIMARY KEY(conversation_id,attachment_id)
 );
 CREATE VIRTUAL TABLE chat_search USING fts5(content,conversation UNINDEXED,message UNINDEXED);
-PRAGMA user_version=1;
+PRAGMA user_version=2;
 COMMIT;

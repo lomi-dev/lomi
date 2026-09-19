@@ -105,10 +105,10 @@ test("chat docks into terminal layout, guards failed flush, supports history and
   await page.screenshot({ path: "test-results/chat-split-minimum.png" });
   await page.getByRole("button", { name: "Chat history", exact: true }).click();
   await expect(
-    page.getByRole("dialog", { name: "Chat history" }),
+    page.getByRole("complementary", { name: "Chat history" }),
   ).toBeVisible();
   await page
-    .getByRole("textbox", { name: "Search conversations" })
+    .getByRole("searchbox", { name: "Search conversations" })
     .fill("Chat AI");
   await expect(page.locator(".chat-history-item")).toHaveCount(1);
   await page.keyboard.press("Escape");
@@ -138,27 +138,38 @@ test("settings route supports named connections without reading a secret", async
   await expect(
     page.getByRole("heading", { name: "Chat AI", exact: true }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "Add provider", exact: true }).click();
   await page
-    .getByRole("button", { name: "Add connection", exact: true })
+    .getByRole("dialog")
+    .getByRole("button", { name: "Google (AI Studio)", exact: true })
     .click();
   await page.getByText("Advanced options", { exact: true }).click();
   await page
     .getByRole("textbox", { name: "Connection name" })
     .fill("Second connection");
   await page
-    .getByRole("combobox", { name: "Provider", exact: true })
-    .selectOption("google");
-  await page
     .getByLabel("API key", { exact: true })
     .fill("fixture-not-a-real-key");
   await page
     .getByRole("combobox", { name: "Key storage", exact: true })
-    .selectOption("session");
-  await page.getByRole("button", { name: "Save connection" }).click();
+    .click();
+  await page
+    .getByRole("option", {
+      name: "Session only · expires when the app closes",
+      exact: true,
+    })
+    .click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Add provider", exact: true })
+    .click();
   await expect(
-    page.getByRole("heading", { name: "Second connection" }),
+    page.getByRole("button", { name: /Second connection/ }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Edit", exact: true }).last().click();
+  await page
+    .getByRole("button", { name: "Edit key", exact: true })
+    .last()
+    .click();
   await expect(page.getByLabel(/Replacement API key/)).toHaveValue("");
 });
 

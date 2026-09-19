@@ -6,6 +6,29 @@ const usage = {
   inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
   outputTokens: { total: 1, text: 1, reasoning: 0 },
 };
+globalThis.fetch = async (_url, init) => {
+  const headers = new Headers(init?.headers);
+  if (
+    [...headers.values()].some((value) =>
+      value.includes("fixture-catalog-denied"),
+    )
+  )
+    return Response.json({ error: "FIXTURE_PRIVATE_ERROR" }, { status: 401 });
+  return Response.json({
+    data: [
+      {
+        id: "fixture-catalog-model",
+        supportedGenerationMethods: ["generateContent"],
+      },
+    ],
+    models: [
+      {
+        name: "models/fixture-catalog-model",
+        supportedGenerationMethods: ["generateContent"],
+      },
+    ],
+  });
+};
 const measuredOutput = new Writable({
   write(bytes, _encoding, complete) {
     const event = JSON.parse(bytes.toString());

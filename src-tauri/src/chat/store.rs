@@ -95,6 +95,8 @@ pub struct Conversation {
     pub active_leaf_id: Option<String>,
     pub config: Config,
     pub updated_at: i64,
+    #[serde(default)]
+    pub pinned: bool,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -168,7 +170,7 @@ impl Store {
         let connection = db(Connection::open(&path))?;
         db(connection.busy_timeout(Duration::from_secs(2)))?;
         let version: i64 = db(connection.query_row("PRAGMA user_version", [], |r| r.get(0)))?;
-        if version > 1 {
+        if version > 2 {
             return Err(
                 "The chat history was created by a newer version. It was preserved.".into(),
             );
@@ -187,6 +189,9 @@ impl Store {
         }
         if version == 0 {
             db(connection.execute_batch(include_str!("schema.sql")))?;
+        }
+        if version == 1 {
+            db(connection.execute_batch("BEGIN IMMEDIATE; ALTER TABLE conversations ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0 CHECK(pinned IN (0,1)); CREATE INDEX conversation_history_order ON conversations(pinned DESC,updated_at DESC,id); PRAGMA user_version=2; COMMIT;"))?;
         }
         db(connection.execute_batch("BEGIN IMMEDIATE; UPDATE requests SET status='interrupted' WHERE status='active'; UPDATE messages SET status='interrupted' WHERE status='active'; COMMIT;"))?;
         Ok(Self { connection })
@@ -217,7 +222,7 @@ impl Store {
         self.conversation(id)
     }
     pub fn conversation(&self, id: &str) -> Result<Conversation, String> {
-        let values = db(self.connection.query_row("SELECT title,origin,config,revision,active_leaf,updated_at FROM conversations WHERE id=?1",[id],|r| Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?,r.get(3)?,r.get(4)?,r.get(5)?))).optional())?.ok_or("missing: This conversation is unavailable. Open history to choose another conversation.")?;
+        let values = db(self.connection.query_row("SELECT title,origin,config,revision,active_leaf,updated_at,pinned FROM conversations WHERE id=?1",[id],|r| Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?,r.get(3)?,r.get(4)?,r.get(5)?,r.get(6)?))).optional())?.ok_or("missing: This conversation is unavailable. Open history to choose another conversation.")?;
         Ok(Conversation {
             id: id.into(),
             title: values.0,
@@ -227,6 +232,7 @@ impl Store {
             revision: values.3,
             active_leaf_id: values.4,
             updated_at: values.5,
+            pinned: values.6,
         })
     }
     pub fn draft(&self, id: &str) -> Result<Draft, String> {
@@ -722,6 +728,115 @@ mod tests {
         );
     }
     #[test]
+    fn history_v1_migration_preserves_messages_draft_and_search() {
+        let (root, mut store) = setup();
+        store.save_draft("conversation", "first", 0).unwrap();
+        store.begin(&start(), &json!({})).unwrap();
+        store
+            .checkpoint(
+                "request",
+                1,
+                &json!([{ "type": "text", "text": "answer" }]),
+                "completed",
+                &json!({}),
+            )
+            .unwrap();
+        store.save_draft("conversation", "unsent draft", 2).unwrap();
+        store.rename("conversation", "Saved conversation").unwrap();
+        let before = serde_json::to_value(store.load("conversation", 0).unwrap()).unwrap();
+        store.connection.execute_batch(
+            "DROP INDEX conversation_history_order; ALTER TABLE conversations DROP COLUMN pinned; PRAGMA user_version=1;"
+        ).unwrap();
+        drop(store);
+        let mut store = Store::open(root.path()).unwrap();
+        assert_eq!(
+            serde_json::to_value(store.load("conversation", 0).unwrap()).unwrap(),
+            before
+        );
+        assert_eq!(
+            store.list("Saved", None, None, 0).unwrap()[0].id,
+            "conversation"
+        );
+        assert!(!store.conversation("conversation").unwrap().pinned);
+        store.pin("conversation", true).unwrap();
+        drop(store);
+        assert!(
+            Store::open(root.path())
+                .unwrap()
+                .conversation("conversation")
+                .unwrap()
+                .pinned
+        );
+    }
+    #[test]
+    fn pins_persist_and_sort_before_paginated_history_without_changing_revisions() {
+        let (root, mut store) = setup();
+        let initial = store.conversation("conversation").unwrap();
+        store.save_draft("conversation", "first", 0).unwrap();
+        for index in 0..60 {
+            let id = format!("history-{index:02}");
+            store
+                .create(&id, &initial.origin, &Config::default())
+                .unwrap();
+            store
+                .connection
+                .execute(
+                    "UPDATE conversations SET updated_at=?1 WHERE id=?2",
+                    params![index, id],
+                )
+                .unwrap();
+        }
+        store.pin("history-00", true).unwrap();
+        let first = store.list("", None, None, 0).unwrap();
+        let second = store.list("", None, None, 50).unwrap();
+        assert_eq!(first[0].id, "history-00");
+        assert_eq!(first.len(), 50);
+        assert_eq!(second.len(), 11);
+        let ids: std::collections::HashSet<_> =
+            first.iter().chain(&second).map(|item| &item.id).collect();
+        assert_eq!(ids.len(), 61);
+        assert!(store
+            .list("", Some("other-workspace"), None, 0)
+            .unwrap()
+            .is_empty());
+        assert!(store
+            .list("", None, Some("other-project"), 0)
+            .unwrap()
+            .is_empty());
+        store.rename("history-00", "Pinned search result").unwrap();
+        assert_eq!(
+            store
+                .list("Pinned", Some("workspace"), Some("project"), 0)
+                .unwrap()[0]
+                .id,
+            "history-00"
+        );
+        let pinned = store.pin("conversation", true).unwrap();
+        assert_eq!(pinned.revision, initial.revision);
+        assert_eq!(pinned.updated_at, initial.updated_at);
+        assert_eq!(store.draft("conversation").unwrap().revision, 1);
+        store.begin(&start(), &json!({})).unwrap();
+        store.pin("conversation", false).unwrap();
+        assert_eq!(store.conversation("conversation").unwrap().revision, 1);
+        assert_eq!(
+            store.load("conversation", 0).unwrap().request.unwrap()["status"],
+            "active"
+        );
+        drop(store);
+        let mut store = Store::open(root.path()).unwrap();
+        assert!(store.conversation("history-00").unwrap().pinned);
+        assert!(!store.conversation("conversation").unwrap().pinned);
+        store.pin("history-00", false).unwrap();
+        assert!(store
+            .list("", None, None, 0)
+            .unwrap()
+            .iter()
+            .all(|item| !item.pinned));
+        store.pin("history-00", true).unwrap();
+        store.delete("history-00").unwrap();
+        assert!(store.list("Pinned", None, None, 0).unwrap().is_empty());
+    }
+    #[test]
     fn newer_database_and_cross_conversation_parent_are_rejected() {
         let (root, mut store) = setup();
         store
@@ -731,7 +846,7 @@ mod tests {
         assert!(Store::open(root.path()).is_err());
         store
             .connection
-            .execute_batch("PRAGMA user_version=1")
+            .execute_batch("PRAGMA user_version=2")
             .unwrap();
         store.save_draft("conversation", "first", 0).unwrap();
         store.begin(&start(), &json!({})).unwrap();
@@ -762,7 +877,7 @@ impl Store {
         } else {
             Some(format!("\"{}\"", query.replace('"', "\"\"")))
         };
-        let mut statement=db(self.connection.prepare("SELECT id FROM conversations WHERE (?1 IS NULL OR id IN (SELECT conversation FROM chat_search WHERE chat_search MATCH ?1)) AND (?2 IS NULL OR json_extract(origin,'$.workspaceId')=?2) AND (?3 IS NULL OR json_extract(origin,'$.projectId')=?3) ORDER BY updated_at DESC,id LIMIT 50 OFFSET ?4"))?;
+        let mut statement=db(self.connection.prepare("SELECT id FROM conversations WHERE (?1 IS NULL OR id IN (SELECT conversation FROM chat_search WHERE chat_search MATCH ?1)) AND (?2 IS NULL OR json_extract(origin,'$.workspaceId')=?2) AND (?3 IS NULL OR json_extract(origin,'$.projectId')=?3) ORDER BY pinned DESC,updated_at DESC,id LIMIT 50 OFFSET ?4"))?;
         let ids = db(db(statement.query_map(
             params![search, workspace, project, offset.min(1000000) as i64],
             |row| row.get(0),
@@ -784,6 +899,13 @@ impl Store {
             params![title, id],
         ))?;
         db(tx.commit())?;
+        self.conversation(id)
+    }
+    pub fn pin(&mut self, id: &str, pinned: bool) -> Result<Conversation, String> {
+        db(self.connection.execute(
+            "UPDATE conversations SET pinned=?1 WHERE id=?2",
+            params![pinned, id],
+        ))?;
         self.conversation(id)
     }
     pub fn delete(&mut self, id: &str) -> Result<(), String> {

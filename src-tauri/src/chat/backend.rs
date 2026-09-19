@@ -649,6 +649,45 @@ impl Backend {
             .ok_or("Choose an enabled connection.")?
             .clone();
         let key = settings.key(connection_id)?;
+        let (id, request) = self.begin_auxiliary(connection_id)?;
+        drop(services);
+        let payload = json!({"operation":operation,"provider":connection.provider,"apiKey":key,"model":if operation=="list-models"{"catalog"}else{model},"assistantId":"connection-test","messages":[{"id":"test-user","role":"user","parts":[{"type":"text","text":"Reply with OK."}]}],"maxOutputTokens":32});
+        let result = self.run_auxiliary(&id, request, payload)?;
+        self.services
+            .lock()
+            .unwrap()
+            .settings
+            .as_mut()
+            .map_err(|e| e.clone())?
+            .record_result(
+                connection_id,
+                connection.credential_revision,
+                model,
+                operation,
+                &result,
+            )?;
+        Ok(result)
+    }
+
+    pub fn preview_models(self: &Arc<Self>, provider: &str, key: &str) -> Result<Value, String> {
+        if !matches!(
+            provider,
+            "openai" | "anthropic" | "google" | "xai" | "openrouter" | "deepseek" | "nvidia"
+        ) {
+            return Err("Choose a supported AI provider.".into());
+        }
+        if key.trim().is_empty() || key.len() > 8192 || key.contains(['\r', '\n', '\0']) {
+            return Err("Enter a valid API key.".into());
+        }
+        // Reserve under the same lock as generation without saving a connection or key.
+        let services = self.services.lock().map_err(|_| "Settings unavailable.")?;
+        let (id, request) = self.begin_auxiliary("")?;
+        drop(services);
+        let payload = json!({"operation":"list-models","provider":provider,"apiKey":key,"model":"catalog","assistantId":"connection-test","messages":[{"id":"catalog-user","role":"user","parts":[{"type":"text","text":"List models."}]}],"maxOutputTokens":32});
+        self.run_auxiliary(&id, request, payload)
+    }
+
+    fn begin_auxiliary(&self, connection_id: &str) -> Result<(String, Arc<Request>), String> {
         let mut requests = self.requests.lock().unwrap();
         if requests
             .values()
@@ -656,7 +695,8 @@ impl Backend {
             .count()
             >= 4
             || requests.values().any(|r| {
-                r.connection == connection_id
+                !connection_id.is_empty()
+                    && r.connection == connection_id
                     && r.conversation.is_none()
                     && r.done.0.lock().unwrap().is_none()
             })
@@ -687,22 +727,28 @@ impl Backend {
             done: (Mutex::new(None), Condvar::new()),
         });
         requests.insert(id.clone(), request.clone());
-        drop(requests);
-        drop(services);
-        let payload = json!({"operation":operation,"provider":connection.provider,"apiKey":key,"model":if operation=="list-models"{"catalog"}else{model},"assistantId":"connection-test","messages":[{"id":"test-user","role":"user","parts":[{"type":"text","text":"Reply with OK."}]}],"maxOutputTokens":32});
+        Ok((id, request))
+    }
+
+    fn run_auxiliary(
+        self: &Arc<Self>,
+        id: &str,
+        request: Arc<Request>,
+        payload: Value,
+    ) -> Result<Value, String> {
         let launched = self.process().and_then(|process| {
             if request.cancelled.load(Ordering::Acquire) {
-                self.finish(&id, &request, "cancelled", &json!({}));
+                self.finish(id, &request, "cancelled", &json!({}));
                 return Ok(());
             }
-            process.generate(&id, &payload)?;
+            process.generate(id, &payload)?;
             if request.cancelled.load(Ordering::Acquire) {
-                process.cancel(&id)?;
+                process.cancel(id)?;
             }
             Ok(())
         });
         if let Err(error) = launched {
-            self.requests.lock().unwrap().remove(&id);
+            self.requests.lock().unwrap().remove(id);
             return Err(error);
         }
         let mut done = request.done.0.lock().unwrap();
@@ -711,29 +757,16 @@ impl Backend {
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
                 drop(done);
-                self.cancel(&id)?;
-                self.close_requests(vec![(id.clone(), request.clone())])?;
-                self.requests.lock().unwrap().remove(&id);
+                self.cancel(id)?;
+                self.close_requests(vec![(id.into(), request.clone())])?;
+                self.requests.lock().unwrap().remove(id);
                 return Err("The connection operation timed out. It was cancelled.".into());
             }
             done = request.done.1.wait_timeout(done, remaining).unwrap().0;
         }
         let result = request.result.lock().unwrap().clone();
         drop(done);
-        self.requests.lock().unwrap().remove(&id);
-        self.services
-            .lock()
-            .unwrap()
-            .settings
-            .as_mut()
-            .map_err(|e| e.clone())?
-            .record_result(
-                connection_id,
-                connection.credential_revision,
-                model,
-                operation,
-                &result,
-            )?;
+        self.requests.lock().unwrap().remove(id);
         Ok(result)
     }
 }
@@ -862,6 +895,62 @@ mod tests {
     }
     fn channel() -> Channel<Value> {
         Channel::new(|_| Ok(()))
+    }
+    #[test]
+    fn model_preview_uses_private_runtime_without_saving_settings_or_keys() {
+        let (root, backend) = setup();
+        let path = root.path().join("preferences.json");
+        let before = std::fs::read(&path).unwrap();
+        let result = backend
+            .preview_models("google", "fixture-unsaved-key")
+            .unwrap();
+        assert_eq!(result["status"], "completed");
+        assert_eq!(result["models"], json!(["fixture-catalog-model"]));
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert!(backend.requests.lock().unwrap().is_empty());
+        let denied = backend
+            .preview_models("openai", "fixture-catalog-denied")
+            .unwrap();
+        assert_eq!(denied["status"], "failed");
+        assert_eq!(denied["result"]["code"], "auth");
+        assert!(!denied.to_string().contains("PRIVATE"));
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert!(backend.requests.lock().unwrap().is_empty());
+        backend.stop();
+    }
+    #[test]
+    fn model_preview_rejects_unsupported_providers_and_invalid_keys_before_startup() {
+        let (_root, backend) = setup();
+        assert!(backend
+            .preview_models("https://untrusted.example", "fixture-key")
+            .is_err());
+        for key in [
+            "",
+            "  ",
+            "key\nheader",
+            "key\rheader",
+            "key\0header",
+            &"x".repeat(8193),
+        ] {
+            assert!(backend.preview_models("openai", key).is_err());
+        }
+        assert!(backend.process.lock().unwrap().is_none());
+        assert!(backend.requests.lock().unwrap().is_empty());
+    }
+    #[test]
+    fn saved_model_refresh_still_records_catalog_results() {
+        let (_root, backend) = setup();
+        let result = backend.auxiliary("fixture", "", "list-models").unwrap();
+        assert_eq!(result["status"], "completed");
+        let services = backend.services.lock().unwrap();
+        let settings = services.settings.as_ref().unwrap();
+        assert_eq!(settings.data.revision, 2);
+        assert_eq!(
+            settings.data.connections[0].models,
+            vec!["fixture-catalog-model"]
+        );
+        drop(services);
+        backend.stop();
     }
     fn finished(request: &Request) -> Result<(), String> {
         let done = request.done.0.lock().unwrap();

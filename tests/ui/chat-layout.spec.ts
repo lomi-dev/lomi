@@ -29,15 +29,13 @@ async function emptySettings(page: Page) {
   }, defaultConfig);
   await mockChats(page);
   await page.goto("/?window=settings&page=chat-ai");
-  await page
-    .getByRole("button", { name: "Add connection", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Add provider", exact: true }).click();
 }
 
-for (const [provider, model, name] of [
-  ["openai", "gpt-4.1", "OpenAI"],
-  ["anthropic", "claude-opus-5", "Anthropic"],
-  ["google", "gemini-2.5-flash", "Google (AI Studio)"],
+for (const [provider, model, name, label = model] of [
+  ["openai", "gpt-4.1", "OpenAI", "GPT-4.1"],
+  ["anthropic", "claude-opus-5", "Anthropic", "Claude Opus 5"],
+  ["google", "gemini-2.5-flash", "Google (AI Studio)", "Gemini 2.5 Flash"],
   ["xai", "grok-4.6", "xAI"],
   ["openrouter", "openai/gpt-4.1", "OpenRouter"],
   ["deepseek", "deepseek-flash", "DeepSeek"],
@@ -48,18 +46,27 @@ for (const [provider, model, name] of [
   }) => {
     await emptySettings(page);
     await page
-      .getByRole("combobox", { name: "Provider", exact: true })
-      .selectOption(provider);
-    await expect(
-      page.getByRole("combobox", { name: "Model", exact: true }),
-    ).toHaveValue(model);
+      .getByRole("dialog")
+      .getByRole("button", { name, exact: true })
+      .click();
+    const modelSelect = page.getByRole("combobox", {
+      name: "Model",
+      exact: true,
+    });
+    await expect(modelSelect).toBeDisabled();
+    await expect(modelSelect).toHaveText("Enter an API key first");
     await expect(
       page.getByRole("textbox", { name: "Connection name" }),
     ).toBeHidden();
     await page
       .getByLabel("API key", { exact: true })
       .fill("fixture-not-a-real-key");
-    await page.getByRole("button", { name: "Save connection" }).click();
+    await modelSelect.click();
+    await page.getByRole("option", { name: label, exact: true }).click();
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Add provider", exact: true })
+      .click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     const saved = await page.evaluate(() =>
       JSON.parse(localStorage.getItem("chat-preferences")!),
@@ -95,12 +102,21 @@ test("failed key storage keeps the form and key available for explicit session-o
 }) => {
   await emptySettings(page);
   await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "OpenAI", exact: true })
+    .click();
+  await page
     .getByLabel("API key", { exact: true })
     .fill("fixture-not-a-real-key");
+  await page.getByRole("combobox", { name: "Model", exact: true }).click();
+  await page.getByRole("option", { name: "GPT-4.1", exact: true }).click();
   await page.evaluate(() => {
     (window as any).__chatTest.failPreferences = true;
   });
-  await page.getByRole("button", { name: "Save connection" }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Add provider", exact: true })
+    .click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("alert")).toContainText(
     "credential store is locked",
@@ -109,13 +125,20 @@ test("failed key storage keeps the form and key available for explicit session-o
     "fixture-not-a-real-key",
   );
   await dialog.getByText("Advanced options", { exact: true }).click();
+  await page.getByRole("combobox", { name: "Key storage" }).click();
   await page
-    .getByRole("combobox", { name: "Key storage" })
-    .selectOption("session");
+    .getByRole("option", {
+      name: "Session only · expires when the app closes",
+      exact: true,
+    })
+    .click();
   await page.evaluate(() => {
     (window as any).__chatTest.failPreferences = false;
   });
-  await page.getByRole("button", { name: "Save connection" }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Add provider", exact: true })
+    .click();
   await expect(dialog).toHaveCount(0);
   expect(
     await page.evaluate(
@@ -134,9 +157,10 @@ test("conversation model changes support custom IDs and preserve advanced config
   await page.goto("/");
   await openChat(page);
   await page.getByRole("button", { name: "Choose model" }).click();
+  await page.getByRole("combobox", { name: "Model", exact: true }).click();
   await page
-    .getByRole("combobox", { name: "Model", exact: true })
-    .selectOption("custom");
+    .getByRole("option", { name: "Custom model…", exact: true })
+    .click();
   await page
     .getByRole("textbox", { name: "Custom model ID" })
     .fill("custom-model");
@@ -173,6 +197,7 @@ test("chat contains long content, resizes drafts, and preserves reading position
   });
   const input = page.getByRole("textbox", { name: "Message", exact: true });
   await input.fill("Can you help me simplify this interface?");
+  await page.screenshot({ path: info.outputPath("chat-draft.png") });
   await input.press("Enter");
   await expect(page.getByRole("button", { name: "Regenerate" })).toBeVisible();
   await page.screenshot({ path: info.outputPath("chat-dark.png") });
@@ -194,6 +219,7 @@ test("chat contains long content, resizes drafts, and preserves reading position
     page.getByRole("button", { name: "Jump to latest message" }),
   ).toBeVisible();
   await input.fill("Draft line\n".repeat(40));
+  await page.screenshot({ path: info.outputPath("chat-multiline.png") });
   for (const size of [
     { width: 800, height: 420 },
     { width: 500, height: 360 },
@@ -246,12 +272,19 @@ test("setup and advanced conversation dialogs scroll inside a short window", asy
   page,
 }, info) => {
   await emptySettings(page);
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "OpenAI", exact: true })
+    .click();
   await page.emulateMedia({ colorScheme: "dark" });
   await page.screenshot({ path: info.outputPath("chat-setup.png") });
   await page.getByText("Advanced options", { exact: true }).click();
   await page.setViewportSize({ width: 640, height: 360 });
   const dialog = page.getByRole("dialog");
-  const save = dialog.getByRole("button", { name: "Save connection" });
+  const save = dialog.getByRole("button", {
+    name: "Add provider",
+    exact: true,
+  });
   await save.scrollIntoViewIfNeeded();
   await expect(save).toBeInViewport();
   expect(
@@ -260,10 +293,25 @@ test("setup and advanced conversation dialogs scroll inside a short window", asy
     ),
   ).toBe(true);
   await page.screenshot({ path: info.outputPath("chat-setup-short.png") });
-  await page.keyboard.press("Escape");
+  await dialog
+    .getByLabel("API key", { exact: true })
+    .fill("fixture-layout-key");
+  await dialog.getByRole("combobox", { name: "Model", exact: true }).click();
+  await page.getByRole("option", { name: "GPT-4.1", exact: true }).click();
+  await save.click();
+  await expect(dialog).toHaveCount(0);
   await page.goto("/");
   await openChat(page);
-  await page.getByRole("button", { name: "Conversation settings" }).click();
+  await page.getByRole("button", { name: "Chat AI settings" }).click();
+  expect(
+    await page.evaluate(() =>
+      (window as any).__nativeTest.calls.filter(
+        (call: { command: string }) => call.command === "open_settings",
+      ),
+    ),
+  ).toContainEqual({ command: "open_settings", args: { page: "chat-ai" } });
+  await expect(dialog).toHaveCount(0);
+  await page.getByRole("button", { name: "Choose model" }).click();
   await page.getByText("Advanced options", { exact: true }).click();
   const apply = page.getByRole("button", { name: "Apply", exact: true });
   await apply.scrollIntoViewIfNeeded();

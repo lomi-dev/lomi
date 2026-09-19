@@ -94,6 +94,10 @@ pub enum MainAction {
         id: String,
         title: String,
     },
+    Pin {
+        id: String,
+        pinned: bool,
+    },
     Delete {
         id: String,
     },
@@ -159,6 +163,13 @@ pub async fn chat_main(
             .map(|s| s.data.defaults.clone())
             .unwrap_or_default();
         let store = services.store.as_mut().map_err(|e| e.clone())?;
+        let history_changed = matches!(
+            &input,
+            MainAction::Create { .. }
+                | MainAction::Rename { .. }
+                | MainAction::Pin { .. }
+                | MainAction::Delete { .. }
+        );
         let value = match input {
             MainAction::Create { id, origin } => {
                 serde_json::to_value(store.create(&id, &origin, &defaults)?).unwrap()
@@ -198,6 +209,9 @@ pub async fn chat_main(
             .unwrap(),
             MainAction::Rename { id, title } => {
                 serde_json::to_value(store.rename(&id, &title)?).unwrap()
+            }
+            MainAction::Pin { id, pinned } => {
+                serde_json::to_value(store.pin(&id, pinned)?).unwrap()
             }
             MainAction::Delete { id } => {
                 store.delete(&id)?;
@@ -275,6 +289,13 @@ pub async fn chat_main(
                 json!({"attachment":meta,"data":super::process::encode(&bytes)})
             }
         };
+        if history_changed {
+            let _ = app.emit_to(
+                tauri::EventTarget::webview("main"),
+                "chat-history-changed",
+                (),
+            );
+        }
         Ok(value)
     })
     .await
@@ -463,6 +484,25 @@ pub async fn chat_close(
     })
     .await
     .map_err(|_| "Chat close failed. The views remain open.")?
+}
+
+#[tauri::command]
+pub async fn chat_preview_models(
+    window: Window,
+    app: tauri::AppHandle,
+    state: State<'_, Chats>,
+    provider: String,
+    api_key: String,
+) -> Result<Value, String> {
+    settings(&window)?;
+    let backend = state.backend(&app)?;
+    let permit = Operation::acquire()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let _permit = permit;
+        backend.preview_models(&provider, &api_key)
+    })
+    .await
+    .map_err(|_| "Could not load models from the provider.")?
 }
 
 #[tauri::command]

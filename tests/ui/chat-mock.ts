@@ -43,9 +43,13 @@ export async function mockChats(page: Page) {
       slowAck: false,
       failClose: false,
       failDraft: false,
+      failHistoryAction: "",
+      pendingLists: [],
       response: "Zażółć 日本語 👩🏽‍💻 ",
       chunks: 5,
       connectionActions: [],
+      modelPreviews: [],
+      pendingModelPreviews: [],
       failPreferences: false,
       starts: 0,
       stops: 0,
@@ -70,6 +74,31 @@ export async function mockChats(page: Page) {
     };
     desktop.__chatInvoke = async (command: string, args: any) => {
       if (command === "chat_preferences") return structuredClone(preferences);
+      if (command === "chat_preview_models") {
+        const models: Record<string, string[]> = {
+          openai: ["gpt-4.1", "gpt-4.1-2025-04-14"],
+          anthropic: ["claude-opus-5"],
+          google: ["gemini-2.5-flash", "gemini-2.5-pro"],
+          xai: ["grok-4.6"],
+          openrouter: ["openai/gpt-4.1"],
+          deepseek: ["deepseek-flash"],
+          nvidia: ["meta/llama-3.1-8b-instruct"],
+        };
+        desktop.__chatTest.modelPreviews.push({ provider: args.provider });
+        if (desktop.__chatTest.holdModelPreviews)
+          return new Promise((resolve) => {
+            desktop.__chatTest.pendingModelPreviews.push(resolve);
+          });
+        if (desktop.__chatTest.failModelPreview)
+          return {
+            status: "failed",
+            result: { code: desktop.__chatTest.failModelPreview },
+          };
+        return {
+          status: "completed",
+          models: desktop.__chatTest.previewModels ?? models[args.provider],
+        };
+      }
       if (command === "chat_preferences_save") {
         if (desktop.__chatTest.failPreferences)
           throw "System credential store is locked.";
@@ -258,6 +287,7 @@ export async function mockChats(page: Page) {
             revision: 0,
             activeLeafId: null,
             updatedAt: Date.now(),
+            pinned: false,
           };
           conversations[input.id] = {
             conversation,
@@ -269,10 +299,38 @@ export async function mockChats(page: Page) {
           save();
           return structuredClone(conversation);
         }
-        if (input.action === "list")
-          return Object.values(conversations)
-            .map((v: any) => v.conversation)
-            .filter((v: any) => v.title.includes(input.query));
+        if (input.action === "list") {
+          const values = structuredClone(
+            Object.values(conversations)
+              .filter((v: any) =>
+                (v.conversation.title + " " + JSON.stringify(v.messages))
+                  .toLowerCase()
+                  .includes(input.query.toLowerCase()),
+              )
+              .map((v: any) => v.conversation)
+              .filter(
+                (v: any) =>
+                  (!input.workspace ||
+                    v.origin.workspaceId === input.workspace) &&
+                  (!input.project || v.origin.projectId === input.project),
+              )
+              .sort(
+                (a: any, b: any) =>
+                  Number(!!b.pinned) - Number(!!a.pinned) ||
+                  b.updatedAt - a.updatedAt ||
+                  a.id.localeCompare(b.id),
+              )
+              .slice(input.offset, input.offset + 50),
+          );
+          if (desktop.__chatTest.holdLists)
+            return new Promise((resolve) =>
+              desktop.__chatTest.pendingLists.push({
+                query: input.query,
+                resolve: () => resolve(values),
+              }),
+            );
+          return values;
+        }
         if (!loaded) throw "missing: This conversation is unavailable.";
         if (input.action === "load") return structuredClone(loaded);
         if (input.action === "draft") {
@@ -293,10 +351,28 @@ export async function mockChats(page: Page) {
           save();
           return structuredClone(loaded.conversation);
         }
-        if (input.action === "rename") {
-          loaded.conversation.title = input.title;
+        if (["rename", "pin", "delete"].includes(input.action)) {
+          if (desktop.__chatTest.failHistoryAction === input.action)
+            throw "storage: History fixture failure";
+          if (input.action === "rename") {
+            loaded.conversation.title = input.title;
+            loaded.conversation.updatedAt = Date.now();
+          }
+          if (input.action === "pin") loaded.conversation.pinned = input.pinned;
+          if (input.action === "delete") {
+            for (const request of requests.values())
+              if (request.input.conversationId === input.id) stop(request);
+            delete conversations[input.id];
+            await desktop.__nativeTest.emitEvent(
+              "chat-conversation-deleted",
+              input.id,
+            );
+          }
           save();
-          return structuredClone(loaded.conversation);
+          await desktop.__nativeTest.emitEvent("chat-history-changed");
+          return input.action === "delete"
+            ? null
+            : structuredClone(loaded.conversation);
         }
       }
       throw Error(`Unexpected chat command: ${command}`);

@@ -1,6 +1,7 @@
 import { useChat } from "@ai-sdk/react";
 import {
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -14,7 +15,8 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { listen } from "@tauri-apps/api/event";
 import type { ChatTab } from "../model";
 import { api, errorMessage, native } from "../api";
-import { IconButton, Modal } from "../ui";
+import { DisclosureSummary, IconButton, Modal } from "../ui";
+import Select from "../Select";
 import {
   Copy,
   History,
@@ -27,12 +29,12 @@ import {
   Settings,
   Square,
   X,
-  Download,
 } from "../icons";
-import { replaceChat, conversationTitle } from "./chat-service";
-import { getChat, existing, main } from "./chat-runtime";
+import { replaceChat } from "./chat-service";
+import { getChat, main } from "./chat-runtime";
 import type { ChatRuntime } from "./chat-runtime";
-import type { Attachment, Config, Conversation } from "./types";
+import type { Attachment, Config } from "./types";
+import ChatHistory from "./ChatHistory";
 import { textOf } from "./types";
 import capabilities from "./model-capabilities.json";
 import { ModelSelect } from "./ModelSelect";
@@ -57,12 +59,23 @@ export default function ChatPane({
   });
   const root = useRef<HTMLElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
+  const disclaimerId = useId();
   const scroll = useRef<HTMLDivElement>(null);
   const [awayFromBottom, setAwayFromBottom] = useState(false);
   useEffect(() => runtime.show(), [runtime]);
   const bottom = useRef(runtime.scroll.get(tab.id)?.bottom ?? true);
   const [recovering, setRecovering] = useState(false);
   const [history, setHistory] = useState(false);
+  const historyId = useId();
+  const historyTrigger = useRef<HTMLButtonElement | null>(null);
+  const content = useRef<HTMLDivElement>(null);
+  const closeHistory = (restoreFocus = true) => {
+    setHistory(false);
+    if (restoreFocus)
+      requestAnimationFrame(() =>
+        (historyTrigger.current ?? input.current)?.focus(),
+      );
+  };
   const [discarding, setDiscarding] = useState(false);
   const [options, setOptions] = useState(false);
   const [edit, setEdit] = useState<{ id: string; text: string } | null>(null);
@@ -179,7 +192,7 @@ export default function ChatPane({
   }, [messages]);
   useLayoutEffect(() => {
     const element = input.current;
-    const pane = root.current;
+    const pane = content.current;
     if (!element || !pane) return;
     const resize = () => {
       element.style.height = "0px";
@@ -203,7 +216,7 @@ export default function ChatPane({
   return (
     <section
       ref={root}
-      className="chat-pane"
+      className={`chat-pane${history ? " has-history" : ""}`}
       data-chat-pane-id={tab.id}
       onFocusCapture={onFocus}
       onPointerDownCapture={onFocus}
@@ -217,423 +230,452 @@ export default function ChatPane({
         }
       }}
     >
-      <header className="chat-toolbar">
-        <MessageSquare size={15} aria-hidden="true" />
-        <span
-          className="chat-title"
-          title={loaded?.conversation.title ?? tab.title}
-        >
-          {loaded?.conversation.title ?? tab.title}
-        </span>
-        <IconButton
-          title="New conversation"
-          onClick={() => run(replaceChat(tab))}
-        >
-          <Plus size={15} />
-        </IconButton>
-        <IconButton title="Chat history" onClick={() => setHistory(true)}>
-          <History size={15} />
-        </IconButton>
-        <IconButton
-          title="Conversation settings"
-          disabled={!loaded || state.busy}
-          onClick={() => setOptions(true)}
-        >
-          <Settings size={15} />
-        </IconButton>
-        <IconButton title="Close chat panel" onClick={onClose}>
-          <X size={15} />
-        </IconButton>
-      </header>
       <div
-        ref={scroll}
-        className={`chat-messages${!messages.length ? " chat-messages-empty" : ""}`}
-        aria-label="Conversation messages"
-        onScroll={(e) => {
-          const element = e.currentTarget;
-          bottom.current =
-            element.scrollHeight - element.scrollTop - element.clientHeight <
-            48;
-          setAwayFromBottom(!bottom.current);
-          runtime.scroll.set(tab.id, {
-            top: element.scrollTop,
-            bottom: bottom.current,
-          });
-        }}
+        className="chat-history-drawer"
+        inert={!history}
+        aria-hidden={!history}
       >
-        {state.loading ? (
-          <p role="status">Loading conversation…</p>
-        ) : !loaded ? (
-          <div className="chat-empty">
-            <h2>Conversation unavailable</h2>
-            <p>The saved conversation could not be opened.</p>
-            <p className="muted">Conversation ID: {tab.conversationId}</p>
-            <button className="button" onClick={() => setHistory(true)}>
-              Open history
-            </button>
-            {!state.error.startsWith("missing:") && (
-              <>
+        <ChatHistory
+          id={historyId}
+          open={history}
+          tab={tab}
+          runtime={runtime}
+          onClose={closeHistory}
+          onExport={(format) => exportChat(runtime, format)}
+        />
+      </div>
+      <div ref={content} className="chat-conversation">
+        <header className="chat-toolbar">
+          <MessageSquare size={15} aria-hidden="true" />
+          <span
+            className="chat-title"
+            title={loaded?.conversation.title ?? tab.title}
+          >
+            {loaded?.conversation.title ?? tab.title}
+          </span>
+          <IconButton
+            title="New conversation"
+            onClick={() => run(replaceChat(tab))}
+          >
+            <Plus size={15} />
+          </IconButton>
+          <IconButton
+            title="Chat history"
+            aria-expanded={history}
+            aria-controls={historyId}
+            onClick={(event) => {
+              historyTrigger.current = event.currentTarget;
+              setHistory((open) => !open);
+            }}
+          >
+            <History size={15} />
+          </IconButton>
+          <IconButton
+            title="Chat AI settings"
+            onClick={() => run(api("open_settings", { page: "chat-ai" }))}
+          >
+            <Settings size={15} />
+          </IconButton>
+          <IconButton title="Close chat panel" onClick={onClose}>
+            <X size={15} />
+          </IconButton>
+        </header>
+        <div
+          ref={scroll}
+          className={`chat-messages${!messages.length ? " chat-messages-empty" : ""}`}
+          aria-label="Conversation messages"
+          onScroll={(e) => {
+            const element = e.currentTarget;
+            bottom.current =
+              element.scrollHeight - element.scrollTop - element.clientHeight <
+              48;
+            setAwayFromBottom(!bottom.current);
+            runtime.scroll.set(tab.id, {
+              top: element.scrollTop,
+              bottom: bottom.current,
+            });
+          }}
+        >
+          {state.loading ? (
+            <p role="status">Loading conversation…</p>
+          ) : !loaded ? (
+            <div className="chat-empty">
+              <h2>Conversation unavailable</h2>
+              <p>The saved conversation could not be opened.</p>
+              <p className="muted">Conversation ID: {tab.conversationId}</p>
+              <button className="button" onClick={() => setHistory(true)}>
+                Open history
+              </button>
+              {!state.error.startsWith("missing:") && (
+                <>
+                  <button
+                    className="button"
+                    onClick={() => run(runtime.recover(false))}
+                  >
+                    Retry opening history
+                  </button>
+                  <button
+                    className="button"
+                    onClick={() => setRecovering(true)}
+                  >
+                    Recover history…
+                  </button>
+                </>
+              )}
+            </div>
+          ) : !messages.length ? (
+            <div className="chat-empty">
+              <MessageSquare size={28} aria-hidden="true" />
+              <h2>What would you like to work on?</h2>
+              <p>
+                {ready
+                  ? "Ask a question, explore an idea, or drop in a file."
+                  : "Connect your preferred AI provider in Settings to get started."}
+              </p>
+              {!ready && (
                 <button
                   className="button"
-                  onClick={() => run(runtime.recover(false))}
+                  onClick={() => run(api("open_settings", { page: "chat-ai" }))}
                 >
-                  Retry opening history
+                  Set up Chat AI
                 </button>
-                <button className="button" onClick={() => setRecovering(true)}>
-                  Recover history…
-                </button>
-              </>
-            )}
-          </div>
-        ) : !messages.length ? (
-          <div className="chat-empty">
-            <MessageSquare size={28} aria-hidden="true" />
-            <h2>What would you like to work on?</h2>
-            <p>
-              {ready
-                ? "Ask a question, explore an idea, or drop in a file."
-                : "Connect your preferred AI provider in Settings to get started."}
-            </p>
-            {!ready && (
-              <button
-                className="button"
-                onClick={() => run(api("open_settings", { page: "chat-ai" }))}
-              >
-                Set up Chat AI
-              </button>
-            )}
-            <p className="muted">
-              Only messages and files you choose are shared. History stays on
-              this device.
-            </p>
-          </div>
-        ) : (
-          <>
-            {loaded.hasOlder && (
-              <button
-                className="button"
-                disabled={state.busy}
-                onClick={() => {
-                  bottom.current = false;
-                  run(runtime.older());
-                }}
-              >
-                Load earlier messages
-              </button>
-            )}
-            {messages.map((message) => {
-              const saved = loaded.messages.find((m) => m.id === message.id);
-              return (
-                <article
-                  key={message.id}
-                  className={`chat-message chat-message-${message.role}`}
-                  aria-label={
-                    message.role === "user"
-                      ? "Your message"
-                      : "Assistant message"
-                  }
+              )}
+              <p className="muted">
+                Only messages and files you choose are shared. History stays on
+                this device.
+              </p>
+            </div>
+          ) : (
+            <>
+              {loaded.hasOlder && (
+                <button
+                  className="button"
+                  disabled={state.busy}
+                  onClick={() => {
+                    bottom.current = false;
+                    run(runtime.older());
+                  }}
                 >
-                  <div className="chat-message-content">
-                    {message.parts.map((part, i) =>
-                      part.type === "text" ? (
-                        <div className="chat-markdown" key={i}>
-                          <Markdown text={part.text} onError={runtime.report} />
-                        </div>
-                      ) : part.type === "reasoning" ? (
-                        <details key={i}>
-                          <summary>Reasoning</summary>
-                          <div className="chat-markdown">
+                  Load earlier messages
+                </button>
+              )}
+              {messages.map((message) => {
+                const saved = loaded.messages.find((m) => m.id === message.id);
+                return (
+                  <article
+                    key={message.id}
+                    className={`chat-message chat-message-${message.role}`}
+                    aria-label={
+                      message.role === "user"
+                        ? "Your message"
+                        : "Assistant message"
+                    }
+                  >
+                    <div className="chat-message-content">
+                      {message.parts.map((part, i) =>
+                        part.type === "text" ? (
+                          <div className="chat-markdown" key={i}>
                             <Markdown
                               text={part.text}
                               onError={runtime.report}
                             />
                           </div>
-                        </details>
-                      ) : (
-                        <p key={i}>
-                          Unsupported saved content. Export JSON to preserve
-                          this message.
-                        </p>
-                      ),
-                    )}
-                    {!!saved?.attachments?.length && (
-                      <div className="chat-attachments">
-                        {saved.attachments.map((id) => (
-                          <AttachmentChip
-                            key={id}
-                            id={id}
-                            runtime={runtime}
-                            onPreview={setPreview}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  {saved?.status &&
-                    !["completed", "active"].includes(saved.status) && (
-                      <span className="chat-message-status">
-                        {saved.status}
-                      </span>
-                    )}
-                  <div className="chat-message-actions">
-                    <IconButton
-                      title="Copy message"
-                      onClick={() => run(copy(textOf(message)))}
-                    >
-                      <Copy size={15} />
-                    </IconButton>
-                    {message.role === "user" ? (
-                      <IconButton
-                        title="Edit as variant"
-                        disabled={state.busy}
-                        onClick={() =>
-                          setEdit({ id: message.id, text: textOf(message) })
-                        }
-                      >
-                        <Pencil size={15} />
-                      </IconButton>
-                    ) : (
-                      <IconButton
-                        title={
-                          saved?.status === "completed" ? "Regenerate" : "Retry"
-                        }
-                        disabled={state.busy}
-                        onClick={() => run(runtime.send("retry", message.id))}
-                      >
-                        <RotateCcw size={15} />
-                      </IconButton>
-                    )}
-                    {saved?.previousVariant && (
-                      <button
-                        disabled={state.busy}
-                        aria-label="Previous variant"
-                        onClick={() => {
-                          bottom.current = false;
-                          run(runtime.variant(saved.previousVariant!));
-                        }}
-                      >
-                        ← Variant
-                      </button>
-                    )}
-                    {saved?.nextVariant && (
-                      <button
-                        disabled={state.busy}
-                        aria-label="Next variant"
-                        onClick={() => {
-                          bottom.current = false;
-                          run(runtime.variant(saved.nextVariant!));
-                        }}
-                      >
-                        Variant →
-                      </button>
-                    )}
-                    {message.role === "assistant" &&
-                      !!saved?.metadata &&
-                      Object.keys(saved.metadata).length > 0 && (
-                        <details>
-                          <summary>Details</summary>
-                          <pre>{JSON.stringify(saved.metadata, null, 2)}</pre>
-                        </details>
+                        ) : part.type === "reasoning" ? (
+                          <details key={i}>
+                            <DisclosureSummary>Reasoning</DisclosureSummary>
+                            <div className="chat-markdown">
+                              <Markdown
+                                text={part.text}
+                                onError={runtime.report}
+                              />
+                            </div>
+                          </details>
+                        ) : (
+                          <p key={i}>
+                            Unsupported saved content. Export JSON to preserve
+                            this message.
+                          </p>
+                        ),
                       )}
-                  </div>
-                </article>
-              );
-            })}
-          </>
-        )}
-      </div>
-      {awayFromBottom && (
-        <button
-          className="chat-jump"
-          onClick={() => {
-            bottom.current = true;
-            setAwayFromBottom(false);
-            scroll.current?.scrollTo({ top: scroll.current.scrollHeight });
-          }}
-        >
-          Jump to latest message
-        </button>
-      )}
-      {state.unsentText && (
-        <div className="chat-error" role="alert">
-          <span>
-            The previous message was not sent. Your next draft is also retained.
-          </span>
-          <button onClick={() => runtime.resolveUnsent(true)}>
-            Add unsent message to draft
-          </button>
-          <button onClick={() => run(copy(state.unsentText!))}>
-            Copy unsent message
-          </button>
-          <button onClick={() => runtime.resolveUnsent(false)}>
-            Discard unsent message
-          </button>
-        </div>
-      )}
-      {state.error && (
-        <div className="chat-error" role="alert">
-          <span>{state.error}</span>
-          {state.storageFailed && (
-            <button onClick={() => run(runtime.retrySave())}>
-              Retry saving
-            </button>
-          )}
-          {state.busy && (
-            <button onClick={() => run(runtime.reconnect())}>
-              Reconnect response
-            </button>
-          )}
-          <button onClick={() => setDiscarding(true)}>
-            Close without saving…
-          </button>
-          <button onClick={() => run(exportChat(runtime, "json", true))}>
-            Export available data
-          </button>
-        </div>
-      )}
-      {loaded && (
-        <div className="chat-composer">
-          <div className="chat-composer-surface">
-            {!!loaded.draft.attachments.length && (
-              <div className="chat-attachments">
-                {loaded.draft.attachments.map((id) => (
-                  <AttachmentChip
-                    key={id}
-                    id={id}
-                    runtime={runtime}
-                    onPreview={setPreview}
-                    remove={() => run(runtime.removeAttachment(id))}
-                  />
-                ))}
-              </div>
-            )}
-            <textarea
-              ref={input}
-              data-chat-input
-              aria-label="Message"
-              rows={1}
-              placeholder={
-                state.busy ? "Draft your next message…" : "Ask anything…"
-              }
-              value={state.text}
-              onChange={(e) => runtime.setText(e.target.value)}
-              onPaste={(e) => {
-                const images = Array.from(e.clipboardData.files).filter((f) =>
-                  f.type.startsWith("image/"),
+                      {!!saved?.attachments?.length && (
+                        <div className="chat-attachments">
+                          {saved.attachments.map((id) => (
+                            <AttachmentChip
+                              key={id}
+                              id={id}
+                              runtime={runtime}
+                              onPreview={setPreview}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {saved?.status &&
+                      !["completed", "active"].includes(saved.status) && (
+                        <span className="chat-message-status">
+                          {saved.status}
+                        </span>
+                      )}
+                    <div className="chat-message-actions">
+                      <IconButton
+                        title="Copy message"
+                        onClick={() => run(copy(textOf(message)))}
+                      >
+                        <Copy size={15} />
+                      </IconButton>
+                      {message.role === "user" ? (
+                        <IconButton
+                          title="Edit as variant"
+                          disabled={state.busy}
+                          onClick={() =>
+                            setEdit({ id: message.id, text: textOf(message) })
+                          }
+                        >
+                          <Pencil size={15} />
+                        </IconButton>
+                      ) : (
+                        <IconButton
+                          title={
+                            saved?.status === "completed"
+                              ? "Regenerate"
+                              : "Retry"
+                          }
+                          disabled={state.busy}
+                          onClick={() => run(runtime.send("retry", message.id))}
+                        >
+                          <RotateCcw size={15} />
+                        </IconButton>
+                      )}
+                      {saved?.previousVariant && (
+                        <button
+                          disabled={state.busy}
+                          aria-label="Previous variant"
+                          onClick={() => {
+                            bottom.current = false;
+                            run(runtime.variant(saved.previousVariant!));
+                          }}
+                        >
+                          ← Variant
+                        </button>
+                      )}
+                      {saved?.nextVariant && (
+                        <button
+                          disabled={state.busy}
+                          aria-label="Next variant"
+                          onClick={() => {
+                            bottom.current = false;
+                            run(runtime.variant(saved.nextVariant!));
+                          }}
+                        >
+                          Variant →
+                        </button>
+                      )}
+                      {message.role === "assistant" &&
+                        !!saved?.metadata &&
+                        Object.keys(saved.metadata).length > 0 && (
+                          <details>
+                            <DisclosureSummary>Details</DisclosureSummary>
+                            <pre>{JSON.stringify(saved.metadata, null, 2)}</pre>
+                          </details>
+                        )}
+                    </div>
+                  </article>
                 );
-                if (images.length) {
-                  e.preventDefault();
-                  run(files(images));
-                }
-              }}
-              onKeyDown={(e) => {
-                if (
-                  e.nativeEvent.isComposing ||
-                  e.nativeEvent.keyCode === 229 ||
-                  e.repeat
-                )
-                  return;
-                const send =
-                  e.key === "Enter" &&
-                  !e.shiftKey &&
-                  !e.altKey &&
-                  (state.preferences?.sendMode === "modifier-enter"
-                    ? e.ctrlKey || e.metaKey
-                    : !e.ctrlKey && !e.metaKey);
-                if (send && !state.busy) {
-                  e.preventDefault();
-                  if (canSend) {
-                    bottom.current = true;
-                    run(runtime.send());
-                  }
-                }
-              }}
-            />
-            <div className="chat-composer-actions">
-              <IconButton
-                title="Attach UTF-8 text or image"
-                onClick={() =>
-                  run(
-                    (async () => {
-                      const selected = await open({
-                        multiple: true,
-                        directory: false,
-                        title: "Attach files to this conversation",
-                      });
-                      if (selected) {
-                        const paths =
-                          typeof selected === "string" ? [selected] : selected;
-                        if (paths.length > 10)
-                          throw Error("Choose up to 10 attachments.");
-                        for (const path of paths) await attach({ path });
-                      }
-                    })(),
-                  )
-                }
-              >
-                <Plus size={20} />
-              </IconButton>
-              <button
-                className="chat-model-button"
-                title={
-                  connection
-                    ? `${connection.name} · ${config?.model || "Choose a model"}`
-                    : "Set up Chat AI"
-                }
-                aria-label="Choose model"
-                disabled={state.busy}
-                onClick={() => {
-                  if (
-                    state.preferences?.connections.some(
-                      (c) => c.enabled && c.secretId,
-                    )
-                  )
-                    setOptions(true);
-                  else run(api("open_settings", { page: "chat-ai" }));
-                }}
-              >
-                <span>
-                  {config?.model ? modelLabel(config.model) : "Choose model"}
-                </span>
-                <ChevronDown size={14} />
+              })}
+            </>
+          )}
+        </div>
+        {awayFromBottom && (
+          <button
+            className="chat-jump"
+            onClick={() => {
+              bottom.current = true;
+              setAwayFromBottom(false);
+              scroll.current?.scrollTo({ top: scroll.current.scrollHeight });
+            }}
+          >
+            Jump to latest message
+          </button>
+        )}
+        {state.unsentText && (
+          <div className="chat-error" role="alert">
+            <span>
+              The previous message was not sent. Your next draft is also
+              retained.
+            </span>
+            <button onClick={() => runtime.resolveUnsent(true)}>
+              Add unsent message to draft
+            </button>
+            <button onClick={() => run(copy(state.unsentText!))}>
+              Copy unsent message
+            </button>
+            <button onClick={() => runtime.resolveUnsent(false)}>
+              Discard unsent message
+            </button>
+          </div>
+        )}
+        {state.error && (
+          <div className="chat-error" role="alert">
+            <span>{state.error}</span>
+            {state.storageFailed && (
+              <button onClick={() => run(runtime.retrySave())}>
+                Retry saving
               </button>
-              {state.busy ? (
+            )}
+            {state.busy && (
+              <button onClick={() => run(runtime.reconnect())}>
+                Reconnect response
+              </button>
+            )}
+            <button onClick={() => setDiscarding(true)}>
+              Close without saving…
+            </button>
+            <button onClick={() => run(exportChat(runtime, "json", true))}>
+              Export available data
+            </button>
+          </div>
+        )}
+        {loaded && (
+          <div className="chat-composer">
+            <div className="chat-composer-surface">
+              {!!loaded.draft.attachments.length && (
+                <div className="chat-attachments">
+                  {loaded.draft.attachments.map((id) => (
+                    <AttachmentChip
+                      key={id}
+                      id={id}
+                      runtime={runtime}
+                      onPreview={setPreview}
+                      remove={() => run(runtime.removeAttachment(id))}
+                    />
+                  ))}
+                </div>
+              )}
+              <textarea
+                ref={input}
+                data-chat-input
+                aria-label="Message"
+                aria-describedby={disclaimerId}
+                rows={1}
+                placeholder={
+                  state.busy ? "Draft your next message…" : "Ask anything…"
+                }
+                value={state.text}
+                onChange={(e) => runtime.setText(e.target.value)}
+                onPaste={(e) => {
+                  const images = Array.from(e.clipboardData.files).filter((f) =>
+                    f.type.startsWith("image/"),
+                  );
+                  if (images.length) {
+                    e.preventDefault();
+                    run(files(images));
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (
+                    e.nativeEvent.isComposing ||
+                    e.nativeEvent.keyCode === 229 ||
+                    e.repeat
+                  )
+                    return;
+                  const send =
+                    e.key === "Enter" &&
+                    !e.shiftKey &&
+                    !e.altKey &&
+                    (state.preferences?.sendMode === "modifier-enter"
+                      ? e.ctrlKey || e.metaKey
+                      : !e.ctrlKey && !e.metaKey);
+                  if (send && !state.busy) {
+                    e.preventDefault();
+                    if (canSend) {
+                      bottom.current = true;
+                      run(runtime.send());
+                    }
+                  }
+                }}
+              />
+              <div className="chat-composer-actions">
                 <IconButton
-                  className="chat-send"
-                  title="Stop"
-                  onClick={() => run(runtime.stop())}
+                  title="Attach UTF-8 text or image"
+                  onClick={() =>
+                    run(
+                      (async () => {
+                        const selected = await open({
+                          multiple: true,
+                          directory: false,
+                          title: "Attach files to this conversation",
+                        });
+                        if (selected) {
+                          const paths =
+                            typeof selected === "string"
+                              ? [selected]
+                              : selected;
+                          if (paths.length > 10)
+                            throw Error("Choose up to 10 attachments.");
+                          for (const path of paths) await attach({ path });
+                        }
+                      })(),
+                    )
+                  }
                 >
-                  <Square size={15} fill="currentColor" />
+                  <Plus size={20} />
                 </IconButton>
-              ) : (
-                <IconButton
-                  className="chat-send"
-                  title="Send"
-                  disabled={!canSend}
+                <button
+                  className="chat-model-button"
+                  title={
+                    connection
+                      ? `${connection.name} · ${config?.model || "Choose a model"}`
+                      : "Set up Chat AI"
+                  }
+                  aria-label="Choose model"
+                  disabled={state.busy}
                   onClick={() => {
-                    bottom.current = true;
-                    run(runtime.send());
+                    if (
+                      state.preferences?.connections.some(
+                        (c) => c.enabled && c.secretId,
+                      )
+                    )
+                      setOptions(true);
+                    else run(api("open_settings", { page: "chat-ai" }));
                   }}
                 >
-                  <ArrowUp size={19} />
-                </IconButton>
-              )}
+                  <span>
+                    {config?.model ? modelLabel(config.model) : "Choose model"}
+                  </span>
+                  <ChevronDown size={14} />
+                </button>
+                {state.busy ? (
+                  <IconButton
+                    className="chat-send"
+                    title="Stop"
+                    onClick={() => run(runtime.stop())}
+                  >
+                    <Square size={15} fill="currentColor" />
+                  </IconButton>
+                ) : (
+                  <IconButton
+                    className="chat-send"
+                    title="Send"
+                    disabled={!canSend}
+                    onClick={() => {
+                      bottom.current = true;
+                      run(runtime.send());
+                    }}
+                  >
+                    <ArrowUp size={19} />
+                  </IconButton>
+                )}
+              </div>
             </div>
-          </div>
-          <div className="chat-composer-footer">
             <span className="chat-status" role="status">
-              {state.status ||
-                connection?.name ||
-                "Connect a provider to start"}
+              {state.status}
             </span>
-            <span className="chat-input-hint">
-              {state.preferences?.sendMode === "modifier-enter"
-                ? "Ctrl/Cmd + Enter to send"
-                : "Enter to send · Shift + Enter for a new line"}
-            </span>
+            <p className="chat-disclaimer" id={disclaimerId}>
+              Chat AI może popełniać błędy. Sprawdź ważne informacje.
+            </p>
           </div>
-        </div>
-      )}
+        )}
+      </div>
       {discarding && (
         <Modal
           className="chat-dialog"
@@ -666,13 +708,6 @@ export default function ChatPane({
             </div>
           </div>
         </Modal>
-      )}
-      {history && (
-        <ChatHistory
-          tab={tab}
-          runtime={runtime}
-          onClose={() => setHistory(false)}
-        />
       )}
       {options && config && (
         <ConfigDialog
@@ -914,6 +949,7 @@ function ConfigDialog({
   hasHistory: boolean;
   onClose: () => void;
 }) {
+  const connectionId = useId();
   const [next, setNext] = useState(config);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -945,31 +981,30 @@ function ConfigDialog({
             .finally(() => setBusy(false));
         }}
       >
-        <label>
-          Connection
-          <select
+        <div className="chat-select-field">
+          <label htmlFor={connectionId}>Connection</label>
+          <Select
+            id={connectionId}
             value={next.connectionId ?? ""}
-            onChange={(e) =>
+            onChange={(value) =>
               setNext({
                 ...next,
-                connectionId: e.target.value || null,
-                model: suggestedModel(
-                  connections.find((c) => c.id === e.target.value),
-                ),
+                connectionId: value || null,
+                model: suggestedModel(connections.find((c) => c.id === value)),
                 temperature: null,
               })
             }
-          >
-            <option value="">Choose connection</option>
-            {connections
-              .filter((c) => c.enabled)
-              .map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} · {c.provider}
-                </option>
-              ))}
-          </select>
-        </label>
+            options={[
+              { value: "", label: "Choose connection" },
+              ...connections
+                .filter((c) => c.enabled)
+                .map((c) => ({
+                  value: c.id,
+                  label: `${c.name} · ${c.provider}`,
+                })),
+            ]}
+          />
+        </div>
         <ModelSelect
           key={next.connectionId}
           connection={selected}
@@ -977,7 +1012,7 @@ function ConfigDialog({
           onChange={(model) => setNext({ ...next, model, temperature: null })}
         />
         <details className="chat-advanced">
-          <summary>Advanced options</summary>
+          <DisclosureSummary>Advanced options</DisclosureSummary>
           {!capability && (
             <small>
               Manual model IDs support basic text. Image and temperature support
@@ -1082,219 +1117,4 @@ async function exportChat(runtime: ChatRuntime, format: string, ram = false) {
       ? { messages: runtime.chat.messages, draft: runtime.snapshot.text }
       : null,
   });
-}
-function ChatHistory({
-  tab,
-  runtime,
-  onClose,
-}: {
-  tab: ChatTab;
-  runtime: ChatRuntime;
-  onClose: () => void;
-}) {
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState("all");
-  const [items, setItems] = useState<Conversation[]>([]);
-  const [error, setError] = useState("");
-  const [more, setMore] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [rename, setRename] = useState<Conversation | null>(null);
-  const [deleting, setDeleting] = useState<Conversation | null>(null);
-  const origin = runtime.snapshot.loaded?.conversation.origin;
-  const load = async (offset = 0) => {
-    const values = await main<Conversation[]>({
-      action: "list",
-      query,
-      workspace: filter === "workspace" ? origin?.workspaceId : null,
-      project: filter === "project" ? origin?.projectId : null,
-      offset,
-    });
-    setItems((old) => (offset ? [...old, ...values] : values));
-    setMore(values.length === 50);
-  };
-  useEffect(() => {
-    let active = true;
-    const timer = setTimeout(() => {
-      void main<Conversation[]>({
-        action: "list",
-        query,
-        workspace: filter === "workspace" ? origin?.workspaceId : null,
-        project: filter === "project" ? origin?.projectId : null,
-        offset: 0,
-      })
-        .then((values) => {
-          if (active) {
-            setItems(values);
-            setMore(values.length === 50);
-          }
-        })
-        .catch((e) => {
-          if (active) setError(errorMessage(e));
-        });
-    }, 150);
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
-  }, [query, filter, origin?.workspaceId, origin?.projectId]);
-  const run = (operation: () => Promise<unknown>) => {
-    setBusy(true);
-    setError("");
-    void operation()
-      .catch((e) => setError(errorMessage(e)))
-      .finally(() => setBusy(false));
-  };
-  return (
-    <Modal
-      title="Chat history"
-      onClose={onClose}
-      className="chat-dialog chat-history-dialog"
-    >
-      <div className="dialog-form">
-        <input
-          autoFocus
-          aria-label="Search conversations"
-          placeholder="Search titles and messages…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-        <label>
-          Show
-          <select value={filter} onChange={(e) => setFilter(e.target.value)}>
-            <option value="all">All conversations</option>
-            <option value="project">This project</option>
-            <option value="workspace">This workspace</option>
-          </select>
-        </label>
-        <p className="muted">
-          Exports include attachment descriptions. Binary files are not
-          embedded.
-        </p>
-        <div className="chat-history-list">
-          {items.map((item) => (
-            <div key={item.id} className="chat-history-item">
-              <button
-                disabled={busy}
-                onClick={() =>
-                  run(async () => {
-                    if (item.id !== tab.conversationId)
-                      await replaceChat(tab, item);
-                    onClose();
-                  })
-                }
-              >
-                <strong>{item.title}</strong>
-                <small>
-                  {item.config.model || "No model"} · {item.origin.projectName}{" "}
-                  / {item.origin.workspaceName} ·{" "}
-                  {new Date(item.updatedAt).toLocaleDateString()}
-                </small>
-              </button>
-              <button disabled={busy} onClick={() => setRename(item)}>
-                Rename
-              </button>
-              <button disabled={busy} onClick={() => setDeleting(item)}>
-                Delete
-              </button>
-            </div>
-          ))}
-          {!items.length && <p>No conversations found.</p>}
-          {more && (
-            <button
-              className="button"
-              disabled={busy}
-              onClick={() => run(() => load(items.length))}
-            >
-              Load more
-            </button>
-          )}
-        </div>
-        {runtime.snapshot.loaded && (
-          <div className="dialog-actions">
-            <button
-              className="button"
-              disabled={busy}
-              onClick={() => run(() => exportChat(runtime, "markdown"))}
-            >
-              <Download size={14} /> Export Markdown
-            </button>
-            <button
-              className="button"
-              disabled={busy}
-              onClick={() => run(() => exportChat(runtime, "json"))}
-            >
-              Export JSON
-            </button>
-          </div>
-        )}
-        {error && <p role="alert">{error}</p>}
-        {rename && (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              run(async () => {
-                const active = existing(rename.id);
-                if (active) await active.rename(rename.title);
-                else {
-                  await main({
-                    action: "rename",
-                    id: rename.id,
-                    title: rename.title,
-                  });
-                  conversationTitle(rename.id, rename.title);
-                }
-                setRename(null);
-                await load();
-              });
-            }}
-          >
-            <label>
-              Conversation name
-              <input
-                autoFocus
-                value={rename.title}
-                onChange={(e) =>
-                  setRename({ ...rename, title: e.target.value })
-                }
-              />
-            </label>
-            <button className="button" disabled={busy}>
-              Save name
-            </button>
-            <button
-              type="button"
-              className="button"
-              onClick={() => setRename(null)}
-            >
-              Cancel
-            </button>
-          </form>
-        )}
-        {deleting && (
-          <div role="alert">
-            <p>
-              Permanently delete “{deleting.title}”, its variants and unused
-              attachments? All views of this conversation will close.
-            </p>
-            <button
-              className="button"
-              disabled={busy}
-              onClick={() =>
-                run(async () => {
-                  await main({ action: "delete", id: deleting.id });
-                  setDeleting(null);
-                  await load();
-                })
-              }
-            >
-              Delete conversation
-            </button>
-            <button className="button" onClick={() => setDeleting(null)}>
-              Cancel
-            </button>
-          </div>
-        )}
-      </div>
-    </Modal>
-  );
 }

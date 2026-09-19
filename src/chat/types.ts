@@ -22,6 +22,7 @@ export interface Conversation {
   revision: number;
   activeLeafId: string | null;
   updatedAt: number;
+  pinned: boolean;
 }
 export interface SavedMessage extends UIMessage {
   parentId: string | null;

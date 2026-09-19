@@ -1,7 +1,6 @@
 export const providerPresets = {
   openai: {
     name: "OpenAI",
-    mark: "O",
     baseURL: "https://api.openai.com/v1",
     format: "OpenAI Responses",
     keyURL: "https://platform.openai.com/api-keys",
@@ -9,7 +8,6 @@ export const providerPresets = {
   },
   google: {
     name: "Google (AI Studio)",
-    mark: "G",
     baseURL: "https://generativelanguage.googleapis.com/v1beta",
     format: "Google Generative Language",
     keyURL: "https://aistudio.google.com/apikey",
@@ -17,7 +15,6 @@ export const providerPresets = {
   },
   xai: {
     name: "xAI",
-    mark: "x",
     baseURL: "https://api.x.ai/v1",
     format: "OpenAI-compatible Chat Completions",
     keyURL: "https://console.x.ai/",
@@ -25,7 +22,6 @@ export const providerPresets = {
   },
   openrouter: {
     name: "OpenRouter",
-    mark: "OR",
     baseURL: "https://openrouter.ai/api/v1",
     format: "OpenAI-compatible Chat Completions",
     keyURL: "https://openrouter.ai/settings/keys",
@@ -33,7 +29,6 @@ export const providerPresets = {
   },
   deepseek: {
     name: "DeepSeek",
-    mark: "D",
     baseURL: "https://api.deepseek.com",
     format: "OpenAI-compatible Chat Completions",
     keyURL: "https://platform.deepseek.com/api_keys",
@@ -41,7 +36,6 @@ export const providerPresets = {
   },
   nvidia: {
     name: "NVIDIA Build",
-    mark: "N",
     baseURL: "https://integrate.api.nvidia.com/v1",
     format: "OpenAI-compatible Chat Completions",
     keyURL: "https://build.nvidia.com/",
@@ -49,7 +43,6 @@ export const providerPresets = {
   },
   anthropic: {
     name: "Anthropic",
-    mark: "A",
     baseURL: "https://api.anthropic.com/v1",
     format: "Anthropic Messages",
     keyURL: "https://platform.claude.com/settings/keys",

@@ -51,6 +51,8 @@ export const productIcons = {
   PanelLeft: ["layout-sidebar-left"],
   PanelRight: ["layout-sidebar-right"],
   Pencil: ["edit"],
+  Pin: ["pin"],
+  PinOff: ["pinned-dirty", "pin"],
   Play: ["play"],
   Plus: ["add"],
   Puzzle: ["extensions"],

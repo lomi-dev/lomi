@@ -247,6 +247,7 @@ pub fn run() {
                 android::commands::android_install_apk,
                 android::commands::android_save_screenshot,
                 chat::commands::chat_connection_action,
+                chat::commands::chat_preview_models,
                 chat::commands::chat_main,
                 chat::commands::chat_preferences,
                 chat::commands::chat_preferences_save,
