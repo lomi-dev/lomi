@@ -31,6 +31,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useId,
   useRef,
   useState,
   useSyncExternalStore,
@@ -501,6 +502,8 @@ export default function Workbench() {
     "stopping" | "cancelling" | null
   >(null);
   const cancelClose = useRef(false);
+  const closeDescriptionId = useId();
+  const cancelCloseButton = useRef<HTMLButtonElement>(null);
   const requestCancelClose = () => {
     cancelClose.current = true;
     setStoppingForClose("cancelling");
@@ -2575,23 +2578,40 @@ export default function Workbench() {
           {updater.dialog}
           {closeGuard.dialog}
           {stoppingForClose && (
-            <Modal title="Preparing to close" onClose={requestCancelClose}>
-              <div className="dialog-body">
-                <p role="status">
-                  {stoppingForClose === "cancelling"
-                    ? "Keeping SimpleBench open after the current operations finish. Stopped phones will stay stopped."
-                    : "Saving your session, finishing Android installation and stopping your phones…"}
-                </p>
-                <div className="dialog-actions">
-                  <button
-                    type="button"
-                    className="button"
-                    disabled={stoppingForClose === "cancelling"}
-                    onClick={requestCancelClose}
-                  >
-                    Cancel closing
-                  </button>
+            <Modal
+              title="Preparing to close"
+              className="close-progress-dialog"
+              descriptionId={closeDescriptionId}
+              initialFocus={cancelCloseButton}
+              onClose={requestCancelClose}
+            >
+              <div className="close-progress-body" role="status">
+                <span className="close-progress-spinner" aria-hidden="true" />
+                <div id={closeDescriptionId}>
+                  <p>
+                    {stoppingForClose === "cancelling"
+                      ? "Cancelling close. Waiting for current operations to finish."
+                      : "Finishing pending operations before closing."}
+                  </p>
+                  <p className="close-progress-hint">
+                    {stoppingForClose === "cancelling"
+                      ? "Stopped phones will stay stopped."
+                      : "Android phones will stop safely and keep their data."}
+                  </p>
                 </div>
+              </div>
+              <div className="dialog-actions close-progress-actions">
+                <button
+                  ref={cancelCloseButton}
+                  type="button"
+                  className="button"
+                  disabled={stoppingForClose === "cancelling"}
+                  onClick={requestCancelClose}
+                >
+                  {stoppingForClose === "cancelling"
+                    ? "Cancelling…"
+                    : "Cancel closing"}
+                </button>
               </div>
             </Modal>
           )}

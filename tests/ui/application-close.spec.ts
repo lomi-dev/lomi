@@ -43,8 +43,14 @@ for (const event of ["tauri://close-requested", "plugin-restart-request"]) {
     );
     const progress = page.getByRole("dialog", { name: "Preparing to close" });
     await expect(progress).toBeVisible();
+    await expect(
+      progress.getByRole("button", { name: "Cancel closing" }),
+    ).toBeFocused();
     await expect.poll(() => actions(page)).toContain("finish");
     await page.keyboard.press("Escape");
+    await expect(
+      progress.getByRole("button", { name: "Cancelling…" }),
+    ).toBeDisabled();
     await expect(progress).toContainText("Stopped phones will stay stopped");
     await expect(progress).toHaveCount(0);
     const order = await actions(page);
