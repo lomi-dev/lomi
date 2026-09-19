@@ -15,7 +15,7 @@ import {
 import { terminalPresets } from "./theme/palette";
 import { vscodeCompatibility, vscodeValues } from "./theme/vscode";
 import Select from "./Select";
-import { Modal } from "./ui";
+import { DisclosureSummary, Modal } from "./ui";
 const JsonEditor = lazy(() => import("./ThemeJsonEditor"));
 export default function ThemeEditor({
   initial,
@@ -188,7 +188,7 @@ export default function ThemeEditor({
             ))}
             {draft?.vscode && !diagnostic && (
               <details className="settings-help">
-                <summary>VS Code compatibility</summary>
+                <DisclosureSummary>VS Code compatibility</DisclosureSummary>
                 <ul>
                   {vscodeCompatibility(draft.vscode).messages.map((message) => (
                     <li key={message}>{message}</li>
@@ -325,7 +325,7 @@ export default function ThemeEditor({
                   </button>
                 </div>
                 <details>
-                  <summary>Editor syntax colors</summary>
+                  <DisclosureSummary>Editor syntax colors</DisclosureSummary>
                   <div className="theme-token-list">
                     {syntaxNames.map((name) => (
                       <label className="theme-token-row" key={name}>

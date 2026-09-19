@@ -1,6 +1,6 @@
 import { useId, useState } from "react";
 import Select from "../Select";
-import { Modal } from "../ui";
+import { DisclosureSummary, Modal } from "../ui";
 import { errorMessage } from "../api";
 import {
   imageLabel,
@@ -172,7 +172,7 @@ export default function DeviceForm({
           </p>
         )}
         <details>
-          <summary>Hardware and startup</summary>
+          <DisclosureSummary>Hardware and startup</DisclosureSummary>
           <div className="android-form-grid">
             {(
               [

@@ -1,3 +1,4 @@
+import { DisclosureSummary } from "./ui";
 import ResourceIcon from "./ResourceIcon";
 import { useEffect, useMemo, useState } from "react";
 import { FileDiff, GitCommitHorizontal } from "./icons";
@@ -145,7 +146,7 @@ export default function CommitDetails({
           )}
         </dl>
         <details className="commit-full-message">
-          <summary>Full commit message</summary>
+          <DisclosureSummary>Full commit message</DisclosureSummary>
           <pre>{details.message}</pre>
         </details>
       </header>

@@ -4194,6 +4194,33 @@ select {
   height: 30px;
   padding: var(--space-2);
 }
+.disclosure-summary {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-6);
+  list-style: none;
+  cursor: pointer;
+}
+.disclosure-summary::marker {
+  content: "";
+}
+.disclosure-summary::-webkit-details-marker {
+  display: none;
+}
+.disclosure-summary:focus-visible {
+  outline: var(--focus-width) solid var(--color-primary);
+  outline-offset: var(--space-3);
+}
+.disclosure-summary-icon {
+  flex-shrink: 0;
+  margin-top: calc((1lh - 14px) / 2);
+}
+.disclosure-summary-content {
+  min-width: 0;
+}
+details[open] > .disclosure-summary > .disclosure-summary-icon {
+  transform: rotate(90deg);
+}
 .terminal-settings-details {
   margin-top: var(--space-20);
 }

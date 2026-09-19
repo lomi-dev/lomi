@@ -1,3 +1,4 @@
+import { DisclosureSummary } from "./ui";
 import { useEffect, useRef, useState } from "react";
 import Select from "./Select";
 import { RotateCcw } from "./icons";
@@ -545,12 +546,12 @@ export default function TerminalSettingsPage() {
         </p>
         {terminalColors.slice(0, 7).map(colorSetting)}
         <details className="terminal-settings-details">
-          <summary>ANSI palette and search colors</summary>
+          <DisclosureSummary>ANSI palette and search colors</DisclosureSummary>
           {terminalColors.slice(7).map(colorSetting)}
         </details>
       </section>
       <details className="terminal-settings-details">
-        <summary>Advanced</summary>
+        <DisclosureSummary>Advanced</DisclosureSummary>
         {(["minimumContrastRatio", "drawBoldTextInBrightColors"] as const).map(
           appearanceSetting,
         )}

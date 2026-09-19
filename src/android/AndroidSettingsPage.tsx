@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, errorMessage, native } from "../api";
 import { listen } from "@tauri-apps/api/event";
-import { Modal } from "../ui";
+import { DisclosureSummary, Modal } from "../ui";
 import { RefreshCw, Plus, Download } from "../icons";
 import DeviceForm from "./DeviceForm";
 import Select from "../Select";
@@ -513,7 +513,7 @@ export default function AndroidSettingsPage() {
             </p>
             {usage && (
               <details className="android-storage">
-                <summary>
+                <DisclosureSummary>
                   {formatBytes(
                     Object.values(usage.directories).reduce(
                       (total, size) => total + size.allocatedBytes,
@@ -521,7 +521,7 @@ export default function AndroidSettingsPage() {
                     ),
                   )}{" "}
                   used · {formatBytes(usage.freeBytes)} free
-                </summary>
+                </DisclosureSummary>
                 <p className="settings-help">
                   Reserve for growth of existing phones:{" "}
                   {formatBytes(usage.growthReserveBytes)}. Sparse files can grow

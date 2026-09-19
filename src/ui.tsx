@@ -1,8 +1,21 @@
 import { useEffect, useId, useLayoutEffect, useRef } from "react";
 import type { ButtonHTMLAttributes, ReactNode, RefObject } from "react";
-import { Minus, Square, X } from "./icons";
+import { ChevronRight, Minus, Square, X } from "./icons";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { errorMessage, macOS, native } from "./api";
+
+export function DisclosureSummary({ children }: { children: ReactNode }) {
+  return (
+    <summary className="disclosure-summary">
+      <ChevronRight
+        size={14}
+        className="disclosure-summary-icon"
+        aria-hidden="true"
+      />
+      <span className="disclosure-summary-content">{children}</span>
+    </summary>
+  );
+}
 
 export function IconButton({
   title,
