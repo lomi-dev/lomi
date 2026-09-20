@@ -11,13 +11,18 @@ test("updater publication requires matching versions, all platforms, signatures,
           target,
           {
             signature: "signed-artifact",
-            url: `https://github.com/MaciejKolerski/simplebench/releases/download/v0.2.0/${target}.tar.gz`,
+            url: `https://github.com/lomi-dev/simplebench/releases/download/v0.2.0/${target}.tar.gz`,
           },
         ],
       ),
     ),
   };
   checkUpdater("v0.2.0", manifest);
+  const legacy = structuredClone(manifest);
+  for (const entry of Object.values(legacy.platforms)) {
+    entry.url = entry.url.replace("/lomi-dev/", "/MaciejKolerski/");
+  }
+  checkUpdater("v0.2.0", legacy);
   assert.throws(() => checkUpdater("v0.1.0", manifest));
   assert.throws(() => checkUpdater("v0.2.0-beta.1", manifest));
   for (const target of Object.keys(manifest.platforms)) {
@@ -29,7 +34,16 @@ test("updater publication requires matching versions, all platforms, signatures,
       {
         url: "http://github.com/MaciejKolerski/simplebench/releases/download/v0.2.0/file",
       },
+      {
+        url: "http://github.com/lomi-dev/simplebench/releases/download/v0.2.0/file",
+      },
       { url: "https://github.com/other/app/releases/download/v0.2.0/file" },
+      {
+        url: "https://github.com/lomi-dev/other/releases/download/v0.2.0/file",
+      },
+      {
+        url: "https://github.com/lomi-dev/simplebench/releases/download/v0.1.0/file",
+      },
       {
         url: "https://github.com/MaciejKolerski/simplebench/releases/download/v0.1.0/file",
       },
