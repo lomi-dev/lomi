@@ -54,11 +54,15 @@ for (const target of ["panel", "tab", "window"]) {
     };
     await close();
     const dialog = page.getByRole("dialog", {
-      name: "Close running processes?",
+      name:
+        target === "window" ? "Quit SimpleBench?" : "Close running processes?",
     });
     await expect(dialog).toBeVisible();
     await expect(
-      dialog.getByRole("button", { name: "Close anyway", exact: true }),
+      dialog.getByRole("button", {
+        name: target === "window" ? "Cancel" : "Close anyway",
+        exact: true,
+      }),
     ).toBeFocused();
     expect(await calls(page, "close_terminal")).toHaveLength(0);
     expect(await calls(page, "plugin:window|destroy")).toHaveLength(0);
@@ -75,6 +79,8 @@ for (const target of ["panel", "tab", "window"]) {
     await expect(pane).toBeVisible();
     expect(await calls(page, "close_terminal")).toHaveLength(0);
     await close();
+    if (target === "window")
+      await dialog.getByRole("button", { name: "Quit anyway" }).focus();
     await page.keyboard.press("Enter");
     expect(await calls(page, "write_terminal")).toHaveLength(0);
     if (target === "window") {
@@ -114,7 +120,7 @@ test("idle panes close without asking while a hidden busy terminal protects the 
   await page.keyboard.press("Control+Shift+t");
   await expect(page.getByRole("tab")).toHaveCount(2);
   await page.getByRole("button", { name: "Close window" }).click();
-  const dialog = page.getByRole("dialog", { name: "Close running processes?" });
+  const dialog = page.getByRole("dialog", { name: "Quit SimpleBench?" });
   await expect(dialog).toContainText("This terminal has running processes");
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   expect(await calls(page, "plugin:window|destroy")).toHaveLength(0);
@@ -133,7 +139,7 @@ test("process inspection failures and repeated close requests cannot silently cl
     void native.emitEvent("tauri://close-requested");
     void native.emitEvent("tauri://close-requested");
   });
-  const dialog = page.getByRole("dialog", { name: "Close running processes?" });
+  const dialog = page.getByRole("dialog", { name: "Quit SimpleBench?" });
   await expect(dialog).toContainText("Process inspection failed");
   expect(await calls(page, "busy_terminals")).toHaveLength(1);
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
@@ -162,9 +168,9 @@ test("confirming terminal closure still protects dirty editors and failed saves"
   });
   await page.getByRole("button", { name: "Close window" }).click();
   await expect(
-    page.getByRole("dialog", { name: "Close running processes?" }),
+    page.getByRole("dialog", { name: "Quit SimpleBench?" }),
   ).toBeVisible();
-  await page.keyboard.press("Enter");
+  await page.getByRole("button", { name: "Quit anyway" }).click();
   const editor = page.getByRole("dialog", {
     name: "Save changes before closing?",
   });

@@ -35,7 +35,9 @@ pub fn setup_menu(app: &App) -> tauri::Result<()> {
                     &PredefinedMenuItem::hide_others(app, None)?,
                     &PredefinedMenuItem::show_all(app, None)?,
                     &PredefinedMenuItem::separator(app)?,
-                    &PredefinedMenuItem::quit(app, None)?,
+                    // AppKit's predefined Quit invokes terminate: directly and bypasses
+                    // Tauri's ExitRequested event and asynchronous close guards.
+                    &MenuItem::with_id(app, "quit", "Quit SimpleBench", true, Some("CmdOrCtrl+Q"))?,
                 ],
             )?,
             &Submenu::with_items(
@@ -69,6 +71,10 @@ pub fn setup_menu(app: &App) -> tauri::Result<()> {
     )?;
     app.set_menu(menu)?;
     app.on_menu_event(|app, event| {
+        if event.id().as_ref() == "quit" {
+            app.exit(0);
+            return;
+        }
         if event.id().as_ref() == "close-window" {
             if let Some(window) = app
                 .webview_windows()
@@ -94,7 +100,7 @@ pub fn handle_run_event(app: &AppHandle, event: &RunEvent) {
         RunEvent::Ready => use_development_bundle_icon(),
         RunEvent::ExitRequested { api, code, .. } if *code != Some(tauri::RESTART_EXIT_CODE) => {
             if let Some(window) = app.get_window("main") {
-                // Quit from the menu or Dock must use the editor/session close guard.
+                // Explicit exits, including the Quit menu, use the shared close guard.
                 api.prevent_exit();
                 let _ = window.unminimize();
                 let _ = window.show();

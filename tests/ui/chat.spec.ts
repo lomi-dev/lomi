@@ -338,6 +338,7 @@ test("declining the editor close guard leaves the chat request and PTYs running"
   await page.locator(".cm-content").focus();
   await page.keyboard.insertText("Unsaved editor change");
   await page.getByRole("button", { name: "Close window", exact: true }).click();
+  await page.getByRole("button", { name: "Quit anyway", exact: true }).click();
   const dialog = page.getByRole("dialog", {
     name: "Save changes before closing?",
   });

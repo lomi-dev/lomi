@@ -2,34 +2,44 @@ import { useCallback, useId, useRef, useState } from "react";
 import { useEditorCloseGuard } from "./EditorCloseGuard";
 import { terminalsWithProcesses } from "./terminal-runtime";
 import { errorMessage } from "./api";
-import { closeChatViews } from "./chat/chat-service";
+import { closeChatViews, hasActiveChatRequests } from "./chat/chat-service";
 import { Modal } from "./ui";
 
 export function useCloseGuard() {
   const editor = useEditorCloseGuard();
   const checking = useRef(false);
   const resolve = useRef<(close: boolean) => void>(undefined);
-  const [message, setMessage] = useState("");
+  const [request, setRequest] = useState<{
+    message: string;
+    application: boolean;
+  }>();
   const [chatError, setChatError] = useState("");
   const descriptionId = useId();
   const confirmButton = useRef<HTMLButtonElement>(null);
+  const cancelButton = useRef<HTMLButtonElement>(null);
   const confirm = useCallback(
     async (fileIds?: ReadonlySet<string>, terminalIds?: readonly string[]) => {
       if (checking.current) return false;
       checking.current = true;
       try {
+        const application = fileIds === undefined && terminalIds === undefined;
         let message = "";
         try {
           const count = await terminalsWithProcesses(terminalIds);
           if (count)
-            message = `${count === 1 ? "This terminal has" : `${count} terminals have`} running processes. Closing will end these terminal sessions and may interrupt their work. Close anyway?`;
+            message = `${count === 1 ? "This terminal has" : `${count} terminals have`} running processes.`;
         } catch (error) {
-          message = `${errorMessage(error)} Closing may interrupt running work. Close anyway?`;
+          message = errorMessage(error);
         }
+        if (application && hasActiveChatRequests())
+          message += `${message ? " " : ""}Chat AI is still generating a response.`;
         if (message) {
+          message += application
+            ? " Quitting will stop active agents, terminal processes and AI responses. Are you sure you want to quit?"
+            : " Closing will end these terminal sessions and may interrupt their work. Close anyway?";
           const approved = await new Promise<boolean>((finish) => {
             resolve.current = finish;
-            setMessage(message);
+            setRequest({ message, application });
           });
           if (!approved) return false;
         }
@@ -48,23 +58,28 @@ export function useCloseGuard() {
   const finish = (close: boolean) => {
     resolve.current?.(close);
     resolve.current = undefined;
-    setMessage("");
+    setRequest(undefined);
   };
   return {
     confirm,
     dialog: (
       <>
-        {message && (
+        {request && (
           <Modal
-            title="Close running processes?"
+            title={
+              request.application
+                ? "Quit SimpleBench?"
+                : "Close running processes?"
+            }
             descriptionId={descriptionId}
-            initialFocus={confirmButton}
+            initialFocus={request.application ? cancelButton : confirmButton}
             onClose={() => finish(false)}
           >
             <div className="dialog-form">
-              <p id={descriptionId}>{message}</p>
+              <p id={descriptionId}>{request.message}</p>
               <div className="dialog-actions">
                 <button
+                  ref={cancelButton}
                   type="button"
                   className="button"
                   onClick={() => finish(false)}
@@ -77,7 +92,7 @@ export function useCloseGuard() {
                   className="button button-primary"
                   onClick={() => finish(true)}
                 >
-                  Close anyway
+                  {request.application ? "Quit anyway" : "Close anyway"}
                 </button>
               </div>
             </div>

@@ -36,6 +36,11 @@ export function retainChats(value?: Session) {
 }
 export const retainedChatIds = () =>
   new Set(retained.map((t) => t.conversationId));
+export function hasActiveChatRequests() {
+  return retained.some(
+    (tab) => runtimeModule?.existing(tab.conversationId)?.snapshot.busy,
+  );
+}
 export function conversationTitle(id: string, title: string) {
   for (const tab of retained)
     if (tab.conversationId === id && tab.title !== title)

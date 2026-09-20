@@ -24,6 +24,10 @@
     );
     const id = runtime.sessionId;
     checkpoint = "terminal activity title";
+    await invoke("plugin_smoke_result", {
+      stage: "notification-foreground",
+      data: null,
+    });
     await wait(() => runtime.getSnapshot().cwd && document.hasFocus());
     await invoke("write_terminal", {
       id,
@@ -45,6 +49,46 @@
     await wait(() => runtime.getSnapshot().agentSignal === null);
     if (document.querySelector(".terminal-activity"))
       throw Error("Activity remained visible after the shell prompt");
+    checkpoint = "native agent quit confirmation";
+    await invoke("write_terminal", {
+      id,
+      data: "printf '\\033]777;notify;SimpleBench;claude;working\\007'; sleep 30\r",
+    });
+    await wait(async () =>
+      (await invoke("busy_terminals", { ids: [id] })).includes(id),
+    );
+    for (const stage of ["notification-quit", "notification-close"]) {
+      checkpoint = stage;
+      await invoke("plugin_smoke_result", { stage, data: null });
+      await wait(
+        () =>
+          document.querySelector("dialog[open] h2")?.textContent ===
+          "Quit SimpleBench?",
+      );
+      const dialog = document.querySelector("dialog[open]");
+      const cancel = [...dialog.querySelectorAll("button")].find(
+        (button) => button.textContent === "Cancel",
+      );
+      if (document.activeElement !== cancel)
+        throw Error("Quit confirmation did not focus Cancel");
+      if (!dialog.textContent.includes("running processes"))
+        throw Error(
+          "Quit confirmation did not detect the real terminal process",
+        );
+      await invoke("plugin_smoke_result", { stage, data: null });
+      await pause(100);
+      if (document.querySelectorAll("dialog[open]").length !== 1)
+        throw Error("Repeated native quit opened multiple dialogs");
+      cancel.click();
+      await wait(() => !document.querySelector("dialog[open]"));
+      await pause(100);
+      if (!(await invoke("busy_terminals", { ids: [id] })).includes(id))
+        throw Error("Cancelling quit stopped the terminal process");
+      if (runningTerminal("notification-terminal")?.sessionId !== id)
+        throw Error("Cancelling quit replaced the PTY");
+    }
+    await invoke("write_terminal", { id, data: "\u0003" });
+    await wait(() => runtime.getSnapshot().agentSignal === null);
     const configuration = await invoke("inspect_agent_notifications");
     if (!configuration.path.includes("simplebench-notification-native-"))
       throw Error("Configuration is not isolated");
@@ -134,6 +178,9 @@
           "real PTY OSC parsing",
           "single-terminal title and work indicator without maximization",
           "activity cleared on the native shell prompt",
+          "native AppKit Quit and window close both confirm active terminal work",
+          "repeated quit requests share one dialog with Cancel focused",
+          "cancelling native quit preserves the running process and PTY",
           "foreground suppression",
           "native notification request in background",
           "duplicate suppression",
