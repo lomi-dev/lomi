@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { check, type Update } from "@tauri-apps/plugin-updater";
+import { Update } from "@tauri-apps/plugin-updater";
 import { api, errorMessage, native } from "./api";
 import { Modal } from "./ui";
 import type { ReleaseClosePreparation } from "./application-close";
@@ -49,7 +49,10 @@ export function useUpdater(
       const environment = await api<{ linuxInstruction: string | null }>(
         "update_environment",
       );
-      found = await check({ timeout: 15000 });
+      const metadata = await api<
+        ConstructorParameters<typeof Update>[0] | null
+      >("check_app_update");
+      found = metadata ? new Update(metadata) : null;
       if (seq !== sequence.current) {
         await found?.close();
         return;
@@ -95,15 +98,13 @@ export function useUpdater(
         setProgress(undefined);
         let total: number | undefined;
         let received = 0;
-        await update.download(
-          (event) => {
-            if (event.event === "Started") total = event.data.contentLength;
-            if (event.event === "Progress") received += event.data.chunkLength;
-            if (total)
-              setProgress(Math.min(100, Math.round((received / total) * 100)));
-          },
-          { timeout: 120000 },
-        );
+        // Native connect/read timeouts bound stalls without limiting total time.
+        await update.download((event) => {
+          if (event.event === "Started") total = event.data.contentLength;
+          if (event.event === "Progress") received += event.data.chunkLength;
+          if (total)
+            setProgress(Math.min(100, Math.round((received / total) * 100)));
+        });
         downloaded.current = true;
       }
       setStatus("preparing");
@@ -124,7 +125,11 @@ export function useUpdater(
       await api("restart_after_update");
       restartRequested = true;
     } catch (error) {
-      setError(errorMessage(error));
+      setError(
+        downloaded.current
+          ? errorMessage(error)
+          : `Could not download or verify the update: ${errorMessage(error)}. Try again or use GitHub Releases.`,
+      );
       setStatus("error");
     } finally {
       if (!restartRequested && release) {
@@ -160,6 +165,14 @@ export function useUpdater(
             {update && (
               <p>
                 SimpleBench {update.currentVersion} → {update.version}
+              </p>
+            )}
+            {error && (
+              <p role="alert">
+                {installed.current
+                  ? "The update is installed. Restart SimpleBench to finish. "
+                  : "Update failed: "}
+                {error}
               </p>
             )}
             {update?.body && <pre className="update-notes">{update.body}</pre>}
@@ -204,14 +217,6 @@ export function useUpdater(
               {status === "installed" &&
                 "Update installed. Restarting SimpleBench…"}
             </div>
-            {error && (
-              <p role="alert">
-                {installed.current
-                  ? "The update is installed. Restart SimpleBench to finish. "
-                  : "Update failed: "}
-                {error}
-              </p>
-            )}
           </div>
           <div className="dialog-actions">
             {!working && (
@@ -219,18 +224,20 @@ export function useUpdater(
                 {update && !instruction ? "Later" : "Close"}
               </button>
             )}
-            {!working && instruction && update && (
-              <button
-                className="button button-primary"
-                onClick={() =>
-                  void openUrl(releases).catch((error) =>
-                    setError(errorMessage(error)),
-                  )
-                }
-              >
-                GitHub Releases
-              </button>
-            )}
+            {!working &&
+              update &&
+              (instruction || (status === "error" && !installed.current)) && (
+                <button
+                  className={instruction ? "button button-primary" : "button"}
+                  onClick={() =>
+                    void openUrl(releases).catch((error) =>
+                      setError(errorMessage(error)),
+                    )
+                  }
+                >
+                  GitHub Releases
+                </button>
+              )}
             {!working && update && !instruction && (
               <button
                 className="button button-primary"

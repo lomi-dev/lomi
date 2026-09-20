@@ -266,6 +266,7 @@ pub fn run() {
                 browser::servers::local_web_servers,
                 app_info,
                 updater::update_environment,
+                updater::check_app_update,
                 updater::request_update_check,
                 updater::restart_after_update,
                 show_ready_window,

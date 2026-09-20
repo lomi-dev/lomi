@@ -97,8 +97,8 @@ test("About requests a check in the workspace; concurrent checks share the reque
   await expect(dialog).toContainText("Checking for updates");
   await trigger(page);
   await expect(dialog.getByRole("alert")).toContainText("Network unavailable");
-  expect(await calls(page, "plugin:updater|check")).toHaveLength(1);
-  expect(await calls(settings, "plugin:updater|check")).toHaveLength(0);
+  expect(await calls(page, "check_app_update")).toHaveLength(1);
+  expect(await calls(settings, "check_app_update")).toHaveLength(0);
   await page.evaluate(
     () => ((window as any).__nativeTest.updateCheckError = ""),
   );
@@ -173,6 +173,55 @@ for (const platform of ["windows", "macos"] as const) {
     });
   });
 }
+
+test("Windows download failures preserve the workspace and offer manual download or retry", async ({
+  page,
+}, testInfo) => {
+  await prepare(page, "windows");
+  await page.getByRole("button", { name: "README.md", exact: true }).click();
+  await page.locator(".cm-content").fill("work during an interrupted download");
+  await page.evaluate(() => {
+    (window as any).__nativeTest.updateDownloadError =
+      "error decoding response body";
+  });
+  await trigger(page);
+  const dialog = page.getByRole("dialog", { name: "Software update" });
+  await dialog.getByRole("button", { name: "Update now" }).click();
+  await expect(dialog.getByRole("alert")).toContainText(
+    "Could not download or verify the update",
+  );
+  await expect(dialog.getByRole("alert")).toContainText(
+    "error decoding response body",
+  );
+  expect(await calls(page, "reset_terminals")).toHaveLength(0);
+  expect(await calls(page, "plugin:updater|install")).toHaveLength(0);
+  expect(await calls(page, "check_app_update")).toHaveLength(1);
+  await dialog.getByRole("button", { name: "GitHub Releases" }).click();
+  expect((await calls(page, "plugin:opener|open_url"))[0].args.url).toContain(
+    "simplebench/releases/latest",
+  );
+  await page.setViewportSize({ width: 800, height: 420 });
+  await page.screenshot({
+    path: testInfo.outputPath("windows-download-error.png"),
+  });
+  await page.evaluate(() => {
+    (window as any).__nativeTest.updateDownloadError = "";
+  });
+  await dialog.getByRole("button", { name: "Update now" }).click();
+  const guard = page.getByRole("dialog", {
+    name: "Save changes before closing?",
+  });
+  await expect(guard).toBeVisible();
+  expect(await calls(page, "plugin:updater|download")).toHaveLength(2);
+  for (const call of await calls(page, "plugin:updater|download")) {
+    expect(call.args.timeout).toBeUndefined();
+  }
+  await guard.getByRole("button", { name: "Cancel", exact: true }).click();
+  await dialog.getByRole("button", { name: "Later" }).click();
+  await expect(page.locator(".cm-content")).toHaveText(
+    "work during an interrupted download",
+  );
+});
 
 test("signature and session-save failures prevent installation; restart failures retry only the restart", async ({
   page,

@@ -267,7 +267,7 @@ export async function mockDesktop(
             localStorage.setItem("test-update-check", String(Date.now()));
             return;
           }
-          if (command === "plugin:updater|check") {
+          if (command === "check_app_update") {
             await new Promise((resolve) =>
               setTimeout(resolve, desktop.__nativeTest.updateCheckDelay),
             );

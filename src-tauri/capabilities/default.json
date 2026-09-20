@@ -2,13 +2,10 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Project selection, terminal clipboard and window controls in the main workspace.",
-  "webviews": [
-    "main"
-  ],
+  "webviews": ["main"],
   "permissions": [
     "core:event:default",
     "core:resources:allow-close",
-    "updater:allow-check",
     "notification:allow-is-permission-granted",
     "notification:allow-request-permission",
     "core:webview:allow-set-webview-zoom",

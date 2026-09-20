@@ -1,4 +1,47 @@
-use tauri::{Emitter, Manager, Window};
+use std::time::Duration;
+use tauri::{Emitter, Manager, Webview, Window};
+use tauri_plugin_updater::UpdaterExt;
+
+const CHECK_TIMEOUT: Duration = Duration::from_secs(15);
+const NETWORK_TIMEOUT: Duration = Duration::from_secs(30);
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateMetadata {
+    rid: tauri::ResourceId,
+    current_version: String,
+    version: String,
+    body: Option<String>,
+    raw_json: serde_json::Value,
+}
+
+fn configure_client(client: reqwest::ClientBuilder, timeout: Duration) -> reqwest::ClientBuilder {
+    // A read timeout resets on each chunk, so slow downloads can still finish.
+    client.connect_timeout(timeout).read_timeout(timeout)
+}
+
+#[tauri::command]
+pub async fn check_app_update(
+    window: Window,
+    webview: Webview,
+) -> Result<Option<UpdateMetadata>, String> {
+    crate::files::main_window(&window)?;
+    let updater = webview
+        .updater_builder()
+        .timeout(CHECK_TIMEOUT)
+        .configure_client(|client| configure_client(client, NETWORK_TIMEOUT))
+        .build()
+        .map_err(|error| error.to_string())?;
+    let update = updater.check().await.map_err(|error| error.to_string())?;
+    Ok(update.map(|update| UpdateMetadata {
+        current_version: update.current_version.clone(),
+        version: update.version.clone(),
+        body: update.body.clone(),
+        raw_json: update.raw_json.clone(),
+        // Retain Tauri's signed download, installation and resource cleanup.
+        rid: webview.resources_table().add(update),
+    }))
+}
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -81,6 +124,77 @@ pub fn restart_after_update(window: Window, app: tauri::AppHandle) -> Result<(),
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    fn download_server(delay: Duration, chunks: usize) -> (String, std::thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut request = [0; 4096];
+            socket.read(&mut request).unwrap();
+            write!(
+                socket,
+                "HTTP/1.1 200 OK\r\nContent-Length: {chunks}\r\n\r\n"
+            )
+            .unwrap();
+            for index in 0..chunks {
+                if index > 0 {
+                    std::thread::sleep(delay);
+                }
+                if socket.write_all(b"x").is_err() {
+                    break;
+                }
+            }
+        });
+        (url, server)
+    }
+
+    fn test_client(timeout: Duration) -> reqwest::ClientBuilder {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        configure_client(reqwest::Client::builder().no_proxy(), timeout)
+    }
+
+    #[tokio::test]
+    async fn active_downloads_can_outlast_the_network_timeout() {
+        let (url, server) = download_server(Duration::from_millis(50), 16);
+        let client = test_client(Duration::from_millis(400)).build().unwrap();
+        let mut response = client.get(url).send().await.unwrap();
+        let mut received = Vec::new();
+        while let Some(chunk) = response.chunk().await.unwrap() {
+            received.extend_from_slice(&chunk);
+        }
+        server.join().unwrap();
+        assert_eq!(received, vec![b'x'; 16]);
+    }
+
+    #[tokio::test]
+    async fn stalled_downloads_time_out_while_reading_the_body() {
+        let (url, server) = download_server(Duration::from_millis(600), 2);
+        let client = test_client(Duration::from_millis(200)).build().unwrap();
+        let mut response = client.get(url).send().await.unwrap();
+        assert_eq!(response.chunk().await.unwrap().unwrap().as_ref(), b"x");
+        let error = response.chunk().await.unwrap_err();
+        server.join().unwrap();
+        assert!(error.is_timeout(), "{error:?}");
+    }
+
+    #[tokio::test]
+    async fn metadata_checks_keep_their_total_timeout() {
+        let (url, server) = download_server(Duration::from_millis(50), 16);
+        let client = test_client(Duration::from_millis(400))
+            .timeout(Duration::from_millis(200))
+            .build()
+            .unwrap();
+        let response = client.get(url).send().await.unwrap();
+        let error = response.bytes().await.unwrap_err();
+        server.join().unwrap();
+        assert!(error.is_timeout(), "{error:?}");
+    }
 
     #[test]
     fn linux_updates_follow_the_installation_method() {

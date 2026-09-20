@@ -54,13 +54,26 @@ an updater-enabled release before they can receive automatic update checks.
 
 Windows and macOS show the version and release notes, then download and verify
 the signed package when the user chooses **Update now**. Downloads show progress
-(indeterminate when the server omits a length). Before installation, the existing
+(indeterminate when the server omits a length). Native connection and read
+timeouts are 30 seconds; each received chunk resets the read timeout. Downloads
+have no total time limit, so a slow but active transfer can finish. Metadata
+checks retain their separate 15-second total limit. Failed downloads can be
+retried, and the error dialog offers GitHub Releases for manual installation.
+Before installation, the existing
 close guard checks running processes and offers save/discard/cancel for dirty
 editors, then stops chat generations and flushes their drafts and responses.
 Failed editor or chat saves, or cancellation, prevent installation. The session is saved
 before PTYs are stopped and installation starts. Windows' installer relaunches
 the application; macOS requests a restart after replacing the app bundle.
 Terminals restart as fresh shells, with no command or output replay.
+
+Versions 0.3.0 and 0.4.0 impose a two-minute total download timeout. A timeout
+while reading the installer can appear as `error decoding response body`;
+the same message can also describe other interrupted response bodies. If an
+affected installation cannot finish its update, download the matching Windows
+installer (`x64-setup.exe` for NSIS, or `.msi` for MSI) from GitHub Releases,
+close SimpleBench normally, and run the installer. The timeout fix applies once
+a release containing it is installed.
 
 Linux always shows external update instructions, including for AppImages:
 
