@@ -88,6 +88,7 @@ export class TerminalRuntime {
   private opened = false;
   private attached = false;
   private rendererGeneration = 0;
+  private rendererPromise?: Promise<void>;
   private disposed = false;
   private startPromise?: Promise<void>;
   private input = Promise.resolve();
@@ -327,10 +328,10 @@ export class TerminalRuntime {
       this.opened = true;
     }
     const generation = ++this.rendererGeneration;
-    const renderer = this.initializeWebgl(generation);
+    this.rendererPromise = this.initializeWebgl(generation);
     this.observer = new ResizeObserver(() => this.scheduleFit());
     this.observer.observe(container);
-    void this.start(renderer);
+    void this.start();
   }
 
   private async initializeWebgl(generation: number) {
@@ -341,21 +342,8 @@ export class TerminalRuntime {
       options.fontWeight,
       options.fontWeightBold,
     ]);
-    if (this.measuredFont !== font) {
-      await loadTerminalFonts(this.terminal.options);
-      if (
-        this.attached &&
-        !this.disposed &&
-        generation === this.rendererGeneration
-      ) {
-        // Measure changed fonts before WebGL allocates its glyph atlas. Tab
-        // switches reuse the metrics to avoid synchronous layout for every pane.
-        const fontFamily = this.terminal.options.fontFamily;
-        this.terminal.options.fontFamily = `${fontFamily} `;
-        this.terminal.options.fontFamily = fontFamily;
-        this.measuredFont = font;
-      }
-    }
+    const measureFont = this.measuredFont !== font;
+    if (measureFont) await loadTerminalFonts(this.terminal.options);
     let webgl: WebglAddon | undefined;
     try {
       const { WebglAddon } = await (webglModule ??=
@@ -401,6 +389,24 @@ export class TerminalRuntime {
       webgl?.dispose();
       if (generation === this.rendererGeneration)
         this.update({ renderer: "DOM" });
+    }
+    if (measureFont) {
+      // Replacing xterm's DOM renderer changes styles and can invalidate WebKit's
+      // loaded font faces. Its WebGL atlas may already contain fallback glyphs.
+      await loadTerminalFonts(this.terminal.options);
+      await document.fonts.ready;
+      if (
+        !this.attached ||
+        this.disposed ||
+        generation !== this.rendererGeneration
+      )
+        return;
+      const fontFamily = this.terminal.options.fontFamily;
+      this.terminal.options.fontFamily = `${fontFamily} `;
+      this.terminal.options.fontFamily = fontFamily;
+      this.terminal.clearTextureAtlas();
+      // Returning panes reuse their measurements without loading fonts again.
+      this.measuredFont = font;
     }
     // Fit returning panes together; new PTYs need fitted dimensions before startup.
     if (this.snapshot.status !== "starting") await Promise.resolve();
@@ -503,10 +509,15 @@ export class TerminalRuntime {
     }
   }
 
-  private start(renderer: Promise<void>) {
+  private start() {
     if (this.startPromise) return this.startPromise;
     this.startPromise = (async () => {
-      await renderer;
+      let renderer: Promise<void> | undefined;
+      do {
+        renderer = this.rendererPromise;
+        await renderer;
+        // Docking or a remount can replace initialization while fonts load.
+      } while (renderer !== this.rendererPromise);
       if (this.disposed) return;
       const output = new Channel<ArrayBuffer>();
       output.onmessage = (data) => {
