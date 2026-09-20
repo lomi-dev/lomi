@@ -1017,7 +1017,10 @@ export async function mockDesktop(
             return args.paths
               .map((path: string) => "'" + path.replaceAll("'", "'\\''") + "'")
               .join(" ");
-          if (command === "plugin:clipboard-manager|read_text")
+          if (
+            command === "paste_terminal_clipboard" ||
+            command === "plugin:clipboard-manager|read_text"
+          )
             return "clipboard text";
           if (command === "plugin:dialog|open")
             return desktop.__nativeTest.folder;

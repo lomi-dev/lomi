@@ -180,6 +180,25 @@ Run your installed coding CLIs in ordinary terminal panels. SimpleBench displays
 the terminal titles they publish, including conversation titles when the CLI
 supports and enables them.
 
+Paste a screenshot or copied image into a terminal using **Cmd+V** on macOS,
+**Ctrl+V** on Windows, or the configurable **Paste into terminal** shortcut
+(**Ctrl+Shift+V** on Linux/Windows, **Cmd+Shift+V** on macOS). SimpleBench saves
+the image as a local PNG and pastes its quoted path, which Codex recognizes as
+an image attachment. For a foreground local `agy` process on macOS/Linux,
+SimpleBench invokes its existing image-paste action instead, so it creates a
+native media attachment. Neither route needs CLI plugins or configuration
+changes. Pasting never presses Enter, and ordinary clipboard text keeps working.
+Native attachment behavior has been verified on macOS with Codex and agy;
+other platforms have not yet been qualified.
+
+Saved PNGs stay in the application's `terminal-clipboard` cache after closing a
+terminal or restarting SimpleBench, so pending CLI drafts can still use them.
+The cache holds up to 512 MiB or 2048 images; if full, the error shows the folder
+where you can remove images you no longer need. Each saved PNG is limited to
+32 megapixels and 32 MiB of PNG data. agy manages its own imported attachment.
+Images are local files, not uploads;
+remote SSH sessions and containers need their own access to those files.
+
 On Linux, SimpleBench can help configure titles for Codex, agy, Cursor CLI, and
 Claude Code. It asks before changing configuration and keeps a backup. The agy
 title formatter reads local conversation-name annotations. Setup does not restart

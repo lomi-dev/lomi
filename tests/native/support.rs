@@ -3,12 +3,18 @@ use tauri::{Manager, Window};
 mod image_smoke;
 #[path = "notification-support.rs"]
 mod notification_smoke;
+#[path = "terminal-clipboard-support.rs"]
+mod terminal_clipboard_smoke;
 #[path = "theme-support.rs"]
 mod theme_smoke;
 fn entry_script(source: &str, data: &serde_json::Value) -> String {
     source.replace("SMOKE_ENTRY", &serde_json::to_string(data).unwrap())
 }
 pub fn page(webview: &tauri::Webview, payload: &tauri::webview::PageLoadPayload<'_>) {
+    if std::env::var_os("SIMPLEBENCH_CLIPBOARD_SMOKE_DIRECTORY").is_some() {
+        terminal_clipboard_smoke::page(webview, payload);
+        return;
+    }
     #[cfg(feature = "android-probe")]
     if std::env::var_os("SIMPLEBENCH_ANDROID_PROBE_DIRECTORY").is_some() {
         crate::android_probe::page(webview, payload);
@@ -55,6 +61,9 @@ pub fn plugin_smoke_result(
 ) -> Result<serde_json::Value, String> {
     if !matches!(window.label(), "main" | "settings") {
         return Err("Unknown test caller.".into());
+    }
+    if std::env::var_os("SIMPLEBENCH_CLIPBOARD_SMOKE_DIRECTORY").is_some() {
+        return terminal_clipboard_smoke::result(&app, &stage, data);
     }
     #[cfg(feature = "android-probe")]
     if std::env::var_os("SIMPLEBENCH_ANDROID_PRODUCT_DIRECTORY").is_some() {

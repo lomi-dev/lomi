@@ -108,7 +108,7 @@ export const actions = [
   {
     id: "pasteTerminal",
     label: "Paste into terminal",
-    description: "Paste text from the clipboard.",
+    description: "Paste clipboard text or images into the terminal.",
     group: "Terminals",
     shortcut: "Ctrl+Shift+KeyV",
   },

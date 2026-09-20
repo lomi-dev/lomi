@@ -1,5 +1,5 @@
 import { Channel } from "@tauri-apps/api/core";
-import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Terminal } from "@xterm/xterm";
 import type { IDisposable, IMarker } from "@xterm/xterm";
@@ -7,7 +7,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import type { WebglAddon } from "@xterm/addon-webgl";
-import { api, errorMessage, windows } from "./api";
+import { api, errorMessage, macOS, windows } from "./api";
 import { newId } from "./model";
 import type { Pane, ShellProfile } from "./model";
 import { inputChunks } from "./terminal-utils";
@@ -92,6 +92,7 @@ export class TerminalRuntime {
   private disposed = false;
   private startPromise?: Promise<void>;
   private input = Promise.resolve();
+  private pasteOutput?: string[];
   private pendingResize?: { cols: number; rows: number };
   private resizing = false;
   private unacknowledged = 0;
@@ -149,6 +150,7 @@ export class TerminalRuntime {
     });
     window.addEventListener(themeAppliedEvent, this.applyTheme);
     this.host.className = "terminal-host";
+    this.host.addEventListener("paste", this.onPaste, true);
     this.terminal.loadAddon(this.fitAddon);
     this.terminal.loadAddon(this.searchAddon);
     this.terminal.loadAddon(
@@ -168,13 +170,18 @@ export class TerminalRuntime {
       )
         return true;
       if (
-        windows &&
         !event.altKey &&
-        !event.metaKey &&
-        ((event.ctrlKey && !event.shiftKey && event.code === "KeyV") ||
-          (event.shiftKey && !event.ctrlKey && event.code === "Insert"))
+        ((macOS &&
+          event.metaKey &&
+          !event.ctrlKey &&
+          !event.shiftKey &&
+          event.code === "KeyV") ||
+          (windows &&
+            !event.metaKey &&
+            ((event.ctrlKey && !event.shiftKey && event.code === "KeyV") ||
+              (event.shiftKey && !event.ctrlKey && event.code === "Insert"))))
       ) {
-        // xterm encodes Ctrl+V as SYN and cancels the browser's native paste.
+        // Read native image formats even when the webview only exposes clipboard text.
         event.preventDefault();
         if (!event.repeat) void this.pasteClipboard();
         return false;
@@ -594,12 +601,33 @@ export class TerminalRuntime {
   }
 
   send(data: string) {
+    if (this.pasteOutput) {
+      this.pasteOutput.push(data);
+      return;
+    }
+    void this.queueInput(() => this.writeInput(data));
+  }
+
+  private queueInput(write: () => Promise<void>) {
     if (
       this.disposed ||
       this.snapshot.status === "exited" ||
       this.snapshot.status === "error"
     )
-      return;
+      return Promise.resolve();
+    this.input = this.input
+      .then(async () => {
+        await this.startPromise;
+        if (!this.disposed) await write();
+      })
+      .catch((error) => {
+        if (!this.disposed && this.snapshot.status === "running")
+          reportError(errorMessage(error));
+      });
+    return this.input;
+  }
+
+  private async writeInput(data: string) {
     // Accept titles after submission even when a shell has no pre-execution hook.
     if (data === "\r" || data === "\n") this.atPrompt = false;
     if (
@@ -607,19 +635,10 @@ export class TerminalRuntime {
       ["cmd", "pwsh", "powershell"].includes(this.profile.kind)
     )
       this.startBlock();
-    this.input = this.input
-      .then(async () => {
-        await this.startPromise;
-        if (this.disposed) return;
-        for (const chunk of inputChunks(data)) {
-          if (this.disposed) return;
-          await api("write_terminal", { id: this.sessionId, data: chunk });
-        }
-      })
-      .catch((error) => {
-        if (!this.disposed && this.snapshot.status === "running")
-          reportError(errorMessage(error));
-      });
+    for (const chunk of inputChunks(data)) {
+      if (this.disposed) return;
+      await api("write_terminal", { id: this.sessionId, data: chunk });
+    }
   }
 
   execute(command: string) {
@@ -653,18 +672,43 @@ export class TerminalRuntime {
       );
   }
 
-  async pasteClipboard() {
-    try {
-      const text = await readText();
-      if (this.disposed) return;
-      if (text.length > 1_048_576) {
-        reportError("Clipboard text exceeds the 1 MiB paste limit.");
-        return;
+  private readonly onPaste = (event: ClipboardEvent) => {
+    if (
+      event.defaultPrevented ||
+      !(event.target instanceof Element) ||
+      !event.target.classList.contains("xterm-helper-textarea")
+    )
+      return;
+    event.preventDefault();
+    event.stopPropagation();
+    void this.pasteClipboard();
+  };
+
+  pasteClipboard() {
+    if (
+      this.disposed ||
+      this.snapshot.status === "exited" ||
+      this.snapshot.status === "error"
+    )
+      return Promise.resolve();
+    return this.queueInput(async () => {
+      // Native image-paste actions share the input queue with text and later keys.
+      const text = await api<string | null>("paste_terminal_clipboard", {
+        id: this.sessionId,
+      });
+      if (this.disposed || text === null) return;
+      this.pasteOutput = [];
+      let data: string;
+      try {
+        // Let xterm normalize line endings and honor the application's bracketed-paste mode.
+        this.terminal.paste(text);
+        data = this.pasteOutput.join("");
+      } finally {
+        this.pasteOutput = undefined;
       }
-      this.terminal.paste(text);
-    } catch (error) {
-      reportError(errorMessage(error));
-    }
+      if (this.disposed) return;
+      await this.writeInput(data);
+    });
   }
 
   find(query: string, previous = false, caseSensitive = false, regex = false) {
@@ -767,6 +811,7 @@ export class TerminalRuntime {
     if (this.disposed) return;
     window.removeEventListener(themeAppliedEvent, this.applyTheme);
     this.disposed = true;
+    this.host.removeEventListener("paste", this.onPaste, true);
     this.detach();
     clearTimeout(this.ackTimer);
     this.listeners.clear();

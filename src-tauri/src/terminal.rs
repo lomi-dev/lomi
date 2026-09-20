@@ -18,6 +18,8 @@ use tauri::{
 
 const HIGH_WATER: usize = 128 * 1024;
 
+pub mod clipboard;
+
 #[derive(Default)]
 struct Flow {
     pending: usize,

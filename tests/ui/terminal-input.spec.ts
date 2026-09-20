@@ -28,7 +28,7 @@ test("Windows paste shortcuts use the native clipboard once and preserve bracket
     const native = (window as any).__TAURI_INTERNALS__;
     const invoke = native.invoke;
     native.invoke = (command: string, args: unknown) => {
-      if (command === "plugin:clipboard-manager|read_text") {
+      if (command === "paste_terminal_clipboard") {
         (window as any).__nativeTest.clipboardReads =
           ((window as any).__nativeTest.clipboardReads ?? 0) + 1;
         return Promise.resolve("zażółć 🦀\r\nsecond line");
@@ -114,8 +114,7 @@ test("a blocked paste can be cancelled or closed without draining the remaining 
     const native = (window as any).__TAURI_INTERNALS__;
     const invoke = native.invoke;
     native.invoke = async (command: string, args: unknown) => {
-      if (command === "plugin:clipboard-manager|read_text")
-        return "x".repeat(50000);
+      if (command === "paste_terminal_clipboard") return "x".repeat(50000);
       const result = invoke(command, args);
       if (command === "write_terminal") {
         await new Promise<void>((resolve) => {

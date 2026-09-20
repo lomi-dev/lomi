@@ -340,6 +340,7 @@ pub fn run() {
                 terminal::busy_terminals,
                 terminal::reset_terminals,
                 terminal::quote_paths,
+                terminal::clipboard::paste_terminal_clipboard,
                 terminal::terminal_contexts,
                 cli_titles::inspect_cli_titles,
                 agent_notifications::request_agent_notification_setup,
