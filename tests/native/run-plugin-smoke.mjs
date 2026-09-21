@@ -4,6 +4,7 @@ import { resolve, join } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:http";
 import { newSession, newProject, newBrowserTab } from "../../src/model.ts";
+import { pluginSDKSpec } from "../../scripts/plugin-sdk-dependency.mjs";
 const root = resolve(import.meta.dirname, "../..");
 const directory = await mkdtemp(join(tmpdir(), "simplebench-native-"));
 const run = (args, cwd) => {
@@ -11,12 +12,6 @@ const run = (args, cwd) => {
   if (result.status !== 0) throw new Error(result.stdout + result.stderr);
   return result.stdout;
 };
-const packed = join(directory, "sdk");
-await mkdir(packed);
-run(
-  ["--dir", "packages/plugin-sdk", "pack", "--pack-destination", packed],
-  root,
-);
 const author = join(directory, "author space żółć");
 await cp(join(root, "tests/fixtures/context-plugin"), author, {
   recursive: true,
@@ -28,8 +23,7 @@ await cp(join(root, "tests/fixtures/context-plugin"), author, {
 const manifest = JSON.parse(
   await readFile(join(author, "package.json"), "utf8"),
 );
-manifest.dependencies["@simplebench/plugin-sdk"] =
-  `file:${join(packed, "simplebench-plugin-sdk-1.0.0.tgz")}`;
+manifest.dependencies["@lomi-dev/plugin-sdk"] = await pluginSDKSpec(root);
 await writeFile(
   join(author, "package.json"),
   JSON.stringify(manifest, null, 2),

@@ -56,8 +56,10 @@ or acronym.
   restore the defaults; language selection must not rename the file. Load parsers
   on demand and ignore stale results after language switches or buffer disposal.
 - `src/plugins/` owns trusted local plugin metadata, lifecycle, view/command/fill
-  registries, placeholders and Settings management. `packages/plugin-sdk/` is the
-  external author contract. Only main imports executable ESM through the plugin
+  registries, placeholders and Settings management. `@lomi-dev/plugin-sdk` from the separate
+  `lomi-dev/plugin-sdk` repository is the external author contract. The host
+  imports its installed pure exports; do not reintroduce SDK source copies.
+  `pnpm sdk:verify` checks the Rust fixture snapshot against that dependency. Only main imports executable ESM through the plugin
   protocol; settings reads metadata and approves immutable revision trust.
   `src-tauri/src/plugins.rs` serializes bounded installs/removals and checks
   caller, path containment, content identity and close approvals. Themes supplied

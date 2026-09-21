@@ -5,3 +5,6 @@
 /src-tauri/android-input/simplebench-input.apk binary
 /src-tauri/android-proto/emulator_controller.proto -text
 /src-tauri/licenses/android-java.txt -text -whitespace
+
+# Keep the versioned SDK contract snapshot byte-identical on every platform.
+tests/fixtures/plugin-contract.json text eol=lf

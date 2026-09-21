@@ -3,7 +3,7 @@ import {
   useHostContext,
   type PluginContext,
   type ViewProps,
-} from "@simplebench/plugin-sdk";
+} from "@lomi-dev/plugin-sdk";
 export function activate(context: PluginContext) {
   function View({ panel, setState }: ViewProps) {
     const host = useHostContext();

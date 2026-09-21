@@ -6,10 +6,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { api, native } from "../api";
 import { PluginHost, emptyContext } from "./host";
 import type { PluginEntry } from "./host";
-import type {
-  PluginManifest,
-  PluginModule,
-} from "../../packages/plugin-sdk/index";
+import type { PluginManifest, PluginModule } from "@lomi-dev/plugin-sdk";
 export const HostContext = React.createContext(emptyContext);
 export const useHostContext = () => React.useContext(HostContext);
 export const pluginUrl = (entry: PluginEntry, path: string) =>

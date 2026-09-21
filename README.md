@@ -144,7 +144,7 @@ installed build for the correct application identity.
 - **Themes:** use the built-in DeepMono palette or create and import JSONC theme
   packages with local assets and CSS. See [theme authoring](themes/README.md).
 - **Plugins:** install trusted local packages that add views, sidebars, and
-  commands. See the [plugin SDK](packages/plugin-sdk/README.md).
+  commands. See the [plugin SDK](https://github.com/lomi-dev/plugin-sdk).
 - **Recovery:** launch with `simplebench --safe-mode` to skip third-party plugins
   and themes.
 
@@ -280,16 +280,16 @@ publishing requirements.
 
 ### Find your way around
 
-| Location                                           | Responsibility                                       |
-| -------------------------------------------------- | ---------------------------------------------------- |
-| [src/model.ts](src/model.ts)                       | Session data and layout transformations              |
-| [src/Workbench.tsx](src/Workbench.tsx)             | Projects, workspaces, tabs, and persistence          |
-| [src/terminal-runtime.ts](src/terminal-runtime.ts) | Terminal lifecycle and output streaming              |
-| [src/editor-runtime.ts](src/editor-runtime.ts)     | Shared editor buffers and history                    |
-| [src-tauri/src](src-tauri/src)                     | Native shells, files, Git, webviews, and permissions |
-| [packages/plugin-sdk](packages/plugin-sdk)         | External plugin authoring contract                   |
-| [themes](themes)                                   | Theme documentation, baseline palette, and schema    |
-| [tests](tests)                                     | Model, interface, and native checks                  |
+| Location                                             | Responsibility                                       |
+| ---------------------------------------------------- | ---------------------------------------------------- |
+| [src/model.ts](src/model.ts)                         | Session data and layout transformations              |
+| [src/Workbench.tsx](src/Workbench.tsx)               | Projects, workspaces, tabs, and persistence          |
+| [src/terminal-runtime.ts](src/terminal-runtime.ts)   | Terminal lifecycle and output streaming              |
+| [src/editor-runtime.ts](src/editor-runtime.ts)       | Shared editor buffers and history                    |
+| [src-tauri/src](src-tauri/src)                       | Native shells, files, Git, webviews, and permissions |
+| [plugin-sdk](https://github.com/lomi-dev/plugin-sdk) | External plugin authoring contract                   |
+| [themes](themes)                                     | Theme documentation, baseline palette, and schema    |
+| [tests](tests)                                       | Model, interface, and native checks                  |
 
 ## Contributing
 

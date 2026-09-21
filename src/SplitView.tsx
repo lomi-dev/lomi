@@ -28,7 +28,7 @@ import type {
   TabDropSide,
 } from "./model";
 import PluginPanel from "./plugins/PluginPanel";
-import type { Json } from "../packages/plugin-sdk/index";
+import type { Json } from "@lomi-dev/plugin-sdk";
 import DockviewLayout from "./DockviewLayout";
 import { usePaneDrag } from "./pane-drag";
 

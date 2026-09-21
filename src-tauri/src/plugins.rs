@@ -877,6 +877,24 @@ pub fn protocol(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn shared_plugin_contract_cases() {
+        let cases: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/plugin-contract.json"))
+                .unwrap();
+        for case in cases.as_array().unwrap() {
+            let valid = match case["kind"].as_str().unwrap() {
+                "manifest" => manifest(&serde_json::to_vec(&case["input"]).unwrap()).is_ok(),
+                "path" => relative(case["input"].as_str().unwrap()).is_ok(),
+                "shortcut" => crate::keybindings::valid_shortcut(case["input"].as_str().unwrap()),
+                kind => panic!("Unknown shared case: {kind}"),
+            };
+            assert_eq!(valid, case["valid"].as_bool().unwrap(), "{}", case["name"]);
+        }
+        let oversized = vec![b' '; JSON_LIMIT + 1];
+        assert!(manifest(&oversized).is_err());
+    }
+
     fn fixture(source: &Path) {
         fs::create_dir_all(source.join("dist")).unwrap();
         fs::write(source.join("plugin.json"),r#"{"schemaVersion":1,"id":"test.context","name":"Test","version":"1.0.0","description":"Test package","hostApi":1,"entry":"dist/index.js","activation":"lazy"}"#).unwrap();

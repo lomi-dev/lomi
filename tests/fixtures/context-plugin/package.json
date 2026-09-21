@@ -7,9 +7,9 @@
     "build": "node build.mjs"
   },
   "dependencies": {
-    "@simplebench/plugin-sdk": "file:../../../packages/plugin-sdk",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "@lomi-dev/plugin-sdk": "https://github.com/lomi-dev/plugin-sdk/releases/download/v1.1.0-alpha.0/lomi-dev-plugin-sdk-1.1.0-alpha.0.tgz"
   },
   "devDependencies": {
     "tsup": "8.5.1",

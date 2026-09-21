@@ -1,0 +1,1398 @@
+[
+  {
+    "name": "minimal executable",
+    "kind": "manifest",
+    "input": {
+      "schemaVersion": 1,
+      "hostApi": 1,
+      "id": "example.test",
+      "name": "Test",
+      "description": "A plugin",
+      "version": "1.0.0",
+      "entry": "dist/index.js"
+    },
+    "valid": true,
+    "schemaValid": true
+  },
+  {
+    "name": "reject hostApi",
+    "kind": "manifest",
+    "input": {
+      "schemaVersion": 1,
+      "hostApi": 2,
+      "id": "example.test",
+      "name": "Test",
+      "description": "A plugin",
+      "version": "1.0.0",
+      "entry": "dist/index.js"
+    },
+    "valid": false,
+    "schemaValid": false
+  },
+  {
+    "name": "reject schemaVersion",
+    "kind": "manifest",
+    "input": {
+      "schemaVersion": 2,
+      "hostApi": 1,
+      "id": "example.test",
+      "name": "Test",
+      "description": "A plugin",
+      "version": "1.0.0",
+      "entry": "dist/index.js"
+    },
+    "valid": false,
+    "schemaValid": false
+  },
+  {
+    "name": "reject $schema",
+    "kind": "manifest",
+    "input": {
+      "schemaVersion": 1,
+      "hostApi": 1,
+      "id": "example.test",
+      "name": "Test",
+      "description": "A plugin",
+      "version": "1.0.0",
+      "entry": "dist/index.js",
+      "$schema": "x"
+    },
+    "valid": false,
+    "schemaValid": false
+  },
+  {
+    "name": "reject entry",
+    "kind": "manifest",
+    "input": {
+      "schemaVersion": 1,
+      "hostApi": 1,
+      "id": "example.test",
+      "name": "Test",
+      "description": "A plugin",
+      "version": "1.0.0",
+      "entry": "../x.js"
+    },
+    "valid": false,
+    "schemaValid": true
+  },
+  {
+    "name": "reject entry",
+    "kind": "manifest",
+    "input": {
+      "schemaVersion": 1,
+      "hostApi": 1,
+      "id": "example.test",
+      "name": "Test",
+      "description": "A plugin",
+      "version": "1.0.0",
+      "entry": "src.ts"
+    },
+    "valid": false,
+    "schemaValid": true
+  },
+  {
+    "name": "reject id",
+    "kind": "manifest",
+    "input": {
+      "schemaVersion": 1,
+      "hostApi": 1,
+      "id": "Single",
+      "name": "Test",
+      "description": "A plugin",
+      "version": "1.0.0",
+      "entry": "dist/index.js"
+    },
+    "valid": false,
+    "schemaValid": false
+  },
+  {
+    "name": "reject unknown",
+    "kind": "manifest",
+    "input": {
+      "schemaVersion": 1,
+      "hostApi": 1,
+      "id": "example.test",
+      "name": "Test",
+      "description": "A plugin",
+      "version": "1.0.0",
+      "entry": "dist/index.js",
+      "unknown": true
+    },
+    "valid": false,
+    "schemaValid": false
+  },
+  {
+    "name": "reject name",
+    "kind": "manifest",
+    "input": {
+      "schemaVersion": 1,
+      "hostApi": 1,
+      "id": "example.test",
+      "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "description": "A plugin",
+      "version": "1.0.0",
+      "entry": "dist/index.js"
+    },
+    "valid": false,
+    "schemaValid": false
+  },
+  {
+    "name": "reject description",
+    "kind": "manifest",
+    "input": {
+      "schemaVersion": 1,
+      "hostApi": 1,
+      "id": "example.test",
+      "name": "Test",
+      "description": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "version": "1.0.0",
+      "entry": "dist/index.js"
+    },
+    "valid": false,
+    "schemaValid": false
+  },
+  {
+    "name": "valid view",
+    "kind": "manifest",
+    "input": {
+      "schemaVersion": 1,
+      "hostApi": 1,
+      "id": "example.test",
+      "name": "Test",
+      "description": "A plugin",
+      "version": "1.0.0",
+      "entry": "dist/index.js",
+      "contributes": {
+        "views": [
+          {
+            "id": "example.test.view",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          }
+        ]
+      }
+    },
+    "valid": true,
+    "schemaValid": true
+  },
+  {
+    "name": "duplicate view",
+    "kind": "manifest",
+    "input": {
+      "schemaVersion": 1,
+      "hostApi": 1,
+      "id": "example.test",
+      "name": "Test",
+      "description": "A plugin",
+      "version": "1.0.0",
+      "entry": "dist/index.js",
+      "contributes": {
+        "views": [
+          {
+            "id": "example.test.view",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.view",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          }
+        ]
+      }
+    },
+    "valid": false,
+    "schemaValid": true
+  },
+  {
+    "name": "foreign view",
+    "kind": "manifest",
+    "input": {
+      "schemaVersion": 1,
+      "hostApi": 1,
+      "id": "example.test",
+      "name": "Test",
+      "description": "A plugin",
+      "version": "1.0.0",
+      "entry": "dist/index.js",
+      "contributes": {
+        "views": [
+          {
+            "id": "foreign.view",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          }
+        ]
+      }
+    },
+    "valid": false,
+    "schemaValid": true
+  },
+  {
+    "name": "sidebar multiple",
+    "kind": "manifest",
+    "input": {
+      "schemaVersion": 1,
+      "hostApi": 1,
+      "id": "example.test",
+      "name": "Test",
+      "description": "A plugin",
+      "version": "1.0.0",
+      "entry": "dist/index.js",
+      "contributes": {
+        "views": [
+          {
+            "id": "example.test.view",
+            "title": "View",
+            "placement": "sidebar",
+            "multiple": true,
+            "stateVersion": 1
+          }
+        ]
+      }
+    },
+    "valid": false,
+    "schemaValid": false
+  },
+  {
+    "name": "view state version",
+    "kind": "manifest",
+    "input": {
+      "schemaVersion": 1,
+      "hostApi": 1,
+      "id": "example.test",
+      "name": "Test",
+      "description": "A plugin",
+      "version": "1.0.0",
+      "entry": "dist/index.js",
+      "contributes": {
+        "views": [
+          {
+            "id": "example.test.view",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1001
+          }
+        ]
+      }
+    },
+    "valid": false,
+    "schemaValid": false
+  },
+  {
+    "name": "contribution limit",
+    "kind": "manifest",
+    "input": {
+      "schemaVersion": 1,
+      "hostApi": 1,
+      "id": "example.test",
+      "name": "Test",
+      "description": "A plugin",
+      "version": "1.0.0",
+      "entry": "dist/index.js",
+      "contributes": {
+        "views": [
+          {
+            "id": "example.test.v0",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v1",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v2",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v3",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v4",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v5",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v6",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v7",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v8",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v9",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v10",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v11",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v12",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v13",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v14",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v15",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v16",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v17",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v18",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v19",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v20",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v21",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v22",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v23",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v24",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v25",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v26",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v27",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v28",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v29",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v30",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v31",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v32",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v33",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v34",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v35",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v36",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v37",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v38",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v39",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v40",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v41",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v42",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v43",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v44",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v45",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v46",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v47",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v48",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v49",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v50",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v51",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v52",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v53",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v54",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v55",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v56",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v57",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v58",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v59",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v60",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v61",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v62",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v63",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v64",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v65",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v66",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v67",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v68",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v69",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v70",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v71",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v72",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v73",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v74",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v75",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v76",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v77",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v78",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v79",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v80",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v81",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v82",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v83",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v84",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v85",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v86",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v87",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v88",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v89",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v90",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v91",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v92",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v93",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v94",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v95",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v96",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v97",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v98",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v99",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v100",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v101",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v102",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v103",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v104",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v105",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v106",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v107",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v108",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v109",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v110",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v111",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v112",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v113",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v114",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v115",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v116",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v117",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v118",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v119",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v120",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v121",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v122",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v123",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v124",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v125",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v126",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v127",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          },
+          {
+            "id": "example.test.v128",
+            "title": "View",
+            "placement": "central",
+            "multiple": false,
+            "stateVersion": 1
+          }
+        ]
+      }
+    },
+    "valid": false,
+    "schemaValid": false
+  },
+  {
+    "name": "valid shortcut",
+    "kind": "manifest",
+    "input": {
+      "schemaVersion": 1,
+      "hostApi": 1,
+      "id": "example.test",
+      "name": "Test",
+      "description": "A plugin",
+      "version": "1.0.0",
+      "entry": "dist/index.js",
+      "contributes": {
+        "commands": [
+          {
+            "id": "example.test.open",
+            "label": "Open",
+            "description": "Open view"
+          }
+        ],
+        "keybindings": [
+          {
+            "command": "example.test.open",
+            "shortcut": "Ctrl+Shift+KeyK"
+          }
+        ]
+      }
+    },
+    "valid": true,
+    "schemaValid": true
+  },
+  {
+    "name": "missing command",
+    "kind": "manifest",
+    "input": {
+      "schemaVersion": 1,
+      "hostApi": 1,
+      "id": "example.test",
+      "name": "Test",
+      "description": "A plugin",
+      "version": "1.0.0",
+      "entry": "dist/index.js",
+      "contributes": {
+        "keybindings": [
+          {
+            "command": "example.test.open",
+            "shortcut": "Ctrl+KeyK"
+          }
+        ]
+      }
+    },
+    "valid": false,
+    "schemaValid": true
+  },
+  {
+    "name": "invalid shortcut",
+    "kind": "manifest",
+    "input": {
+      "schemaVersion": 1,
+      "hostApi": 1,
+      "id": "example.test",
+      "name": "Test",
+      "description": "A plugin",
+      "version": "1.0.0",
+      "entry": "dist/index.js",
+      "contributes": {
+        "commands": [
+          {
+            "id": "example.test.open",
+            "label": "Open",
+            "description": "Open view"
+          }
+        ],
+        "keybindings": [
+          {
+            "command": "example.test.open",
+            "shortcut": "Shift+Ctrl+KeyK"
+          }
+        ]
+      }
+    },
+    "valid": false,
+    "schemaValid": true
+  },
+  {
+    "name": "path dist/żółć.js",
+    "kind": "path",
+    "input": "dist/żółć.js",
+    "valid": true
+  },
+  {
+    "name": "path a/b.js",
+    "kind": "path",
+    "input": "a/b.js",
+    "valid": true
+  },
+  {
+    "name": "path ../x",
+    "kind": "path",
+    "input": "../x",
+    "valid": false
+  },
+  {
+    "name": "path a%2fb",
+    "kind": "path",
+    "input": "a%2fb",
+    "valid": false
+  },
+  {
+    "name": "path C:/file",
+    "kind": "path",
+    "input": "C:/file",
+    "valid": false
+  },
+  {
+    "name": "path a\\b",
+    "kind": "path",
+    "input": "a\\b",
+    "valid": false
+  },
+  {
+    "name": "path CON.txt",
+    "kind": "path",
+    "input": "CON.txt",
+    "valid": false
+  },
+  {
+    "name": "path a//b",
+    "kind": "path",
+    "input": "a//b",
+    "valid": false
+  },
+  {
+    "name": "path a/aux",
+    "kind": "path",
+    "input": "a/aux",
+    "valid": false
+  },
+  {
+    "name": "path a.",
+    "kind": "path",
+    "input": "a.",
+    "valid": false
+  },
+  {
+    "name": "path a:stream",
+    "kind": "path",
+    "input": "a:stream",
+    "valid": false
+  },
+  {
+    "name": "path aaaaaaaaaaaaaaaaaaaaaaaaa",
+    "kind": "path",
+    "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "valid": false
+  },
+  {
+    "name": "shortcut Ctrl+KeyK",
+    "kind": "shortcut",
+    "input": "Ctrl+KeyK",
+    "valid": true
+  },
+  {
+    "name": "shortcut F24",
+    "kind": "shortcut",
+    "input": "F24",
+    "valid": true
+  },
+  {
+    "name": "shortcut Ctrl+Ctrl+KeyK",
+    "kind": "shortcut",
+    "input": "Ctrl+Ctrl+KeyK",
+    "valid": false
+  },
+  {
+    "name": "shortcut Shift+KeyK",
+    "kind": "shortcut",
+    "input": "Shift+KeyK",
+    "valid": false
+  },
+  {
+    "name": "shortcut F25",
+    "kind": "shortcut",
+    "input": "F25",
+    "valid": false
+  }
+]

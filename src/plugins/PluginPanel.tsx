@@ -8,7 +8,7 @@ import {
 import { api } from "../api";
 import { Slot } from "./Slots";
 import { pluginHost } from "./runtime";
-import type { ViewProps } from "../../packages/plugin-sdk/index";
+import type { ViewProps } from "@lomi-dev/plugin-sdk";
 export class PluginBoundary extends Component<
   { owner: string; children: ReactNode },
   { error: string }

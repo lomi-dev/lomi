@@ -11,7 +11,7 @@ import type {
   PluginManifest,
   PluginModule,
   ViewProps,
-} from "../../packages/plugin-sdk/index";
+} from "@lomi-dev/plugin-sdk";
 import { jsonState, packagePath, parsePlugin } from "./manifest.ts";
 export interface PluginEntry {
   id: string;

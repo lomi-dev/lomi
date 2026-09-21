@@ -1,4 +1,4 @@
-import type { PanelDescriptor } from "../packages/plugin-sdk/index";
+import type { PanelDescriptor } from "@lomi-dev/plugin-sdk";
 import { jsonState, pluginId } from "./plugins/manifest.ts";
 export type PluginPanel = PanelDescriptor;
 import { restoreBrowserUrl } from "./browser-url.ts";

@@ -10,7 +10,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "check": "tsc --noEmit && pnpm ai:check",
+    "check": "pnpm sdk:verify && tsc --noEmit && pnpm ai:check",
     "test": "node --experimental-strip-types --test tests/*.test.ts && pnpm ai:test",
     "test:ui": "pnpm --filter simplebench-plugin-fixture build && playwright test",
     "test:ui:webkit": "pnpm test:ui --config=playwright.webkit.config.ts",
@@ -23,7 +23,11 @@
     "tauri": "tauri",
     "ai:prepare": "node scripts/prepare-ai-runtime.mjs",
     "ai:check": "pnpm --filter @simplebench/ai-runtime check",
-    "ai:test": "pnpm --filter @simplebench/ai-runtime test"
+    "ai:test": "pnpm --filter @simplebench/ai-runtime test",
+    "sdk:test": "node --experimental-strip-types --test tests/plugin-contract.test.ts",
+    "sdk:verify": "node scripts/check-plugin-sdk.mjs",
+    "sdk:sync-contract": "node scripts/check-plugin-sdk.mjs --sync",
+    "sdk:test:consumer": "node scripts/test-plugin-sdk.mjs"
   },
   "dependencies": {
     "@ai-sdk/react": "4.0.108",
@@ -70,7 +74,8 @@
     "react-markdown": "^10.1.0",
     "react-slot-fill": "file:vendor/react-slot-fill",
     "remark-gfm": "^4.0.1",
-    "xterm-theme": "1.1.0"
+    "xterm-theme": "1.1.0",
+    "@lomi-dev/plugin-sdk": "https://github.com/lomi-dev/plugin-sdk/releases/download/v1.1.0-alpha.0/lomi-dev-plugin-sdk-1.1.0-alpha.0.tgz"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
@@ -81,6 +86,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "prettier": "^3.9.6",
     "typescript": "~7.0.2",
-    "vite": "^8.2.2"
+    "vite": "^8.2.2",
+    "ajv": "8.17.1"
   }
 }
