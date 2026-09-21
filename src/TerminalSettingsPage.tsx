@@ -23,6 +23,7 @@ import {
 } from "./theme/runtime";
 
 const labels: Record<string, string> = {
+  alwaysShowTitles: "Always show terminal titles",
   agentNotifications: "Agent notifications",
   windowsShell: "Default shell",
   powershell: "PowerShell",
@@ -67,6 +68,8 @@ const labels: Record<string, string> = {
   wordSeparator: "Word separators",
 };
 const help: Record<string, string> = {
+  alwaysShowTitles:
+    "When off, press Control to show titles for 5 seconds. Hold Control for more than 1 second to show them until you release it.",
   agentNotifications:
     "Notify when Claude Code finishes responding or needs your input while SimpleBench is in the background. Configure Claude Code once below.",
   windowsShell:
@@ -432,6 +435,29 @@ export default function TerminalSettingsPage() {
       <div className="keybindings-status" role="status">
         {!preferences.ready ? "Loading terminal settings…" : status}
       </div>
+      <section className="keybindings-group" aria-label="Titles">
+        <h2>Titles</h2>
+        <Setting
+          name="alwaysShowTitles"
+          value={preferences.value.alwaysShowTitles}
+          disabled={disabled}
+          change={(value) =>
+            void persist({
+              ...preferences.value,
+              alwaysShowTitles: Boolean(value),
+            })
+          }
+          reset={
+            preferences.value.alwaysShowTitles
+              ? () =>
+                  void persist({
+                    ...preferences.value,
+                    alwaysShowTitles: false,
+                  })
+              : undefined
+          }
+        />
+      </section>
       <section className="keybindings-group" aria-label="Notifications">
         <h2>Notifications</h2>
         <Setting

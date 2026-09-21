@@ -24,12 +24,14 @@ import { terminalFor } from "./terminal-runtime";
 import { IconButton } from "./ui";
 import { actionForEvent, formatShortcut } from "./keybindings";
 import { useKeybindings } from "./KeybindingsProvider";
+import { useTerminalPreferences } from "./TerminalPreferencesProvider";
 
 interface Props {
   pane: Pane;
   profile?: ShellProfile;
   active: boolean;
   overview: boolean;
+  revealTitle: boolean;
   canMove: boolean;
   canMaximize: boolean;
   maximized: boolean;
@@ -60,6 +62,7 @@ function LiveTerminal({
   profile,
   active,
   overview,
+  revealTitle,
   canMove,
   canMaximize,
   maximized,
@@ -69,6 +72,7 @@ function LiveTerminal({
 }: Props & { profile: ShellProfile }) {
   const [runtime] = useState(() => terminalFor(pane, profile));
   const snapshot = useSyncExternalStore(runtime.subscribe, runtime.getSnapshot);
+  const { value: preferences } = useTerminalPreferences();
   const { bindings } = useKeybindings();
   const container = useRef<HTMLDivElement>(null);
   const overviewCard = useRef<HTMLDivElement>(null);
@@ -138,8 +142,10 @@ function LiveTerminal({
           ? "Done"
           : "";
   const fallbackTitle = pane.cwd || profile.name;
-  const displayTitle = title || (canMove ? fallbackTitle : "");
-  const headingVisible = !!(displayTitle || activity || maximized);
+  const displayTitle = title || (canMove || revealTitle ? fallbackTitle : "");
+  const headingVisible =
+    (preferences.alwaysShowTitles || revealTitle) &&
+    !!(displayTitle || activity || maximized);
   return (
     <section
       className={`terminal-pane${active ? " is-active" : ""}${overview ? " is-overview" : ""}`}

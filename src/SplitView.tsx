@@ -38,6 +38,7 @@ interface Props {
   profiles: ShellProfile[];
   activePaneId: string;
   overview: boolean;
+  revealTitles: boolean;
   onFocus: (id: string) => void;
   onPluginState: (id: string, state: Json) => void;
   onRestart: (id: string, useProjectDirectory?: boolean) => void;
@@ -141,6 +142,7 @@ export default function SplitView({
                       }
                       active={props.activePaneId === layout.id}
                       overview={props.overview}
+                      revealTitle={props.revealTitles}
                       canMove={controlHeld}
                       canMaximize={props.layout.type === "split"}
                       maximized={maximizedPane?.id === layout.id}

@@ -2,6 +2,16 @@ import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { newId, newPane, newProject, newSession } from "../../src/model";
 import { buffer, mockDesktop } from "./desktop";
+import { defaultTerminalPreferences } from "../../src/terminal-preferences";
+
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript((defaults) => {
+    localStorage.setItem(
+      "test-terminal-preferences",
+      JSON.stringify({ version: 1, ...defaults, alwaysShowTitles: true }),
+    );
+  }, defaultTerminalPreferences);
+});
 
 async function emit(page: Page, id: string, ...chunks: string[]) {
   await page.evaluate(

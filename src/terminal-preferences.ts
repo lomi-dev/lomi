@@ -31,12 +31,14 @@ export interface TerminalPreferences {
   behavior: typeof terminalBehaviorDefaults;
   windowsShell: "powershell" | "cmd";
   agentNotifications: boolean;
+  alwaysShowTitles: boolean;
 }
 export const defaultTerminalPreferences: TerminalPreferences = {
   appearance: {},
   behavior: { ...terminalBehaviorDefaults },
   windowsShell: "powershell",
   agentNotifications: true,
+  alwaysShowTitles: false,
 };
 export const terminalColorPattern = /^#[\da-f]{6}([\da-f]{2})?$/i;
 
@@ -77,6 +79,7 @@ export function restoreTerminalPreferences(
             "behavior",
             "windowsShell",
             "agentNotifications",
+            "alwaysShowTitles",
           ].includes(key),
       )
     )
@@ -92,6 +95,11 @@ export function restoreTerminalPreferences(
       typeof data.agentNotifications !== "boolean"
     )
       throw new Error("Invalid agent notifications setting.");
+    if (
+      data.alwaysShowTitles !== undefined &&
+      typeof data.alwaysShowTitles !== "boolean"
+    )
+      throw new Error("Invalid terminal title visibility setting.");
     if (
       !data.appearance ||
       !data.behavior ||
@@ -148,6 +156,7 @@ export function restoreTerminalPreferences(
       behavior: { ...behavior } as TerminalPreferences["behavior"],
       windowsShell: data.windowsShell ?? "powershell",
       agentNotifications: data.agentNotifications ?? true,
+      alwaysShowTitles: data.alwaysShowTitles ?? false,
     };
   } catch (error) {
     throw new Error(

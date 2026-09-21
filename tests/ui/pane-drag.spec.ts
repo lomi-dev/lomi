@@ -551,6 +551,7 @@ test("Ctrl is required; Escape, releasing Ctrl, lost capture, blur and outside d
     "self",
   ]) {
     if (cancel === "no-control") {
+      await page.keyboard.press("Control");
       await title.hover();
       await page.mouse.down();
     } else await grab(page, source);

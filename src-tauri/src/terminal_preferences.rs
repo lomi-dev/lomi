@@ -15,7 +15,12 @@ fn validate(data: &Value) -> Result<(), String> {
         if data.keys().any(|key| {
             !matches!(
                 key.as_str(),
-                "version" | "appearance" | "behavior" | "windowsShell" | "agentNotifications"
+                "version"
+                    | "appearance"
+                    | "behavior"
+                    | "windowsShell"
+                    | "agentNotifications"
+                    | "alwaysShowTitles"
             )
         }) || data.get("version")?.as_u64()? != 1
         {
@@ -27,6 +32,9 @@ fn validate(data: &Value) -> Result<(), String> {
             }
         }
         if let Some(enabled) = data.get("agentNotifications") {
+            enabled.as_bool()?;
+        }
+        if let Some(enabled) = data.get("alwaysShowTitles") {
             enabled.as_bool()?;
         }
         let appearance = data.get("appearance")?.as_object()?;
@@ -277,6 +285,8 @@ mod tests {
             ("/windowsShell", Value::Null),
             ("/agentNotifications", json!("true")),
             ("/agentNotifications", Value::Null),
+            ("/alwaysShowTitles", json!("true")),
+            ("/alwaysShowTitles", Value::Null),
             ("/unknown", json!(true)),
         ] {
             let mut invalid = data.clone();
@@ -295,6 +305,7 @@ mod tests {
         for enabled in [true, false] {
             let mut updated = data.clone();
             updated["agentNotifications"] = json!(enabled);
+            updated["alwaysShowTitles"] = json!(enabled);
             save(&path, &updated).unwrap();
             assert_eq!(read(&path).unwrap().unwrap(), updated);
         }

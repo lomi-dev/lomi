@@ -169,7 +169,10 @@ in **Settings → Keybinds**.
 | Copy / paste in a terminal             | `Ctrl+Shift+C` / `Ctrl+Shift+V` |
 | Open settings                          | `Ctrl+,`                        |
 
-Hold **Ctrl** and drag a terminal title to move its panel. Additional commands
+Terminal titles are hidden by default. Press **Ctrl** to reveal them for five
+seconds, or hold it for more than one second to keep them visible until release.
+Enable **Settings → Terminal → Always show terminal titles** to keep published
+titles visible. Hold **Ctrl** and drag a terminal title to move its panel. Additional commands
 include multiline terminal input, command blocks, environment selection, and
 interface zoom. Enable **Focus follows pointer** to focus a terminal or editor
 by moving the pointer over it.

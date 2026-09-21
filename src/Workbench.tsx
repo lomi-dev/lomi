@@ -127,6 +127,7 @@ import TabBar from "./TabBar";
 import FileEditorStatus from "./FileEditorStatus";
 import { useKeybindings } from "./KeybindingsProvider";
 import { useTerminalPreferences } from "./TerminalPreferencesProvider";
+import { useTerminalTitleReveal } from "./useTerminalTitleReveal";
 import { defaultTerminalProfile } from "./terminal-preferences";
 import type { ActionId } from "./keybindings";
 import CommandPicker from "./plugins/CommandPicker";
@@ -273,6 +274,9 @@ export default function Workbench() {
   } | null>(null);
   const executeBuiltin = useRef<(id: ActionId) => void>(() => {});
   const terminalPreferences = useTerminalPreferences();
+  const revealTerminalTitles = useTerminalTitleReveal(
+    !terminalPreferences.value.alwaysShowTitles,
+  );
   const { bindings } = preferences;
   const [info, setInfo] = useState<AppInfo>();
   const defaultProfileId = info
@@ -2259,6 +2263,7 @@ export default function Workbench() {
                     profiles={info.profiles}
                     activePaneId={tab.activePaneId}
                     overview={terminalOverview}
+                    revealTitles={revealTerminalTitles}
                     onFocus={(id) => {
                       if (id !== tab.activePaneId)
                         modifyTab((tab) => ({ ...tab, activePaneId: id }));
