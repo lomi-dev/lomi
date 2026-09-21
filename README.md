@@ -225,7 +225,7 @@ The application uses **Tauri 2 and Rust** for native integration, **React and
 TypeScript** for the interface, **CodeMirror** for editing, and **xterm.js** for
 terminal rendering.
 
-Install Node.js **22.12 or newer**, pnpm (the version declared in
+Install Node.js **22.14 or newer**, pnpm (the version declared in
 [package.json](package.json)), and stable Rust. Follow the
 [Tauri platform prerequisites](https://v2.tauri.app/start/prerequisites/) for
 Linux libraries, macOS developer tools, or Windows build tools and WebView2.
