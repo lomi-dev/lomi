@@ -1,13 +1,18 @@
 use crate::files::{directory, main_window};
 use serde::{Deserialize, Serialize};
 use std::{
-    path::{Component, Path},
+    collections::HashSet,
+    fs,
+    path::{Component, Path, PathBuf},
     process::{Command, Output},
+    sync::{Mutex, OnceLock},
 };
 use tauri::Window;
 
 mod diff;
 pub mod history;
+#[cfg(test)]
+mod regression;
 
 fn configured_command(root: &Path, args: &[&str]) -> Command {
     let mut command = Command::new("git");
@@ -122,6 +127,125 @@ pub async fn git_status(window: Window, root: String) -> Result<Option<GitStatus
         .map_err(|error| error.to_string())?
 }
 
+#[derive(Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryScan {
+    repositories: Vec<GitStatus>,
+    errors: Vec<RepositoryError>,
+    limited: bool,
+}
+
+#[derive(Serialize)]
+pub struct RepositoryError {
+    root: String,
+    message: String,
+}
+
+impl RepositoryScan {
+    fn read(&mut self, path: &Path, exact: bool) {
+        let root = path.to_string_lossy().into_owned();
+        let result = if exact {
+            exact_status(&root).map(Some)
+        } else {
+            status(&root)
+        };
+        match result {
+            Ok(Some(repository)) => {
+                if !self
+                    .repositories
+                    .iter()
+                    .any(|item| item.root == repository.root)
+                {
+                    self.repositories.push(repository);
+                }
+            }
+            Ok(None) => {}
+            Err(message) => self.errors.push(RepositoryError { root, message }),
+        }
+    }
+}
+
+fn repositories(project: &str, known_roots: Option<&[String]>) -> Result<RepositoryScan, String> {
+    let project = directory(project)?;
+    let mut result = RepositoryScan::default();
+    if let Some(roots) = known_roots {
+        for root in roots.iter().take(64) {
+            result.read(Path::new(root), true);
+        }
+        result.limited = roots.len() > 64;
+        return Ok(result);
+    }
+    result.read(&project, false);
+    let mut pending = vec![(project, 0usize)];
+    let mut visited = 0usize;
+    'scan: while let Some((folder, depth)) = pending.pop() {
+        let entries = match fs::read_dir(&folder) {
+            Ok(entries) => entries,
+            Err(error) => {
+                result.errors.push(RepositoryError {
+                    root: folder.to_string_lossy().into_owned(),
+                    message: error.to_string(),
+                });
+                continue;
+            }
+        };
+        for entry in entries {
+            if visited >= 10_000 || result.repositories.len() >= 64 {
+                result.limited = true;
+                break 'scan;
+            }
+            visited += 1;
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(error) => {
+                    result.errors.push(RepositoryError {
+                        root: folder.to_string_lossy().into_owned(),
+                        message: error.to_string(),
+                    });
+                    continue;
+                }
+            };
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if matches!(
+                name.as_ref(),
+                ".git" | "node_modules" | "target" | "dist" | "build" | ".next" | ".venv"
+            ) {
+                continue;
+            }
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
+            if !kind.is_dir() || kind.is_symlink() {
+                continue;
+            }
+            let path = entry.path();
+            if path.join(".git").exists() {
+                result.read(&path, true);
+            }
+            if depth < 4 {
+                pending.push((path, depth + 1));
+            } else {
+                result.limited = true;
+            }
+        }
+    }
+    result.repositories.sort_by(|a, b| a.root.cmp(&b.root));
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn git_repositories(
+    window: Window,
+    root: String,
+    known_roots: Option<Vec<String>>,
+) -> Result<RepositoryScan, String> {
+    main_window(&window)?;
+    tauri::async_runtime::spawn_blocking(move || repositories(&root, known_roots.as_deref()))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
 fn remotes(root: &Path) -> Result<Vec<String>, String> {
     Ok(String::from_utf8_lossy(&checked(root, &["remote"])?)
         .lines()
@@ -145,16 +269,17 @@ pub async fn git_remotes(window: Window, root: String) -> Result<Vec<String>, St
 }
 
 fn fetch(root: &str, remote: Option<&str>) -> Result<(), String> {
+    let _operation = mutation_guard(root)?;
     let root = repository(root)?;
     if let Some(remote) = remote {
         validate_remote(&root, remote)?;
-        checked(&root, &["fetch", "--", remote])?;
+        checked_repository(&root, &["fetch", "--", remote])?;
     } else if remotes(&root)?.is_empty() {
         return Err(
             "No Git remote is configured. Add a remote in a terminal, then try again.".into(),
         );
     } else {
-        checked(&root, &["fetch", "--all"])?;
+        checked_repository(&root, &["fetch", "--all"])?;
     }
     Ok(())
 }
@@ -168,8 +293,9 @@ pub async fn git_fetch(window: Window, root: String, remote: Option<String>) -> 
 }
 
 pub(crate) fn pull(root: &str, rebase: bool) -> Result<(), String> {
+    let _operation = mutation_guard(root)?;
     let root = repository(root)?;
-    checked(
+    checked_repository(
         &root,
         if rebase {
             &["pull", "--rebase", "--ff", "--no-autostash"]
@@ -181,6 +307,7 @@ pub(crate) fn pull(root: &str, rebase: bool) -> Result<(), String> {
 }
 
 fn push(root: &str, remote: Option<&str>, force: bool) -> Result<(), String> {
+    let _operation = mutation_guard(root)?;
     let root = repository(root)?;
     checked(&root, &["symbolic-ref", "--quiet", "HEAD"])
         .map_err(|_| "Check out a branch before pushing.".to_string())?;
@@ -192,7 +319,7 @@ fn push(root: &str, remote: Option<&str>, force: bool) -> Result<(), String> {
         validate_remote(&root, remote)?;
         args.extend(["--", remote, "HEAD"]);
     }
-    checked(&root, &args)?;
+    checked_repository(&root, &args)?;
     Ok(())
 }
 
@@ -209,10 +336,57 @@ pub async fn git_push(
         .map_err(|error| error.to_string())?
 }
 
-fn repository(root: &str) -> Result<std::path::PathBuf, String> {
-    status(root)?
-        .map(|status| std::path::PathBuf::from(status.root))
-        .ok_or_else(|| "This directory is not a Git repository.".into())
+fn exact_status(root: &str) -> Result<GitStatus, String> {
+    let expected = directory(root)?;
+    let status = status(root)?.ok_or("This directory is not a Git repository.")?;
+    if directory(&status.root)? != expected {
+        return Err("The Git repository changed. Refresh Source Control and try again.".into());
+    }
+    Ok(status)
+}
+
+pub(crate) fn repository(root: &str) -> Result<PathBuf, String> {
+    Ok(PathBuf::from(exact_status(root)?.root))
+}
+
+// Prevent Git's parent discovery even if .git disappears after validation.
+pub(crate) fn checked_repository(root: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
+    let mut command = configured_command(root, args);
+    if let Some(parent) = root.parent() {
+        command.env(
+            "GIT_CEILING_DIRECTORIES",
+            std::env::join_paths([parent]).map_err(|error| error.to_string())?,
+        );
+    }
+    let output = command
+        .output()
+        .map_err(|error| format!("Cannot run Git: {error}"))?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+    Ok(output.stdout)
+}
+
+static MUTATIONS: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
+pub(crate) struct MutationGuard(PathBuf);
+impl Drop for MutationGuard {
+    fn drop(&mut self) {
+        if let Ok(mut active) = MUTATIONS.get_or_init(Mutex::default).lock() {
+            active.remove(&self.0);
+        }
+    }
+}
+pub(crate) fn mutation_guard(root: &str) -> Result<MutationGuard, String> {
+    let path = directory(root)?;
+    if !MUTATIONS
+        .get_or_init(Mutex::default)
+        .lock()
+        .map_err(|_| "Git operations are unavailable.")?
+        .insert(path.clone())
+    {
+        return Err("Wait for the current Git operation in this repository to finish.".into());
+    }
+    Ok(MutationGuard(path))
 }
 
 fn relative(path: &str) -> Result<(), String> {
@@ -231,6 +405,7 @@ fn relative(path: &str) -> Result<(), String> {
 }
 
 pub fn change_index(root: &str, paths: &[String], stage: bool) -> Result<(), String> {
+    let _operation = mutation_guard(root)?;
     let root = repository(root)?;
     if paths.is_empty() {
         return Ok(());
@@ -249,13 +424,14 @@ pub fn change_index(root: &str, paths: &[String], stage: bool) -> Result<(), Str
         vec!["--literal-pathspecs", "rm", "--cached", "--"]
     };
     args.extend(paths.iter().map(String::as_str));
-    checked(&root, &args)?;
+    checked_repository(&root, &args)?;
     Ok(())
 }
 
 pub(crate) fn discard(root: &str, expected: &Change) -> Result<(), String> {
+    let _operation = mutation_guard(root)?;
     relative(&expected.path)?;
-    let status = status(root)?.ok_or("This directory is not a Git repository.")?;
+    let status = exact_status(root)?;
     let change = status
         .changes
         .iter()
@@ -292,7 +468,7 @@ pub(crate) fn discard(root: &str, expected: &Change) -> Result<(), String> {
                 .into(),
         );
     }
-    checked(
+    checked_repository(
         root,
         &[
             "--literal-pathspecs",
@@ -331,19 +507,22 @@ pub async fn git_diff(
         .map_err(|error| error.to_string())?
 }
 
-#[tauri::command]
-pub async fn git_commit(window: Window, root: String, message: String) -> Result<(), String> {
-    main_window(&window)?;
+fn commit(root: &str, message: &str) -> Result<(), String> {
     if message.trim().is_empty() {
         return Err("Enter a commit message.".into());
     }
-    tauri::async_runtime::spawn_blocking(move || {
-        let root = repository(&root)?;
-        checked(&root, &["commit", "-m", &message])?;
-        Ok(())
-    })
-    .await
-    .map_err(|error| error.to_string())?
+    let _operation = mutation_guard(root)?;
+    let root = repository(root)?;
+    checked_repository(&root, &["commit", "--cleanup=verbatim", "-m", message])?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn git_commit(window: Window, root: String, message: String) -> Result<(), String> {
+    main_window(&window)?;
+    tauri::async_runtime::spawn_blocking(move || commit(&root, &message))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 #[cfg(test)]
@@ -703,5 +882,32 @@ mod tests {
         change_index(path, &paths, false).unwrap();
         assert!(root.path().join("literal[1].txt").exists());
         assert_eq!(status(path).unwrap().unwrap().changes[0].index, '?');
+    }
+
+    #[test]
+    fn discovers_sibling_and_nested_repositories() {
+        let project = tempfile::tempdir().unwrap();
+        let first = project.path().join("first");
+        let second = project.path().join("group").join("second");
+        fs::create_dir_all(&first).unwrap();
+        fs::create_dir_all(&second).unwrap();
+        checked(&first, &["init", "-b", "main"]).unwrap();
+        checked(&second, &["init", "-b", "main"]).unwrap();
+        fs::write(first.join("one.txt"), "one").unwrap();
+        fs::write(second.join("two.txt"), "two").unwrap();
+        let found = repositories(project.path().to_str().unwrap(), None)
+            .unwrap()
+            .repositories;
+        assert_eq!(found.len(), 2);
+        assert_eq!(
+            found[0].root,
+            fs::canonicalize(&first).unwrap().to_string_lossy()
+        );
+        assert_eq!(found[0].changes[0].path, "one.txt");
+        assert_eq!(
+            found[1].root,
+            fs::canonicalize(&second).unwrap().to_string_lossy()
+        );
+        assert_eq!(found[1].changes[0].path, "two.txt");
     }
 }

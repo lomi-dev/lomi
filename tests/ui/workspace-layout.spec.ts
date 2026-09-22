@@ -150,11 +150,19 @@ for (const width of [1440, 800]) {
         command: string,
         args: Record<string, any> = {},
       ) => {
-        if (command === "git_status") {
+        if (command === "git_status" || command === "git_repositories") {
           await new Promise((resolve) => setTimeout(resolve, 180));
-          return args.root === "/work/plain"
-            ? null
-            : { root: args.root, branch: args.root, changes: [] };
+          const status =
+            args.root === "/work/plain"
+              ? null
+              : { root: args.root, branch: args.root, changes: [] };
+          return command === "git_repositories"
+            ? {
+                repositories: status ? [status] : [],
+                errors: [],
+                limited: false,
+              }
+            : status;
         }
         return invoke(command, args);
       };

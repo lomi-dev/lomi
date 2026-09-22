@@ -29,19 +29,19 @@ interface Props {
   root: string;
   onTerminal: (path: string) => void;
   onOpenFile: (relative: string, match?: SearchMatch) => void;
-  gitStatus: GitStatus | null;
+  repositories: GitStatus[];
   onRefreshGit: () => void;
-  onOpenCommit: (commit: GitCommitSummary) => void;
+  onOpenCommit: (commit: GitCommitSummary, root: string) => void;
   onOperation: (relative: string, operation: FileOperation) => Promise<boolean>;
   onError: (message: string) => void;
 }
 
 export default function Explorer(props: Props) {
   const gitStatuses = useMemo(
-    () => explorerGitStatuses(props.gitStatus),
-    [props.gitStatus],
+    () => explorerGitStatuses(props.repositories, props.root),
+    [props.repositories, props.root],
   );
-  const gitRevision = JSON.stringify(props.gitStatus?.changes);
+  const gitRevision = JSON.stringify(props.repositories);
   const [revision, setRevision] = useState(0);
   const [watched, setWatched] = useState(new Set<string>());
   const [directoryRevisions, setDirectoryRevisions] = useState<
@@ -101,7 +101,6 @@ export default function Explorer(props: Props) {
   };
   const actions = useExplorerActions({
     ...props,
-    repositoryRoot: props.gitStatus?.root,
     onSearch: search,
     onRefresh: refresh,
     onExpand: (relative) =>

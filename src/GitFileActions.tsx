@@ -24,6 +24,7 @@ export function useGitFileActions(props: {
     busy: boolean;
     onStage: (change: GitChange, staged: boolean) => void;
     onDiscard: (change: GitChange) => Promise<void>;
+    onRun: (action: () => Promise<void>) => Promise<void>;
     onRefresh: () => void;
   };
 }) {
@@ -73,11 +74,14 @@ export function useGitFileActions(props: {
   };
   const ignore = (local: boolean) =>
     run(async () => {
-      await api("ignore_project_item", {
-        root: props.root,
-        relative: context!.file.path,
-        local,
-      });
+      const action = () =>
+        api<void>("ignore_project_item", {
+          root: props.root,
+          relative: context!.file.path,
+          local,
+        });
+      if (props.working) await props.working.onRun(action);
+      else await action();
       props.working?.onRefresh();
     });
   const file = context?.file;
@@ -199,7 +203,7 @@ export function useGitFileActions(props: {
               setBusy(true);
               setError("");
               void props.working
-                .onDiscard(discard)
+                .onRun(() => props.working!.onDiscard(discard))
                 .then(() => {
                   setDiscard(undefined);
                   props.working?.onRefresh();

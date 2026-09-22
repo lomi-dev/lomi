@@ -403,7 +403,15 @@ test("Explorer colors files and ancestor folders and refreshes new files and cle
     desktop.__TAURI_INTERNALS__.invoke = (command: string, args: unknown) =>
       command === "git_status"
         ? Promise.resolve(structuredClone(desktop.__explorerGitStatus))
-        : invoke(command, args);
+        : command === "git_repositories"
+          ? Promise.resolve({
+              repositories: desktop.__explorerGitStatus
+                ? [structuredClone(desktop.__explorerGitStatus)]
+                : [],
+              errors: [],
+              limited: false,
+            })
+          : invoke(command, args);
     window.dispatchEvent(new Event("focus"));
   });
   const tree = page.locator(".file-tree");
@@ -415,18 +423,21 @@ test("Explorer colors files and ancestor folders and refreshes new files and cle
   for (const mode of ["dark", "light"] as const) {
     await page.emulateMedia({ colorScheme: mode });
     await expect(page.locator("html")).toHaveAttribute("data-appearance", mode);
-    const colors =
-      mode === "dark"
-        ? {
-            added: "rgb(122, 143, 166)",
-            modified: "rgb(201, 162, 39)",
-            conflict: "rgb(199, 92, 92)",
-          }
-        : {
-            added: "rgb(58, 90, 120)",
-            modified: "rgb(163, 107, 0)",
-            conflict: "rgb(179, 38, 30)",
-          };
+    const colors = await page.evaluate(() => {
+      const probe = document.createElement("span");
+      document.body.append(probe);
+      const resolve = (token: string) => {
+        probe.style.color = `var(${token})`;
+        return getComputedStyle(probe).color;
+      };
+      const colors = {
+        added: resolve("--color-info"),
+        modified: resolve("--color-warning"),
+        conflict: resolve("--color-error"),
+      };
+      probe.remove();
+      return colors;
+    });
     for (const [name, color] of [
       ["README.md", colors.modified],
       [".env", colors.modified],
@@ -478,10 +489,16 @@ test("Explorer colors files and ancestor folders and refreshes new files and cle
         (change: { path: string }) => change.path !== "project/src/conflict.ts",
       );
   });
+  const addedColor = await tree
+    .getByRole("button", { name: "new.ts", exact: true })
+    .evaluate((element) => getComputedStyle(element).color);
+  const modifiedColor = await tree
+    .getByRole("button", { name: "README.md", exact: true })
+    .evaluate((element) => getComputedStyle(element).color);
   await expect(
     tree.getByRole("button", { name: "created.ts", exact: true }),
-  ).toHaveCSS("color", "rgb(58, 90, 120)", { timeout: 10000 });
-  await expect(source).toHaveCSS("color", "rgb(163, 107, 0)");
+  ).toHaveCSS("color", addedColor, { timeout: 10000 });
+  await expect(source).toHaveCSS("color", modifiedColor);
   await expect(
     tree.getByRole("button", { name: "README.md", exact: true }),
   ).toBeFocused();
@@ -1240,4 +1257,69 @@ test("fits narrow sidebars in both appearances and keeps composition out of sear
       path: test.info().outputPath(`search-narrow-${appearance}.png`),
     });
   }
+});
+
+test("nested repositories supply file decorations, history and ignore targets", async ({
+  page,
+}) => {
+  await setup(page, false, [
+    { relative: "first", directory: true },
+    { relative: "first/file.txt", directory: false },
+    { relative: "second", directory: true },
+  ]);
+  await page.evaluate(() => {
+    const desktop = window as any;
+    const invoke = desktop.__TAURI_INTERNALS__.invoke;
+    desktop.__TAURI_INTERNALS__.invoke = (command: string, args: any) => {
+      if (command === "git_repositories")
+        return Promise.resolve({
+          repositories: ["first", "second"].map((name) => ({
+            root: `/project/${name}`,
+            branch: "main",
+            changes: [
+              {
+                path: "file.txt",
+                index: " ",
+                worktree: "M",
+                originalPath: null,
+              },
+            ],
+          })),
+          errors: [],
+          limited: false,
+        });
+      return invoke(command, args);
+    };
+    window.dispatchEvent(new Event("focus"));
+  });
+  const first = page.getByRole("button", { name: "first", exact: true });
+  await expect(first).toHaveAttribute("data-git-status", "M");
+  await first.click();
+  const file = page.getByRole("button", { name: "file.txt", exact: true });
+  await expect(file).toHaveAttribute("data-git-status", "M");
+  await menu(page, "file.txt", "Add to .gitignore");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__nativeTest.calls
+            .filter((call: any) => call.command === "ignore_project_item")
+            .at(-1)?.args,
+      ),
+    )
+    .toEqual({ root: "/project/first", relative: "file.txt", local: false });
+  await menu(page, "file.txt", "View History");
+  await expect(
+    page.getByRole("dialog", { name: "Git History · file.txt" }),
+  ).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const args = (window as any).__nativeTest.calls
+          .filter((call: any) => call.command === "git_history")
+          .at(-1)?.args;
+        return args && { root: args.root, path: args.path };
+      }),
+    )
+    .toEqual({ root: "/project/first", path: "file.txt" });
 });

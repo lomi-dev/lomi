@@ -3,8 +3,8 @@ import type { FormEvent, KeyboardEvent, MouseEvent } from "react";
 import ResourceIcon from "./ResourceIcon";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { api, errorMessage } from "./api";
-import type { FileEntry, GitCommitSummary } from "./api";
-import { normalizePath, parentPath } from "./explorer-model";
+import type { FileEntry, GitCommitSummary, GitStatus } from "./api";
+import { parentPath, repositoryForPath, gitFilePath } from "./explorer-model";
 import type { FileOperation } from "./explorer-model";
 import ContextMenu from "./ContextMenu";
 import { Modal } from "./ui";
@@ -14,11 +14,11 @@ let clipboard: { root: string; relative: string; cut: boolean } | undefined;
 
 interface Props {
   root: string;
-  repositoryRoot?: string;
+  repositories: GitStatus[];
   onTerminal: (path: string) => void;
   onSearch: (relative: string) => void;
   onOpenFile: (relative: string) => void;
-  onOpenCommit: (commit: GitCommitSummary) => void;
+  onOpenCommit: (commit: GitCommitSummary, root: string) => void;
   onOperation: (relative: string, operation: FileOperation) => Promise<boolean>;
   onRefresh: () => void;
   onExpand: (relative: string) => void;
@@ -135,9 +135,14 @@ export function useExplorerActions(props: Props) {
     );
   const ignore = (entry: FileEntry, local: boolean) =>
     run(async () => {
+      const repository = repositoryForPath(props.repositories, entry.path);
+      if (!repository)
+        throw new Error("This file is no longer in a Git repository.");
       await api("ignore_project_item", {
-        root: props.root,
-        relative: entry.relativePath,
+        root: repository.root,
+        relative: gitFilePath(entry.path).slice(
+          gitFilePath(repository.root).length + 1,
+        ),
         local,
       });
       props.onRefresh();
@@ -171,6 +176,12 @@ export function useExplorerActions(props: Props) {
     }
   };
   const entry = context?.entry;
+  const entryRepository =
+    entry && repositoryForPath(props.repositories, entry.path);
+  const canIgnore =
+    entry &&
+    entryRepository &&
+    gitFilePath(entryRepository.root) !== gitFilePath(entry.path);
   const menu = context && entry && (
     <ContextMenu
       {...context}
@@ -231,17 +242,17 @@ export function useExplorerActions(props: Props) {
         null,
         {
           label: "Add to .gitignore",
-          disabled: !props.repositoryRoot || !entry.relativePath,
+          disabled: !canIgnore,
           run: () => ignore(entry, false),
         },
         {
           label: "Add to .git/info/exclude",
-          disabled: !props.repositoryRoot || !entry.relativePath,
+          disabled: !canIgnore,
           run: () => ignore(entry, true),
         },
         {
           label: "View History",
-          disabled: !props.repositoryRoot,
+          disabled: !entryRepository,
           run: () => setHistory(entry),
         },
         ...(context.background
@@ -426,7 +437,9 @@ export function useExplorerActions(props: Props) {
       </form>
     </Modal>
   );
-  const historyDialog = history && props.repositoryRoot && (
+  const historyRoot =
+    history && repositoryForPath(props.repositories, history.path)?.root;
+  const historyDialog = history && historyRoot && (
     <Modal
       title={`Git History · ${history.name}`}
       wide
@@ -435,13 +448,13 @@ export function useExplorerActions(props: Props) {
     >
       <GitHistory
         key={history.path}
-        root={props.repositoryRoot}
-        path={normalizePath(history.path)
-          .slice(normalizePath(props.repositoryRoot).length)
+        root={historyRoot}
+        path={gitFilePath(history.path)
+          .slice(gitFilePath(historyRoot).length)
           .replace(/^\//, "")}
         onOpenCommit={(commit) => {
           setHistory(undefined);
-          props.onOpenCommit(commit);
+          props.onOpenCommit(commit, historyRoot);
         }}
       />
     </Modal>

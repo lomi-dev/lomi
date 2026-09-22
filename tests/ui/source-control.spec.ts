@@ -34,6 +34,14 @@ async function openSourceControl(page: Page, changes: GitChange[]) {
       state.calls.push({ command, args });
       if (command === "git_status")
         return { root: args.root, branch: "main", changes: state.changes };
+      if (command === "git_repositories")
+        return {
+          repositories: [
+            { root: args.root, branch: "main", changes: state.changes },
+          ],
+          errors: [],
+          limited: false,
+        };
       if (command === "git_remotes") return ["origin", "upstream"];
       if (["git_fetch", "git_pull", "git_push"].includes(command)) {
         if (state.holdRemote)
@@ -129,6 +137,102 @@ const changed = (
   index,
   worktree,
   originalPath,
+});
+
+test("shows sibling repositories together and scopes actions to the selected repository", async ({
+  page,
+}) => {
+  await mockDesktop(page, false);
+  await page.goto("/");
+  await expect(page.locator(".xterm-screen")).toBeVisible();
+  await page.evaluate(() => {
+    const desktop = window as any;
+    const invoke = desktop.__TAURI_INTERNALS__.invoke;
+    desktop.__multiRepoCalls = [];
+    const repositories = [
+      {
+        root: "/project/first",
+        branch: "main",
+        changes: [
+          { path: "one.txt", originalPath: null, index: "M", worktree: " " },
+        ],
+      },
+      {
+        root: "/project/second",
+        branch: "feature",
+        changes: [
+          { path: "two.txt", originalPath: null, index: " ", worktree: "M" },
+        ],
+      },
+    ];
+    desktop.__TAURI_INTERNALS__.invoke = (
+      command: string,
+      args: Record<string, any> = {},
+    ) => {
+      if (command === "git_status") return Promise.resolve(null);
+      if (command === "git_repositories")
+        return Promise.resolve({ repositories, errors: [], limited: false });
+      if (command.startsWith("git_"))
+        desktop.__multiRepoCalls.push({ command, args });
+      return invoke(command, args);
+    };
+    window.dispatchEvent(new Event("focus"));
+  });
+  await page
+    .getByRole("button", { name: "Toggle source control (Ctrl+Shift+G)" })
+    .click();
+  const repositories = page.getByRole("navigation", { name: "Repositories" });
+  await expect(
+    repositories.getByRole("button", { name: "All repositories 2" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "one.txt" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "two.txt" })).toBeVisible();
+  await page.getByRole("button", { name: "two.txt" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__multiRepoCalls.find(
+            (call: any) => call.command === "git_diff",
+          )?.args,
+      ),
+    )
+    .toMatchObject({ root: "/project/second", path: "two.txt", staged: false });
+  await repositories.getByRole("button", { name: "first 1" }).click();
+  await page
+    .getByRole("textbox", { name: "Commit message" })
+    .fill("Draft for first");
+  await repositories.getByRole("button", { name: "second 1" }).click();
+  await page.getByRole("checkbox", { name: "Stage two.txt" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__multiRepoCalls.find(
+            (call: any) => call.command === "git_stage",
+          )?.args,
+      ),
+    )
+    .toMatchObject({
+      root: "/project/second",
+      paths: ["two.txt"],
+      stage: true,
+    });
+  await repositories.getByRole("button", { name: "first 1" }).click();
+  await expect(
+    page.getByRole("textbox", { name: "Commit message" }),
+  ).toHaveValue("Draft for first");
+  await page.getByRole("button", { name: "Commit staged changes" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__multiRepoCalls.find(
+            (call: any) => call.command === "git_commit",
+          )?.args,
+      ),
+    )
+    .toMatchObject({ root: "/project/first", message: "Draft for first" });
 });
 
 test("fetch and pull run explicitly, report progress and errors, and refresh history", async ({
@@ -1086,4 +1190,118 @@ test("source control keeps its commit form visible while a long list scrolls at 
   await page.screenshot({
     path: testInfo.outputPath("source-control-minimum.png"),
   });
+});
+
+test("All changes hides clean repositories and remembers independently collapsed groups", async ({
+  page,
+}, testInfo) => {
+  await mockDesktop(page, false);
+  await page.addInitScript(() => {
+    const desktop = window as any;
+    const invoke = desktop.__TAURI_INTERNALS__.invoke;
+    const repositories = [
+      { root: "/project/brandbook", branch: "main", changes: [] },
+      {
+        root: "/project/lomi",
+        branch: "main",
+        changes: [
+          {
+            path: "src/SourceControl.tsx",
+            originalPath: null,
+            index: " ",
+            worktree: "M",
+          },
+        ],
+      },
+      {
+        root: "/project/plugin-sdk",
+        branch: "feature",
+        changes: [
+          {
+            path: "src/index.ts",
+            originalPath: null,
+            index: "M",
+            worktree: "M",
+          },
+        ],
+      },
+    ];
+    desktop.__allChanges = repositories;
+    desktop.__TAURI_INTERNALS__.invoke = async (
+      command: string,
+      args: any = {},
+    ) => {
+      if (command === "git_repositories")
+        return { repositories, errors: [], limited: true };
+      return invoke(command, args);
+    };
+  });
+  await page.goto("/");
+  const toggle = page.getByRole("button", {
+    name: "Toggle source control (Ctrl+Shift+G)",
+  });
+  await toggle.click();
+  const navigation = page.getByRole("navigation", { name: "Repositories" });
+  const list = page.locator(".source-all-list");
+  const lomi = list.getByRole("region", { name: "lomi", exact: true });
+  const sdk = list.getByRole("region", { name: "plugin-sdk", exact: true });
+  await expect(
+    navigation.getByRole("button", { name: "brandbook 0", exact: true }),
+  ).toBeVisible();
+  await expect(list.getByRole("region")).toHaveCount(2);
+  await expect(
+    list.getByText("Working tree clean", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText("Repository scan incomplete", { exact: true }),
+  ).toHaveCount(0);
+  const scan = page.getByRole("button", {
+    name: "Repository scan details",
+    exact: true,
+  });
+  await scan.click();
+  await expect(
+    page.getByRole("dialog", { name: "Repository scan", exact: true }),
+  ).toContainText("Only part of this folder was scanned");
+  await page.keyboard.press("Escape");
+  await expect(scan).toBeFocused();
+  const lomiHeader = lomi.locator(".source-all-repository-heading");
+  const sdkHeader = sdk.locator(".source-all-repository-heading");
+  await expect(lomiHeader).toHaveAttribute("aria-expanded", "true");
+  await expect(sdk.locator(".source-all-file")).toHaveCount(2);
+  await lomiHeader.click();
+  await expect(lomiHeader).toHaveAttribute("aria-expanded", "false");
+  await expect(lomi.locator(".source-all-file")).toBeHidden();
+  await expect(sdk.locator(".source-all-file").first()).toBeVisible();
+  await navigation.getByRole("button", { name: "lomi 1", exact: true }).click();
+  await navigation
+    .getByRole("button", { name: "All repositories 3", exact: true })
+    .click();
+  await expect(lomiHeader).toHaveAttribute("aria-expanded", "false");
+  await toggle.click();
+  await toggle.click();
+  await expect(lomiHeader).toHaveAttribute("aria-expanded", "false");
+  await lomiHeader.press("Space");
+  await expect(lomiHeader).toHaveAttribute("aria-expanded", "true");
+  await expect(lomi.locator(".source-all-file")).toBeVisible();
+  await sdkHeader.press("Enter");
+  await expect(sdkHeader).toHaveAttribute("aria-expanded", "false");
+  await expect(sdk.locator(".source-all-file").first()).toBeHidden();
+  await page.setViewportSize({ width: 800, height: 420 });
+  for (const mode of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: mode });
+    await page
+      .locator(".source-panel")
+      .screenshot({ path: testInfo.outputPath(`all-changes-${mode}.png`) });
+  }
+  await page.evaluate(() => {
+    for (const repository of (window as any).__allChanges)
+      repository.changes = [];
+    window.dispatchEvent(new Event("focus"));
+  });
+  await expect(list.getByRole("region")).toHaveCount(0);
+  await expect(list.getByText("No changes.", { exact: true })).toBeVisible();
+  await expect(
+    navigation.getByRole("button", { name: "lomi 0", exact: true }),
+  ).toBeVisible();
 });

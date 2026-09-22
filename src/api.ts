@@ -31,6 +31,11 @@ export interface GitStatus {
   branch: string;
   changes: GitChange[];
 }
+export interface GitRepositoryScan {
+  repositories: GitStatus[];
+  errors: { root: string; message: string }[];
+  limited: boolean;
+}
 export interface GitCommitSummary {
   id: string;
   shortId: string;

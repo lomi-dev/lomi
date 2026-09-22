@@ -943,6 +943,14 @@ export async function mockDesktop(
             return repositoryPresent
               ? { root: args.root, branch: "main", changes }
               : null;
+          if (command === "git_repositories")
+            return {
+              repositories: repositoryPresent
+                ? [{ root: args.root, branch: "main", changes }]
+                : [],
+              errors: [],
+              limited: false,
+            };
           if (command === "git_history") {
             if (desktop.__nativeTest.failHistory)
               throw new Error("History is unavailable");

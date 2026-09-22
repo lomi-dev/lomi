@@ -379,8 +379,8 @@ pub async fn ignore_project_item(
 
 fn ignore_item(root: &str, relative: &str, local: bool) -> Result<(), String> {
     let path = entry_path(root, relative)?;
-    let repository = crate::git::status(root)?.ok_or("This folder is not in a Git repository.")?;
-    let repository = directory(&repository.root)?;
+    let _operation = crate::git::mutation_guard(root)?;
+    let repository = crate::git::repository(root)?;
     let relative = path
         .strip_prefix(&repository)
         .map_err(|_| "The item is outside the repository.")?
@@ -404,7 +404,7 @@ fn ignore_item(root: &str, relative: &str, local: bool) -> Result<(), String> {
         pattern.push('/');
     }
     let target = if local {
-        let bytes = crate::git::checked(
+        let bytes = crate::git::checked_repository(
             &repository,
             &[
                 "rev-parse",
@@ -502,6 +502,20 @@ mod tests {
             "contents"
         );
         assert!(!Path::new(&root).join("file.txt").exists());
+    }
+
+    #[test]
+    fn ignore_rejects_a_missing_nested_repository_without_writing_to_its_parent() {
+        let parent = tempfile::tempdir().unwrap();
+        crate::git::checked(parent.path(), &["init", "-b", "main"]).unwrap();
+        let child = parent.path().join("child");
+        fs::create_dir(&child).unwrap();
+        crate::git::checked(&child, &["init", "-b", "main"]).unwrap();
+        fs::write(child.join("file.txt"), "keep").unwrap();
+        fs::remove_dir_all(child.join(".git")).unwrap();
+        assert!(ignore_item(child.to_str().unwrap(), "file.txt", false).is_err());
+        assert!(!parent.path().join(".gitignore").exists());
+        assert!(!child.join(".gitignore").exists());
     }
 
     #[test]

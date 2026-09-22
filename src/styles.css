@@ -2021,6 +2021,125 @@ svg {
   padding: 0 var(--space-7) 0 var(--space-12);
   border-bottom: var(--border-width) solid var(--color-surface-variant);
 }
+.source-repositories {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  max-height: min(190px, 25%);
+  overflow: auto;
+  padding: var(--space-5) var(--space-7);
+  border-bottom: var(--border-width) solid var(--color-surface-variant);
+}
+.source-repositories-heading {
+  padding: var(--space-4) var(--space-6);
+  color: var(--color-surface-variant-text);
+  font-size: var(--font-size-10);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+.source-repository {
+  display: flex;
+  align-items: center;
+  gap: var(--space-7);
+  min-height: 28px;
+  padding: var(--space-4) var(--space-6);
+  border-radius: var(--radius-sm);
+  text-align: left;
+  font-size: var(--font-size-11);
+}
+.source-repository:hover,
+.source-repository[aria-current="page"] {
+  background: var(--color-surface-container);
+}
+.source-repository[aria-current="page"] {
+  color: var(--color-primary);
+}
+.source-repository-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.source-repository .git-count {
+  margin-left: auto;
+}
+.source-repository-control,
+.source-all {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.source-all > .source-heading {
+  font-size: var(--font-size-12);
+}
+.source-all-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.source-all-repository {
+  border-bottom: var(--border-width) solid var(--color-surface-variant);
+}
+.source-all-repository-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-7);
+  width: 100%;
+  min-height: 34px;
+  padding: var(--space-5) var(--space-12);
+  background: var(--color-surface-container);
+  text-align: left;
+  font-size: var(--font-size-11);
+  font-weight: 600;
+}
+.source-all-repository-heading:hover {
+  color: var(--color-primary);
+}
+.source-all-repository-heading > svg {
+  flex-shrink: 0;
+}
+.source-all-repository-name {
+  flex: 1;
+}
+.source-all-branch {
+  max-width: 35%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.source-heading-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: var(--space-4);
+}
+.source-all-repository-name,
+.source-all-file > span:nth-child(2) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.source-all-file {
+  display: flex;
+  align-items: center;
+  gap: var(--space-7);
+  width: 100%;
+  min-height: 28px;
+  padding: var(--space-4) var(--space-12);
+  text-align: left;
+  font-size: var(--font-size-11);
+}
+.source-all-file:hover,
+.source-all-file:focus-visible {
+  background: var(--color-surface-variant);
+}
+.source-all-file > .git-count {
+  margin-left: auto;
+}
 .source-pages {
   display: flex;
   align-self: stretch;
@@ -5238,4 +5357,15 @@ html[data-hide-explorer-arrows="true"] .tree-entry > .lucide:first-child {
 .product-icon {
   flex-shrink: 0;
   overflow: visible;
+}
+
+.source-scan-details {
+  overflow-wrap: anywhere;
+}
+.source-panel:has(.source-repositories) .commit-form {
+  flex-shrink: 1;
+  min-height: 64px;
+}
+.source-panel:has(.source-repositories) .git-groups {
+  min-height: 28px;
 }

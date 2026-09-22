@@ -234,3 +234,39 @@ test("file diff tabs follow renames and retain deleted files for comparison", ()
   );
   assert.equal(state.projects[0].workspaces[0].tabs[1].id, tab.id);
 });
+
+test("Explorer combines sibling repositories and prefers nested repository statuses", () => {
+  const repositories = [
+    {
+      root: "/project",
+      branch: "main",
+      changes: [
+        {
+          path: "first/file.txt",
+          originalPath: null,
+          index: "?",
+          worktree: "?",
+        },
+      ],
+    },
+    {
+      root: "/project/first",
+      branch: "main",
+      changes: [
+        { path: "file.txt", originalPath: null, index: " ", worktree: "M" },
+      ],
+    },
+    {
+      root: "/project/group/second",
+      branch: "main",
+      changes: [
+        { path: "other.txt", originalPath: null, index: "U", worktree: "U" },
+      ],
+    },
+  ];
+  const statuses = explorerGitStatuses(repositories, "/project");
+  assert.equal(statuses.get("/project/first/file.txt"), "M");
+  assert.equal(statuses.get("/project/first"), "M");
+  assert.equal(statuses.get("/project/group"), "U");
+  assert.equal(statuses.get("/project"), "U");
+});

@@ -1,6 +1,10 @@
-import { useId, useRef, useState } from "react";
+import type { ReactNode } from "react";
+import type { SourceControlState } from "./source-control-state";
+import { useId, useRef, useState, useSyncExternalStore } from "react";
 import {
   Check,
+  CircleAlert,
+  Info,
   ChevronDown,
   ChevronRight,
   FileDiff,
@@ -19,8 +23,264 @@ import { useGitFileActions } from "./GitFileActions";
 import { IconButton, Modal } from "./ui";
 
 export default function SourceControl({
+  projectRoot,
+  repositories,
+  state,
+  errors,
+  limited,
+  loading = false,
+  onRefresh,
+  onPull,
+  onDiff,
+  onOpenCommit,
+  onOpenFile,
+  onDiscard,
+  onError,
+}: {
+  projectRoot: string;
+  repositories: GitStatus[];
+  state: SourceControlState;
+  errors: { root: string; message: string }[];
+  limited: boolean;
+  loading?: boolean;
+  onRefresh: () => void;
+  onPull: (root: string, rebase: boolean) => Promise<void>;
+  onDiff: (root: string, path: string, staged: boolean) => void;
+  onOpenCommit: (root: string, commit: GitCommitSummary) => void;
+  onOpenFile: (root: string, path: string) => void;
+  onDiscard: (root: string, change: GitChange) => Promise<void>;
+  onError: (message: string) => void;
+}) {
+  useSyncExternalStore(state.subscribe, state.snapshot);
+  const [scanDetails, setScanDetails] = useState(false);
+  const changesId = useId();
+  const changedRepositories = repositories.filter(
+    (repository) => repository.changes.length > 0,
+  );
+  const scanAction = (errors.length > 0 || limited) && (
+    <IconButton
+      title={
+        errors.length ? "Repository scan errors" : "Repository scan details"
+      }
+      onClick={() => setScanDetails(true)}
+    >
+      {errors.length ? <CircleAlert size={14} /> : <Info size={14} />}
+    </IconButton>
+  );
+  const selectedRoot = state.selection(projectRoot);
+  const setSelectedRoot = (root: string | null) =>
+    state.select(projectRoot, root);
+  const selected = repositories.find(
+    (repository) => repository.root === selectedRoot,
+  );
+  const active = repositories.length === 1 ? repositories[0] : selected;
+  const label = (root: string) => {
+    const project = projectRoot.replace(/\\/g, "/").replace(/\/$/, "");
+    const path = root.replace(/\\/g, "/");
+    const relative = path.startsWith(`${project}/`)
+      ? path.slice(project.length + 1)
+      : path === project
+        ? "."
+        : root;
+    return relative === "."
+      ? projectRoot.split(/[\\/]/).at(-1) || root
+      : relative;
+  };
+  return (
+    <div className="sidebar-panel source-panel">
+      {(errors.length > 0 || limited) && (
+        <>
+          {scanDetails && (
+            <Modal
+              title="Repository scan"
+              onClose={() => setScanDetails(false)}
+            >
+              <div className="dialog-body source-scan-details">
+                {errors.map((error, index) => (
+                  <p key={`${error.root}:${index}`}>
+                    <strong>{label(error.root)}</strong>: {error.message}
+                  </p>
+                ))}
+                {errors.length > 0 && (
+                  <p>
+                    Some repositories could not be refreshed. Previously loaded
+                    statuses are kept until the next successful refresh.
+                  </p>
+                )}
+                {limited && (
+                  <p>
+                    Only part of this folder was scanned. Open a more specific
+                    project folder to see other repositories.
+                  </p>
+                )}
+              </div>
+              <div className="dialog-actions">
+                <button
+                  type="button"
+                  className="button"
+                  onClick={() => setScanDetails(false)}
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  className="button"
+                  onClick={() => {
+                    setScanDetails(false);
+                    onRefresh();
+                  }}
+                >
+                  Retry repository scan
+                </button>
+              </div>
+            </Modal>
+          )}
+        </>
+      )}
+      {repositories.length > 1 && (
+        <nav className="source-repositories" aria-label="Repositories">
+          <div className="source-repositories-heading">REPOSITORIES</div>
+          <button
+            type="button"
+            className="source-repository"
+            aria-current={!active ? "page" : undefined}
+            onClick={() => setSelectedRoot(null)}
+          >
+            <span>All repositories</span>
+            <span className="git-count">{repositories.length}</span>
+          </button>
+          {repositories.map((repository) => (
+            <button
+              key={repository.root}
+              type="button"
+              className="source-repository"
+              aria-current={
+                active?.root === repository.root ? "page" : undefined
+              }
+              title={repository.root}
+              onClick={() => setSelectedRoot(repository.root)}
+            >
+              <GitBranch size={13} />
+              <span className="source-repository-name">
+                {label(repository.root)}
+              </span>
+              <span className="git-count">{repository.changes.length}</span>
+            </button>
+          ))}
+        </nav>
+      )}
+      {!active && repositories.length > 1 ? (
+        <div className="source-all">
+          <header className="source-heading">
+            <span>All changes</span>
+            <div className="source-heading-actions">
+              {scanAction}
+              <IconButton title="Refresh source control" onClick={onRefresh}>
+                <RefreshCw size={14} />
+              </IconButton>
+            </div>
+          </header>
+          <div className="source-all-list">
+            {changedRepositories.length === 0 && (
+              <div className="git-clean">
+                <Check size={20} />
+                <p>No changes.</p>
+              </div>
+            )}
+            {changedRepositories.map((repository, index) => {
+              const collapsed = state.repository(
+                repository.root,
+              ).changesCollapsed;
+              const listId = `${changesId}-${index}`;
+              return (
+                <section
+                  className="source-all-repository"
+                  key={repository.root}
+                  aria-label={label(repository.root)}
+                >
+                  <button
+                    type="button"
+                    className="source-all-repository-heading"
+                    aria-expanded={!collapsed}
+                    aria-controls={listId}
+                    onClick={() =>
+                      state.update(repository.root, {
+                        changesCollapsed: !collapsed,
+                      })
+                    }
+                    title={`${collapsed ? "Expand" : "Collapse"} ${label(repository.root)}`}
+                  >
+                    {collapsed ? (
+                      <ChevronRight size={13} aria-hidden="true" />
+                    ) : (
+                      <ChevronDown size={13} aria-hidden="true" />
+                    )}
+                    <span className="source-all-repository-name">
+                      {label(repository.root)}
+                    </span>
+                    <span className="git-count source-all-branch">
+                      {repository.branch}
+                    </span>
+                    <span className="git-count">
+                      {repository.changes.length}
+                    </span>
+                  </button>
+                  <div id={listId} hidden={collapsed}>
+                    {repository.changes.flatMap((change) => {
+                      const entries: { staged: boolean; code: string }[] = [];
+                      if (![" ", "?", "!"].includes(change.index))
+                        entries.push({ staged: true, code: change.index });
+                      if (![" ", "!"].includes(change.worktree))
+                        entries.push({ staged: false, code: change.worktree });
+                      return entries.map(({ staged, code }) => (
+                        <button
+                          key={`${change.path}:${staged}`}
+                          type="button"
+                          className="source-all-file"
+                          title={`${staged ? "Staged" : "Working"}: ${change.path}`}
+                          onClick={() =>
+                            onDiff(repository.root, change.path, staged)
+                          }
+                        >
+                          <span className="git-file-icon" data-status={code}>
+                            {code}
+                          </span>
+                          <span>{change.path}</span>
+                          {staged && <span className="git-count">staged</span>}
+                        </button>
+                      ));
+                    })}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <RepositoryControl
+          key={active?.root ?? "empty"}
+          status={active ?? null}
+          loading={loading}
+          scanAction={scanAction}
+          state={state}
+          onRefresh={onRefresh}
+          onPull={(rebase) => onPull(active!.root, rebase)}
+          onDiff={(path, staged) => onDiff(active!.root, path, staged)}
+          onOpenCommit={(commit) => onOpenCommit(active!.root, commit)}
+          onOpenFile={(path) => onOpenFile(active!.root, path)}
+          onDiscard={(change) => onDiscard(active!.root, change)}
+          onError={onError}
+        />
+      )}
+    </div>
+  );
+}
+
+function RepositoryControl({
   status,
   loading = false,
+  scanAction,
+  state,
   onRefresh,
   onPull,
   onDiff,
@@ -31,6 +291,8 @@ export default function SourceControl({
 }: {
   status: GitStatus | null;
   loading?: boolean;
+  scanAction: ReactNode;
+  state: SourceControlState;
   onRefresh: () => void;
   onPull: (rebase: boolean) => Promise<void>;
   onDiff: (path: string, staged: boolean) => void;
@@ -39,9 +301,12 @@ export default function SourceControl({
   onDiscard: (change: GitChange) => Promise<void>;
   onError: (message: string) => void;
 }) {
-  const [message, setMessage] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [remoteStatus, setRemoteStatus] = useState("");
+  const root = status?.root ?? "";
+  const { busy, message, remoteStatus, historyRevision } =
+    state.repository(root);
+  const onMessageChange = (message: string) => state.update(root, { message });
+  const setRemoteStatus = (remoteStatus: string) =>
+    state.update(root, { remoteStatus });
   const [remoteMenu, setRemoteMenu] = useState<{
     x: number;
     y: number;
@@ -59,22 +324,15 @@ export default function SourceControl({
     remoteTrigger.current?.focus({ preventScroll: true });
   };
   const [page, setPage] = useState<"changes" | "history">("changes");
-  const [historyRevision, setHistoryRevision] = useState(0);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const groupId = useId();
   const run = async (action: () => Promise<void>, progress = "") => {
-    if (busy) return;
-    setBusy(true);
-    setRemoteStatus(progress);
     try {
-      await action();
+      await state.run(root, action, progress);
     } catch (error) {
-      setRemoteStatus("");
       onError(errorMessage(error));
     } finally {
-      setBusy(false);
       onRefresh();
-      setHistoryRevision((value) => value + 1);
     }
   };
   const fetch = (remote?: string) =>
@@ -135,13 +393,17 @@ export default function SourceControl({
       busy,
       onStage: (change, staged) => void stage([change], staged),
       onDiscard,
+      onRun: (action) => state.run(root, action),
       onRefresh,
     },
   });
   if (!status)
     return (
       <div className="sidebar-panel">
-        <header className="sidebar-heading">SOURCE CONTROL</header>
+        <header className="sidebar-heading">
+          <span>SOURCE CONTROL</span>
+          {scanAction}
+        </header>
         <p className="sidebar-empty" role={loading ? "status" : undefined}>
           {loading
             ? "Checking for a Git repository…"
@@ -269,7 +531,7 @@ export default function SourceControl({
     </section>
   );
   return (
-    <div className="sidebar-panel source-panel">
+    <div className="source-repository-control">
       <header className="source-heading">
         <div
           className="source-pages"
@@ -317,16 +579,21 @@ export default function SourceControl({
             </button>
           ))}
         </div>
-        <IconButton
-          title="Refresh source control"
-          disabled={busy}
-          onClick={() => {
-            onRefresh();
-            setHistoryRevision((value) => value + 1);
-          }}
-        >
-          <RefreshCw size={14} />
-        </IconButton>
+        <div className="source-heading-actions">
+          {scanAction}
+          <IconButton
+            title="Refresh source control"
+            disabled={busy}
+            onClick={() => {
+              onRefresh();
+              state.update(root, {
+                historyRevision: state.repository(root).historyRevision + 1,
+              });
+            }}
+          >
+            <RefreshCw size={14} />
+          </IconButton>
+        </div>
       </header>
       <div className="git-remote-actions">
         <button
@@ -519,7 +786,7 @@ export default function SourceControl({
               if (busy || !message.trim() || !staged.length) return;
               void run(async () => {
                 await api("git_commit", { root: status.root, message });
-                setMessage("");
+                state.clearSubmittedMessage(root, message);
               });
             }}
           >
@@ -527,7 +794,7 @@ export default function SourceControl({
               aria-label="Commit message"
               placeholder="Enter commit message"
               value={message}
-              onChange={(event) => setMessage(event.target.value)}
+              onChange={(event) => onMessageChange(event.target.value)}
               readOnly={busy}
               rows={5}
             />

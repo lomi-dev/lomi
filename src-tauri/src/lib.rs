@@ -321,6 +321,7 @@ pub fn run() {
                 plugins::restart_plugins,
                 plugins::report_plugin_status,
                 git::git_status,
+                git::git_repositories,
                 git::git_fetch,
                 git::git_remotes,
                 git::git_push,

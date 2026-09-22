@@ -27,38 +27,67 @@ export const gitFilePath = (path: string) =>
     .replace(/^\/\/\?\/UNC\//, "//")
     .replace(/^\/\/\?\//, "");
 
-export function explorerGitStatuses(status: GitStatus | null) {
+export function repositoryForPath(repositories: GitStatus[], path: string) {
+  return repositories
+    .filter((repo) => containsPath(gitFilePath(repo.root), gitFilePath(path)))
+    .sort((a, b) => b.root.length - a.root.length)[0];
+}
+
+export function explorerGitStatuses(
+  statuses: GitStatus | GitStatus[] | null,
+  projectRoot?: string,
+) {
   const files = new Map<string, string>();
-  if (!status) return files;
+  const repositories = Array.isArray(statuses)
+    ? statuses
+    : statuses
+      ? [statuses]
+      : [];
   const folders = new Map<string, string>();
   const priority: Record<string, number> = { A: 1, M: 2, U: 3 };
-  const root = gitFilePath(status.root);
-  for (const change of status.changes) {
-    const { index, worktree } = change;
-    let code = worktree === " " ? index : worktree;
-    if (index === "A" && worktree !== "D") code = "A";
-    if (
-      index === "U" ||
-      worktree === "U" ||
-      ["AA", "DD"].includes(index + worktree)
-    )
-      code = "U";
-    if (!["?", "A", "M", "D", "R", "C", "T", "U"].includes(code)) continue;
-    files.set(gitFilePath(`${root}/${change.path}`), code);
-    const folderCode =
-      code === "U" ? "U" : ["?", "A"].includes(code) ? "A" : "M";
-    const paths = [change.path];
-    if (change.originalPath && (index === "R" || worktree === "R"))
-      paths.push(change.originalPath);
-    for (const relative of paths) {
-      for (
-        let parent = parentPath(gitFilePath(`${root}/${relative}`));
-        containsPath(root, parent);
-        parent = parentPath(parent)
-      ) {
-        if (priority[folderCode] > (priority[folders.get(parent) ?? ""] ?? 0))
-          folders.set(parent, folderCode);
-        if (parent === root) break;
+  for (const status of [...repositories].sort(
+    (a, b) => a.root.length - b.root.length,
+  )) {
+    const root = gitFilePath(status.root);
+    const boundary =
+      projectRoot && containsPath(gitFilePath(projectRoot), root)
+        ? gitFilePath(projectRoot)
+        : root;
+    for (const change of status.changes) {
+      const absolute = gitFilePath(`${root}/${change.path}`);
+      const owner = repositoryForPath(repositories, absolute);
+      if (
+        owner &&
+        owner.root !== status.root &&
+        absolute !== gitFilePath(owner.root)
+      )
+        continue;
+      const { index, worktree } = change;
+      let code = worktree === " " ? index : worktree;
+      if (index === "A" && worktree !== "D") code = "A";
+      if (
+        index === "U" ||
+        worktree === "U" ||
+        ["AA", "DD"].includes(index + worktree)
+      )
+        code = "U";
+      if (!["?", "A", "M", "D", "R", "C", "T", "U"].includes(code)) continue;
+      files.set(gitFilePath(`${root}/${change.path}`), code);
+      const folderCode =
+        code === "U" ? "U" : ["?", "A"].includes(code) ? "A" : "M";
+      const paths = [change.path];
+      if (change.originalPath && (index === "R" || worktree === "R"))
+        paths.push(change.originalPath);
+      for (const relative of paths) {
+        for (
+          let parent = parentPath(gitFilePath(`${root}/${relative}`));
+          containsPath(boundary, parent);
+          parent = parentPath(parent)
+        ) {
+          if (priority[folderCode] > (priority[folders.get(parent) ?? ""] ?? 0))
+            folders.set(parent, folderCode);
+          if (parent === boundary) break;
+        }
       }
     }
   }

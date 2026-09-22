@@ -48,7 +48,8 @@ import {
   native,
   saveSession,
 } from "./api";
-import type { GitStatus } from "./api";
+import useGit from "./useGit";
+import { SourceControlState } from "./source-control-state";
 import {
   active,
   activePanel,
@@ -211,55 +212,8 @@ function initialize() {
   })());
 }
 
-function useGit(root: string) {
-  const [results, setResults] = useState<
-    Record<string, { status: GitStatus | null }>
-  >({});
-  const [revision, setRevision] = useState(0);
-  const refresh = useCallback(() => setRevision((value) => value + 1), []);
-  useEffect(() => {
-    if (!root || !native) return;
-    let current = true;
-    let busy = false;
-    const update = async () => {
-      if (busy || document.visibilityState === "hidden") return;
-      busy = true;
-      try {
-        const next = await api<GitStatus | null>("git_status", { root });
-        if (current) {
-          setResults((previous) => ({
-            ...previous,
-            [root]: { status: next },
-          }));
-        }
-      } catch {
-        if (current) {
-          setResults((previous) => ({
-            ...previous,
-            [root]: { status: null },
-          }));
-        }
-      } finally {
-        busy = false;
-      }
-    };
-    void update();
-    const timer = setInterval(() => void update(), 4000);
-    window.addEventListener("focus", update);
-    return () => {
-      current = false;
-      clearInterval(timer);
-      window.removeEventListener("focus", update);
-    };
-  }, [root, revision]);
-  return {
-    status: results[root]?.status ?? null,
-    loading: !!root && !results[root],
-    refresh,
-  };
-}
-
 export default function Workbench() {
+  const [sourceControlState] = useState(() => new SourceControlState());
   const closeGuard = useCloseGuard();
   const theme = useThemes();
   useSyncExternalStore(subscribeEditors, editorRevision);
@@ -1211,7 +1165,7 @@ export default function Workbench() {
         action !== "toggleWorkspaces"
       )
         return;
-      if (action === "toggleSourceControl" && !git.status) return;
+      if (action === "toggleSourceControl" && !git.repositories.length) return;
       if (
         (action === "copyTerminal" || action === "pasteTerminal") &&
         !(
@@ -1573,8 +1527,15 @@ export default function Workbench() {
       ? info.profiles.find((profile) => profile.id === tab.profileId)
       : undefined;
   const allPanes = tab.type === "terminal" ? layoutPanes(tab.layout) : [];
+  const totalGitChanges = git.repositories.reduce(
+    (sum, repository) => sum + repository.changes.length,
+    0,
+  );
   const sidebarPanels: SidebarPanel[] =
-    git.status || (git.loading && sidebarOpen("git"))
+    git.repositories.length ||
+    git.errors.length ||
+    git.limited ||
+    (git.loading && sidebarOpen("git"))
       ? ["files", "git"]
       : ["files"];
   const pluginSidebarViews = workspace.pluginSidebars ?? [];
@@ -1940,7 +1901,7 @@ export default function Workbench() {
   };
   const openHistoryCommit = (
     commit: import("./api").GitCommitSummary,
-    root = git.status?.root,
+    root: string,
   ) => {
     if (!root) return;
     change((state) =>
@@ -1953,17 +1914,9 @@ export default function Workbench() {
       ),
     );
   };
-  const diff = (path: string, staged: boolean) => {
+  const diff = (path: string, staged: boolean, root: string) => {
     setDiffRevision((value) => value + 1);
-    change((state) =>
-      openDiffTab(
-        state,
-        workspace.id,
-        git.status?.root ?? project.path,
-        path,
-        staged,
-      ),
-    );
+    change((state) => openDiffTab(state, workspace.id, root, path, staged));
   };
 
   return (
@@ -2103,7 +2056,7 @@ export default function Workbench() {
                       onOpenFile={(relative, match) =>
                         void openFile(relative, project.path, match)
                       }
-                      gitStatus={git.status}
+                      repositories={git.repositories}
                       onRefreshGit={git.refresh}
                       onOpenCommit={openHistoryCommit}
                       onOperation={operateFile}
@@ -2112,11 +2065,14 @@ export default function Workbench() {
                   ) : (
                     <SourceControl
                       key={project.path}
-                      status={git.status}
+                      projectRoot={project.path}
+                      repositories={git.repositories}
+                      state={sourceControlState}
+                      errors={git.errors}
+                      limited={git.limited}
                       loading={git.loading}
                       onRefresh={git.refresh}
-                      onPull={async (rebase) => {
-                        const root = git.status!.root;
+                      onPull={async (root, rebase) => {
                         if (fileOperationBusy.current)
                           throw new Error(
                             "Wait for the current file operation to finish.",
@@ -2132,13 +2088,12 @@ export default function Workbench() {
                           setDiffRevision((value) => value + 1);
                         }
                       }}
-                      onDiff={diff}
-                      onOpenCommit={openHistoryCommit}
-                      onOpenFile={(path) =>
-                        void openFile(path, git.status!.root)
+                      onDiff={(root, path, staged) => diff(path, staged, root)}
+                      onOpenCommit={(root, commit) =>
+                        openHistoryCommit(commit, root)
                       }
-                      onDiscard={async (change) => {
-                        const root = git.status!.root;
+                      onOpenFile={(root, path) => void openFile(path, root)}
+                      onDiscard={async (root, change) => {
                         if (fileOperationBusy.current)
                           throw new Error(
                             "Wait for the current file operation to finish.",
@@ -2402,7 +2357,7 @@ export default function Workbench() {
                     change((state) => moveSidebar(state, panel, side))
                   }
                 />
-                {panel === "git" && git.status && (
+                {panel === "git" && git.repositories.length > 0 && (
                   <>
                     <span className="status-divider" />
                     <button
@@ -2413,11 +2368,11 @@ export default function Workbench() {
                       }
                     >
                       <GitBranch size={12} />
-                      {git.status.branch}
-                      {git.status.changes.length > 0 && (
-                        <span className="count-badge">
-                          {git.status.changes.length}
-                        </span>
+                      {git.repositories.length === 1
+                        ? git.repositories[0].branch
+                        : `${git.repositories.length} repositories`}
+                      {totalGitChanges > 0 && (
+                        <span className="count-badge">{totalGitChanges}</span>
                       )}
                     </button>
                   </>
