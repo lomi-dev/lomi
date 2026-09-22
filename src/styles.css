@@ -2792,6 +2792,9 @@ svg {
   padding: var(--modal-heading-padding);
   border-bottom: var(--border-width) solid var(--color-outline);
 }
+.modal-symbol {
+  display: none;
+}
 .modal-surface h2 {
   flex: 1;
   font-size: var(--font-size-13);

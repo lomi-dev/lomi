@@ -1,55 +1,55 @@
-:root {
-  /* DeepMono 1.1.0: Mono and Mono Light with the Graphite accent. */
-  --color-background: #101010;
-  --color-background-text: #e0e0e0;
-  --color-surface: #161616;
-  --color-surface-text: #dcdcdc;
-  --color-surface-variant: #222222;
-  --color-surface-variant-text: #a8a8a8;
-  --color-outline: #3a3a3a;
-  --color-surface-container: #1c1c1c;
-  --color-surface-container-high: #262626;
-  --color-surface-container-highest: #303030;
-  --color-primary: #9a9a9a;
-  --color-primary-text: #0d0d0d;
-  --color-primary-container: #6e6e6e;
-  --color-secondary: #787878;
-  --color-surface-tint: #9a9a9a;
-  --color-error: #c75c5c;
-  --color-warning: #c9a227;
-  --color-info: #7a8fa6;
-  --color-accent-text: var(--color-primary);
-  --color-muted-text: var(--color-secondary);
+/* Startup tokens from themes/lomi.json. Keep both modes in sync. */
+@font-face {
+  font-family: "Manrope";
+  src: url("/fonts/manrope/Manrope.woff") format("woff");
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+}
 
-  --font-family:
-    system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+:root {
+  --color-background: #101114;
+  --color-background-text: #f3f4f6;
+  --color-surface: #181a1f;
+  --color-surface-text: #f3f4f6;
+  --color-surface-variant: #202329;
+  --color-surface-variant-text: #bec3cc;
+  --color-outline: #343943;
+  --color-surface-container: #202329;
+  --color-surface-container-high: #282c34;
+  --color-surface-container-highest: #343943;
+  --color-primary: #c8ff3d;
+  --color-primary-text: #0b0d0c;
+  --color-primary-container: #29351c;
+  --color-secondary: #989fac;
+  --color-surface-tint: #c8ff3d;
+  --color-error: #f1aba8;
+  --color-warning: #f1d28a;
+  --color-info: #aecdf5;
+  --color-accent-text: #d3f59b;
+  --color-muted-text: #989fac;
+  --font-family: "Manrope", "Arial", sans-serif;
   --font-family-mono:
     "Cascadia Code", "SFMono-Regular", "Liberation Mono", monospace;
   --font-size: 13px;
   --density: 1;
   --border-width: 1px;
-  --focus-width: 1px;
-  --icon-stroke-width: 1.6;
-  --radius-xs: 2px;
-  --radius-sm: 3px;
-  --radius-md: 4px;
-  --radius-control: 5px;
-  --radius-tab: 6px;
-  --radius-menu: 7px;
-  --radius-modal: 9px;
+  --focus-width: 2px;
+  --icon-stroke-width: 1.75;
+  --radius-xs: 4px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-control: 8px;
+  --radius-tab: 8px;
+  --radius-menu: 12px;
+  --radius-modal: 16px;
   --radius-window: 0px;
   --radius-pane: 0px;
   --opacity-disabled: 0.4;
   --opacity-window: 1;
-  --shadow-menu: 0 12px 35px
-    color-mix(in srgb, var(--color-background) 70%, transparent);
-  --shadow-modal: 0 20px 70px
-    color-mix(in srgb, var(--color-background) 80%, transparent);
-  --color-backdrop: color-mix(
-    in srgb,
-    var(--color-background) 70%,
-    transparent
-  );
+  --shadow-menu: 0px 8px 24px -4px rgb(0 0 0 / 0.38);
+  --shadow-modal: 0 24px 80px -16px #00000099, 0 8px 24px -8px #00000066;
+  --color-backdrop: #0b0d0c99;
   --color-drop-overlay: color-mix(
     in srgb,
     var(--color-surface-container-high) 85%,
@@ -64,10 +64,10 @@
   --sidebar-background: var(--color-surface);
   --statusbar-background: var(--color-surface);
   --settings-background: var(--color-background);
-  --menu-background: var(--color-surface-container);
-  --modal-background: var(--color-surface-container);
-  --input-background: var(--color-background);
-  --button-background: var(--color-surface-container-high);
+  --menu-background: var(--lomi-raised);
+  --modal-background: var(--color-surface);
+  --input-background: var(--color-surface);
+  --button-background: var(--color-surface-variant);
   --tab-background-active: var(--color-surface-container-high);
   --sidebar-min-width: 180px;
   --settings-nav-width: 150px;
@@ -77,7 +77,7 @@
   --icon-button-size: 28px;
   --scrollbar-width: 8px;
   --scrollbar-height: 5px;
-  --terminal-padding: 8px 4px 4px 10px;
+  --terminal-padding: 16px 14px 12px 18px;
   --terminal-font-family: "JetBrains Mono", var(--font-family-mono);
   --terminal-font-size: 16px;
   --terminal-line-height: 1.25;
@@ -88,35 +88,35 @@
   --terminal-cursor-inactive-style: outline;
   --terminal-cursor-blink: 1;
   --terminal-cursor-width: 1;
-  --terminal-minimum-contrast-ratio: 1;
+  --terminal-minimum-contrast-ratio: 4.5;
   --terminal-draw-bold-text-in-bright-colors: 1;
-  --terminal-selection-foreground: none;
-  --terminal-background: var(--color-background);
+  --terminal-selection-foreground: var(--lomi-selection-text);
+  --terminal-background: var(--color-surface);
   --terminal-foreground: var(--color-surface-text);
-  --terminal-cursor: var(--color-primary);
-  --terminal-cursor-accent: var(--color-primary-text);
-  --terminal-selection-background: var(--color-surface-container-highest);
+  --terminal-cursor: var(--color-accent-text);
+  --terminal-cursor-accent: var(--color-background);
+  --terminal-selection-background: var(--lomi-selection);
   --terminal-selection-inactive-background: var(--color-surface-container-high);
-  --terminal-black: var(--color-background);
+  --terminal-black: #101114;
   --terminal-red: var(--color-error);
-  --terminal-green: var(--color-primary);
+  --terminal-green: var(--lomi-success);
   --terminal-yellow: var(--color-warning);
   --terminal-blue: var(--color-info);
-  --terminal-magenta: var(--color-primary-container);
+  --terminal-magenta: var(--lomi-syntax-type);
   --terminal-cyan: var(--color-info);
   --terminal-white: var(--color-surface-text);
-  --terminal-bright-black: var(--color-secondary);
+  --terminal-bright-black: var(--color-muted-text);
   --terminal-bright-red: var(--color-error);
-  --terminal-bright-green: var(--color-background-text);
+  --terminal-bright-green: var(--lomi-success);
   --terminal-bright-yellow: var(--color-warning);
   --terminal-bright-blue: var(--color-info);
-  --terminal-bright-magenta: var(--color-primary);
+  --terminal-bright-magenta: var(--lomi-syntax-type);
   --terminal-bright-cyan: var(--color-info);
   --terminal-bright-white: var(--color-background-text);
-  --terminal-search-match-background: var(--color-surface-container-highest);
-  --terminal-search-active-match-background: var(--color-primary-container);
-  --terminal-search-match-border: var(--color-secondary);
-  --terminal-search-active-match-border: var(--color-primary);
+  --terminal-search-match-background: var(--color-surface-container-high);
+  --terminal-search-active-match-background: var(--lomi-selection);
+  --terminal-search-match-border: var(--color-outline);
+  --terminal-search-active-match-border: var(--color-accent-text);
   --font-size-9: calc(var(--font-size) * 0.692308);
   --font-size-10: calc(var(--font-size) * 0.769231);
   --font-size-11: calc(var(--font-size) * 0.846154);
@@ -149,8 +149,6 @@
   --space-30: calc(30px * var(--density));
   --space-32: calc(32px * var(--density));
   --space-70: calc(70px * var(--density));
-
-  /* Section tokens inherit the shared scale unless a theme overrides them. */
   --app-padding: 0px;
   --app-gap: 0px;
   --work-area-padding: 0px;
@@ -176,7 +174,7 @@
     var(--space-14);
   --tree-padding: var(--space-4) 0 var(--space-16);
   --tree-entry-gap: var(--space-6);
-  --terminal-heading-padding: var(--space-4) var(--space-8) 0;
+  --terminal-heading-padding: var(--space-8) var(--space-12) 0;
   --terminal-heading-align: center;
   --terminal-title-gap: var(--space-8);
   --editor-heading-gap: var(--space-12);
@@ -190,12 +188,8 @@
   --editor-gutter-background: var(--editor-background);
   --editor-gutter-foreground: var(--color-surface-variant-text);
   --editor-active-line: var(--color-surface-container);
-  --editor-selection: color-mix(
-    in srgb,
-    var(--color-primary) 28%,
-    var(--editor-background)
-  );
-  --editor-cursor: var(--color-surface-text);
+  --editor-selection: var(--lomi-selection);
+  --editor-cursor: var(--color-accent-text);
   --editor-content-padding: var(--space-12) 0;
   --editor-line-padding: 0 var(--space-12);
   --markdown-padding: var(--space-24) clamp(16px, 4%, 48px) 72px;
@@ -224,9 +218,8 @@
   --git-file-padding: 0 var(--space-5) 0 var(--space-8);
   --git-file-gap: var(--space-4);
   --commit-file-list-flex: 0 0 26%;
-  --modal-heading-padding: var(--space-10) var(--space-12) var(--space-10)
-    var(--space-18);
-  --modal-content-padding: var(--space-18);
+  --modal-heading-padding: 24px 24px 8px;
+  --modal-content-padding: 12px 24px 24px;
   --titlebar-border-width: var(--border-width);
   --statusbar-border-width: var(--border-width);
   --tab-border-width: var(--border-width);
@@ -241,7 +234,18 @@
   --editor-overflow: hidden;
   --input-padding: var(--space-8) var(--space-10);
   --sidebar-max-width: 520px;
-
+  --lomi-control-border: #7d8694;
+  --lomi-focus: #d8ff93;
+  --lomi-selection: #29351c;
+  --lomi-selection-text: #e0f2c0;
+  --lomi-primary-hover: #daff7a;
+  --lomi-primary-pressed: #b5e535;
+  --lomi-success: #a8d8b9;
+  --lomi-success-background: #1c3026;
+  --lomi-syntax-type: #d6c9ff;
+  --lomi-raised: #282c34;
+  --lomi-danger-background: #3a2328;
+  --lomi-warning-background: #352d1d;
   font-family: var(--font-family);
   color: var(--color-background-text);
   background: transparent;
@@ -253,33 +257,38 @@
 }
 
 :root:where([data-appearance="light"]) {
-  --color-background: #f4f4f4;
-  --color-background-text: #161616;
-  --color-surface: #fafafa;
-  --color-surface-text: #1a1a1a;
-  --color-surface-variant: #ececec;
-  --color-surface-variant-text: #4a4a4a;
-  --color-outline: #c8c8c8;
-  --color-surface-container: #efefef;
-  --color-surface-container-high: #e4e4e4;
-  --color-surface-container-highest: #d8d8d8;
-  --color-primary-container: #c2c2c2;
-  --color-secondary: #878787;
-  --color-error: #b3261e;
-  --color-warning: #a36b00;
-  --color-info: #3a5a78;
-  --color-accent-text: var(--color-surface-variant-text);
-  --color-muted-text: var(--color-surface-variant-text);
-  --terminal-cursor: var(--color-surface-text);
-  --terminal-cursor-accent: var(--color-background);
-  --terminal-black: var(--color-background-text);
-  --terminal-green: var(--color-surface-variant-text);
-  --terminal-magenta: var(--color-surface-variant-text);
-  --terminal-bright-magenta: var(--color-surface-variant-text);
-  --terminal-minimum-contrast-ratio: 4.5;
-  --shadow-menu: 0 12px 35px
-    color-mix(in srgb, var(--color-background-text) 16%, transparent);
-  --shadow-modal: 0 20px 70px
-    color-mix(in srgb, var(--color-background-text) 22%, transparent);
+  --color-background: #f7f8f3;
+  --color-background-text: #0b0d0c;
+  --color-surface: #ffffff;
+  --color-surface-text: #0b0d0c;
+  --color-surface-variant: #edf0e8;
+  --color-surface-variant-text: #535c56;
+  --color-outline: #d5dad2;
+  --color-surface-container: #edf0e8;
+  --color-surface-container-high: #e4e8df;
+  --color-surface-container-highest: #d5dad2;
+  --color-primary-container: #eaf5cc;
+  --color-secondary: #626d60;
+  --color-error: #a12a1d;
+  --color-warning: #754600;
+  --color-info: #2445ae;
+  --color-accent-text: #345600;
+  --color-muted-text: #626d60;
+  --shadow-menu: 0px 8px 24px -4px rgb(11 13 12 / 0.14);
+  --shadow-modal: 0 24px 80px -16px #0b0d0c33, 0 8px 24px -8px #0b0d0c1a;
+  --color-backdrop: #0b0d0c47;
+  --terminal-black: #0b0d0c;
+  --lomi-control-border: #798478;
+  --lomi-focus: #345600;
+  --lomi-selection: #eaf5cc;
+  --lomi-selection-text: #0b0d0c;
+  --lomi-primary-hover: #b6ef2b;
+  --lomi-primary-pressed: #a5d822;
+  --lomi-success: #20683b;
+  --lomi-success-background: #e7f5e9;
+  --lomi-syntax-type: #5740b8;
+  --lomi-raised: #ffffff;
+  --lomi-danger-background: #fdeae7;
+  --lomi-warning-background: #fff1cc;
   color-scheme: light;
 }

@@ -66,6 +66,7 @@ export function useCloseGuard() {
       <>
         {request && (
           <Modal
+            tone="warning"
             title={
               request.application ? "Quit Lomi?" : "Close running processes?"
             }
@@ -87,7 +88,7 @@ export function useCloseGuard() {
                 <button
                   ref={confirmButton}
                   type="button"
-                  className="button button-primary"
+                  className="button button-primary button-danger"
                   onClick={() => finish(true)}
                 >
                   {request.application ? "Quit anyway" : "Close anyway"}
@@ -98,6 +99,7 @@ export function useCloseGuard() {
         )}
         {chatError && (
           <Modal
+            tone="danger"
             title="Conversation could not be saved"
             onClose={() => setChatError("")}
           >

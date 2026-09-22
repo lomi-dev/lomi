@@ -1,7 +1,6 @@
 import baseline from "./baseline.css?inline";
 import applicationStyles from "../styles.css?inline";
 import {
-  builtinTheme,
   kebab,
   resolveTheme,
   type Appearance,
@@ -49,13 +48,12 @@ async function sample(
     const doc = frame.contentDocument!;
     const view = frame.contentWindow!;
     doc.documentElement.dataset.appearance = appearance;
-    doc.documentElement.dataset.theme = bundle?.id ?? "deepmono";
+    doc.documentElement.dataset.theme = bundle?.id ?? "lomi";
     const asset = (path: string) =>
       themeAssetUrl(bundle!.id, path, bundle!.revision);
     for (const css of [
       baseline,
       applicationStyles,
-      compileTheme(resolveTheme(builtinTheme, appearance), asset),
       compileTheme(values, asset),
     ]) {
       const style = doc.createElement("style");

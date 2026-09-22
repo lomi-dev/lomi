@@ -12,9 +12,24 @@ A local folder contains `theme.jsonc`, optional ordered CSS files and local asse
 [`theme.schema.json`](theme.schema.json) describes version 2; runtime validation
 also checks CSS values, contribution paths, duplicates and resource availability.
 Create theme writes `theme.jsonc` and its local schema. The new adaptive theme
-inherits DeepMono until overrides are added; it contains no demonstration assets.
-The built-in data in [`deepmono.json`](deepmono.json) contains complete Mono/Mono
-Light tokens and supplies the authoring defaults.
+inherits Lomi until overrides are added; it contains no demonstration assets.
+[`lomi.json`](lomi.json) is the default built-in theme. It maps the Lomi Brandbook
+and Design System v1.0.0 to the desktop interface: Electric Lime actions, graphite
+dark surfaces, Chalk light surfaces, semantic status colors, and bundled Manrope.
+Controls use the system’s 8 px radius and keyboard focus 2 px. Desktop dialogs
+use 16 px corners, layered shadows, a dimmed backdrop, and semantic warning or
+danger actions. Terminal surfaces use graphite in dark mode and white in light
+mode, with additional inset space around the text.
+Desktop density and monospace JetBrains Mono in code/terminals are retained.
+Syntax and ANSI colors extend the semantic palette for readable code.
+
+[`deepmono.json`](deepmono.json) preserves DeepMono 1.1.0 Mono/Mono Light with
+Graphite as a second read-only built-in theme. Both themes support System, Light
+and Dark modes, duplication into editable local packages, and VS Code export.
+Lomi is represented by `active: null`; DeepMono uses `active: "@builtin-deepmono"`.
+Existing default selections adopt Lomi; explicit local and plugin selections
+remain unchanged. Built-ins are embedded in the application and need no external
+theme folder. Manrope and its OFL license ship in `public/fonts/manrope/`.
 `src/theme/baseline.css` provides the same startup baseline before JavaScript runs.
 
 ```jsonc
@@ -132,7 +147,7 @@ existing `theme-settings.json` format. Terminal preference files are unchanged.
 Start `lomi --safe-mode` (or `LOMI_SAFE_MODE=1 lomi`) to skip
 third-party code and themes before evaluation. `--disable-plugins` also selects
 the baseline; legacy `LOMI_SAFE_THEME=1` skips only custom themes. In this
-mode use Settings → Themes and select DeepMono, then restart normally. Invalid
+mode use Settings → Themes and select Lomi, then restart normally. Invalid
 files stay intact until an explicit recovery/save. Plugin-supplied themes are
 available without enabling code, remain immutable, and can be duplicated before
 editing. Uninstalling their owner requires selecting a fallback first.

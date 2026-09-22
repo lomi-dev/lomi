@@ -273,6 +273,7 @@ function DocumentEditor({
       </div>
       {confirmation && (
         <Modal
+          tone="warning"
           title={
             confirmation === "reload"
               ? "Reload file from disk?"
@@ -298,7 +299,7 @@ function DocumentEditor({
               Cancel
             </button>
             <button
-              className="button button-primary"
+              className="button button-primary button-danger"
               disabled={busy}
               onClick={() => void confirm()}
             >

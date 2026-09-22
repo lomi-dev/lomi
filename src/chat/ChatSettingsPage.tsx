@@ -1056,6 +1056,7 @@ export default function ChatSettingsPage() {
         <Modal
           className="chat-dialog"
           title="Recover Chat AI settings?"
+          tone="warning"
           onClose={() => setRecovering(false)}
         >
           <div className="dialog-form">
@@ -1089,6 +1090,7 @@ export default function ChatSettingsPage() {
         <Modal
           className="chat-dialog"
           title="Remove API key?"
+          tone="warning"
           onClose={() => setRemovingKey(null)}
         >
           <div className="dialog-form">
@@ -1097,7 +1099,7 @@ export default function ChatSettingsPage() {
               stop. The connection and history remain.
             </p>
             <button
-              className="button"
+              className="button button-danger"
               disabled={busy}
               onClick={() =>
                 void run(async () => {
@@ -1122,6 +1124,7 @@ export default function ChatSettingsPage() {
         <Modal
           className="chat-dialog"
           title="Remove provider?"
+          tone="danger"
           onClose={() => {
             if (!busy) setDeleting(null);
           }}
@@ -1140,7 +1143,7 @@ export default function ChatSettingsPage() {
                 Cancel
               </button>
               <button
-                className="button"
+                className="button button-danger"
                 disabled={busy}
                 onClick={() =>
                   void run(async () => {

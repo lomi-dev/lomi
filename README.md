@@ -141,7 +141,8 @@ installed build for the correct application identity.
 
 ![The native Lomi settings window on the Keybinds page, showing workspace shortcuts and the focus-follows-pointer option.](docs/images/keybindings.png)
 
-- **Themes:** use the built-in DeepMono palette or create and import JSONC theme
+- **Themes:** use the default Lomi theme, choose the built-in DeepMono alternative,
+  or create and import JSONC theme
   packages with local assets and CSS. See [theme authoring](themes/README.md).
 - **Plugins:** install trusted local packages that add views, sidebars, and
   commands. See the [plugin SDK](https://github.com/lomi-dev/plugin-sdk).
@@ -305,4 +306,7 @@ For documentation changes, keep screenshots aligned with the actual interface.
 ## License
 
 Copyright 2026 Maciej Kolerski. Licensed under [Apache 2.0](LICENSE).
-The default palette is based on DeepMono by viewerofall.
+The default Lomi theme follows the Lomi Brandbook and Design System.
+The optional built-in DeepMono palette is based on DeepMono by viewerofall.
+Manrope is bundled under the SIL Open Font License; see
+[its license](public/fonts/manrope/OFL.txt).

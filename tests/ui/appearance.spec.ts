@@ -50,7 +50,7 @@ for (const mode of ["light", "dark"] as const) {
     await expect(page.locator("html")).toHaveAttribute("data-appearance", mode);
     await expect(page.locator(".app-shell")).toHaveCSS(
       "background-color",
-      mode === "light" ? "rgb(244, 244, 244)" : "rgb(16, 16, 16)",
+      mode === "light" ? "rgb(247, 248, 243)" : "rgb(16, 17, 20)",
     );
     await expect(page.locator("html")).toHaveCSS("color-scheme", mode);
     const painted = await page.evaluate(
@@ -79,7 +79,7 @@ test("system changes update both windows, hidden terminals, and an edited docume
     .locator("[data-pane-id]")
     .getAttribute("data-pane-id"))!;
   const before = await terminal(page, first);
-  expect(before.foreground).toBe("#1a1a1aff");
+  expect(before.foreground).toBe("#0b0d0cff");
   await page.evaluate(
     (id) =>
       (window as any).__nativeTest.emit(id, "\r\nappearance preserved\r\n"),
@@ -115,7 +115,7 @@ test("system changes update both windows, hidden terminals, and an edited docume
     for (const pane of [first, second])
       await expect
         .poll(async () => (await terminal(page, pane)).foreground)
-        .toBe(mode === "dark" ? "#dcdcdcff" : "#1a1a1aff");
+        .toBe(mode === "dark" ? "#f3f4f6ff" : "#0b0d0cff");
     await expect
       .poll(() =>
         page.locator(".cm-editor").evaluate(async (node) => {
@@ -271,7 +271,7 @@ test("adaptive custom themes follow the mode and fixed themes retain their palet
     "background-color",
     "rgb(250, 250, 250)",
   );
-  await page.getByRole("button", { name: "Use DeepMono theme" }).click();
+  await page.getByRole("button", { name: "Use Lomi theme" }).click();
   await expect(
     page.getByRole("radio", { name: "System", exact: true }),
   ).toBeChecked();

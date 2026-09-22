@@ -60,6 +60,7 @@ function Confirmation({
     <Modal
       className="android-dialog"
       title={value.title}
+      tone="warning"
       onClose={() => {
         if (!busy) onClose();
       }}

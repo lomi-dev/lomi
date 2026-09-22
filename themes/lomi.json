@@ -1,0 +1,791 @@
+{
+  "version": 2,
+  "name": "Lomi",
+  "author": "Lomi",
+  "description": "Electric Lime, Manrope and calm graphite surfaces. The default Lomi identity, in light and dark.",
+  "appearance": "adaptive",
+  "dark": {
+    "tokens": {
+      "--color-background": "#101114",
+      "--color-background-text": "#F3F4F6",
+      "--color-surface": "#181A1F",
+      "--color-surface-text": "#F3F4F6",
+      "--color-surface-variant": "#202329",
+      "--color-surface-variant-text": "#BEC3CC",
+      "--color-outline": "#343943",
+      "--color-surface-container": "#202329",
+      "--color-surface-container-high": "#282C34",
+      "--color-surface-container-highest": "#343943",
+      "--color-primary": "#C8FF3D",
+      "--color-primary-text": "#0B0D0C",
+      "--color-primary-container": "#29351C",
+      "--color-secondary": "#989FAC",
+      "--color-surface-tint": "#C8FF3D",
+      "--color-error": "#F1ABA8",
+      "--color-warning": "#F1D28A",
+      "--color-info": "#AECDF5",
+      "--color-accent-text": "#D3F59B",
+      "--color-muted-text": "#989FAC",
+      "--font-family": "\"Manrope\", \"Arial\", sans-serif",
+      "--font-family-mono": "\"Cascadia Code\", \"SFMono-Regular\", \"Liberation Mono\", monospace",
+      "--font-size": "13px",
+      "--density": "1",
+      "--border-width": "1px",
+      "--focus-width": "2px",
+      "--icon-stroke-width": "1.75",
+      "--radius-xs": "4px",
+      "--radius-sm": "4px",
+      "--radius-md": "8px",
+      "--radius-control": "8px",
+      "--radius-tab": "8px",
+      "--radius-menu": "12px",
+      "--radius-modal": "16px",
+      "--radius-window": "0px",
+      "--radius-pane": "0px",
+      "--opacity-disabled": "0.4",
+      "--opacity-window": "1",
+      "--shadow-menu": "0px 8px 24px -4px rgb(0 0 0 / 0.38)",
+      "--shadow-modal": "0 24px 80px -16px #00000099, 0 8px 24px -8px #00000066",
+      "--color-backdrop": "#0B0D0C99",
+      "--color-drop-overlay": "color-mix(\n    in srgb,\n    var(--color-surface-container-high) 85%,\n    transparent\n  )",
+      "--titlebar-height": "44px",
+      "--statusbar-height": "28px",
+      "--tab-height": "32px",
+      "--tab-min-width": "128px",
+      "--tab-max-width": "164px",
+      "--titlebar-background": "var(--color-surface)",
+      "--sidebar-background": "var(--color-surface)",
+      "--statusbar-background": "var(--color-surface)",
+      "--settings-background": "var(--color-background)",
+      "--menu-background": "var(--lomi-raised)",
+      "--modal-background": "var(--color-surface)",
+      "--input-background": "var(--color-surface)",
+      "--button-background": "var(--color-surface-variant)",
+      "--tab-background-active": "var(--color-surface-container-high)",
+      "--sidebar-min-width": "180px",
+      "--settings-nav-width": "150px",
+      "--settings-page-padding": "28px",
+      "--tree-row-height": "27px",
+      "--tree-indent": "14px",
+      "--icon-button-size": "28px",
+      "--scrollbar-width": "8px",
+      "--scrollbar-height": "5px",
+      "--terminal-padding": "16px 14px 12px 18px",
+      "--terminal-font-family": "\"JetBrains Mono\", var(--font-family-mono)",
+      "--terminal-font-size": "16px",
+      "--terminal-line-height": "1.25",
+      "--terminal-letter-spacing": "0px",
+      "--terminal-font-weight": "normal",
+      "--terminal-font-weight-bold": "bold",
+      "--terminal-cursor-style": "bar",
+      "--terminal-cursor-inactive-style": "outline",
+      "--terminal-cursor-blink": "1",
+      "--terminal-cursor-width": "1",
+      "--terminal-minimum-contrast-ratio": "4.5",
+      "--terminal-draw-bold-text-in-bright-colors": "1",
+      "--terminal-selection-foreground": "var(--lomi-selection-text)",
+      "--terminal-background": "var(--color-surface)",
+      "--terminal-foreground": "var(--color-surface-text)",
+      "--terminal-cursor": "var(--color-accent-text)",
+      "--terminal-cursor-accent": "var(--color-background)",
+      "--terminal-selection-background": "var(--lomi-selection)",
+      "--terminal-selection-inactive-background": "var(--color-surface-container-high)",
+      "--terminal-black": "#101114",
+      "--terminal-red": "var(--color-error)",
+      "--terminal-green": "var(--lomi-success)",
+      "--terminal-yellow": "var(--color-warning)",
+      "--terminal-blue": "var(--color-info)",
+      "--terminal-magenta": "var(--lomi-syntax-type)",
+      "--terminal-cyan": "var(--color-info)",
+      "--terminal-white": "var(--color-surface-text)",
+      "--terminal-bright-black": "var(--color-muted-text)",
+      "--terminal-bright-red": "var(--color-error)",
+      "--terminal-bright-green": "var(--lomi-success)",
+      "--terminal-bright-yellow": "var(--color-warning)",
+      "--terminal-bright-blue": "var(--color-info)",
+      "--terminal-bright-magenta": "var(--lomi-syntax-type)",
+      "--terminal-bright-cyan": "var(--color-info)",
+      "--terminal-bright-white": "var(--color-background-text)",
+      "--terminal-search-match-background": "var(--color-surface-container-high)",
+      "--terminal-search-active-match-background": "var(--lomi-selection)",
+      "--terminal-search-match-border": "var(--color-outline)",
+      "--terminal-search-active-match-border": "var(--color-accent-text)",
+      "--font-size-9": "calc(var(--font-size) * 0.692308)",
+      "--font-size-10": "calc(var(--font-size) * 0.769231)",
+      "--font-size-11": "calc(var(--font-size) * 0.846154)",
+      "--font-size-12": "calc(var(--font-size) * 0.923077)",
+      "--font-size-13": "calc(var(--font-size) * 1)",
+      "--font-size-14": "calc(var(--font-size) * 1.076923)",
+      "--font-size-15": "calc(var(--font-size) * 1.153846)",
+      "--font-size-17": "calc(var(--font-size) * 1.307692)",
+      "--font-size-18": "calc(var(--font-size) * 1.384615)",
+      "--font-size-22": "calc(var(--font-size) * 1.692308)",
+      "--space-1": "calc(1px * var(--density))",
+      "--space-2": "calc(2px * var(--density))",
+      "--space-3": "calc(3px * var(--density))",
+      "--space-4": "calc(4px * var(--density))",
+      "--space-5": "calc(5px * var(--density))",
+      "--space-6": "calc(6px * var(--density))",
+      "--space-7": "calc(7px * var(--density))",
+      "--space-8": "calc(8px * var(--density))",
+      "--space-9": "calc(9px * var(--density))",
+      "--space-10": "calc(10px * var(--density))",
+      "--space-11": "calc(11px * var(--density))",
+      "--space-12": "calc(12px * var(--density))",
+      "--space-14": "calc(14px * var(--density))",
+      "--space-16": "calc(16px * var(--density))",
+      "--space-18": "calc(18px * var(--density))",
+      "--space-20": "calc(20px * var(--density))",
+      "--space-22": "calc(22px * var(--density))",
+      "--space-24": "calc(24px * var(--density))",
+      "--space-28": "calc(28px * var(--density))",
+      "--space-30": "calc(30px * var(--density))",
+      "--space-32": "calc(32px * var(--density))",
+      "--space-70": "calc(70px * var(--density))",
+      "--app-padding": "0px",
+      "--app-gap": "0px",
+      "--work-area-padding": "0px",
+      "--work-area-gap": "0px",
+      "--stage-padding": "0px",
+      "--pane-spacing": "0px",
+      "--sidebar-padding": "0px",
+      "--radius-sidebar": "0px",
+      "--sidebar-section-gap": "0px",
+      "--radius-editor": "var(--radius-pane)",
+      "--git-section-margin": "0px",
+      "--settings-gap": "0px",
+      "--settings-layout-padding": "0px",
+      "--titlebar-padding-left": "var(--space-8)",
+      "--titlebar-gap": "var(--space-3)",
+      "--tab-bar-gap": "var(--space-6)",
+      "--tab-gap": "var(--space-4)",
+      "--tab-padding": "0 var(--space-5) 0 var(--space-9)",
+      "--sidebar-heading-height": "38px",
+      "--sidebar-heading-padding": "var(--space-5) var(--space-10) var(--space-5)\n    var(--space-16)",
+      "--tree-heading-padding": "var(--space-3) var(--space-10) var(--space-3)\n    var(--space-14)",
+      "--tree-padding": "var(--space-4) 0 var(--space-16)",
+      "--tree-entry-gap": "var(--space-6)",
+      "--terminal-heading-padding": "var(--space-8) var(--space-12) 0",
+      "--terminal-heading-align": "center",
+      "--terminal-title-gap": "var(--space-8)",
+      "--editor-heading-gap": "var(--space-12)",
+      "--editor-heading-padding": "var(--space-4) var(--space-12)",
+      "--editor-heading-height": "38px",
+      "--editor-font-family": "\"JetBrains Mono\", var(--font-family-mono)",
+      "--editor-font-size": "var(--font-size-14)",
+      "--editor-line-height": "1.6",
+      "--editor-background": "var(--color-background)",
+      "--editor-foreground": "var(--color-background-text)",
+      "--editor-gutter-background": "var(--editor-background)",
+      "--editor-gutter-foreground": "var(--color-surface-variant-text)",
+      "--editor-active-line": "var(--color-surface-container)",
+      "--editor-selection": "var(--lomi-selection)",
+      "--editor-cursor": "var(--color-accent-text)",
+      "--editor-content-padding": "var(--space-12) 0",
+      "--editor-line-padding": "0 var(--space-12)",
+      "--markdown-padding": "var(--space-24) clamp(16px, 4%, 48px) 72px",
+      "--markdown-max-width": "80ch",
+      "--markdown-line-height": "1.7",
+      "--button-padding": "var(--space-7) var(--space-12)",
+      "--button-gap": "var(--space-7)",
+      "--menu-padding": "var(--space-7)",
+      "--menu-item-padding": "var(--space-8)",
+      "--menu-item-gap": "var(--space-8)",
+      "--statusbar-gap": "var(--space-10)",
+      "--statusbar-padding": "0 var(--space-12) 0 var(--space-6)",
+      "--settings-nav-padding": "var(--space-18) var(--space-10)",
+      "--settings-nav-item-padding": "var(--space-9) var(--space-12)",
+      "--settings-nav-item-gap": "var(--space-9)",
+      "--settings-heading-margin": "var(--space-22)",
+      "--settings-row-padding": "var(--space-14) 0",
+      "--editor-setting-padding": "var(--space-18) 0",
+      "--theme-library-padding": "var(--space-18)",
+      "--theme-card-padding": "var(--space-16)",
+      "--theme-list-gap": "var(--space-10)",
+      "--git-toolbar-padding": "var(--space-5) var(--space-8)",
+      "--git-repository-padding": "var(--space-5) var(--space-10)",
+      "--git-commit-flex": "0 0 clamp(112px, 21vh, 184px)",
+      "--git-commit-padding": "var(--space-10)",
+      "--git-file-padding": "0 var(--space-5) 0 var(--space-8)",
+      "--git-file-gap": "var(--space-4)",
+      "--commit-file-list-flex": "0 0 26%",
+      "--modal-heading-padding": "24px 24px 8px",
+      "--modal-content-padding": "12px 24px 24px",
+      "--titlebar-border-width": "var(--border-width)",
+      "--statusbar-border-width": "var(--border-width)",
+      "--tab-border-width": "var(--border-width)",
+      "--control-border-width": "var(--border-width)",
+      "--menu-border-width": "var(--border-width)",
+      "--modal-border-width": "var(--border-width)",
+      "--editor-heading-border-width": "var(--border-width)",
+      "--pane-border": "0px solid var(--color-outline)",
+      "--pane-shadow": "none",
+      "--editor-border": "var(--pane-border)",
+      "--editor-shadow": "var(--pane-shadow)",
+      "--editor-overflow": "hidden",
+      "--input-padding": "var(--space-8) var(--space-10)",
+      "--sidebar-max-width": "520px",
+      "--lomi-control-border": "#7D8694",
+      "--lomi-focus": "#D8FF93",
+      "--lomi-selection": "#29351C",
+      "--lomi-selection-text": "#E0F2C0",
+      "--lomi-primary-hover": "#DAFF7A",
+      "--lomi-primary-pressed": "#B5E535",
+      "--lomi-success": "#A8D8B9",
+      "--lomi-success-background": "#1C3026",
+      "--lomi-syntax-type": "#D6C9FF",
+      "--lomi-raised": "#282C34",
+      "--lomi-danger-background": "#3A2328",
+      "--lomi-warning-background": "#352D1D"
+    }
+  },
+  "light": {
+    "tokens": {
+      "--color-background": "#F7F8F3",
+      "--color-background-text": "#0B0D0C",
+      "--color-surface": "#FFFFFF",
+      "--color-surface-text": "#0B0D0C",
+      "--color-surface-variant": "#EDF0E8",
+      "--color-surface-variant-text": "#535C56",
+      "--color-outline": "#D5DAD2",
+      "--color-surface-container": "#EDF0E8",
+      "--color-surface-container-high": "#E4E8DF",
+      "--color-surface-container-highest": "#D5DAD2",
+      "--color-primary": "#C8FF3D",
+      "--color-primary-text": "#0B0D0C",
+      "--color-primary-container": "#EAF5CC",
+      "--color-secondary": "#626D60",
+      "--color-surface-tint": "#C8FF3D",
+      "--color-error": "#A12A1D",
+      "--color-warning": "#754600",
+      "--color-info": "#2445AE",
+      "--color-accent-text": "#345600",
+      "--color-muted-text": "#626D60",
+      "--font-family": "\"Manrope\", \"Arial\", sans-serif",
+      "--font-family-mono": "\"Cascadia Code\", \"SFMono-Regular\", \"Liberation Mono\", monospace",
+      "--font-size": "13px",
+      "--density": "1",
+      "--border-width": "1px",
+      "--focus-width": "2px",
+      "--icon-stroke-width": "1.75",
+      "--radius-xs": "4px",
+      "--radius-sm": "4px",
+      "--radius-md": "8px",
+      "--radius-control": "8px",
+      "--radius-tab": "8px",
+      "--radius-menu": "12px",
+      "--radius-modal": "16px",
+      "--radius-window": "0px",
+      "--radius-pane": "0px",
+      "--opacity-disabled": "0.4",
+      "--opacity-window": "1",
+      "--shadow-menu": "0px 8px 24px -4px rgb(11 13 12 / 0.14)",
+      "--shadow-modal": "0 24px 80px -16px #0B0D0C33, 0 8px 24px -8px #0B0D0C1A",
+      "--color-backdrop": "#0B0D0C47",
+      "--color-drop-overlay": "color-mix(\n    in srgb,\n    var(--color-surface-container-high) 85%,\n    transparent\n  )",
+      "--titlebar-height": "44px",
+      "--statusbar-height": "28px",
+      "--tab-height": "32px",
+      "--tab-min-width": "128px",
+      "--tab-max-width": "164px",
+      "--titlebar-background": "var(--color-surface)",
+      "--sidebar-background": "var(--color-surface)",
+      "--statusbar-background": "var(--color-surface)",
+      "--settings-background": "var(--color-background)",
+      "--menu-background": "var(--lomi-raised)",
+      "--modal-background": "var(--color-surface)",
+      "--input-background": "var(--color-surface)",
+      "--button-background": "var(--color-surface-variant)",
+      "--tab-background-active": "var(--color-surface-container-high)",
+      "--sidebar-min-width": "180px",
+      "--settings-nav-width": "150px",
+      "--settings-page-padding": "28px",
+      "--tree-row-height": "27px",
+      "--tree-indent": "14px",
+      "--icon-button-size": "28px",
+      "--scrollbar-width": "8px",
+      "--scrollbar-height": "5px",
+      "--terminal-padding": "16px 14px 12px 18px",
+      "--terminal-font-family": "\"JetBrains Mono\", var(--font-family-mono)",
+      "--terminal-font-size": "16px",
+      "--terminal-line-height": "1.25",
+      "--terminal-letter-spacing": "0px",
+      "--terminal-font-weight": "normal",
+      "--terminal-font-weight-bold": "bold",
+      "--terminal-cursor-style": "bar",
+      "--terminal-cursor-inactive-style": "outline",
+      "--terminal-cursor-blink": "1",
+      "--terminal-cursor-width": "1",
+      "--terminal-minimum-contrast-ratio": "4.5",
+      "--terminal-draw-bold-text-in-bright-colors": "1",
+      "--terminal-selection-foreground": "var(--lomi-selection-text)",
+      "--terminal-background": "var(--color-surface)",
+      "--terminal-foreground": "var(--color-surface-text)",
+      "--terminal-cursor": "var(--color-accent-text)",
+      "--terminal-cursor-accent": "var(--color-background)",
+      "--terminal-selection-background": "var(--lomi-selection)",
+      "--terminal-selection-inactive-background": "var(--color-surface-container-high)",
+      "--terminal-black": "#0B0D0C",
+      "--terminal-red": "var(--color-error)",
+      "--terminal-green": "var(--lomi-success)",
+      "--terminal-yellow": "var(--color-warning)",
+      "--terminal-blue": "var(--color-info)",
+      "--terminal-magenta": "var(--lomi-syntax-type)",
+      "--terminal-cyan": "var(--color-info)",
+      "--terminal-white": "var(--color-surface-text)",
+      "--terminal-bright-black": "var(--color-muted-text)",
+      "--terminal-bright-red": "var(--color-error)",
+      "--terminal-bright-green": "var(--lomi-success)",
+      "--terminal-bright-yellow": "var(--color-warning)",
+      "--terminal-bright-blue": "var(--color-info)",
+      "--terminal-bright-magenta": "var(--lomi-syntax-type)",
+      "--terminal-bright-cyan": "var(--color-info)",
+      "--terminal-bright-white": "var(--color-background-text)",
+      "--terminal-search-match-background": "var(--color-surface-container-high)",
+      "--terminal-search-active-match-background": "var(--lomi-selection)",
+      "--terminal-search-match-border": "var(--color-outline)",
+      "--terminal-search-active-match-border": "var(--color-accent-text)",
+      "--font-size-9": "calc(var(--font-size) * 0.692308)",
+      "--font-size-10": "calc(var(--font-size) * 0.769231)",
+      "--font-size-11": "calc(var(--font-size) * 0.846154)",
+      "--font-size-12": "calc(var(--font-size) * 0.923077)",
+      "--font-size-13": "calc(var(--font-size) * 1)",
+      "--font-size-14": "calc(var(--font-size) * 1.076923)",
+      "--font-size-15": "calc(var(--font-size) * 1.153846)",
+      "--font-size-17": "calc(var(--font-size) * 1.307692)",
+      "--font-size-18": "calc(var(--font-size) * 1.384615)",
+      "--font-size-22": "calc(var(--font-size) * 1.692308)",
+      "--space-1": "calc(1px * var(--density))",
+      "--space-2": "calc(2px * var(--density))",
+      "--space-3": "calc(3px * var(--density))",
+      "--space-4": "calc(4px * var(--density))",
+      "--space-5": "calc(5px * var(--density))",
+      "--space-6": "calc(6px * var(--density))",
+      "--space-7": "calc(7px * var(--density))",
+      "--space-8": "calc(8px * var(--density))",
+      "--space-9": "calc(9px * var(--density))",
+      "--space-10": "calc(10px * var(--density))",
+      "--space-11": "calc(11px * var(--density))",
+      "--space-12": "calc(12px * var(--density))",
+      "--space-14": "calc(14px * var(--density))",
+      "--space-16": "calc(16px * var(--density))",
+      "--space-18": "calc(18px * var(--density))",
+      "--space-20": "calc(20px * var(--density))",
+      "--space-22": "calc(22px * var(--density))",
+      "--space-24": "calc(24px * var(--density))",
+      "--space-28": "calc(28px * var(--density))",
+      "--space-30": "calc(30px * var(--density))",
+      "--space-32": "calc(32px * var(--density))",
+      "--space-70": "calc(70px * var(--density))",
+      "--app-padding": "0px",
+      "--app-gap": "0px",
+      "--work-area-padding": "0px",
+      "--work-area-gap": "0px",
+      "--stage-padding": "0px",
+      "--pane-spacing": "0px",
+      "--sidebar-padding": "0px",
+      "--radius-sidebar": "0px",
+      "--sidebar-section-gap": "0px",
+      "--radius-editor": "var(--radius-pane)",
+      "--git-section-margin": "0px",
+      "--settings-gap": "0px",
+      "--settings-layout-padding": "0px",
+      "--titlebar-padding-left": "var(--space-8)",
+      "--titlebar-gap": "var(--space-3)",
+      "--tab-bar-gap": "var(--space-6)",
+      "--tab-gap": "var(--space-4)",
+      "--tab-padding": "0 var(--space-5) 0 var(--space-9)",
+      "--sidebar-heading-height": "38px",
+      "--sidebar-heading-padding": "var(--space-5) var(--space-10) var(--space-5)\n    var(--space-16)",
+      "--tree-heading-padding": "var(--space-3) var(--space-10) var(--space-3)\n    var(--space-14)",
+      "--tree-padding": "var(--space-4) 0 var(--space-16)",
+      "--tree-entry-gap": "var(--space-6)",
+      "--terminal-heading-padding": "var(--space-8) var(--space-12) 0",
+      "--terminal-heading-align": "center",
+      "--terminal-title-gap": "var(--space-8)",
+      "--editor-heading-gap": "var(--space-12)",
+      "--editor-heading-padding": "var(--space-4) var(--space-12)",
+      "--editor-heading-height": "38px",
+      "--editor-font-family": "\"JetBrains Mono\", var(--font-family-mono)",
+      "--editor-font-size": "var(--font-size-14)",
+      "--editor-line-height": "1.6",
+      "--editor-background": "var(--color-background)",
+      "--editor-foreground": "var(--color-background-text)",
+      "--editor-gutter-background": "var(--editor-background)",
+      "--editor-gutter-foreground": "var(--color-surface-variant-text)",
+      "--editor-active-line": "var(--color-surface-container)",
+      "--editor-selection": "var(--lomi-selection)",
+      "--editor-cursor": "var(--color-accent-text)",
+      "--editor-content-padding": "var(--space-12) 0",
+      "--editor-line-padding": "0 var(--space-12)",
+      "--markdown-padding": "var(--space-24) clamp(16px, 4%, 48px) 72px",
+      "--markdown-max-width": "80ch",
+      "--markdown-line-height": "1.7",
+      "--button-padding": "var(--space-7) var(--space-12)",
+      "--button-gap": "var(--space-7)",
+      "--menu-padding": "var(--space-7)",
+      "--menu-item-padding": "var(--space-8)",
+      "--menu-item-gap": "var(--space-8)",
+      "--statusbar-gap": "var(--space-10)",
+      "--statusbar-padding": "0 var(--space-12) 0 var(--space-6)",
+      "--settings-nav-padding": "var(--space-18) var(--space-10)",
+      "--settings-nav-item-padding": "var(--space-9) var(--space-12)",
+      "--settings-nav-item-gap": "var(--space-9)",
+      "--settings-heading-margin": "var(--space-22)",
+      "--settings-row-padding": "var(--space-14) 0",
+      "--editor-setting-padding": "var(--space-18) 0",
+      "--theme-library-padding": "var(--space-18)",
+      "--theme-card-padding": "var(--space-16)",
+      "--theme-list-gap": "var(--space-10)",
+      "--git-toolbar-padding": "var(--space-5) var(--space-8)",
+      "--git-repository-padding": "var(--space-5) var(--space-10)",
+      "--git-commit-flex": "0 0 clamp(112px, 21vh, 184px)",
+      "--git-commit-padding": "var(--space-10)",
+      "--git-file-padding": "0 var(--space-5) 0 var(--space-8)",
+      "--git-file-gap": "var(--space-4)",
+      "--commit-file-list-flex": "0 0 26%",
+      "--modal-heading-padding": "24px 24px 8px",
+      "--modal-content-padding": "12px 24px 24px",
+      "--titlebar-border-width": "var(--border-width)",
+      "--statusbar-border-width": "var(--border-width)",
+      "--tab-border-width": "var(--border-width)",
+      "--control-border-width": "var(--border-width)",
+      "--menu-border-width": "var(--border-width)",
+      "--modal-border-width": "var(--border-width)",
+      "--editor-heading-border-width": "var(--border-width)",
+      "--pane-border": "0px solid var(--color-outline)",
+      "--pane-shadow": "none",
+      "--editor-border": "var(--pane-border)",
+      "--editor-shadow": "var(--pane-shadow)",
+      "--editor-overflow": "hidden",
+      "--input-padding": "var(--space-8) var(--space-10)",
+      "--sidebar-max-width": "520px",
+      "--lomi-control-border": "#798478",
+      "--lomi-focus": "#345600",
+      "--lomi-selection": "#EAF5CC",
+      "--lomi-selection-text": "#0B0D0C",
+      "--lomi-primary-hover": "#B6EF2B",
+      "--lomi-primary-pressed": "#A5D822",
+      "--lomi-success": "#20683B",
+      "--lomi-success-background": "#E7F5E9",
+      "--lomi-syntax-type": "#5740B8",
+      "--lomi-raised": "#FFFFFF",
+      "--lomi-danger-background": "#FDEAE7",
+      "--lomi-warning-background": "#FFF1CC"
+    }
+  },
+  "common": {
+    "styles": {
+      "button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, [tabindex]:focus-visible, .welcome-action:focus-visible, .theme-appearance-options label:has(:focus-visible)": {
+        "outline-color": "var(--lomi-focus)"
+      },
+      ".button:not(.button-primary), input:not([type=\"checkbox\"]):not([type=\"radio\"]), textarea, select, .select-trigger": {
+        "border-color": "var(--lomi-control-border)"
+      },
+      ".button": {
+        "font-weight": "600"
+      },
+      ".button-primary": {
+        "border-color": "var(--color-primary-text)"
+      },
+      ".button-primary:hover:not(:disabled)": {
+        "background": "var(--lomi-primary-hover)"
+      },
+      ".button-primary:active:not(:disabled)": {
+        "background": "var(--lomi-primary-pressed)"
+      },
+      ".commit-form, .commit-form textarea": {
+        "background": "var(--color-surface)"
+      },
+      ".commit-form .commit-actions": {
+        "padding": "var(--space-8) var(--space-10) var(--space-10)"
+      },
+      ".commit-form .commit-button": {
+        "width": "100%",
+        "min-height": "34px",
+        "padding": "var(--space-8) var(--space-12)",
+        "gap": "var(--space-7)",
+        "border": "0",
+        "border-radius": "var(--radius-control)",
+        "background": "var(--color-primary)",
+        "color": "var(--color-primary-text)",
+        "font-size": "var(--font-size-12)",
+        "font-weight": "600"
+      },
+      ".commit-form .commit-button:hover:not(:disabled)": {
+        "background": "var(--lomi-primary-hover)"
+      },
+      ".commit-form .commit-button:active:not(:disabled)": {
+        "background": "var(--lomi-primary-pressed)"
+      },
+      ".commit-form .commit-button:focus-visible": {
+        "outline-offset": "2px"
+      },
+      ".commit-form .commit-button:disabled": {
+        "opacity": "1",
+        "background": "var(--color-surface-container-high)",
+        "color": "var(--color-surface-variant-text)"
+      },
+      ".commit-form .commit-button > svg": {
+        "width": "14px",
+        "height": "14px",
+        "stroke-width": "2"
+      },
+      ".theme-appearance-options label:has(:checked)": {
+        "background": "var(--lomi-selection)",
+        "color": "var(--lomi-selection-text)",
+        "border-color": "var(--color-accent-text)"
+      },
+      ".source-repository[aria-current=\"page\"], .source-all-repository-heading:hover": {
+        "color": "var(--color-accent-text)"
+      },
+      ".modal:not(.modal-wide):not(.editor-close-dialog)": {
+        "width": "min(480px, calc(100vw - 32px))"
+      },
+      ".modal::backdrop": {
+        "backdrop-filter": "blur(4px)"
+      },
+      ".modal-surface": {
+        "display": "flex",
+        "flex-direction": "column",
+        "max-height": "inherit"
+      },
+      ".modal-surface h2": {
+        "font-size": "17px",
+        "font-weight": "650",
+        "line-height": "1.4",
+        "letter-spacing": "-0.3px",
+        "white-space": "normal",
+        "overflow-wrap": "anywhere",
+        "text-wrap": "balance"
+      },
+      ".modal-surface > header > .icon-button": {
+        "width": "32px",
+        "height": "32px",
+        "margin-right": "-8px",
+        "align-self": "flex-start",
+        "color": "var(--color-muted-text)"
+      },
+      ".modal-symbol": {
+        "display": "grid",
+        "place-items": "center",
+        "flex": "0 0 38px",
+        "height": "38px",
+        "border-radius": "12px",
+        "color": "var(--color-warning)",
+        "background": "var(--lomi-warning-background)"
+      },
+      ".modal[data-tone=\"danger\"] .modal-symbol": {
+        "color": "var(--color-error)",
+        "background": "var(--lomi-danger-background)"
+      },
+      ".modal .dialog-form": {
+        "overflow-y": "auto",
+        "min-height": "0",
+        "padding": "var(--modal-content-padding)"
+      },
+      ".modal .dialog-form p": {
+        "font-size": "14px",
+        "line-height": "1.65",
+        "color": "var(--color-surface-variant-text)",
+        "overflow-wrap": "anywhere",
+        "text-wrap": "pretty",
+        "margin-bottom": "16px"
+      },
+      ".modal .dialog-form p:last-child": {
+        "margin-bottom": "0"
+      },
+      ".modal .dialog-form p strong": {
+        "font-weight": "600",
+        "color": "var(--color-surface-text)"
+      },
+      ".modal .dialog-form label": {
+        "font-size": "13px",
+        "font-weight": "500"
+      },
+      ".modal .dialog-form input:not([type=\"checkbox\"]):not([type=\"radio\"]), .modal .dialog-form .select-trigger": {
+        "min-height": "40px",
+        "background": "var(--color-background)"
+      },
+      ".modal .dialog-actions": {
+        "flex-wrap": "wrap",
+        "gap": "8px",
+        "margin-top": "24px"
+      },
+      ".modal .dialog-actions .button, .modal .editor-close-actions .button": {
+        "min-height": "38px",
+        "padding": "8px 14px",
+        "font-size": "13px",
+        "line-height": "1.4"
+      },
+      ".modal .button-primary": {
+        "border-color": "transparent"
+      },
+      ".modal .dialog-form p.text-error, .modal .dialog-form p[role=\"alert\"]": {
+        "color": "var(--color-error)",
+        "padding": "12px 14px",
+        "border-radius": "8px",
+        "background": "var(--lomi-danger-background)"
+      },
+      ".editor-close-content": {
+        "padding": "12px 24px 20px"
+      },
+      ".editor-close-description": {
+        "font-size": "14px"
+      },
+      ".editor-unsaved-files": {
+        "background": "var(--color-background)",
+        "border-color": "var(--color-outline)",
+        "border-radius": "10px"
+      },
+      ".editor-unsaved-files li": {
+        "padding": "12px 14px"
+      },
+      ".editor-close-actions": {
+        "background": "transparent",
+        "border-top": "0",
+        "padding": "0 24px 24px",
+        "gap": "8px"
+      },
+      ".modal .editor-close-cancel": {
+        "background": "transparent",
+        "border-color": "transparent",
+        "color": "var(--color-surface-variant-text)"
+      },
+      ".close-progress-body": {
+        "padding": "12px 24px 24px"
+      },
+      ".modal .close-progress-actions": {
+        "margin-top": "0",
+        "padding": "0 24px 24px",
+        "border-top": "0"
+      },
+      ".modal-surface > .dialog-actions": {
+        "margin-top": "0",
+        "padding": "0 24px 24px"
+      },
+      ".terminal-title-box": {
+        "border-color": "var(--color-outline)",
+        "background": "var(--terminal-background)",
+        "box-shadow": "none"
+      },
+      ".modal .modal-surface > header": {
+        "flex-shrink": "0",
+        "gap": "12px",
+        "align-items": "center",
+        "padding": "var(--modal-heading-padding)",
+        "border-bottom": "0"
+      },
+      ".modal .button-danger, .modal .button.text-error, .modal .button.danger": {
+        "background": "var(--lomi-danger-background)",
+        "color": "var(--color-error)",
+        "border-color": "color-mix(in srgb, var(--color-error) 28%, transparent)"
+      },
+      ".modal .button-danger:hover:not(:disabled), .modal .button.text-error:hover:not(:disabled), .modal .button.danger:hover:not(:disabled)": {
+        "background": "color-mix(in srgb, var(--color-error) 18%, var(--lomi-danger-background))",
+        "border-color": "var(--color-error)"
+      },
+      ".modal .button-danger:active:not(:disabled), .modal .button.text-error:active:not(:disabled), .modal .button.danger:active:not(:disabled)": {
+        "background": "color-mix(in srgb, var(--color-error) 24%, var(--lomi-danger-background))"
+      },
+      ".modal-surface > .dialog-body": {
+        "padding": "12px 24px 24px",
+        "overflow-y": "auto",
+        "min-height": "0"
+      },
+      ".modal-surface > p, .modal-surface > .dialog-body p": {
+        "font-size": "14px",
+        "line-height": "1.65",
+        "color": "var(--color-surface-variant-text)",
+        "overflow-wrap": "anywhere",
+        "text-wrap": "pretty"
+      },
+      ".modal-surface > p": {
+        "font-size": "14px",
+        "line-height": "1.65",
+        "color": "var(--color-surface-variant-text)",
+        "overflow-wrap": "anywhere",
+        "text-wrap": "pretty",
+        "margin": "12px 24px 0"
+      },
+      ".modal-surface > p:last-of-type": {
+        "margin-bottom": "24px"
+      },
+      ".modal-surface > .dialog-body p": {
+        "margin": "0 0 16px"
+      },
+      ".modal-surface > .dialog-body p:last-child": {
+        "margin-bottom": "0"
+      },
+      ".modal-surface > .editor-confirm-path": {
+        "background": "var(--color-background)",
+        "padding": "12px 14px",
+        "border-radius": "8px",
+        "font-family": "var(--font-family-mono)",
+        "font-size": "12px"
+      },
+      ".modal .button:not(.button-primary):not(.button-danger):not(.text-error):not(.danger)": {
+        "background": "var(--color-surface-variant)",
+        "border-color": "var(--color-outline)",
+        "color": "var(--color-surface-text)"
+      },
+      ".modal .button:not(.button-primary):not(.button-danger):not(.text-error):not(.danger):hover:not(:disabled)": {
+        "background": "var(--color-surface-container-high)",
+        "border-color": "var(--color-muted-text)"
+      }
+    },
+    "editor": {
+      "syntax": {
+        "keyword": {
+          "color": "var(--color-info)",
+          "fontWeight": 700
+        },
+        "type": {
+          "color": "var(--lomi-syntax-type)"
+        },
+        "function": {
+          "color": "var(--color-warning)"
+        },
+        "string": {
+          "color": "var(--lomi-success)"
+        },
+        "number": {
+          "color": "var(--color-info)"
+        },
+        "comment": {
+          "color": "var(--color-surface-variant-text)",
+          "fontStyle": "normal"
+        },
+        "variable": {
+          "color": "var(--editor-foreground)"
+        },
+        "property": {
+          "color": "var(--color-background-text)"
+        },
+        "operator": {
+          "color": "var(--color-surface-variant-text)"
+        },
+        "punctuation": {
+          "color": "var(--color-surface-variant-text)"
+        },
+        "heading": {
+          "color": "var(--editor-foreground)",
+          "fontWeight": 700
+        },
+        "link": {
+          "color": "var(--color-accent-text)",
+          "textDecoration": "underline"
+        },
+        "invalid": {
+          "color": "var(--color-error)"
+        },
+        "strong": {
+          "fontWeight": 700
+        },
+        "emphasis": {
+          "fontStyle": "italic"
+        }
+      }
+    }
+  }
+}

@@ -21,7 +21,12 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { api, errorMessage, native } from "./api";
 import { useThemes } from "./ThemeProvider";
-import { builtinTheme, parseThemeText } from "./theme/format";
+import {
+  builtinTheme,
+  builtinThemes,
+  isBuiltinTheme,
+  parseThemeText,
+} from "./theme/format";
 import type { ThemeBundle, ThemeCatalog } from "./theme/format";
 import ThemeEditor from "./ThemeEditor";
 import Select from "./Select";
@@ -134,22 +139,26 @@ export default function ThemesPage() {
     setEditing(bundle);
   };
   const allEntries = [
-    {
-      id: null,
-      name:
-        kind === "color"
-          ? builtinTheme.name
-          : kind === "file"
-            ? "Lomi file icons"
-            : "Lomi interface icons",
-      description:
-        kind === "color"
-          ? builtinTheme.description
-          : "Built-in Lucide icons. Export or duplicate to create a portable VS Code icon theme.",
-      author: "Built in",
-      owner: null,
-      error: null,
-    },
+    ...(kind === "color"
+      ? builtinThemes.map(({ id, manifest }) => ({
+          id,
+          name: manifest.name,
+          description: manifest.description,
+          author: "Built in",
+          owner: null,
+          error: null,
+        }))
+      : [
+          {
+            id: null,
+            name: kind === "file" ? "Lomi file icons" : "Lomi interface icons",
+            description:
+              "Built-in Lucide icons. Export or duplicate to create a portable VS Code icon theme.",
+            author: "Built in",
+            owner: null,
+            error: null,
+          },
+        ]),
     ...catalog.themes.filter((entry) => (entry.kind ?? "color") === kind),
   ];
   const query = search.trim().toLowerCase();
@@ -159,10 +168,10 @@ export default function ThemesPage() {
         (filter === "active" && entry.id === selectedId) ||
         (filter === "attention" && entry.error)) &&
       (source === "all" ||
-        (source === "builtin" && entry.id === null) ||
-        (source === "local" && entry.id !== null && !entry.owner) ||
+        (source === "builtin" && isBuiltinTheme(entry.id)) ||
+        (source === "local" && !isBuiltinTheme(entry.id) && !entry.owner) ||
         (source === "package" && entry.owner)) &&
-      `${entry.name} ${entry.description ?? ""} ${entry.author} ${entry.id ?? "deepmono"} ${entry.owner ?? ""}`
+      `${entry.name} ${entry.description ?? ""} ${entry.author} ${entry.id ?? "lomi"} ${entry.owner ?? ""}`
         .toLowerCase()
         .includes(query),
   );
@@ -320,7 +329,7 @@ export default function ThemesPage() {
           {themes.fixedAppearance && (
             <p className="settings-help">
               This theme defines its own {themes.fixedAppearance} appearance.
-              Choose DeepMono to use the color mode setting.
+              Choose Lomi or DeepMono to use the color mode setting.
             </p>
           )}
         </fieldset>
@@ -477,14 +486,17 @@ export default function ThemesPage() {
                   </p>
                   <div className="catalog-tags">
                     <span>
-                      {entry.id === null
+                      {isBuiltinTheme(entry.id)
                         ? "Built in"
                         : entry.owner
                           ? "Package"
                           : "Local"}
                     </span>
-                    {(entry.id === null || entry.owner) && (
+                    {(isBuiltinTheme(entry.id) || entry.owner) && (
                       <span>Read only</span>
+                    )}
+                    {kind === "color" && entry.id === null && (
+                      <span>Default</span>
                     )}
                   </div>
                   {entry.error && (
@@ -550,7 +562,7 @@ export default function ThemesPage() {
                       <Download size={13} aria-hidden="true" /> Export to VS
                       Code
                     </button>
-                    {entry.id && (
+                    {entry.id && !isBuiltinTheme(entry.id) && (
                       <button
                         className="theme-action"
                         disabled={busy}
@@ -591,7 +603,7 @@ export default function ThemesPage() {
                     >
                       <Copy size={13} aria-hidden="true" /> Duplicate
                     </button>
-                    {entry.id && (
+                    {entry.id && !isBuiltinTheme(entry.id) && (
                       <IconButton
                         title="Open theme folder"
                         disabled={busy}

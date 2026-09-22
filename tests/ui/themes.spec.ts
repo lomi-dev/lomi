@@ -163,7 +163,7 @@ test("theme cards filter local and package themes and preserve selection and imm
   });
   await page.goto("/?window=settings&page=themes");
   const cards = page.getByRole("article");
-  await expect(cards).toHaveCount(5);
+  await expect(cards).toHaveCount(6);
   const first = await cards.nth(0).boundingBox();
   const second = await cards.nth(1).boundingBox();
   const list = await page.locator(".theme-list").boundingBox();
@@ -195,7 +195,7 @@ test("theme cards filter local and package themes and preserve selection and imm
   ).toBeVisible();
   await page.getByRole("button", { name: "Clear filters" }).click();
   await expect(search).toBeFocused();
-  await expect(cards).toHaveCount(5);
+  await expect(cards).toHaveCount(6);
 
   await sources.getByRole("button", { name: "Packages", exact: true }).click();
   await expect(cards).toHaveCount(1);
@@ -220,7 +220,7 @@ test("theme cards filter local and package themes and preserve selection and imm
     editor.getByText("immutable plugin package", { exact: false }),
   ).toHaveCount(0);
   await editor.getByRole("button", { name: "Close", exact: true }).click();
-  await expect(cards).toHaveCount(6);
+  await expect(cards).toHaveCount(7);
   await expect(
     sources.getByRole("button", { name: "All sources" }),
   ).toHaveAttribute("aria-pressed", "true");
@@ -237,17 +237,17 @@ test("theme cards filter local and package themes and preserve selection and imm
   await page
     .getByRole("button", { name: "Import folder", exact: true })
     .click();
-  await expect(cards).toHaveCount(7);
+  await expect(cards).toHaveCount(8);
   expect(await calls(page, "save_theme_preferences")).toHaveLength(1);
   expect(await calls(page, "prepare_plugin")).toHaveLength(0);
   expect(await calls(page, "enable_plugin")).toHaveLength(0);
   await chooseOption(status, "Active");
   await expect(cards).toHaveCount(1);
   await chooseOption(status, "All themes");
-  await page.getByRole("button", { name: "Use DeepMono theme" }).click();
-  await expect(cards).toHaveCount(7);
+  await page.getByRole("button", { name: "Use Lomi theme" }).click();
+  await expect(cards).toHaveCount(8);
   await expect(
-    page.getByRole("button", { name: "Use DeepMono theme" }),
+    page.getByRole("button", { name: "Use Lomi theme" }),
   ).toHaveAttribute("aria-pressed", "true");
   await page.setViewportSize({ width: 560, height: 420 });
   await page.locator(".themes-page").evaluate((element) => {
@@ -351,7 +351,7 @@ test("a theme updates both windows and hidden terminals without replacing PTYs",
   await preferences
     .getByRole("button", { name: "Refresh", exact: true })
     .click();
-  await expect(page.locator(".tab").first()).toHaveCSS("border-radius", "6px");
+  await expect(page.locator(".tab").first()).toHaveCSS("border-radius", "8px");
   await expect(page.locator(".statusbar")).toHaveCSS("height", "34px");
   await expect
     .poll(async () => (await terminal(page, second)).letterSpacing)
@@ -384,7 +384,7 @@ test("a theme updates both windows and hidden terminals without replacing PTYs",
       .locator(".theme-library")
       .evaluate((node) => getComputedStyle(node).backgroundImage),
   ).toContain("/images/wall%20paper.svg");
-  await preferences.getByRole("button", { name: "Use DeepMono theme" }).click();
+  await preferences.getByRole("button", { name: "Use Lomi theme" }).click();
   await expect
     .poll(async () => (await terminal(page, first)).fontSize)
     .toBe(16);
@@ -421,7 +421,7 @@ test("invalid edits and failed saves preserve the previous theme, and reset reco
   await page.evaluate(() => {
     (window as any).__nativeTest.failThemeSave = true;
   });
-  await page.getByRole("button", { name: "Use DeepMono theme" }).click();
+  await page.getByRole("button", { name: "Use Lomi theme" }).click();
   await expect(page.getByRole("alert")).toContainText("Disk is full");
   await expect(page.locator("h1")).toHaveCSS("letter-spacing", "3px");
   await page.evaluate(() => {
@@ -435,7 +435,7 @@ test("invalid edits and failed saves preserve the previous theme, and reset reco
   await page.getByRole("button", { name: "Themes", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("left intact");
   expect(await calls(page, "save_theme_preferences")).toHaveLength(0);
-  await page.getByRole("button", { name: "Use DeepMono theme" }).click();
+  await page.getByRole("button", { name: "Use Lomi theme" }).click();
   await expect(page.getByRole("alert")).toHaveCount(0);
   expect(
     JSON.parse(
@@ -505,7 +505,7 @@ test("a missing stylesheet or undecodable image cannot replace a working theme",
   );
   expect(await calls(page, "save_theme_preferences")).toHaveLength(0);
   await expect(
-    page.getByRole("button", { name: "Use DeepMono theme" }),
+    page.getByRole("button", { name: "Use Lomi theme" }),
   ).toHaveAttribute("aria-pressed", "true");
 });
 
@@ -576,7 +576,7 @@ test("legacy CSS preferences cannot disable a stylesheet declared by JSON", asyn
   expect(
     await page.evaluate(() => localStorage.getItem("test-theme-settings")),
   ).toBe(saved);
-  await page.getByRole("button", { name: "Use DeepMono theme" }).click();
+  await page.getByRole("button", { name: "Use Lomi theme" }).click();
   await expect(page.locator('link[data-theme-layer="css"]')).toHaveCount(0);
   expect(
     JSON.parse(
@@ -702,7 +702,7 @@ test("theme controls save section spacing and layouts in both windows without re
     "flex-direction",
     "row-reverse",
   );
-  await preferences.getByRole("button", { name: "Use DeepMono theme" }).click();
+  await preferences.getByRole("button", { name: "Use Lomi theme" }).click();
   await expect(page.locator(".work-area")).toHaveCSS("padding", "0px");
   await expect(page.locator(".tab-bar")).toHaveCSS("order", "0");
   await expect(page.locator(".terminal-pane").first()).toHaveCSS(

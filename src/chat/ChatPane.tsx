@@ -680,6 +680,7 @@ export default function ChatPane({
         <Modal
           className="chat-dialog"
           title="Discard unsaved chat data?"
+          tone="warning"
           onClose={() => setDiscarding(false)}
         >
           <div className="dialog-form">
@@ -693,7 +694,7 @@ export default function ChatPane({
                 Keep open
               </button>
               <button
-                className="button"
+                className="button button-danger"
                 onClick={() =>
                   run(
                     runtime.discard().then(() => {
@@ -721,6 +722,7 @@ export default function ChatPane({
         <Modal
           className="chat-dialog"
           title="Recover chat history?"
+          tone="warning"
           onClose={() => setRecovering(false)}
         >
           <div className="dialog-form">
@@ -782,6 +784,7 @@ export default function ChatPane({
         <Modal
           className="chat-dialog"
           title="Attach sensitive file?"
+          tone="warning"
           onClose={() => decideSensitive(false)}
         >
           <div className="dialog-form">

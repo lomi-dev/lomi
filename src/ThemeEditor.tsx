@@ -306,7 +306,7 @@ export default function ThemeEditor({
                           value: "",
                           label: draft.vscode
                             ? "Inherit theme"
-                            : "Inherit DeepMono",
+                            : "Inherit Lomi",
                         },
                         ...presets.map((value) => ({ value, label: value })),
                       ]}
@@ -451,14 +451,21 @@ export default function ThemeEditor({
         </footer>
       </form>
       {discard && (
-        <Modal title="Discard theme changes?" onClose={() => setDiscard(false)}>
+        <Modal
+          title="Discard theme changes?"
+          tone="warning"
+          onClose={() => setDiscard(false)}
+        >
           <div className="dialog-form">
             <p>Your unsaved theme changes will be lost.</p>
             <div className="dialog-actions">
               <button className="button" onClick={() => setDiscard(false)}>
                 Keep editing
               </button>
-              <button className="button" onClick={() => void close()}>
+              <button
+                className="button button-danger"
+                onClick={() => void close()}
+              >
                 Discard changes
               </button>
             </div>

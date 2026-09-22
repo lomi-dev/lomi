@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef } from "react";
 import type { ButtonHTMLAttributes, ReactNode, RefObject } from "react";
-import { ChevronRight, Minus, Square, X } from "./icons";
+import { ChevronRight, CircleAlert, Minus, Square, X } from "./icons";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { errorMessage, macOS, native } from "./api";
 
@@ -82,6 +82,7 @@ export function Modal({
   className = "",
   descriptionId,
   initialFocus,
+  tone,
 }: {
   title: string;
   children: ReactNode;
@@ -90,6 +91,7 @@ export function Modal({
   className?: string;
   descriptionId?: string;
   initialFocus?: RefObject<HTMLElement | null>;
+  tone?: "warning" | "danger";
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -106,6 +108,7 @@ export function Modal({
       className={`modal${wide ? " modal-wide" : ""}${className ? ` ${className}` : ""}`}
       aria-labelledby={titleId}
       aria-describedby={descriptionId}
+      data-tone={tone}
       onCancel={(event) => {
         event.preventDefault();
         onClose();
@@ -116,6 +119,11 @@ export function Modal({
     >
       <div className="modal-surface">
         <header>
+          {tone && (
+            <span className="modal-symbol" aria-hidden="true">
+              <CircleAlert size={21} />
+            </span>
+          )}
           <h2 id={titleId}>{title}</h2>
           <IconButton title="Close dialog" onClick={onClose}>
             <X size={16} iconId="dialog-close" />

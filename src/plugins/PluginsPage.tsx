@@ -484,9 +484,9 @@ export default function PluginsPage() {
         >
           <div className="dialog-form">
             <p>
-              This package supplies the selected theme. Switch to DeepMono
-              before uninstalling it. The package stays installed if the switch
-              or its close checks fail.
+              This package supplies the selected theme. Switch to Lomi before
+              uninstalling it. The package stays installed if the switch or its
+              close checks fail.
             </p>
             <div className="dialog-actions">
               <button
@@ -507,7 +507,7 @@ export default function PluginsPage() {
                   })
                 }
               >
-                Switch to DeepMono and uninstall
+                Switch to Lomi and uninstall
               </button>
             </div>
           </div>

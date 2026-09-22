@@ -75,7 +75,7 @@ async function paintedRows(page: Page, pane: string) {
 async function expectLightText(page: Page, pane: string) {
   await expect
     .poll(async () => (await terminal(page, pane)).foreground)
-    .toBe("#1a1a1aff");
+    .toBe("#0b0d0cff");
   await expect
     .poll(async () => {
       const rows = await paintedRows(page, pane);
@@ -83,14 +83,12 @@ async function expectLightText(page: Page, pane: string) {
     })
     .toEqual([true, true, true, true]);
   const rows = await paintedRows(page, pane);
-  for (const row of rows.slice(0, 7))
-    expect(row.lightest).toBeLessThanOrEqual(245);
   expect(rows[4].darkest).toBeLessThan(130);
   expect(rows[5].darkest).toBeLessThan(130);
   expect(rows[6].darkest).toBeLessThan(170);
   expect(rows[7].lightest).toBeGreaterThan(235);
   expect(rows[8].lightest).toBeGreaterThan(230);
-  expect((await terminal(page, pane)).background).toBe("#f4f4f400");
+  expect((await terminal(page, pane)).background).toBe("#ffffff00");
 }
 
 for (const renderer of ["WebGL", "DOM"] as const) {
@@ -139,11 +137,11 @@ for (const renderer of ["WebGL", "DOM"] as const) {
             .join(""),
         ),
       )
-      .toContain("rgb:f4f4/f4f4/f4f4");
+      .toContain("rgb:ffff/ffff/ffff");
     await page.emulateMedia({ colorScheme: "dark" });
     await expect
       .poll(async () => (await terminal(page, first)).foreground)
-      .toBe("#dcdcdcff");
+      .toBe("#f3f4f6ff");
     await expect
       .poll(async () => (await paintedRows(page, first))[0].lightest)
       .toBeGreaterThan(200);
@@ -176,7 +174,7 @@ for (const renderer of ["WebGL", "DOM"] as const) {
     await page.emulateMedia({ colorScheme: "dark" });
     await expect
       .poll(async () => (await terminal(page, first)).foreground)
-      .toBe("#dcdcdcff");
+      .toBe("#f3f4f6ff");
     await expect
       .poll(async () => (await paintedRows(page, first))[0].lightest)
       .toBeGreaterThan(200);

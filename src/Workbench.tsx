@@ -2647,6 +2647,11 @@ function AppDialog({
   return (
     <Modal
       title={dialog.title}
+      tone={
+        dialog.type === "confirm" || dialog.type === "environment"
+          ? "warning"
+          : undefined
+      }
       onClose={onClose}
       wide={dialog.type === "preview"}
       initialFocus={
@@ -2732,7 +2737,7 @@ function AppDialog({
             </button>
             <button
               ref={confirmButton}
-              className="button button-primary"
+              className={`button button-primary${dialog.type === "confirm" ? " button-danger" : ""}`}
               disabled={
                 dialog.type === "name"
                   ? !value.trim()

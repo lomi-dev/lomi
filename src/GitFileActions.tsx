@@ -186,6 +186,7 @@ export function useGitFileActions(props: {
       {discard && (
         <Modal
           title="Discard Changes"
+          tone="danger"
           onClose={() => {
             if (!busy) setDiscard(undefined);
           }}

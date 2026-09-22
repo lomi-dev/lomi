@@ -204,11 +204,15 @@ or acronym.
 
 ## Appearance
 
-- Use the DeepMono palette from
-  `/home/woro/.config/DankMaterialShell/themes/deepmono/theme.json`.
-- The foundation uses the dark `mono` and light `mono-light` flavors with the
-  `graphite` accent from DeepMono 1.1.0. Their values are stored in `themes/deepmono.json` and CSS custom properties in
-  `src/theme/baseline.css`; reuse these tokens instead of inventing additional colors.
+- Lomi is the default built-in theme, defined in `themes/lomi.json` and the
+  matching startup tokens in `src/theme/baseline.css`. It follows the Lomi
+  Brandbook and Design System v1.0.0: Electric Lime, graphite/chalk surfaces,
+  semantic status colors, and bundled Manrope. Keep code and terminals monospace.
+- Preserve `themes/deepmono.json` as the optional built-in DeepMono 1.1.0
+  Mono/Mono Light palette with Graphite. The default selection is `active: null`;
+  DeepMono uses `active: "@builtin-deepmono"`. Both are read-only and duplicable.
+- Reuse semantic tokens instead of inventing additional colors. Built-in themes
+  must work offline without files from the source brandbook or design system.
 - Follow system appearance by default, including startup and live changes.
   Persist manual Light/Dark overrides separately from the selected theme.
   Explicit theme appearances take precedence; adaptive themes inherit the

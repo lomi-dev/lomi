@@ -411,7 +411,11 @@ export default function SourceControl({
         />
       )}
       {forcePush && (
-        <Modal title="Force Push" onClose={() => setForcePush(false)}>
+        <Modal
+          title="Force Push"
+          tone="warning"
+          onClose={() => setForcePush(false)}
+        >
           <div className="dialog-body">
             <p>
               Replace the remote branch history with your local commits? The

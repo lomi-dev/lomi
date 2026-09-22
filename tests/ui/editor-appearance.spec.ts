@@ -63,104 +63,115 @@ async function selectText(page: Page, from: number, to: number) {
   await expect(page.locator(".cm-selectionBackground").first()).toBeVisible();
 }
 
-for (const appearance of ["dark", "light"] as const) {
-  test(`DeepMono ${appearance} keeps selected syntax readable`, async ({
-    page,
-  }, testInfo) => {
-    await page.emulateMedia({ colorScheme: appearance });
-    await openEditor(page);
-    await selectText(page, source.indexOf("export"), source.length);
-    const content = page.locator(".cm-content");
-    expect(
-      await content.evaluate(
-        (element) => getComputedStyle(element, "::selection").color,
-      ),
-    ).toBe(
-      await content.evaluate((element) => getComputedStyle(element).color),
-    );
-    await page.screenshot({
-      path: testInfo.outputPath(`editor-${appearance}.png`),
-    });
-
-    const styles = await page.locator(".cm-content").evaluate((content) => {
-      // Resolve CSS color-mix values through a canvas before measuring contrast.
-      const canvas = document.createElement("canvas");
-      canvas.width = canvas.height = 1;
-      const context = canvas.getContext("2d")!;
-      const rgba = (color: string) => {
-        context.clearRect(0, 0, 1, 1);
-        context.fillStyle = color;
-        context.fillRect(0, 0, 1, 1);
-        return Array.from(context.getImageData(0, 0, 1, 1).data);
-      };
-      const luminance = (color: number[]) =>
-        color.slice(0, 3).reduce((sum, value, index) => {
-          const channel = value / 255;
-          return (
-            sum +
-            (channel <= 0.04045
-              ? channel / 12.92
-              : ((channel + 0.055) / 1.055) ** 2.4) *
-              [0.2126, 0.7152, 0.0722][index]
+for (const name of ["Lomi", "DeepMono"] as const)
+  for (const appearance of ["dark", "light"] as const) {
+    test(`${name} ${appearance} keeps selected syntax readable`, async ({
+      page,
+    }, testInfo) => {
+      await page.emulateMedia({ colorScheme: appearance });
+      if (name === "DeepMono")
+        await page.addInitScript(() => {
+          localStorage.setItem(
+            "test-theme-settings",
+            JSON.stringify({
+              version: 1,
+              active: "@builtin-deepmono",
+              appearance: "system",
+            }),
           );
-        }, 0);
-      const selection = rgba(
-        getComputedStyle(
-          content
-            .closest(".cm-editor")!
-            .querySelector(".cm-selectionBackground")!,
-        ).backgroundColor,
+        });
+      await openEditor(page);
+      await selectText(page, source.indexOf("export"), source.length);
+      const content = page.locator(".cm-content");
+      expect(
+        await content.evaluate(
+          (element) => getComputedStyle(element, "::selection").color,
+        ),
+      ).toBe(
+        await content.evaluate((element) => getComputedStyle(element).color),
       );
-      const background = rgba(
-        getComputedStyle(content.closest(".cm-editor")!).backgroundColor,
-      );
-      return Array.from(
-        content.querySelectorAll(".cm-line, .cm-line span"),
-      ).map((element) => {
-        const style = getComputedStyle(element);
-        const selected = getComputedStyle(element, "::selection");
-        const color = rgba(style.color);
-        const foreground = rgba(selected.color);
-        const contrast = (foreground: number[], against: number[]) => {
-          const a = luminance(foreground);
-          const b = luminance(against);
-          return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-        };
-        return {
-          text: `${element.textContent}: ${style.color} / ${selected.color}`,
-          color,
-          nativeBackground: rgba(selected.backgroundColor),
-          contrast: Math.min(
-            contrast(foreground, selection),
-            contrast(foreground, background),
-            contrast(color, selection),
-            contrast(color, background),
-          ),
-        };
+      await page.screenshot({
+        path: testInfo.outputPath(`editor-${appearance}.png`),
       });
-    });
-    for (const style of styles) {
-      expect(style.nativeBackground[3], style.text ?? "").toBe(0);
-      expect(style.contrast, style.text ?? "").toBeGreaterThanOrEqual(4.5);
-    }
-    expect(
-      new Set(styles.map((style) => style.color.join(","))).size,
-    ).toBeGreaterThanOrEqual(5);
 
-    const focused = await page
-      .locator(".cm-selectionBackground")
-      .first()
-      .evaluate((element) => getComputedStyle(element).backgroundColor);
-    await page
-      .getByRole("button", { name: "Change language mode", exact: true })
-      .focus();
-    await expect(page.locator(".cm-editor")).not.toHaveClass(/cm-focused/);
-    await expect(page.locator(".cm-selectionBackground").first()).not.toHaveCSS(
-      "background-color",
-      focused,
-    );
-  });
-}
+      const styles = await page.locator(".cm-content").evaluate((content) => {
+        // Resolve CSS color-mix values through a canvas before measuring contrast.
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = 1;
+        const context = canvas.getContext("2d")!;
+        const rgba = (color: string) => {
+          context.clearRect(0, 0, 1, 1);
+          context.fillStyle = color;
+          context.fillRect(0, 0, 1, 1);
+          return Array.from(context.getImageData(0, 0, 1, 1).data);
+        };
+        const luminance = (color: number[]) =>
+          color.slice(0, 3).reduce((sum, value, index) => {
+            const channel = value / 255;
+            return (
+              sum +
+              (channel <= 0.04045
+                ? channel / 12.92
+                : ((channel + 0.055) / 1.055) ** 2.4) *
+                [0.2126, 0.7152, 0.0722][index]
+            );
+          }, 0);
+        const selection = rgba(
+          getComputedStyle(
+            content
+              .closest(".cm-editor")!
+              .querySelector(".cm-selectionBackground")!,
+          ).backgroundColor,
+        );
+        const background = rgba(
+          getComputedStyle(content.closest(".cm-editor")!).backgroundColor,
+        );
+        return Array.from(
+          content.querySelectorAll(".cm-line, .cm-line span"),
+        ).map((element) => {
+          const style = getComputedStyle(element);
+          const selected = getComputedStyle(element, "::selection");
+          const color = rgba(style.color);
+          const foreground = rgba(selected.color);
+          const contrast = (foreground: number[], against: number[]) => {
+            const a = luminance(foreground);
+            const b = luminance(against);
+            return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+          };
+          return {
+            text: `${element.textContent}: ${style.color} / ${selected.color}`,
+            color,
+            nativeBackground: rgba(selected.backgroundColor),
+            contrast: Math.min(
+              contrast(foreground, selection),
+              contrast(foreground, background),
+              contrast(color, selection),
+              contrast(color, background),
+            ),
+          };
+        });
+      });
+      for (const style of styles) {
+        expect(style.nativeBackground[3], style.text ?? "").toBe(0);
+        expect(style.contrast, style.text ?? "").toBeGreaterThanOrEqual(4.5);
+      }
+      expect(
+        new Set(styles.map((style) => style.color.join(","))).size,
+      ).toBeGreaterThanOrEqual(5);
+
+      const focused = await page
+        .locator(".cm-selectionBackground")
+        .first()
+        .evaluate((element) => getComputedStyle(element).backgroundColor);
+      await page
+        .getByRole("button", { name: "Change language mode", exact: true })
+        .focus();
+      await expect(page.locator(".cm-editor")).not.toHaveClass(/cm-focused/);
+      await expect(
+        page.locator(".cm-selectionBackground").first(),
+      ).not.toHaveCSS("background-color", focused);
+    });
+  }
 
 test("Markdown selection stays readable and matches do not modify the buffer", async ({
   page,
@@ -179,14 +190,14 @@ test("Markdown selection stays readable and matches do not modify the buffer", a
   });
   await expect(page.locator(".cm-line").first()).toHaveCSS(
     "color",
-    "rgb(224, 224, 224)",
+    "rgb(243, 244, 246)",
   );
   const heading = page.locator(".cm-line").first();
   expect(
     await heading.evaluate(
       (element) => getComputedStyle(element, "::selection").color,
     ),
-  ).toBe("rgb(224, 224, 224)");
+  ).toBe("rgb(243, 244, 246)");
   await page.keyboard.insertText("Updated notes");
   await page.keyboard.press("Control+z");
   await expect(page.locator(".cm-content")).toContainText(

@@ -81,6 +81,7 @@ export function useEditorCloseGuard() {
     dialog: request && (
       <Modal
         title="Save changes before closing?"
+        tone="warning"
         className="editor-close-dialog"
         descriptionId={descriptionId}
         initialFocus={saveButton}
@@ -127,7 +128,7 @@ export function useEditorCloseGuard() {
           </button>
           <button
             type="button"
-            className="button"
+            className="button button-danger"
             disabled={busy}
             onClick={() => {
               try {

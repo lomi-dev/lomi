@@ -554,7 +554,7 @@ export async function mockDesktop(
               (entry: any) => entry.themeIds?.includes(id),
             )?.id;
           const themeBundle = async (id: string, manifest: any) => {
-            const { migrateTheme } = await import(
+            const { migrateTheme, isBuiltinTheme } = await import(
               location.origin + "/src/theme/format.ts"
             );
             const modern =
@@ -571,8 +571,8 @@ export async function mockDesktop(
                 localStorage.getItem("test-icon-themes") ?? "{}",
               )[id],
               revision: raw,
-              directory: `/app/themes/${id}`,
-              readOnly: !!themeOwner(id),
+              directory: isBuiltinTheme(id) ? "" : `/app/themes/${id}`,
+              readOnly: isBuiltinTheme(id) || !!themeOwner(id),
             };
           };
           if (command === "plugin:fs|watch") return 1;
@@ -664,10 +664,14 @@ export async function mockDesktop(
             const manifests = JSON.parse(
               localStorage.getItem("test-theme-manifests") ?? "{}",
             );
-            const { builtinTheme } = await import(
-              location.origin + "/src/theme/format.ts"
-            );
-            manifests.copy = args.id ? manifests[args.id] : builtinTheme;
+            const { builtinTheme, deepmonoTheme, deepmonoThemeId } =
+              await import(location.origin + "/src/theme/format.ts");
+            manifests.copy =
+              args.id === deepmonoThemeId
+                ? deepmonoTheme
+                : args.id
+                  ? manifests[args.id]
+                  : builtinTheme;
             localStorage.setItem(
               "test-theme-manifests",
               JSON.stringify(manifests),
@@ -696,9 +700,15 @@ export async function mockDesktop(
             };
           }
           if (command === "load_theme") {
-            const manifest = JSON.parse(
-              localStorage.getItem("test-theme-manifests") ?? "{}",
-            )[args.id];
+            const { deepmonoTheme, deepmonoThemeId } = await import(
+              location.origin + "/src/theme/format.ts"
+            );
+            const manifest =
+              args.id === deepmonoThemeId
+                ? deepmonoTheme
+                : JSON.parse(
+                    localStorage.getItem("test-theme-manifests") ?? "{}",
+                  )[args.id];
             if (!manifest) throw new Error("Theme folder is missing.");
             return themeBundle(args.id, manifest);
           }
@@ -719,9 +729,15 @@ export async function mockDesktop(
               throw new Error(
                 "Invalid color mode. The file has been left intact.",
               );
-            const manifest = JSON.parse(
-              localStorage.getItem("test-theme-manifests") ?? "{}",
-            )[preferences.active];
+            const { deepmonoTheme, deepmonoThemeId } = await import(
+              location.origin + "/src/theme/format.ts"
+            );
+            const manifest =
+              preferences.active === deepmonoThemeId
+                ? deepmonoTheme
+                : JSON.parse(
+                    localStorage.getItem("test-theme-manifests") ?? "{}",
+                  )[preferences.active];
             if (preferences.active && !manifest)
               throw new Error("Theme folder is missing.");
             return {

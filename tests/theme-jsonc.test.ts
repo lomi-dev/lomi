@@ -89,8 +89,10 @@ test("common and appearance variants resolve deterministically without mutating 
 
 test("shipped baselines and shared native/frontend grammar fixtures validate", async () => {
   const { readFile } = await import("node:fs/promises");
-  const { builtinTheme, parseTheme } = await import("../src/theme/format.ts");
-  assert.equal(parseTheme(builtinTheme).name, "DeepMono");
+  const { builtinTheme, deepmonoTheme, parseTheme } =
+    await import("../src/theme/format.ts");
+  assert.equal(parseTheme(builtinTheme).name, "Lomi");
+  assert.equal(parseTheme(deepmonoTheme).name, "DeepMono");
   const fixtures = JSON.parse(
     await readFile(
       new URL("fixtures/themes/grammar.json", import.meta.url),

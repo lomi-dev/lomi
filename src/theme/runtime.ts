@@ -597,7 +597,7 @@ export async function prepareTheme(
           link.media = "all";
         }
       } else document.head.append(style);
-      document.documentElement.dataset.theme = bundle?.id ?? "deepmono";
+      document.documentElement.dataset.theme = bundle?.id ?? "lomi";
       activeResolved = resolved;
       highContrast =
         manifest.vscode?.type === "hcDark" ||

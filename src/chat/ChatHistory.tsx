@@ -433,6 +433,7 @@ export default function ChatHistory({
       {deleting && (
         <Modal
           title="Delete conversation?"
+          tone="danger"
           className="chat-dialog"
           onClose={() => {
             if (!busy) {

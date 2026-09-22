@@ -185,9 +185,9 @@ for (const settings of [false, true]) {
       await expect.poll(shown).toEqual([
         {
           background:
-            appearance === "light" ? "rgb(244, 244, 244)" : "rgb(16, 16, 16)",
+            appearance === "light" ? "rgb(247, 248, 243)" : "rgb(16, 17, 20)",
           nativeBackground:
-            appearance === "light" ? [244, 244, 244] : [16, 16, 16],
+            appearance === "light" ? [247, 248, 243] : [16, 17, 20],
           appearance,
           settings,
         },
