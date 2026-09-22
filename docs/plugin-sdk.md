@@ -12,6 +12,9 @@ archive. A clean checkout installs with `pnpm install --frozen-lockfile`, withou
 cloning SDK or building it during installation. Do not substitute a floating
 range or Git branch.
 
+The workspace exempts only this tested SDK version from pnpm's minimum release
+age so fresh CI installations can consume the initial publication immediately.
+
 Vite bundles the validators needed by the host. The installed application does
 not fetch SDK code from npm or GitHub. Build helpers and Node-only package tools
 are authoring dependencies and are not imported into the browser entry points.
