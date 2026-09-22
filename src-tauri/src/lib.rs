@@ -117,7 +117,13 @@ fn finish_window_startup(window: Window) -> Result<(), String> {
 }
 
 pub fn run() {
-    let app = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // Install the guarded Quit action before Tauri can create its default macOS menu.
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .menu(macos::menu)
+        .on_menu_event(macos::handle_menu_event);
+    let app = builder
         .plugin(
             tauri::plugin::Builder::<tauri::Wry, ()>::new("browser")
                 .invoke_handler(tauri::generate_handler![browser::signal])
@@ -157,8 +163,6 @@ pub fn run() {
         .register_asynchronous_uri_scheme_protocol("theme", themes::protocol)
         .register_asynchronous_uri_scheme_protocol("plugin", plugins::protocol)
         .setup(|app| {
-            #[cfg(target_os = "macos")]
-            macos::setup_menu(app)?;
             let integration = app.path().app_data_dir()?.join("shell-integration");
             shell::prepare(&integration).map_err(std::io::Error::other)?;
             app.manage(terminal::Shells {

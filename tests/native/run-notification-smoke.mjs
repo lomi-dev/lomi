@@ -29,9 +29,16 @@ await writeFile(
   }),
 );
 const config = join(directory, "config.json");
+const port = Number(process.env.LOMI_NOTIFICATION_SMOKE_PORT ?? 1437);
 await writeFile(
   config,
-  JSON.stringify({ identifier, build: { beforeDevCommand: "" } }),
+  JSON.stringify({
+    identifier,
+    build: {
+      beforeDevCommand: `pnpm dev --port ${port}`,
+      devUrl: `http://127.0.0.1:${port}`,
+    },
+  }),
 );
 console.log(
   `Native notification artifacts: ${directory}\nIsolated application data: ${appData}`,

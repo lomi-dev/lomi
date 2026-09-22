@@ -1,6 +1,6 @@
 use tauri::{
-    menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
-    App, AppHandle, Manager, RunEvent,
+    menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu},
+    AppHandle, Manager, RunEvent,
 };
 
 pub mod traffic_lights;
@@ -18,8 +18,8 @@ fn use_development_bundle_icon() {
     unsafe { application.setApplicationIconImage(None) };
 }
 
-pub fn setup_menu(app: &App) -> tauri::Result<()> {
-    let menu = Menu::with_items(
+pub fn menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
+    Menu::with_items(
         app,
         &[
             &Submenu::with_items(
@@ -68,28 +68,37 @@ pub fn setup_menu(app: &App) -> tauri::Result<()> {
                 ],
             )?,
         ],
-    )?;
-    app.set_menu(menu)?;
-    app.on_menu_event(|app, event| {
-        if event.id().as_ref() == "quit" {
-            app.exit(0);
-            return;
+    )
+}
+
+pub fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
+    if event.id().as_ref() == "quit" {
+        app.exit(0);
+        return;
+    }
+    if event.id().as_ref() == "close-window" {
+        if let Some(window) = app
+            .webview_windows()
+            .values()
+            .find(|window| window.is_focused().unwrap_or(false))
+        {
+            let _ = window.close();
         }
-        if event.id().as_ref() == "close-window" {
-            if let Some(window) = app
-                .webview_windows()
-                .values()
-                .find(|window| window.is_focused().unwrap_or(false))
-            {
-                let _ = window.close();
-            }
-        }
-    });
-    Ok(())
+    }
 }
 
 pub fn handle_run_event(app: &AppHandle, event: &RunEvent) {
     match event {
+        RunEvent::WindowEvent {
+            label,
+            event: tauri::WindowEvent::CloseRequested { api, .. },
+            ..
+        } if label == "main" => {
+            // Tauri only prevents native closure while a JS close listener exists.
+            // Keep the PTYs alive during startup/reloads as well; the shared frontend
+            // guard destroys the window explicitly after confirmation and saving.
+            api.prevent_close();
+        }
         RunEvent::WindowEvent {
             label,
             event: tauri::WindowEvent::Destroyed,

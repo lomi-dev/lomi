@@ -57,7 +57,11 @@
     await wait(async () =>
       (await invoke("busy_terminals", { ids: [id] })).includes(id),
     );
-    for (const stage of ["notification-quit", "notification-close"]) {
+    for (const stage of [
+      "notification-cmd-q",
+      "notification-quit",
+      "notification-close",
+    ]) {
       checkpoint = stage;
       await invoke("plugin_smoke_result", { stage, data: null });
       await wait(
@@ -89,6 +93,60 @@
     }
     await invoke("write_terminal", { id, data: "\u0003" });
     await wait(() => runtime.getSnapshot().agentSignal === null);
+    checkpoint = "native quit with an interactive terminal program";
+    await invoke("write_terminal", {
+      id,
+      data: "/usr/bin/vim -Nu NONE -n -i NONE quit-guard.txt\r",
+    });
+    await wait(() => runtime.terminal.buffer.active.type === "alternate");
+    await invoke("write_terminal", { id, data: "iUNSAVED QUIT GUARD" });
+    const vimText = () =>
+      Array.from({ length: runtime.terminal.buffer.active.length }, (_, i) =>
+        runtime.terminal.buffer.active.getLine(i)?.translateToString(),
+      ).join("\n");
+    await wait(() => vimText().includes("UNSAVED QUIT GUARD"));
+    for (const focus of ["terminal", "settings"]) {
+      checkpoint = `native Cmd+Q with vim and ${focus} focused`;
+      if (focus === "settings") {
+        await invoke("plugin_smoke_result", {
+          stage: "notification-settings",
+          data: null,
+        });
+        await wait(() => !document.hasFocus());
+      } else {
+        runtime.terminal.focus();
+      }
+      await invoke("plugin_smoke_result", {
+        stage: "notification-cmd-q",
+        data: null,
+      });
+      await wait(
+        () =>
+          document.querySelector("dialog[open] h2")?.textContent ===
+          "Quit Lomi?",
+      );
+      const dialog = document.querySelector("dialog[open]");
+      const cancel = [...dialog.querySelectorAll("button")].find(
+        (button) => button.textContent === "Cancel",
+      );
+      if (!dialog.textContent.includes("running processes"))
+        throw Error("Quit did not detect the interactive terminal program");
+      if (document.activeElement !== cancel)
+        throw Error("Cmd+Q did not focus Cancel");
+      cancel.click();
+      await wait(() => !document.querySelector("dialog[open]"));
+      if (
+        runtime.terminal.buffer.active.type !== "alternate" ||
+        !vimText().includes("UNSAVED QUIT GUARD") ||
+        runningTerminal("notification-terminal")?.sessionId !== id ||
+        !(await invoke("busy_terminals", { ids: [id] })).includes(id)
+      )
+        throw Error(
+          "Cancelling Cmd+Q lost the running vim session or its input",
+        );
+    }
+    await invoke("write_terminal", { id, data: "\u001b:q!\r" });
+    await wait(() => runtime.terminal.buffer.active.type === "normal");
     const configuration = await invoke("inspect_agent_notifications");
     if (!configuration.path.includes("lomi-notification-native-"))
       throw Error("Configuration is not isolated");
@@ -178,7 +236,9 @@
           "real PTY OSC parsing",
           "single-terminal title and work indicator without maximization",
           "activity cleared on the native shell prompt",
-          "native AppKit Quit and window close both confirm active terminal work",
+          "native quit during renderer startup preserves the main window",
+          "native Cmd+Q, AppKit Quit and window close confirm active terminal work",
+          "Cmd+Q with terminal or Settings focused protects vim and its unsaved input",
           "repeated quit requests share one dialog with Cancel focused",
           "cancelling native quit preserves the running process and PTY",
           "foreground suppression",

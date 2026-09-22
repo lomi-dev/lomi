@@ -2,6 +2,12 @@ use tauri::Manager;
 
 pub fn page(webview: &tauri::Webview, payload: &tauri::webview::PageLoadPayload<'_>) {
     if webview.label() == "main"
+        && matches!(payload.event(), tauri::webview::PageLoadEvent::Started)
+    {
+        // No frontend close listener exists yet; quitting must preserve the window.
+        webview.app_handle().exit(0);
+    }
+    if webview.label() == "main"
         && matches!(payload.event(), tauri::webview::PageLoadEvent::Finished)
     {
         let _ = webview.eval(include_str!("notification-smoke.js"));
@@ -18,6 +24,47 @@ pub fn result(
             let window = app.get_window("main").ok_or("Missing main window")?;
             window.show().map_err(|error| error.to_string())?;
             window.set_focus().map_err(|error| error.to_string())?;
+        }
+        "notification-settings" => {
+            let window = app
+                .get_window("settings")
+                .ok_or("Missing settings window")?;
+            window.show().map_err(|error| error.to_string())?;
+            window.set_focus().map_err(|error| error.to_string())?;
+        }
+        #[cfg(target_os = "macos")]
+        "notification-cmd-q" => {
+            app.run_on_main_thread(|| unsafe {
+                use std::ffi::c_void;
+                #[link(name = "CoreGraphics", kind = "framework")]
+                extern "C" {
+                    fn CGEventCreateKeyboardEvent(
+                        source: *const c_void,
+                        key: u16,
+                        down: bool,
+                    ) -> *const c_void;
+                    fn CGEventSetFlags(event: *const c_void, flags: u64);
+                }
+                #[link(name = "CoreFoundation", kind = "framework")]
+                extern "C" {
+                    fn CFRelease(value: *const c_void);
+                }
+                let main = objc2::MainThreadMarker::new().unwrap();
+                let application = objc2_app_kit::NSApplication::sharedApplication(main);
+                for down in [true, false] {
+                    let event = CGEventCreateKeyboardEvent(std::ptr::null(), 12, down);
+                    assert!(!event.is_null());
+                    CGEventSetFlags(event, 1 << 20);
+                    let native: *mut objc2::runtime::AnyObject =
+                        objc2::msg_send![objc2::class!(NSEvent), eventWithCGEvent: event];
+                    assert!(!native.is_null());
+                    // Route the shortcut through this application's native event dispatch,
+                    // without sending keystrokes to other running applications.
+                    let _: () = objc2::msg_send![&*application, sendEvent: native];
+                    CFRelease(event);
+                }
+            })
+            .map_err(|error| error.to_string())?;
         }
         #[cfg(target_os = "macos")]
         "notification-quit" => {
