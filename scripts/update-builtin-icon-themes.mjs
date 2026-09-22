@@ -37,7 +37,7 @@ await writeFile(
     {
       fonts: [
         {
-          id: "simplebench-lucide",
+          id: "lomi-lucide",
           src: [{ path: "lucide.woff2", format: "woff2" }],
           weight: "normal",
           style: "normal",

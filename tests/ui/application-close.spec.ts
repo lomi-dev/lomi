@@ -140,7 +140,7 @@ for (const trigger of ["close button", "native close request"]) {
           );
         });
     };
-    const dialog = page.getByRole("dialog", { name: "Quit SimpleBench?" });
+    const dialog = page.getByRole("dialog", { name: "Quit Lomi?" });
     await close();
     await expect(dialog).toContainText(
       "Chat AI is still generating a response",
@@ -200,8 +200,6 @@ test("a finished AI response does not ask for quit confirmation", async ({
   ).toHaveCount(0);
   await page.getByRole("button", { name: "Close window" }).click();
   await expect.poll(() => actions(page)).toContain("plugin:window|destroy");
-  await expect(
-    page.getByRole("dialog", { name: "Quit SimpleBench?" }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "Quit Lomi?" })).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).__chatTest.stops)).toBe(0);
 });

@@ -3,9 +3,7 @@ import { createServer, connect } from "node:net";
 import { spawn } from "node:child_process";
 import { resolve, join } from "node:path";
 import { writeFile, mkdir } from "node:fs/promises";
-const root = resolve(
-  process.argv[2] ?? "/tmp/simplebench-android-stage0-20260918",
-);
+const root = resolve(process.argv[2] ?? "/tmp/lomi-android-stage0-20260918");
 const events = [];
 const socketErrors = [];
 let version = "0029";

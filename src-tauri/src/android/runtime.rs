@@ -379,7 +379,7 @@ pub fn recovered_statuses(
         };
         if let Some(record) = previous(&entry.path(), id)? {
             if record.current_process(root)?.is_some() {
-                result.push(Status { device_id: id.into(), generation: Some(record.generation), phase: Phase::Failed, process_alive: true, serial: Some(format!("emulator-{}", record.console_port)), display: None, error: Some("Android survived a previous SimpleBench exit. Choose Stop to recover it safely, then Start again. Device data is preserved.".into()) });
+                result.push(Status { device_id: id.into(), generation: Some(record.generation), phase: Phase::Failed, process_alive: true, serial: Some(format!("emulator-{}", record.console_port)), display: None, error: Some("Android survived a previous Lomi exit. Choose Stop to recover it safely, then Start again. Device data is preserved.".into()) });
             }
         }
     }
@@ -515,7 +515,7 @@ pub(super) fn check_previous(path: &Path, device_id: &str) -> Result<(), String>
             .and_then(Path::parent)
             .ok_or("Invalid Android recovery path")?;
         if old.current_process(root)?.is_some() {
-            return Err("A previous SimpleBench instance still owns an Android process. Recover or stop it before changing its files or starting another process.".into());
+            return Err("A previous Lomi instance still owns an Android process. Recover or stop it before changing its files or starting another process.".into());
         }
     }
     Ok(())
@@ -601,7 +601,7 @@ impl Process {
                 "-crash-report-mode",
                 "disabled",
                 "-append-userspace-opt",
-                &format!("androidboot.simplebench.device={}", plan.device_id),
+                &format!("androidboot.lomi.device={}", plan.device_id),
                 "-adb-path",
             ])
             .arg(plan.root.join("runtime/no-external-adb"))
@@ -1277,7 +1277,7 @@ mod tests {
     #[test]
     #[ignore = "Starts a real emulator using the explicitly accepted isolated native trial"]
     fn native_runtime_coalesces_starts_retains_failed_stop_and_preserves_data() {
-        let root = PathBuf::from(std::env::var("SIMPLEBENCH_ANDROID_PROBE_DIRECTORY").unwrap())
+        let root = PathBuf::from(std::env::var("LOMI_ANDROID_PROBE_DIRECTORY").unwrap())
             .canonicalize()
             .unwrap();
         let consent: serde_json::Value = storage::read(&root.join("evidence/consent.json"))
@@ -1286,7 +1286,7 @@ mod tests {
         assert_eq!(consent["accepted"], true);
         assert!(root
             .to_string_lossy()
-            .starts_with("/private/tmp/simplebench-android-stage0-"));
+            .starts_with("/private/tmp/lomi-android-stage0-"));
         let directory = Arc::new(Mutex::new(
             storage::Directory::acquire(root.clone()).unwrap(),
         ));

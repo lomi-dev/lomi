@@ -11,24 +11,24 @@ fn entry_script(source: &str, data: &serde_json::Value) -> String {
     source.replace("SMOKE_ENTRY", &serde_json::to_string(data).unwrap())
 }
 pub fn page(webview: &tauri::Webview, payload: &tauri::webview::PageLoadPayload<'_>) {
-    if std::env::var_os("SIMPLEBENCH_CLIPBOARD_SMOKE_DIRECTORY").is_some() {
+    if std::env::var_os("LOMI_CLIPBOARD_SMOKE_DIRECTORY").is_some() {
         terminal_clipboard_smoke::page(webview, payload);
         return;
     }
     #[cfg(feature = "android-probe")]
-    if std::env::var_os("SIMPLEBENCH_ANDROID_PROBE_DIRECTORY").is_some() {
+    if std::env::var_os("LOMI_ANDROID_PROBE_DIRECTORY").is_some() {
         crate::android_probe::page(webview, payload);
         return;
     }
-    if std::env::var_os("SIMPLEBENCH_NOTIFICATION_SMOKE_DIRECTORY").is_some() {
+    if std::env::var_os("LOMI_NOTIFICATION_SMOKE_DIRECTORY").is_some() {
         notification_smoke::page(webview, payload);
         return;
     }
-    if std::env::var_os("SIMPLEBENCH_IMAGE_SMOKE_DIRECTORY").is_some() {
+    if std::env::var_os("LOMI_IMAGE_SMOKE_DIRECTORY").is_some() {
         image_smoke::page(webview, payload);
         return;
     }
-    if std::env::var_os("SIMPLEBENCH_THEME_SMOKE_DIRECTORY").is_some() {
+    if std::env::var_os("LOMI_THEME_SMOKE_DIRECTORY").is_some() {
         theme_smoke::page(webview, payload);
         return;
     }
@@ -37,7 +37,7 @@ pub fn page(webview: &tauri::Webview, payload: &tauri::webview::PageLoadPayload<
     {
         return;
     }
-    let Ok(path) = std::env::var("SIMPLEBENCH_PLUGIN_SMOKE_PACKAGE") else {
+    let Ok(path) = std::env::var("LOMI_PLUGIN_SMOKE_PACKAGE") else {
         return;
     };
     if crate::plugins::safe_mode() {
@@ -62,23 +62,23 @@ pub fn plugin_smoke_result(
     if !matches!(window.label(), "main" | "settings") {
         return Err("Unknown test caller.".into());
     }
-    if std::env::var_os("SIMPLEBENCH_CLIPBOARD_SMOKE_DIRECTORY").is_some() {
+    if std::env::var_os("LOMI_CLIPBOARD_SMOKE_DIRECTORY").is_some() {
         return terminal_clipboard_smoke::result(&app, &stage, data);
     }
     #[cfg(feature = "android-probe")]
-    if std::env::var_os("SIMPLEBENCH_ANDROID_PRODUCT_DIRECTORY").is_some() {
+    if std::env::var_os("LOMI_ANDROID_PRODUCT_DIRECTORY").is_some() {
         return crate::android_product::result(&window, &stage, data);
     }
-    if std::env::var_os("SIMPLEBENCH_NOTIFICATION_SMOKE_DIRECTORY").is_some() {
+    if std::env::var_os("LOMI_NOTIFICATION_SMOKE_DIRECTORY").is_some() {
         return notification_smoke::result(&app, &stage, data);
     }
-    if std::env::var_os("SIMPLEBENCH_IMAGE_SMOKE_DIRECTORY").is_some() {
+    if std::env::var_os("LOMI_IMAGE_SMOKE_DIRECTORY").is_some() {
         return image_smoke::result(&app, &stage, data);
     }
-    if std::env::var_os("SIMPLEBENCH_THEME_SMOKE_DIRECTORY").is_some() {
+    if std::env::var_os("LOMI_THEME_SMOKE_DIRECTORY").is_some() {
         return theme_smoke::result(&app, &stage, data);
     }
-    if std::env::var_os("SIMPLEBENCH_PLUGIN_SMOKE_PACKAGE").is_none() {
+    if std::env::var_os("LOMI_PLUGIN_SMOKE_PACKAGE").is_none() {
         return Err("The smoke environment is not active.".into());
     }
     if stage == "inspect" {
@@ -141,11 +141,11 @@ pub fn plugin_smoke_result(
             .map_err(|e| e.to_string()),
         "theme-ready"=>app.get_webview("main").ok_or("Missing main view")?.eval(include_str!("workbench-smoke.js")).map_err(|e|e.to_string()),
         "check-settings"=>app.get_webview("settings").ok_or("Missing settings")?.eval(entry_script(r#"(async()=>{const invoke=window.__TAURI_INTERNALS__.invoke;try{for(let i=0;i<150;i++){if(getComputedStyle(document.documentElement).getPropertyValue('--radius-control').trim()==='11px'&&document.documentElement.dataset.appearance==='light'&&document.documentElement.dataset.themeSourceRevision===SMOKE_ENTRY){await invoke('plugin_smoke_result',{stage:'settings-synced',data:{appearance:document.documentElement.dataset.appearance,radius:'11px',sourceRevision:document.documentElement.dataset.themeSourceRevision}});return;}await new Promise(r=>setTimeout(r,100));}throw Error('Settings did not follow the theme watch');}catch(error){await invoke('plugin_smoke_result',{stage:'failed',data:String(error)});}})();"#, &data)).map_err(|e|e.to_string()),
-        "settings-synced"=>app.get_webview("main").ok_or("Missing main view")?.eval(format!("globalThis.__simplebenchSmokeSettings={}",serde_json::to_string(&data).unwrap())).map_err(|e|e.to_string()),
+        "settings-synced"=>app.get_webview("main").ok_or("Missing main view")?.eval(format!("globalThis.__lomiSmokeSettings={}",serde_json::to_string(&data).unwrap())).map_err(|e|e.to_string()),
         "workbench-ready"=>app.get_webview("settings").ok_or("Missing settings")?.eval(r#"(async()=>{const invoke=window.__TAURI_INTERNALS__.invoke;try{const id=await invoke('duplicate_theme',{id:null});await invoke('save_theme_preferences',{data:{version:1,active:id,appearance:'dark'}});await invoke('plugin_smoke_result',{stage:'theme-ready',data:{id}});}catch(error){await invoke('plugin_smoke_result',{stage:'failed',data:String(error)});}})();"#).map_err(|e|e.to_string()),
         "passed" | "failed" => {
             let path =
-                std::env::var("SIMPLEBENCH_PLUGIN_SMOKE_REPORT").map_err(|e| e.to_string())?;
+                std::env::var("LOMI_PLUGIN_SMOKE_REPORT").map_err(|e| e.to_string())?;
             std::fs::write(
                 path,
                 serde_json::to_vec_pretty(&serde_json::json!({"stage":stage,"data":data})).unwrap(),

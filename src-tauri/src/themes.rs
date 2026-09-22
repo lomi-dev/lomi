@@ -656,7 +656,7 @@ pub fn load_theme_preferences(
     authorize(window.label(), false)?;
     let mut observed = state.lock.lock().map_err(|error| error.to_string())?;
     let safe_mode = crate::plugins::safe_mode()
-        || std::env::var_os("SIMPLEBENCH_SAFE_THEME").is_some_and(|value| value == "1");
+        || std::env::var_os("LOMI_SAFE_THEME").is_some_and(|value| value == "1");
     let preferences = if safe_mode {
         Preferences::builtin()
     } else {

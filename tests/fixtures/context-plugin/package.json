@@ -1,5 +1,5 @@
 {
-  "name": "simplebench-plugin-fixture",
+  "name": "lomi-plugin-fixture",
   "version": "1.0.0",
   "type": "module",
   "private": true,
@@ -9,7 +9,7 @@
   "dependencies": {
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "@lomi-dev/plugin-sdk": "1.1.0-alpha.0"
+    "@lomi-dev/plugin-sdk": "1.1.0-alpha.1"
   },
   "devDependencies": {
     "tsup": "8.5.1",

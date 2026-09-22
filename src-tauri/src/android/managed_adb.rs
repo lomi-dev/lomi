@@ -6,7 +6,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// A shared server is never killed by SimpleBench. Its foreground entry point
+/// A shared server is never killed by Lomi. Its foreground entry point
 /// only binds a listener; unlike an ordinary client it cannot replace a peer.
 #[derive(Default)]
 pub struct SharedServer {
@@ -104,7 +104,7 @@ mod tests {
     #[test]
     #[ignore = "Subprocess fixture for the retained server test"]
     fn retained_server_fixture() {
-        if std::env::var_os("SIMPLEBENCH_ADB_RETAINED_FIXTURE").is_some() {
+        if std::env::var_os("LOMI_ADB_RETAINED_FIXTURE").is_some() {
             let _ = std::io::stdin().read(&mut [0]);
         }
     }
@@ -121,7 +121,7 @@ mod tests {
                 "android::managed_adb::tests::retained_server_fixture",
                 "--ignored",
             ])
-            .env("SIMPLEBENCH_ADB_RETAINED_FIXTURE", "1")
+            .env("LOMI_ADB_RETAINED_FIXTURE", "1")
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::null())

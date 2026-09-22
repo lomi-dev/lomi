@@ -254,7 +254,7 @@ fn write(request: &SaveFile) -> Result<String, EditorError> {
     let (_, encoding) = decode(&original)?;
     let bytes = encode(&request.content, encoding)?;
     let mut temporary = tempfile::Builder::new()
-        .prefix(".simplebench-")
+        .prefix(".lomi-")
         .tempfile_in(
             path.parent()
                 .ok_or_else(|| EditorError::new("io", "The file has no parent directory."))?,
@@ -337,7 +337,7 @@ fn write_new(
     } else {
         let bytes = encode(content, Encoding::Utf8)?;
         let mut temporary = tempfile::Builder::new()
-            .prefix(".simplebench-")
+            .prefix(".lomi-")
             .tempfile_in(parent)
             .map_err(EditorError::io)?;
         temporary.write_all(&bytes).map_err(EditorError::io)?;

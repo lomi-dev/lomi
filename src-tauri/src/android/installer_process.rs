@@ -158,7 +158,7 @@ mod tests {
                 "--ignored",
                 "--nocapture",
             ])
-            .env("SIMPLEBENCH_INSTALLER_CHILD_FIXTURE", mode);
+            .env("LOMI_INSTALLER_CHILD_FIXTURE", mode);
         InstallerChild::spawn(command, timeout).unwrap()
     }
 
@@ -218,7 +218,7 @@ mod tests {
     #[test]
     #[ignore = "Owned subprocess for installer lifecycle tests"]
     fn installer_child_fixture() {
-        match std::env::var("SIMPLEBENCH_INSTALLER_CHILD_FIXTURE")
+        match std::env::var("LOMI_INSTALLER_CHILD_FIXTURE")
             .unwrap()
             .as_str()
         {
@@ -237,7 +237,7 @@ mod tests {
                         "--ignored",
                         "--nocapture",
                     ])
-                    .env("SIMPLEBENCH_INSTALLER_CHILD_FIXTURE", "wait")
+                    .env("LOMI_INSTALLER_CHILD_FIXTURE", "wait")
                     .spawn()
                     .unwrap();
                 println!("DESCENDANT={}", child.id());

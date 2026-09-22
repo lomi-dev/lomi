@@ -169,7 +169,7 @@ struct Stats {
 
 fn root() -> Result<PathBuf, String> {
     let path = PathBuf::from(
-        std::env::var("SIMPLEBENCH_ANDROID_PROBE_DIRECTORY").map_err(|_| "Probe is not enabled")?,
+        std::env::var("LOMI_ANDROID_PROBE_DIRECTORY").map_err(|_| "Probe is not enabled")?,
     );
     let consent: serde_json::Value = fs::read(path.join("evidence/consent.json"))
         .map_err(|e| e.to_string())
@@ -496,8 +496,8 @@ pub async fn android_probe_control(
             .map_err(|e| e.to_string())
             .and_then(|data| serde_json::from_slice(&data).map_err(|e| e.to_string())),
         "start" => {
-            let avd = std::env::var("SIMPLEBENCH_ANDROID_PROBE_AVD")
-                .unwrap_or_else(|_| "sb_stage0".into());
+            let avd =
+                std::env::var("LOMI_ANDROID_PROBE_AVD").unwrap_or_else(|_| "sb_stage0".into());
             if avd != "sb_stage0"
                 && !avd.strip_prefix("sb_stage0_").is_some_and(|suffix| {
                     !suffix.is_empty()
@@ -563,7 +563,7 @@ pub async fn android_probe_control(
                     "-crash-report-mode",
                     "disabled",
                     "-append-userspace-opt",
-                    "androidboot.simplebench.device=00000000-0000-0000-0000-000000000001",
+                    "androidboot.lomi.device=00000000-0000-0000-0000-000000000001",
                     "-adb-path",
                 ])
                 .arg(path.join("runtime/no-external-adb"))
@@ -1101,7 +1101,7 @@ fn ime(action: &str, text: &str) -> Result<(), String> {
         .set_write_timeout(Some(Duration::from_secs(3)))
         .map_err(|e| e.to_string())?;
     service(&mut socket, "host:transport:emulator-5580")?;
-    service(&mut socket, "localabstract:simplebench.input.v1")?;
+    service(&mut socket, "localabstract:lomi.input.v1")?;
     let bytes =
         serde_json::to_vec(&serde_json::json!({"version":1,"id":1,"deviceId":"00000000-0000-0000-0000-000000000001","generationKey":"00000000-0000-0000-0000-000000000002","action":action,"text":text}))
             .map_err(|e| e.to_string())?;

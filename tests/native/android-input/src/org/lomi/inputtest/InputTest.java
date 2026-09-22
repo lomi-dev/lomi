@@ -1,4 +1,4 @@
-package org.simplebench.inputtest;
+package org.lomi.inputtest;
 
 import android.app.Activity;
 import android.os.Bundle;
@@ -22,7 +22,7 @@ public final class InputTest extends Activity {
         layout.addView(label);
         EditText editor = new EditText(this);
         editor.setSingleLine(false);
-        editor.setContentDescription("simplebench-test-editor");
+        editor.setContentDescription("lomi-test-editor");
         layout.addView(editor, new LinearLayout.LayoutParams(-1, 300));
         View target = new View(this) {
             private boolean on;

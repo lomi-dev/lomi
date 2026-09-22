@@ -3,7 +3,7 @@ fn main() {
     println!("cargo:rerun-if-changed=../src/chat/provider-presets.ts");
     println!("cargo:rerun-if-changed=../scripts/prepare-ai-runtime.mjs");
     let target = std::env::var("TARGET").expect("missing Cargo target");
-    println!("cargo:rustc-env=SIMPLEBENCH_AI_TARGET={target}");
+    println!("cargo:rustc-env=LOMI_AI_TARGET={target}");
     let mut prepare = std::process::Command::new("node");
     prepare
         .arg("../scripts/prepare-ai-runtime.mjs")

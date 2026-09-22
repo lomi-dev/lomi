@@ -195,8 +195,8 @@ export default function ThemeEditor({
                   ))}
                 </ul>
                 <p>
-                  Original VS Code data is stored in the vscode section.
-                  SimpleBench overrides are applied above it.
+                  Original VS Code data is stored in the vscode section. Lomi
+                  overrides are applied above it.
                 </p>
               </details>
             )}

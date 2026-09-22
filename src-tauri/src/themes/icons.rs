@@ -252,7 +252,7 @@ pub(super) fn builtin(kind: &str) -> Result<Document, String> {
         include_bytes!("../../../themes/icons/LICENSE.txt").to_vec(),
     );
     Ok(Document {
-        manifest: serde_json::json!({"version":2,"name":if kind == "file" {"SimpleBench file icons"} else {"SimpleBench interface icons"},"iconTheme":{"kind":kind,"path":"icons.json"}}),
+        manifest: serde_json::json!({"version":2,"name":if kind == "file" {"Lomi file icons"} else {"Lomi interface icons"},"iconTheme":{"kind":kind,"path":"icons.json"}}),
         resources,
     })
 }

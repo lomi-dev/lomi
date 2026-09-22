@@ -33,11 +33,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - package: simplebench-bin
-            pkgbuild: ./aur/simplebench-bin/PKGBUILD
+          - package: lomi-bin
+            pkgbuild: ./aur/lomi-bin/PKGBUILD
             source_kind: deb
-          - package: simplebench
-            pkgbuild: ./aur/simplebench/PKGBUILD
+          - package: lomi
+            pkgbuild: ./aur/lomi/PKGBUILD
             source_kind: source
     env:
       AUR_MAINTAINER_NAME: "Woro"
@@ -87,12 +87,12 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "$SOURCE_KIND" == "deb" ]]; then
-            url="https://github.com/MaciejKolerski/simplebench/releases/download/v${VERSION}/SimpleBench_${VERSION}_amd64.deb"
-            archive="$RUNNER_TEMP/SimpleBench_${VERSION}_amd64.deb"
+            url="https://github.com/lomi-dev/lomi/releases/download/v${VERSION}/Lomi_${VERSION}_amd64.deb"
+            archive="$RUNNER_TEMP/Lomi_${VERSION}_amd64.deb"
             checksum_key=sha256sums_x86_64
           else
-            url="https://github.com/MaciejKolerski/simplebench/archive/refs/tags/v${VERSION}.tar.gz"
-            archive="$RUNNER_TEMP/simplebench-${VERSION}.tar.gz"
+            url="https://github.com/lomi-dev/lomi/archive/refs/tags/v${VERSION}.tar.gz"
+            archive="$RUNNER_TEMP/lomi-${VERSION}.tar.gz"
             checksum_key=sha256sums
           fi
 

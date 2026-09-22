@@ -1,32 +1,32 @@
 <div align="center">
-  <img src="public/app-icon.svg" width="88" height="88" alt="SimpleBench icon" />
-  <h1>SimpleBench</h1>
+  <img src="public/app-icon.svg" width="88" height="88" alt="Lomi icon" />
+  <h1>Lomi</h1>
   <p><strong>Your terminal, code, and browser in one desktop workspace.</strong></p>
   <p>A local development environment for Linux, macOS, and Windows.</p>
   <p>
-    <a href="https://github.com/MaciejKolerski/simplebench/releases/latest">Download</a> ·
+    <a href="https://github.com/lomi-dev/lomi/releases/latest">Download</a> ·
     <a href="#work-in-one-workspace">Features</a> ·
     <a href="#keyboard-shortcuts">Shortcuts</a> ·
     <a href="#develop-from-source">Development</a> ·
-    <a href="https://github.com/MaciejKolerski/simplebench/issues">Report an issue</a>
+    <a href="https://github.com/lomi-dev/lomi/issues">Report an issue</a>
   </p>
 </div>
 
-![SimpleBench with the file explorer, a TypeScript editor, passing tests, and a running Vite server in two terminal panels.](docs/images/workbench.png)
+![Lomi with the file explorer, a TypeScript editor, passing tests, and a running Vite server in two terminal panels.](docs/images/workbench.png)
 
-Open a project folder, arrange your panels, and get to work. SimpleBench brings
+Open a project folder, arrange your panels, and get to work. Lomi brings
 native terminals, file editing, browser previews, and Git into the same window.
 Create separate workspaces for different tasks while keeping their shells running
 in the background.
 
 _Screenshots show a native Linux development build with the bundled DeepMono dark
 theme. This README describes the current development branch; see the
-[release notes](https://github.com/MaciejKolerski/simplebench/releases) for the
+[release notes](https://github.com/lomi-dev/lomi/releases) for the
 features included in each download._
 
 ## Download and install
 
-Choose a package from the [latest release](https://github.com/MaciejKolerski/simplebench/releases/latest).
+Choose a package from the [latest release](https://github.com/lomi-dev/lomi/releases/latest).
 
 | Platform            | Package                                                  |
 | ------------------- | -------------------------------------------------------- |
@@ -35,13 +35,13 @@ Choose a package from the [latest release](https://github.com/MaciejKolerski/sim
 | macOS Intel         | `x64.dmg`                                                |
 | Windows x64         | `.exe` installer or `.msi`                               |
 
-On Arch Linux, install the prebuilt [AUR package](https://aur.archlinux.org/packages/simplebench-bin):
+On Arch Linux, install the prebuilt [AUR package](https://aur.archlinux.org/packages/lomi-bin):
 
 ```sh
-yay -S simplebench-bin
+yay -S lomi-bin
 ```
 
-The [simplebench](https://aur.archlinux.org/packages/simplebench) AUR package builds
+The [lomi](https://aur.archlinux.org/packages/lomi) AUR package builds
 from source. For an AppImage, enable **Allow executing file as program** in your
 file manager before opening it.
 
@@ -98,7 +98,7 @@ Choose **+ → Chat AI**, then add a named connection in **Settings → Chat AI*
 OpenAI, Anthropic and Google Gemini use your own API keys. Choose the system
 credential store or explicit session-only storage, set a default model, and
 optionally run the paid, fixed-prompt connection test. Installed builds include
-Node; no Node installation, SimpleBench account or Vercel account is required.
+Node; no Node installation, Lomi account or Vercel account is required.
 
 Chats support streaming, Stop, Retry, preserved Edit/Regenerate variants, local
 searchable history, shared drafts, Markdown/JSON export, and explicitly attached
@@ -114,9 +114,9 @@ from Source Control. Browse repository history and open a commit to inspect its
 message, changed files, and read-only diffs. Remote actions include fetch, pull,
 and push.
 
-![SimpleBench showing repository history, a selected commit, its changed files, and the diff for Explorer.tsx.](docs/images/source-control.png)
+![Lomi showing repository history, a selected commit, its changed files, and the diff for Explorer.tsx.](docs/images/source-control.png)
 
-_The native Git view, displaying a real commit from the SimpleBench repository._
+_The native Git view, displaying a real commit from the Lomi repository._
 
 ### Make it your own
 
@@ -126,7 +126,7 @@ the system by default, with manual light and dark options.
 
 Agent notifications are enabled by default in **Settings → Terminal**. Choose
 **Configure Claude Code…** and approve the displayed configuration file in the
-main window, then start a new Claude Code session. SimpleBench preserves existing
+main window, then start a new Claude Code session. Lomi preserves existing
 hooks and settings and makes a backup before writing. Alerts identify the
 workspace and terminal when Claude finishes responding or needs input while the
 main window is in the background, including hidden terminals. Turn off
@@ -134,18 +134,18 @@ main window is in the background, including hidden terminals. Turn off
 Finishing a response does not guarantee that the task succeeded.
 
 Setup targets local Claude Code's `settings.json` under `CLAUDE_CONFIG_DIR` when
-SimpleBench inherits it, otherwise `~/.claude`. WSL, SSH, and custom per-terminal
+Lomi inherits it, otherwise `~/.claude`. WSL, SSH, and custom per-terminal
 configuration locations need their own hook configuration. Notifications also
 depend on the operating system's notification settings; Windows requires an
 installed build for the correct application identity.
 
-![The native SimpleBench settings window on the Keybinds page, showing workspace shortcuts and the focus-follows-pointer option.](docs/images/keybindings.png)
+![The native Lomi settings window on the Keybinds page, showing workspace shortcuts and the focus-follows-pointer option.](docs/images/keybindings.png)
 
 - **Themes:** use the built-in DeepMono palette or create and import JSONC theme
   packages with local assets and CSS. See [theme authoring](themes/README.md).
 - **Plugins:** install trusted local packages that add views, sidebars, and
   commands. See the [plugin SDK](https://github.com/lomi-dev/plugin-sdk).
-- **Recovery:** launch with `simplebench --safe-mode` to skip third-party plugins
+- **Recovery:** launch with `lomi --safe-mode` to skip third-party plugins
   and themes.
 
 ## Keyboard shortcuts
@@ -179,37 +179,37 @@ by moving the pointer over it.
 
 ## Work with CLI agents
 
-Run your installed coding CLIs in ordinary terminal panels. SimpleBench displays
+Run your installed coding CLIs in ordinary terminal panels. Lomi displays
 the terminal titles they publish, including conversation titles when the CLI
 supports and enables them.
 
 Paste a screenshot or copied image into a terminal using **Cmd+V** on macOS,
 **Ctrl+V** on Windows, or the configurable **Paste into terminal** shortcut
-(**Ctrl+Shift+V** on Linux/Windows, **Cmd+Shift+V** on macOS). SimpleBench saves
+(**Ctrl+Shift+V** on Linux/Windows, **Cmd+Shift+V** on macOS). Lomi saves
 the image as a local PNG and pastes its quoted path, which Codex recognizes as
 an image attachment. For a foreground local `agy` process on macOS/Linux,
-SimpleBench invokes its existing image-paste action instead, so it creates a
+Lomi invokes its existing image-paste action instead, so it creates a
 native media attachment. Neither route needs CLI plugins or configuration
 changes. Pasting never presses Enter, and ordinary clipboard text keeps working.
 Native attachment behavior has been verified on macOS with Codex and agy;
 other platforms have not yet been qualified.
 
 Saved PNGs stay in the application's `terminal-clipboard` cache after closing a
-terminal or restarting SimpleBench, so pending CLI drafts can still use them.
+terminal or restarting Lomi, so pending CLI drafts can still use them.
 The cache holds up to 512 MiB or 2048 images; if full, the error shows the folder
 where you can remove images you no longer need. Each saved PNG is limited to
 32 megapixels and 32 MiB of PNG data. agy manages its own imported attachment.
 Images are local files, not uploads;
 remote SSH sessions and containers need their own access to those files.
 
-On Linux, SimpleBench can help configure titles for Codex, agy, Cursor CLI, and
+On Linux, Lomi can help configure titles for Codex, agy, Cursor CLI, and
 Claude Code. It asks before changing configuration and keeps a backup. The agy
 title formatter reads local conversation-name annotations. Setup does not restart
 the CLI or resume a conversation automatically.
 
 ## What survives a restart
 
-SimpleBench saves project folders, workspaces, tabs, panel layouts, and working
+Lomi saves project folders, workspaces, tabs, panel layouts, and working
 directories. Reopening a session starts fresh shells when their tabs are visited.
 It does not replay commands or restore previous processes, terminal output, or
 unsaved file contents.
@@ -231,8 +231,8 @@ Install Node.js **22.14 or newer**, pnpm (the version declared in
 Linux libraries, macOS developer tools, or Windows build tools and WebView2.
 
 ```sh
-git clone https://github.com/MaciejKolerski/simplebench.git
-cd simplebench
+git clone https://github.com/lomi-dev/lomi.git
+cd lomi
 pnpm install --frozen-lockfile
 pnpm tauri dev
 ```

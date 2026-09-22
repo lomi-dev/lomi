@@ -1,13 +1,13 @@
 # Local Android phones
 
-Android runs inside a SimpleBench tab or docked panel. It uses a local Android
+Android runs inside a Lomi tab or docked panel. It uses a local Android
 Emulator process with its own persistent virtual phone data, without opening an
 emulator window or requiring Android Studio.
 
 Native qualification currently covers the recorded Apple M3/macOS ARM64 host.
 Android setup and Start are disabled on Windows, Linux and Intel macOS until
 their native lifecycle, input and graphics tests are completed. This restriction
-applies to Android, not to the rest of SimpleBench. See the exact host, tool
+applies to Android, not to the rest of Lomi. See the exact host, tool
 versions, results and remaining limitations in [the architecture guide](android-architecture.md).
 The modern profile and zoom extension was tested with Android 17 (API 37.2)
 Google Play and Pixel 10 Pro XL at 1344 × 2992, using a scaled preview. The
@@ -22,7 +22,7 @@ according to SDK compatibility; they have not all been individually tested.
    install tools, download an Android version, then create a phone. Any required
    system preparation appears above it.
 3. Choose **Install Android tools**, review the provider terms and approve
-   the required licenses. SimpleBench downloads its own SDK tools and private
+   the required licenses. Lomi downloads its own SDK tools and private
    Java runtime into its local application data. It does not change the
    system PATH, JAVA_HOME, shell profiles or another application's SDK.
 4. Open **Android versions**. Recent stable versions appear first, with filters
@@ -32,7 +32,7 @@ according to SDK compatibility; they have not all been individually tested.
    compatible native libraries in your apps. Download only the image you want
    after reviewing its terms; preview and Canary builds are excluded.
 5. Create a device using an available phone profile and installed image. Review
-   the bundled SimpleBench input method, which provides Unicode and composition
+   the bundled Lomi input method, which provides Unicode and composition
    inside this virtual phone. Profiles come from the installed official tools,
    including recent Pixel models. Profiles needing a newer Android version are
    disabled with an explanation. The name initially follows your chosen phone;
@@ -54,7 +54,7 @@ Image downloads show their current stage, progress, transferred bytes and a
 download stays visible when filters change or Settings reopens. Verification
 and installation show an indeterminate bar until the native operation finishes.
 Closing Settings keeps an explicitly started installation running. Closing
-SimpleBench safely settles or cancels the installation before exiting.
+Lomi safely settles or cancels the installation before exiting.
 
 ## Use the panel
 
@@ -94,7 +94,7 @@ offer **Preview size (100%)**. **Save screenshot…** exports full phone resolut
 The actions menu includes rotation, Start/Stop/Restart, zoom, **Install APK…**,
 **Save screenshot…** and **Device details**. The latter exposes the
 current ADB serial and managed ADB path for your own terminal work. Selecting
-an APK installs it; SimpleBench does not build a project or execute copied text.
+an APK installs it; Lomi does not build a project or execute copied text.
 
 Two views of the same device share its apps, data, process and image stream.
 Create another device for an independent phone. Docking, resizing and switching
@@ -123,7 +123,7 @@ or route back to setup; a missing restored device remains repairable in its tab.
 The Android backend never kills a shared ADB server or uses a regular ADB client
 that might replace an incompatible server. A conflicting server or unverified
 device identity produces an error to resolve before retrying. A second
-SimpleBench process cannot manage the same Android directory concurrently.
+Lomi process cannot manage the same Android directory concurrently.
 
 Profiles describe virtual screen hardware, not every physical component or a
 manufacturer's exclusive software. Foldable/resizable profiles remain excluded

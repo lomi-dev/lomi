@@ -105,7 +105,7 @@ impl Connection {
         let id = key["keys"][0]["kid"]
             .as_str()
             .ok_or("Missing authority identity")?;
-        let registration = jwks.join(format!("simplebench-{id}.jwk"));
+        let registration = jwks.join(format!("lomi-{id}.jwk"));
         let public_key = key.to_string().into_bytes();
         let mut temporary = tempfile::NamedTempFile::new_in(&jwks).map_err(|e| e.to_string())?;
         temporary

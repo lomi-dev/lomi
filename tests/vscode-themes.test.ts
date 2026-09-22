@@ -32,7 +32,7 @@ const source = {
     "variable.readonly:typescript": { foreground: "#abcdef", italic: true },
   },
 };
-test("VS Code data survives validation, mapping and SimpleBench overrides", () => {
+test("VS Code data survives validation, mapping and Lomi overrides", () => {
   const manifest = parseThemeText(
     JSON.stringify({
       version: 2,

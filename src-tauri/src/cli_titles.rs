@@ -229,12 +229,10 @@ fn agy_command() -> Result<String, String> {
         .map(PathBuf::from)
         .unwrap_or(std::env::current_exe().map_err(|error| error.to_string())?)
         .canonicalize()
-        .map_err(|_| {
-            "Cannot locate SimpleBench's title formatter. Restart SimpleBench and try again."
-        })?;
+        .map_err(|_| "Cannot locate Lomi's title formatter. Restart Lomi and try again.")?;
     let path = executable
         .to_str()
-        .ok_or("The SimpleBench executable path is not UTF-8.")?;
+        .ok_or("The Lomi executable path is not UTF-8.")?;
     Ok(format!(
         "{} --agy-terminal-title",
         crate::shell::quote(path, "bash")?
@@ -554,7 +552,7 @@ mod tests {
                     entry
                         .file_name()
                         .to_string_lossy()
-                        .contains(".simplebench-backup-")
+                        .contains(".lomi-backup-")
                 })
                 .unwrap();
             assert_eq!(fs::read_to_string(backup.path()).unwrap(), source);
@@ -645,7 +643,7 @@ mod tests {
         fs::write(&first, r#"title:"Data Wydania Dipsick V4""#).unwrap();
         fs::write(&second, r#"title: "Druga rozmowa""#).unwrap();
         let mut data = json!({
-            "cwd": "/tmp/simplebench",
+            "cwd": "/tmp/lomi",
             "conversation_id": "first-conversation",
             "agent_state": "idle",
             "transcript_path": "/unreadable/transcript.jsonl",
@@ -864,7 +862,7 @@ mod tests {
                     entry
                         .file_name()
                         .to_string_lossy()
-                        .starts_with("config.toml.simplebench-backup-")
+                        .starts_with("config.toml.lomi-backup-")
                 })
                 .collect::<Vec<_>>();
             assert_eq!(backups.len(), 1);

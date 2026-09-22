@@ -66,11 +66,7 @@ fn linux_instruction(flatpak: bool, os_release: &str, source_package: bool) -> S
     if arch {
         return format!(
             "yay -Syu {}",
-            if source_package {
-                "simplebench"
-            } else {
-                "simplebench-bin"
-            }
+            if source_package { "lomi" } else { "lomi-bin" }
         );
     }
     "Download the latest package from GitHub Releases and reinstall it with your distribution’s package manager, or replace your AppImage.".into()
@@ -86,7 +82,7 @@ pub fn update_environment(window: Window) -> Result<UpdateEnvironment, String> {
         let os_release = std::fs::read_to_string("/etc/os-release").unwrap_or_default();
         let source_package = !flatpak
             && std::process::Command::new("pacman")
-                .args(["-Qq", "simplebench"])
+                .args(["-Qq", "lomi"])
                 .output()
                 .is_ok_and(|output| output.status.success());
         Some(linux_instruction(flatpak, &os_release, source_package))
@@ -201,11 +197,11 @@ mod tests {
         assert_eq!(linux_instruction(true, "ID=arch", true), "flatpak update");
         assert_eq!(
             linux_instruction(false, "ID=arch", false),
-            "yay -Syu simplebench-bin"
+            "yay -Syu lomi-bin"
         );
         assert_eq!(
             linux_instruction(false, "ID=endeavouros\nID_LIKE=\"arch\"", true),
-            "yay -Syu simplebench"
+            "yay -Syu lomi"
         );
         for os in ["", "ID=debian", "NAME=arch\nID=ubuntu", "ID=archipelago"] {
             assert!(linux_instruction(false, os, false).starts_with("Download the latest package"));

@@ -14,13 +14,13 @@ import { join, resolve, relative } from "node:path";
 const args = process.argv.slice(2);
 if (args.length !== 6)
   throw Error(
-    "Expected JDK home, android.jar, build-tools directory, output directory, keystore and key alias. Set SIMPLEBENCH_INPUT_KEY_PASSWORD separately.",
+    "Expected JDK home, android.jar, build-tools directory, output directory, keystore and key alias. Set LOMI_INPUT_KEY_PASSWORD separately.",
   );
 const [javaHome, androidJar, buildTools, output, key] = args
   .slice(0, 5)
   .map((arg) => resolve(arg));
 const alias = args[5];
-if (!process.env.SIMPLEBENCH_INPUT_KEY_PASSWORD)
+if (!process.env.LOMI_INPUT_KEY_PASSWORD)
   throw Error("Missing signing key password.");
 const env = Object.fromEntries(
   Object.entries(process.env).filter(
@@ -103,7 +103,7 @@ run(join(javaHome, "bin/jar"), [
   join(output, "dex"),
   "classes.dex",
 ]);
-const apk = join(output, "simplebench-input.apk");
+const apk = join(output, "lomi-input.apk");
 run(join(buildTools, "zipalign"), ["-f", "4", join(output, "base.apk"), apk]);
 const signer = ["-jar", join(buildTools, "lib/apksigner.jar")];
 run(join(javaHome, "bin/java"), [
@@ -114,7 +114,7 @@ run(join(javaHome, "bin/java"), [
   "--ks-key-alias",
   alias,
   "--ks-pass",
-  "env:SIMPLEBENCH_INPUT_KEY_PASSWORD",
+  "env:LOMI_INPUT_KEY_PASSWORD",
   apk,
 ]);
 const certificate = run(join(javaHome, "bin/java"), [
@@ -138,7 +138,7 @@ const sources = [
 ].sort();
 const provenance = {
   version: 1,
-  package: "org.simplebench.input",
+  package: "org.lomi.input",
   versionCode: Number(
     readFileSync(join(source, "AndroidManifest.xml"), "utf8").match(
       /android:versionCode="(\d+)"/,
@@ -166,7 +166,7 @@ const provenance = {
     androidJarSha256: sha256(readFileSync(androidJar)),
   },
 };
-copyFileSync(apk, join(source, "simplebench-input.apk"));
+copyFileSync(apk, join(source, "lomi-input.apk"));
 writeFileSync(
   join(source, "artifact.json"),
   JSON.stringify(provenance, null, 2) + "\n",

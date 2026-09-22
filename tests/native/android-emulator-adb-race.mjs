@@ -10,7 +10,7 @@ import { homedir } from "node:os";
 if (process.platform !== "darwin" || process.arch !== "arm64")
   throw Error("This native fixture has only been qualified on macOS ARM64");
 const root = await realpath(
-  resolve(process.argv[2] ?? "/tmp/simplebench-android-stage0-20260918"),
+  resolve(process.argv[2] ?? "/tmp/lomi-android-stage0-20260918"),
 );
 await chmod(root, 0o700);
 await chmod(join(root, "emulator-home"), 0o700);
@@ -88,7 +88,7 @@ const body =
   encoded({ alg: "ES256", kid: jwk.kid }) +
   "." +
   encoded({
-    iss: "simplebench-shared-adb-trial",
+    iss: "lomi-shared-adb-trial",
     aud: methods,
     iat: now - 30,
     exp: now + 600,
@@ -223,7 +223,7 @@ try {
     join(root, "runtime/shared-adb-allowlist.json"),
     JSON.stringify({
       unprotected: [],
-      allowlist: [{ iss: "simplebench-shared-adb-trial", protected: methods }],
+      allowlist: [{ iss: "lomi-shared-adb-trial", protected: methods }],
     }),
   );
   const log = createWriteStream(join(root, "logs/shared-adb-emulator.log"));
@@ -261,7 +261,7 @@ try {
       "-adb-path",
       join(root, "runtime/no-external-adb"),
       "-append-userspace-opt",
-      "androidboot.simplebench.device=00000000-0000-0000-0000-000000000001",
+      "androidboot.lomi.device=00000000-0000-0000-0000-000000000001",
     ],
     { env, stdio: ["ignore", "pipe", "pipe"] },
   );

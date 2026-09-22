@@ -1,7 +1,7 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="org.simplebench.input" android:versionCode="3" android:versionName="1.2">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="org.lomi.input" android:versionCode="3" android:versionName="1.2">
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="36" />
-    <application android:label="SimpleBench Keyboard" android:allowBackup="false" android:supportsRtl="true">
-        <service android:name=".SimpleBenchInput" android:label="SimpleBench Keyboard" android:permission="android.permission.BIND_INPUT_METHOD" android:exported="true">
+    <application android:label="Lomi Keyboard" android:allowBackup="false" android:supportsRtl="true">
+        <service android:name=".LomiInput" android:label="Lomi Keyboard" android:permission="android.permission.BIND_INPUT_METHOD" android:exported="true">
             <intent-filter><action android:name="android.view.InputMethod" /></intent-filter>
             <meta-data android:name="android.view.im" android:resource="@xml/input_method" />
         </service>

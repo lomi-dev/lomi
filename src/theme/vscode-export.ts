@@ -194,7 +194,7 @@ export async function exportVSCodeThemes(
           JSON.stringify(current.syntax[key])
       )
         rules.push({
-          name: `SimpleBench ${key}`,
+          name: `Lomi ${key}`,
           scope: scopes,
           settings: current.syntax[key],
         });

@@ -97,7 +97,7 @@ pub(super) async fn verified(
         .connect_timeout(Duration::from_secs(20))
         .read_timeout(Duration::from_secs(30))
         .timeout(Duration::from_secs(20 * 60))
-        .user_agent("SimpleBench Android installer")
+        .user_agent("Lomi Android installer")
         .build()
         .map_err(|e| e.to_string())?;
     let mut response = tokio::select! {
@@ -426,7 +426,7 @@ mod tests {
     #[test]
     #[ignore = "Uses the explicitly accepted isolated native trial's official archives"]
     fn actual_archives_pass_before_manager_extraction() {
-        let root = PathBuf::from(std::env::var_os("SIMPLEBENCH_ANDROID_PROBE_DIRECTORY").unwrap());
+        let root = PathBuf::from(std::env::var_os("LOMI_ANDROID_PROBE_DIRECTORY").unwrap());
         let packages: serde_json::Value =
             serde_json::from_slice(&std::fs::read(root.join("evidence/packages.json")).unwrap())
                 .unwrap();
@@ -455,7 +455,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "Downloads one official archive into the accepted isolated fixture"]
     async fn actual_download_has_progress_integrity_and_cancellation() {
-        let root = PathBuf::from(std::env::var_os("SIMPLEBENCH_ANDROID_PROBE_DIRECTORY").unwrap());
+        let root = PathBuf::from(std::env::var_os("LOMI_ANDROID_PROBE_DIRECTORY").unwrap());
         let consent: serde_json::Value =
             serde_json::from_slice(&std::fs::read(root.join("evidence/consent.json")).unwrap())
                 .unwrap();

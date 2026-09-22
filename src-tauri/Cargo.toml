@@ -1,16 +1,16 @@
 [package]
-name = "simplebench"
+name = "lomi"
 version = "0.4.0"
 license = "Apache-2.0"
 description = "A workspace for terminal-driven development"
 authors = ["Maciej Kolerski <woro@tanieddosy.pl>"]
-repository = "https://github.com/MaciejKolerski/simplebench"
+repository = "https://github.com/lomi-dev/lomi"
 edition = "2021"
 publish = false
 
 [lib]
 # A distinct library name avoids a Windows artifact name collision with the binary.
-name = "simplebench_lib"
+name = "lomi_lib"
 
 [profile.dev]
 # Retain backtrace locations without large debug and incremental artifacts.

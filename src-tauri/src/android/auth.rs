@@ -59,7 +59,7 @@ impl Authority {
     }
 
     pub fn allowlist(&self) -> serde_json::Value {
-        serde_json::json!({"unprotected":[],"allowlist":[{"iss":"simplebench","protected":METHODS.iter().map(|method| rpc(method)).collect::<Vec<_>>()}]})
+        serde_json::json!({"unprotected":[],"allowlist":[{"iss":"lomi","protected":METHODS.iter().map(|method| rpc(method)).collect::<Vec<_>>()}]})
     }
 
     pub fn token(&self, method: &str) -> Result<String, String> {
@@ -78,7 +78,7 @@ impl Authority {
         // Emulator 37.1.11's Tink validator rejects typ: JWT. Audience is one exact RPC.
         let header = encode(serde_json::json!({"alg":"ES256","kid":self.id}));
         let claims = encode(
-            serde_json::json!({"iss":"simplebench","aud":[rpc(method)],"iat":seconds.saturating_sub(30),"exp":seconds+Duration::from_secs(120).as_secs()}),
+            serde_json::json!({"iss":"lomi","aud":[rpc(method)],"iat":seconds.saturating_sub(30),"exp":seconds+Duration::from_secs(120).as_secs()}),
         );
         let body = format!("{header}.{claims}");
         let signature = self
@@ -135,9 +135,9 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Requires the owned native probe with the simplebench issuer allowlist"]
+    #[ignore = "Requires the owned native probe with the lomi issuer allowlist"]
     fn native_rust_credentials_and_renewal() {
-        let root = PathBuf::from(std::env::var("SIMPLEBENCH_ANDROID_PROBE_DIRECTORY").unwrap());
+        let root = PathBuf::from(std::env::var("LOMI_ANDROID_PROBE_DIRECTORY").unwrap());
         let consent: serde_json::Value =
             super::super::storage::read(&root.join("evidence/consent.json"))
                 .unwrap()
@@ -171,7 +171,7 @@ mod tests {
                 .unwrap()
         );
         let authority = Authority::new("00000000-0000-0000-0000-000000000004".into()).unwrap();
-        let path = jwks.join(format!("simplebench-rust-{}.jwk", std::process::id()));
+        let path = jwks.join(format!("lomi-rust-{}.jwk", std::process::id()));
         assert!(!path.exists());
         let mut temporary = tempfile::NamedTempFile::new_in(&jwks).unwrap();
         temporary
@@ -242,7 +242,7 @@ mod tests {
         fs::write(
             root.join("evidence/native-rust-auth.json"),
             serde_json::json!({
-                "passed":true,"issuer":"simplebench","algorithm":"ES256","lifetimeSeconds":120,
+                "passed":true,"issuer":"lomi","algorithm":"ES256","lifetimeSeconds":120,
                 "wrongAudience":"PermissionDenied","expired":"InvalidArgument","renewed":"accepted",
                 "unregisteredInstance":"InvalidArgument","privateKeyPersisted":false
             })

@@ -2,7 +2,7 @@
 /src-tauri/android-input/AndroidManifest.xml -text
 /src-tauri/android-input/res/** -text
 /src-tauri/android-input/src/** -text
-/src-tauri/android-input/simplebench-input.apk binary
+/src-tauri/android-input/lomi-input.apk binary
 /src-tauri/android-proto/emulator_controller.proto -text
 /src-tauri/licenses/android-java.txt -text -whitespace
 

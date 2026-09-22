@@ -7,7 +7,7 @@ pub mod traffic_lights;
 
 #[cfg(dev)]
 fn use_development_bundle_icon() {
-    if std::env::var_os("SIMPLEBENCH_DEV_BUNDLE").is_none() {
+    if std::env::var_os("LOMI_DEV_BUNDLE").is_none() {
         return;
     }
     let main_thread =
@@ -24,7 +24,7 @@ pub fn setup_menu(app: &App) -> tauri::Result<()> {
         &[
             &Submenu::with_items(
                 app,
-                "SimpleBench",
+                "Lomi",
                 true,
                 &[
                     &PredefinedMenuItem::about(app, None, None)?,
@@ -37,7 +37,7 @@ pub fn setup_menu(app: &App) -> tauri::Result<()> {
                     &PredefinedMenuItem::separator(app)?,
                     // AppKit's predefined Quit invokes terminate: directly and bypasses
                     // Tauri's ExitRequested event and asynchronous close guards.
-                    &MenuItem::with_id(app, "quit", "Quit SimpleBench", true, Some("CmdOrCtrl+Q"))?,
+                    &MenuItem::with_id(app, "quit", "Quit Lomi", true, Some("CmdOrCtrl+Q"))?,
                 ],
             )?,
             &Submenu::with_items(

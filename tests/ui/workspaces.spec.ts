@@ -35,7 +35,7 @@ test("workspace disclosures list and select tabs without activating hidden termi
       commit: commit.id,
     },
   );
-  session = addWorkspace(session, "/work/simplebench", "local:bash", "Bench");
+  session = addWorkspace(session, "/work/lomi", "local:bash", "Bench");
   session.sidebar = "workspaces";
   await mockDesktop(page, true, session, {
     commits: [commit],
@@ -186,7 +186,7 @@ test("the global list switches folders and independent workspaces without restar
   for (const [path, name] of [
     ["/work/simplevoice", "Voice 1"],
     ["/work/simplevoice", "Voice 2"],
-    ["/work/simplebench", "Bench"],
+    ["/work/lomi", "Bench"],
   ]) {
     session = addWorkspace(session, path, "local:bash", name);
   }
@@ -214,7 +214,7 @@ test("the global list switches folders and independent workspaces without restar
     await expect(page.locator(".xterm-screen")).toBeVisible();
 
     await expect(page.locator(".project-switcher")).toHaveText(
-      name === "Bench" ? "simplebench" : "simplevoice",
+      name === "Bench" ? "lomi" : "simplevoice",
     );
     paneIds.push(
       (await page.locator("[data-pane-id]").getAttribute("data-pane-id"))!,
@@ -559,11 +559,11 @@ test("adding a workspace chooses a folder every time, including the same folder,
     )
     .toBe(2);
   await page.evaluate(() => {
-    (window as any).__nativeTest.folder = "/work/simplebench";
+    (window as any).__nativeTest.folder = "/work/lomi";
   });
   await create.click();
   await page.getByRole("textbox", { name: "Name", exact: true }).press("Enter");
-  await expect(page.locator(".project-switcher")).toHaveText("simplebench");
+  await expect(page.locator(".project-switcher")).toHaveText("lomi");
   await expect(panel.locator(".workspace-list-item")).toHaveCount(3);
   await expect
     .poll(() =>
@@ -594,9 +594,10 @@ test("adding a workspace chooses a folder every time, including the same folder,
   await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toContainText(
     "Folder not found",
   );
-  await expect(
-    panel.getByRole("button", { name: /^simplebench / }),
-  ).toHaveAttribute("aria-current", "true");
+  await expect(panel.getByRole("button", { name: /^lomi / })).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
 });
 
 test("a configured workspace shortcut works before folder selection and is captured before terminal input", async ({

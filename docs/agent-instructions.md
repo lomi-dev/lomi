@@ -1,26 +1,26 @@
 # Agent instruction files
 
 Claude Code and Gemini CLI share project instructions through
-[SIMPLEBENCH.md](../SIMPLEBENCH.md). [AGENTS.md](../AGENTS.md) contains the same
+[LOMI.md](../LOMI.md). [AGENTS.md](../AGENTS.md) contains the same
 rules for agents that discover that filename directly. Keep these two files
 identical when changing repository conventions, validation commands, or
 application invariants.
 
-| File                                | Purpose                                                                                      |
-| ----------------------------------- | -------------------------------------------------------------------------------------------- |
-| [AGENTS.md](../AGENTS.md)           | Project instructions for agents that discover this filename, including Zed's built-in agent. |
-| [SIMPLEBENCH.md](../SIMPLEBENCH.md) | Shared instructions imported by Claude Code and Gemini CLI.                                  |
-| [CLAUDE.md](../CLAUDE.md)           | Claude Code entry point containing only `@SIMPLEBENCH.md`.                                   |
-| [GEMINI.md](../GEMINI.md)           | Gemini CLI entry point containing only `@SIMPLEBENCH.md`.                                    |
+| File                      | Purpose                                                                                      |
+| ------------------------- | -------------------------------------------------------------------------------------------- |
+| [AGENTS.md](../AGENTS.md) | Project instructions for agents that discover this filename, including Zed's built-in agent. |
+| [LOMI.md](../LOMI.md)     | Shared instructions imported by Claude Code and Gemini CLI.                                  |
+| [CLAUDE.md](../CLAUDE.md) | Claude Code entry point containing only `@LOMI.md`.                                          |
+| [GEMINI.md](../GEMINI.md) | Gemini CLI entry point containing only `@LOMI.md`.                                           |
 
-Both entry points use native imports. The CLI loads the contents of `SIMPLEBENCH.md`
+Both entry points use native imports. The CLI loads the contents of `LOMI.md`
 into its instruction context; the line is not merely a Markdown link or a request
 for the model to open another file. See
 [Claude Code imports](https://code.claude.com/docs/en/memory#import-additional-files)
 and [Gemini CLI imports](https://geminicli.com/docs/cli/gemini-md/#modularize-context-with-imports).
 
-These files guide agents working on the SimpleBench repository. Each agent is
-responsible for loading them, including when it runs in a SimpleBench terminal.
+These files guide agents working on the Lomi repository. Each agent is
+responsible for loading them, including when it runs in a Lomi terminal.
 
 ## How Zed organizes its instructions
 
@@ -69,30 +69,30 @@ Zed separates persistent instructions from reusable workflows in
 Those workflows include GPUI tests, benchmarks, lint creation, and cherry-picking.
 They are specific to Zed's development process.
 
-## SimpleBench adaptation
+## Lomi adaptation
 
-SimpleBench retains its existing `AGENTS.md` for native discovery, preserving
+Lomi retains its existing `AGENTS.md` for native discovery, preserving
 its Tauri, React, terminal, editor, persistence, permissions, and Git conventions.
-`SIMPLEBENCH.md` contains the same instructions. `CLAUDE.md` and `GEMINI.md` are
-ordinary text files with a single native import of `SIMPLEBENCH.md`.
+`LOMI.md` contains the same instructions. `CLAUDE.md` and `GEMINI.md` are
+ordinary text files with a single native import of `LOMI.md`.
 This shares instructions between those two CLIs without requiring symlink
 support during checkout. The two full instruction files require synchronization.
 Claude's documentation specifically recommends imports
 on Windows because creating symlinks requires Developer Mode or administrator
 privileges. See [Claude Code's AGENTS.md guidance](https://code.claude.com/docs/en/memory#agentsmd).
 
-Zed can read `AGENTS.md` directly, so SimpleBench needs no `.rules` compatibility
+Zed can read `AGENTS.md` directly, so Lomi needs no `.rules` compatibility
 file. Adding a higher-priority filename from the list above would change which
 file Zed selects. Preserve both import lines and keep `AGENTS.md` and
-`SIMPLEBENCH.md` identical when editing instructions.
+`LOMI.md` identical when editing instructions.
 
 ## Validation
 
 Run the existing formatter from the repository root:
 
 ```sh
-pnpm exec prettier --check AGENTS.md SIMPLEBENCH.md CLAUDE.md GEMINI.md README.md docs/agent-instructions.md
-node --input-type=module -e 'import { readFileSync as read } from "node:fs"; import { strictEqual } from "node:assert"; strictEqual(read("AGENTS.md", "utf8"), read("SIMPLEBENCH.md", "utf8"))'
+pnpm exec prettier --check AGENTS.md LOMI.md CLAUDE.md GEMINI.md README.md docs/agent-instructions.md
+node --input-type=module -e 'import { readFileSync as read } from "node:fs"; import { strictEqual } from "node:assert"; strictEqual(read("AGENTS.md", "utf8"), read("LOMI.md", "utf8"))'
 git diff --check
 ```
 

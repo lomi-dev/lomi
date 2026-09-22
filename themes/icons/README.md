@@ -18,5 +18,5 @@ pnpm exec prettier --write themes/icons/*.json
 ```
 
 The script copies only the listed SVGs, font and license. Product definitions
-include every SimpleBench control mapping; VS Code uses its own default for other
+include every Lomi control mapping; VS Code uses its own default for other
 identifiers. All font glyphs remain available for authors extending their copy.

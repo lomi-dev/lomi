@@ -4,7 +4,7 @@ import type { Session } from "./model.ts";
 export type AgentSignal = "working" | "attention" | "finished";
 
 export function parseAgentSignal(value: string): AgentSignal | null {
-  const prefix = "notify;SimpleBench;claude;";
+  const prefix = "notify;Lomi;claude;";
   if (!value.startsWith(prefix)) return null;
   const signal = value.slice(prefix.length);
   return signal === "working" || signal === "attention" || signal === "finished"

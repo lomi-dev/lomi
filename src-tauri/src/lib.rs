@@ -352,7 +352,7 @@ pub fn run() {
             handler(invoke)
         })
         .build(tauri::generate_context!())
-        .expect("failed to build SimpleBench");
+        .expect("failed to build Lomi");
     app.run(|app, event| {
         #[cfg(target_os = "macos")]
         macos::handle_run_event(app, &event);

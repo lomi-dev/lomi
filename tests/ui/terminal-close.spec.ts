@@ -54,8 +54,7 @@ for (const target of ["panel", "tab", "window"]) {
     };
     await close();
     const dialog = page.getByRole("dialog", {
-      name:
-        target === "window" ? "Quit SimpleBench?" : "Close running processes?",
+      name: target === "window" ? "Quit Lomi?" : "Close running processes?",
     });
     await expect(dialog).toBeVisible();
     await expect(
@@ -120,7 +119,7 @@ test("idle panes close without asking while a hidden busy terminal protects the 
   await page.keyboard.press("Control+Shift+t");
   await expect(page.getByRole("tab")).toHaveCount(2);
   await page.getByRole("button", { name: "Close window" }).click();
-  const dialog = page.getByRole("dialog", { name: "Quit SimpleBench?" });
+  const dialog = page.getByRole("dialog", { name: "Quit Lomi?" });
   await expect(dialog).toContainText("This terminal has running processes");
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   expect(await calls(page, "plugin:window|destroy")).toHaveLength(0);
@@ -139,7 +138,7 @@ test("process inspection failures and repeated close requests cannot silently cl
     void native.emitEvent("tauri://close-requested");
     void native.emitEvent("tauri://close-requested");
   });
-  const dialog = page.getByRole("dialog", { name: "Quit SimpleBench?" });
+  const dialog = page.getByRole("dialog", { name: "Quit Lomi?" });
   await expect(dialog).toContainText("Process inspection failed");
   expect(await calls(page, "busy_terminals")).toHaveLength(1);
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
@@ -167,9 +166,7 @@ test("confirming terminal closure still protects dirty editors and failed saves"
     (window as any).__nativeTest.failFileSave = true;
   });
   await page.getByRole("button", { name: "Close window" }).click();
-  await expect(
-    page.getByRole("dialog", { name: "Quit SimpleBench?" }),
-  ).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Quit Lomi?" })).toBeVisible();
   await page.getByRole("button", { name: "Quit anyway" }).click();
   const editor = page.getByRole("dialog", {
     name: "Save changes before closing?",

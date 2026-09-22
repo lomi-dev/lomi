@@ -126,7 +126,7 @@ test("file and interface selections are independent, survive color changes and e
       .locator('[data-product-icon="search"] text')
       .first()
       .evaluate((el) => getComputedStyle(el).fontFamily),
-  ).toContain("SimpleBench icons");
+  ).toContain("Lomi icons");
   const main = await context.newPage();
   await install(main);
   await main.goto("/");
@@ -164,7 +164,7 @@ test("file and interface selections are independent, survive color changes and e
     ),
   ).toMatchObject({ id: "product", kind: "product" });
   await page
-    .getByRole("button", { name: "Use SimpleBench interface icons theme" })
+    .getByRole("button", { name: "Use Lomi interface icons theme" })
     .click();
   await expect(main.locator("[data-product-icon]")).toHaveCount(0);
   expect(

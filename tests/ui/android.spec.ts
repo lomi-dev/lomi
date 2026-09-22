@@ -570,9 +570,7 @@ test("device creation offers recent compatible phones and preserves user names",
     page.getByRole("option", { name: /Pixel 10a · needs/ }),
   ).toHaveAttribute("aria-disabled", "true");
   await page.keyboard.press("Escape");
-  await form
-    .getByRole("checkbox", { name: "Enable SimpleBench text input" })
-    .check();
+  await form.getByRole("checkbox", { name: "Enable Lomi text input" }).check();
   await form
     .getByRole("button", { name: "Create device", exact: true })
     .click();
@@ -650,7 +648,7 @@ for (const appearance of ["light", "dark"] as const)
       await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth),
     ).toBe(true);
     await dialog
-      .getByRole("checkbox", { name: "Enable SimpleBench text input" })
+      .getByRole("checkbox", { name: "Enable Lomi text input" })
       .check();
     const submit = dialog.getByRole("button", {
       name: "Create device",
@@ -1355,9 +1353,7 @@ test("devices require explicit text-input consent and destructive confirmation",
   await form
     .getByRole("textbox", { name: "Name", exact: true })
     .fill("Żółty telefon");
-  await form
-    .getByRole("checkbox", { name: "Enable SimpleBench text input" })
-    .check();
+  await form.getByRole("checkbox", { name: "Enable Lomi text input" }).check();
   await form.getByRole("button", { name: "Create device" }).click();
   const card = page.getByRole("article", { name: "Żółty telefon" });
   await card.getByRole("button", { name: "Options for Żółty telefon" }).click();
@@ -1553,9 +1549,7 @@ test("Android setup advances from tools to a version to a phone without exposing
     .click();
   const form = page.getByRole("dialog", { name: "Create Android device" });
   await expect(form.getByRole("spinbutton")).toHaveCount(0);
-  await form
-    .getByRole("checkbox", { name: "Enable SimpleBench text input" })
-    .check();
+  await form.getByRole("checkbox", { name: "Enable Lomi text input" }).check();
   await form
     .getByRole("button", { name: "Create device", exact: true })
     .click();

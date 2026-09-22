@@ -244,11 +244,11 @@ export default function DeviceForm({
                 required
                 aria-describedby={`${id}-input-help`}
               />
-              Enable SimpleBench text input
+              Enable Lomi text input
             </label>
             <p id={`${id}-input-help`} className="settings-help">
-              Installs and selects the SimpleBench keyboard in this phone so you
-              can type in any language. Typed text stays local.
+              Installs and selects the Lomi keyboard in this phone so you can
+              type in any language. Typed text stays local.
             </p>
           </div>
         )}

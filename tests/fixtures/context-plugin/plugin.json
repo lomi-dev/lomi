@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "id": "simplebench.context",
+  "id": "lomi.context",
   "name": "Workspace context",
   "version": "1.0.0",
   "description": "A read-only view of the current folder, workspace and appearance.",
@@ -11,7 +11,7 @@
   "contributes": {
     "views": [
       {
-        "id": "simplebench.context.view",
+        "id": "lomi.context.view",
         "title": "Workspace context",
         "placement": "central",
         "multiple": false,
@@ -20,7 +20,7 @@
     ],
     "commands": [
       {
-        "id": "simplebench.context.open",
+        "id": "lomi.context.open",
         "label": "Show workspace context",
         "description": "Open the read-only workspace context panel.",
         "context": {
@@ -30,13 +30,13 @@
     ],
     "keybindings": [
       {
-        "command": "simplebench.context.open",
+        "command": "lomi.context.open",
         "shortcut": null
       }
     ],
     "fills": [
       {
-        "id": "simplebench.context.status",
+        "id": "lomi.context.status",
         "slot": "statusbar",
         "label": "Workspace context"
       }

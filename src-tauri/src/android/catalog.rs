@@ -830,9 +830,8 @@ mod tests {
     #[test]
     #[ignore = "Requires the downloaded official catalogs in the isolated native fixture"]
     fn actual_provider_catalogs_select_verified_host_archives() {
-        let root = std::path::PathBuf::from(
-            std::env::var_os("SIMPLEBENCH_ANDROID_PROBE_DIRECTORY").unwrap(),
-        );
+        let root =
+            std::path::PathBuf::from(std::env::var_os("LOMI_ANDROID_PROBE_DIRECTORY").unwrap());
         let tools = std::fs::read_to_string(root.join("evidence/repository2-3.xml")).unwrap();
         let catalog = packages(
             &tools,

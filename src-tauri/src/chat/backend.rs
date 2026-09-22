@@ -77,8 +77,8 @@ impl Backend {
             let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
             (
                 root.join(format!(
-                    "binaries/simplebench-node-{}{}",
-                    env!("SIMPLEBENCH_AI_TARGET"),
+                    "binaries/lomi-node-{}{}",
+                    env!("LOMI_AI_TARGET"),
                     if cfg!(windows) { ".exe" } else { "" }
                 )),
                 root.join("resources/ai-runtime/index.cjs"),
@@ -90,9 +90,9 @@ impl Backend {
                     .parent()
                     .ok_or("Cannot locate AI runtime.")?
                     .join(if cfg!(windows) {
-                        "simplebench-node.exe"
+                        "lomi-node.exe"
                     } else {
-                        "simplebench-node"
+                        "lomi-node"
                     }),
                 app.path()
                     .resource_dir()
@@ -101,8 +101,8 @@ impl Backend {
             )
         };
         #[cfg(feature = "chat-probe")]
-        let bundle = if std::env::var_os("SIMPLEBENCH_CHAT_PROBE_DIRECTORY").is_some()
-            && std::env::var_os("SIMPLEBENCH_CHAT_LIVE_KEYS_FILE").is_none()
+        let bundle = if std::env::var_os("LOMI_CHAT_PROBE_DIRECTORY").is_some()
+            && std::env::var_os("LOMI_CHAT_LIVE_KEYS_FILE").is_none()
         {
             bundle.with_file_name("fixture.cjs")
         } else {
@@ -852,8 +852,8 @@ mod tests {
             cancelled: Mutex::new(HashSet::new()),
             process: Mutex::new(None),
             node: root.join(format!(
-                "binaries/simplebench-node-{}{}",
-                env!("SIMPLEBENCH_AI_TARGET"),
+                "binaries/lomi-node-{}{}",
+                env!("LOMI_AI_TARGET"),
                 if cfg!(windows) { ".exe" } else { "" }
             )),
             bundle: root.join("../packages/ai-runtime/src/fixture.ts"),

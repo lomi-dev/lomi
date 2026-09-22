@@ -56,7 +56,7 @@ try {
   const source = path.join(scratch, name, windows ? "node.exe" : "bin/node");
   const destination = path.join(
     binaries,
-    `simplebench-node-${target}${windows ? ".exe" : ""}`,
+    `lomi-node-${target}${windows ? ".exe" : ""}`,
   );
   await copyFile(source, destination);
   if (!windows) await chmod(destination, 0o755);

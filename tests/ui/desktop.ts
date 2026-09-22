@@ -80,8 +80,7 @@ export async function mockDesktop(
         );
       desktop.__nativeTest = {
         update: null,
-        updateInstruction:
-          platform === "linux" ? "yay -Syu simplebench-bin" : null,
+        updateInstruction: platform === "linux" ? "yay -Syu lomi-bin" : null,
         updateCheckError: "",
         updateDownloadError: "",
         updateInstallError: "",
@@ -680,8 +679,7 @@ export async function mockDesktop(
               localStorage.getItem("test-theme-manifests") ?? "{}",
             );
             return {
-              directory:
-                "/home/test/.local/share/dev.simplebench.desktop/themes",
+              directory: "/home/test/.local/share/dev.lomi.desktop/themes",
               themes: Object.entries(manifests).map(
                 ([id, value]: [string, any]) => ({
                   id,
@@ -804,7 +802,7 @@ export async function mockDesktop(
           ) {
             if (desktop.__nativeTest.themeExportError)
               throw new Error(desktop.__nativeTest.themeExportError);
-            return args.directory + "/simplebench-theme.vsix";
+            return args.directory + "/lomi-theme.vsix";
           }
           if (command === "import_vscode_themes") {
             if (desktop.__nativeTest.themeImportError)

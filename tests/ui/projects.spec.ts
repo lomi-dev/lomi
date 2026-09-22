@@ -65,15 +65,15 @@ test("first launch waits for a folder and restores it after selection", async ({
 test("recent projects keep their workspaces and streaming terminals in order of last use", async ({
   page,
 }, testInfo) => {
-  const projects = ["/work/simplebench", "/work/api", "/work/docs"].map(
-    (path) => newProject(path, "local:bash"),
+  const projects = ["/work/lomi", "/work/api", "/work/docs"].map((path) =>
+    newProject(path, "local:bash"),
   );
   projects[1].workspaces[0].name = "Review";
   await mockDesktop(page, false, { ...newSession(), projects });
   await page.goto("/");
   await page.locator(".project-switcher").click();
   await expect(page.getByRole("menuitem")).toHaveText([
-    "simplebench",
+    "lomi",
     "api",
     "docs",
     "Open Local Folder…",
@@ -93,10 +93,8 @@ test("recent projects keep their workspaces and streaming terminals in order of 
     .locator("[data-pane-id]")
     .getAttribute("data-pane-id");
   await page.locator(".project-switcher").click();
-  await page
-    .getByRole("menuitem", { name: "simplebench", exact: true })
-    .click();
-  await expect(page.locator(".project-switcher")).toHaveText("simplebench");
+  await page.getByRole("menuitem", { name: "lomi", exact: true }).click();
+  await expect(page.locator(".project-switcher")).toHaveText("lomi");
   await expect(page.locator(".xterm-screen")).toBeVisible();
   await page.evaluate(() => {
     const native = (window as any).__nativeTest;
@@ -127,7 +125,7 @@ test("recent projects keep their workspaces and streaming terminals in order of 
   await page.locator(".project-switcher").click();
   await expect(page.getByRole("menuitem")).toHaveText([
     "api",
-    "simplebench",
+    "lomi",
     "docs",
     "Open Local Folder…",
   ]);
@@ -145,12 +143,12 @@ test("recent projects keep their workspaces and streaming terminals in order of 
         )?.projects.map((project: any) => project.path),
       ),
     )
-    .toEqual(["/work/api", "/work/simplebench", "/work/docs"]);
+    .toEqual(["/work/api", "/work/lomi", "/work/docs"]);
   await page.reload();
   await page.locator(".project-switcher").click();
   await expect(page.getByRole("menuitem")).toHaveText([
     "api",
-    "simplebench",
+    "lomi",
     "docs",
     "Open Local Folder…",
   ]);
@@ -194,7 +192,7 @@ test("cancelling the folder picker preserves an empty session", async ({
 test("an unavailable recent folder leaves the current project and history intact", async ({
   page,
 }) => {
-  const projects = ["/work/simplebench", "/missing"].map((path) =>
+  const projects = ["/work/lomi", "/missing"].map((path) =>
     newProject(path, "local:bash"),
   );
   await mockDesktop(page, false, {
@@ -216,14 +214,14 @@ test("an unavailable recent folder leaves the current project and history intact
   await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toContainText(
     "Cannot open directory",
   );
-  await expect(page.locator(".project-switcher")).toHaveText("simplebench");
+  await expect(page.locator(".project-switcher")).toHaveText("lomi");
   await expect(page.locator("[data-pane-id]")).toHaveAttribute(
     "data-pane-id",
     paneId!,
   );
   await page.locator(".project-switcher").click();
   await expect(page.getByRole("menuitem")).toHaveText([
-    "simplebench",
+    "lomi",
     "missing",
     "Open Local Folder…",
   ]);

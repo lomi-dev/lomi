@@ -320,7 +320,7 @@ pub async fn android_export_diagnostics(
             .file()
             .set_parent(&window)
             .set_title("Export Android diagnostics")
-            .set_file_name("simplebench-android-diagnostics.txt")
+            .set_file_name("lomi-android-diagnostics.txt")
             .add_filter("Text", &["txt"])
             .blocking_save_file()
     })
@@ -528,7 +528,7 @@ pub async fn android_input(
             || !window.is_visible().map_err(|e| e.to_string())?
             || window.is_minimized().map_err(|e| e.to_string())?)
     {
-        return Err("Focus the SimpleBench window before controlling Android.".into());
+        return Err("Focus the Lomi window before controlling Android.".into());
     }
     super::input::Router::submit(backend(&window, &state)?, device_id, generation, input).await
 }

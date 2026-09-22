@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  '@xterm/addon-webgl@0.19.0': faad8efc9e20d2cf51050e9f69d4d1cb417f886006fa71856abd60c81f41a22f
+  '@xterm/addon-webgl@0.19.0': 5dfe3823a629912c8ca873aef6324cacdb20bd4ecd4c6bfcca2a9b6da8c39f9e
 
 importers:
 
@@ -78,8 +78,8 @@ importers:
         specifier: ^1.2.3
         version: 1.2.3
       '@lomi-dev/plugin-sdk':
-        specifier: 1.1.0-alpha.0
-        version: 1.1.0-alpha.0(postcss@8.5.28)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: 1.1.0-alpha.1
+        version: 1.1.0-alpha.1(postcss@8.5.28)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@tauri-apps/api':
         specifier: ^2.11.1
         version: 2.11.1
@@ -112,7 +112,7 @@ importers:
         version: 0.12.0
       '@xterm/addon-webgl':
         specifier: ^0.19.0
-        version: 0.19.0(patch_hash=faad8efc9e20d2cf51050e9f69d4d1cb417f886006fa71856abd60c81f41a22f)
+        version: 0.19.0(patch_hash=5dfe3823a629912c8ca873aef6324cacdb20bd4ecd4c6bfcca2a9b6da8c39f9e)
       '@xterm/xterm':
         specifier: ^6.0.0
         version: 6.0.0
@@ -212,8 +212,8 @@ importers:
   tests/fixtures/context-plugin:
     dependencies:
       '@lomi-dev/plugin-sdk':
-        specifier: 1.1.0-alpha.0
-        version: 1.1.0-alpha.0(postcss@8.5.28)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: 1.1.0-alpha.1
+        version: 1.1.0-alpha.1(postcss@8.5.28)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react:
         specifier: 19.2.8
         version: 19.2.8
@@ -571,8 +571,8 @@ packages:
   '@lezer/yaml@1.0.4':
     resolution: {integrity: sha512-2lrrHqxalACEbxIbsjhqGpSW8kWpUKuY6RHgnSAFZa6qK62wvnPxA8hGOwOoDbwHcOFs5M4o27mjGu+P7TvBmw==}
 
-  '@lomi-dev/plugin-sdk@1.1.0-alpha.0':
-    resolution: {integrity: sha512-s2O6kglthBqjn/AYP1UzPrjDpT3oRKOxn55VwrmypyN9B273IfRGB4vAK0jlo2brerxJhji/zTDdeq13Dgr5TA==}
+  '@lomi-dev/plugin-sdk@1.1.0-alpha.1':
+    resolution: {integrity: sha512-IiEk6x5TzuGAUcjaAb7GINdgijpTGxPXtjDw80o/lV4TGPUMlYw0BNlU7WEA2i8ezVTGPtbNpvCyxMYPZksipw==}
     engines: {node: '>=22.14.0'}
     peerDependencies:
       react: 19.2.8
@@ -2301,7 +2301,7 @@ snapshots:
       '@lezer/highlight': 1.2.3
       '@lezer/lr': 1.4.10
 
-  '@lomi-dev/plugin-sdk@1.1.0-alpha.0(postcss@8.5.28)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@lomi-dev/plugin-sdk@1.1.0-alpha.1(postcss@8.5.28)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
       es-module-lexer: 1.7.0
       tsup: 8.5.1(postcss@8.5.28)(typescript@7.0.2)
@@ -2639,7 +2639,7 @@ snapshots:
 
   '@xterm/addon-web-links@0.12.0': {}
 
-  '@xterm/addon-webgl@0.19.0(patch_hash=faad8efc9e20d2cf51050e9f69d4d1cb417f886006fa71856abd60c81f41a22f)': {}
+  '@xterm/addon-webgl@0.19.0(patch_hash=5dfe3823a629912c8ca873aef6324cacdb20bd4ecd4c6bfcca2a9b6da8c39f9e)': {}
 
   '@xterm/xterm@6.0.0': {}
 

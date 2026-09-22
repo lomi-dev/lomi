@@ -5,13 +5,13 @@ import { spawn, execFileSync } from "node:child_process";
 import { browserProbe } from "./chat-browser-server.mjs";
 
 const root = resolve(import.meta.dirname, "../..");
-const directory = await mkdtemp(join(tmpdir(), "simplebench-chat-native-"));
+const directory = await mkdtemp(join(tmpdir(), "lomi-chat-native-"));
 execFileSync(
   process.execPath,
   ["scripts/prepare-ai-runtime.mjs", "--fixture"],
   { cwd: root, stdio: "inherit" },
 );
-const identifier = `dev.simplebench.chat-probe-${Date.now()}`;
+const identifier = `dev.lomi.chat-probe-${Date.now()}`;
 const config = join(directory, "config.json");
 const port = 1436;
 await writeFile(
@@ -42,8 +42,8 @@ const child = spawn(
     detached: true,
     env: {
       ...process.env,
-      SIMPLEBENCH_CHAT_PROBE_DIRECTORY: directory,
-      SIMPLEBENCH_CHAT_BROWSER_URL: browser.url,
+      LOMI_CHAT_PROBE_DIRECTORY: directory,
+      LOMI_CHAT_BROWSER_URL: browser.url,
     },
     stdio: ["ignore", "pipe", "pipe"],
   },

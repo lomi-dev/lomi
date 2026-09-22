@@ -1,4 +1,4 @@
-package org.simplebench.input;
+package org.lomi.input;
 
 import android.inputmethodservice.InputMethodService;
 import android.content.ClipData;
@@ -21,7 +21,7 @@ import java.util.concurrent.TimeUnit;
 import org.json.JSONObject;
 
 /** Explicitly selected guest IME; all text stays inside the managed device. */
-public final class SimpleBenchInput extends InputMethodService {
+public final class LomiInput extends InputMethodService {
     private final Handler main = new Handler(Looper.getMainLooper());
     private volatile boolean closed;
     private volatile LocalServerSocket server;
@@ -30,7 +30,7 @@ public final class SimpleBenchInput extends InputMethodService {
 
     @Override public void onCreate() {
         super.onCreate();
-        Thread worker = new Thread(this::serve, "simplebench-input");
+        Thread worker = new Thread(this::serve, "lomi-input");
         worker.setDaemon(true);
         worker.start();
     }
@@ -56,7 +56,7 @@ public final class SimpleBenchInput extends InputMethodService {
 
     private void serve() {
         while (!closed) {
-            try (LocalServerSocket listener = new LocalServerSocket("simplebench.input.v1")) {
+            try (LocalServerSocket listener = new LocalServerSocket("lomi.input.v1")) {
                 server = listener;
                 while (!closed) {
                     try (LocalSocket socket = listener.accept()) {
@@ -114,8 +114,8 @@ public final class SimpleBenchInput extends InputMethodService {
             reply.put("version", 1);
             reply.put("id", request.getLong("id"));
             if (request.getInt("version") != 1) throw new IllegalArgumentException("Unsupported protocol");
-            String device = Settings.Global.getString(getContentResolver(), "simplebench_device");
-            String generation = Settings.Global.getString(getContentResolver(), "simplebench_generation");
+            String device = Settings.Global.getString(getContentResolver(), "lomi_device");
+            String generation = Settings.Global.getString(getContentResolver(), "lomi_generation");
             if (device == null || generation == null || !device.equals(request.getString("deviceId"))
                     || !generation.equals(request.getString("generationKey"))) {
                 throw new IllegalStateException("This transport belongs to a different Android instance");
@@ -135,7 +135,7 @@ public final class SimpleBenchInput extends InputMethodService {
                 case "delete": accepted = connection.deleteSurroundingTextInCodePoints(1, 0); break;
                 case "paste":
                     ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-                    clipboard.setPrimaryClip(ClipData.newPlainText("SimpleBench", request.getString("text")));
+                    clipboard.setPrimaryClip(ClipData.newPlainText("Lomi", request.getString("text")));
                     accepted = connection.performContextMenuAction(android.R.id.paste);
                     break;
                 default: throw new IllegalArgumentException("Unknown input operation");

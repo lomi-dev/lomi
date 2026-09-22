@@ -1,8 +1,8 @@
 # Releases
 
-SimpleBench follows Simple Voice's distribution targets: GitHub Releases for
+Lomi follows Simple Voice's distribution targets: GitHub Releases for
 macOS Apple Silicon and Intel, Windows x64, and Linux x86_64; then AUR packages
-`simplebench` and `simplebench-bin`. Flathub is a separate, opt-in integration
+`lomi` and `lomi-bin`. Flathub is a separate, opt-in integration
 after an initial submission has been accepted. Simple Voice's Flathub repository
 did not exist when this workflow was prepared on 2026-09-11.
 
@@ -23,7 +23,7 @@ tag-triggered `publish-tauri` matrix:
    them with `latest.json` to a draft `vX.Y.Z` GitHub release. Use
    `releases/vX.Y.Z.md` for the release description and updater notes when present.
 5. After all four builds succeed, validate `latest.json` with
-   `scripts/check-updater.mjs` and publish the complete release. Then publish `simplebench` and `simplebench-bin`
+   `scripts/check-updater.mjs` and publish the complete release. Then publish `lomi` and `lomi-bin`
    to AUR. Retry temporary AUR failures up to three times; the **publish AUR**
    workflow can also be started independently for an existing release.
 6. Notify Flathub only when `FLATHUB_TOKEN` is configured.
@@ -36,7 +36,7 @@ the frontend build, and release metadata and signatures are verified before
 publication. Run the relevant local checks before tagging, as described in the
 [development guide](../README.md#validation-and-builds).
 
-SimpleBench selects Xcode 26.3 to compile its Icon Composer source and uses its
+Lomi selects Xcode 26.3 to compile its Icon Composer source and uses its
 own pnpm version. It does not need Simple Voice's audio, Vulkan, or ONNX build
 dependencies. Windows installers are not Authenticode-signed. Tauri updater
 signatures verify downloaded updates independently of Apple signing and Windows
@@ -44,7 +44,7 @@ Authenticode. macOS app archives are still published as downloads.
 
 ## In-app updates
 
-Like Simple Voice, SimpleBench checks for updates three seconds after the
+Like Simple Voice, Lomi checks for updates three seconds after the
 workspace initializes. **Settings → About → Check for updates** requests a
 manual check in the main window. Automatic network errors stay quiet; manual
 checks report errors or confirm that the installed version is current. Checks
@@ -72,13 +72,13 @@ while reading the installer can appear as `error decoding response body`;
 the same message can also describe other interrupted response bodies. If an
 affected installation cannot finish its update, download the matching Windows
 installer (`x64-setup.exe` for NSIS, or `.msi` for MSI) from GitHub Releases,
-close SimpleBench normally, and run the installer. The timeout fix applies once
+close Lomi normally, and run the installer. The timeout fix applies once
 a release containing it is installed.
 
 Linux always shows external update instructions, including for AppImages:
 
 - Flatpak: `flatpak update` (detected at runtime, before checking the host distro).
-- Arch and derivatives: `yay -Syu simplebench-bin`, or `yay -Syu simplebench`
+- Arch and derivatives: `yay -Syu lomi-bin`, or `yay -Syu lomi`
   when the source package is installed. Users of another AUR helper can use its
   equivalent command; pacman alone does not build AUR packages.
 - Other distributions: download the latest package from GitHub Releases and
@@ -97,18 +97,18 @@ The public key is stored in `src-tauri/tauri.conf.json`. Keep the corresponding
 private key and password outside the repository and back them up securely.
 Losing or replacing this key prevents existing installations from accepting
 future updates. The implementation's initial key files are in
-`~/.config/simplebench/updater/` (`simplebench.key`, `simplebench.key.pub`, and
-`simplebench.password`), with access restricted to the local user.
+`~/.config/lomi/updater/` (`lomi.key`, `lomi.key.pub`, and
+`lomi.password`), with access restricted to the local user.
 
 Configure these repository Actions secrets, passing file contents via stdin:
 
 ```sh
-gh secret set TAURI_SIGNING_PRIVATE_KEY --repo MaciejKolerski/simplebench < ~/.config/simplebench/updater/simplebench.key
-gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --repo MaciejKolerski/simplebench < ~/.config/simplebench/updater/simplebench.password
+gh secret set TAURI_SIGNING_PRIVATE_KEY --repo lomi-dev/lomi < ~/.config/lomi/updater/lomi.key
+gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --repo lomi-dev/lomi < ~/.config/lomi/updater/lomi.password
 ```
 
 For a new installation of this release infrastructure only, generate a key using
-`pnpm tauri signer generate -w /safe/path/simplebench.key` and put its public key
+`pnpm tauri signer generate -w /safe/path/lomi.key` and put its public key
 contents in `plugins.updater.pubkey`. Do not regenerate a deployed updater key.
 For local bundle builds, set `TAURI_SIGNING_PRIVATE_KEY` to the key path and
 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` to its password in the build environment.
@@ -118,7 +118,7 @@ The workflow enables `bundle.createUpdaterArtifacts` and
 `includeUpdaterJson`, producing signed macOS app archives, Windows installers
 (NSIS preferred in updater metadata), and the Linux AppImage metadata used for
 version notifications. The endpoint is the public GitHub release asset:
-`https://github.com/MaciejKolerski/simplebench/releases/latest/download/latest.json`.
+`https://github.com/lomi-dev/lomi/releases/latest/download/latest.json`.
 No GitHub token is embedded in the app. See the
 [Tauri updater documentation](https://v2.tauri.app/plugin/updater/) and
 [tauri-action v0 inputs](https://github.com/tauri-apps/tauri-action/blob/v0/action.yml).
@@ -129,7 +129,7 @@ Use a **Developer ID Application** certificate for direct distribution. The
 workflow uses the [Tauri macOS signing and notarization flow](https://v2.tauri.app/distribute/sign/macos/):
 the action imports the certificate into a temporary runner keychain, and Tauri
 signs with the Hardened Runtime, submits to Apple, waits, and staples the ticket.
-No App Store sandbox or microphone entitlements are needed for SimpleBench.
+No App Store sandbox or microphone entitlements are needed for Lomi.
 
 Configure these repository Actions secrets:
 
@@ -144,9 +144,9 @@ Configure these repository Actions secrets:
 | `AUR_SSH_PRIVATE_KEY`        | Unencrypted dedicated SSH private key registered with the AUR maintainer account  |
 
 Repository secrets are configured at
-[SimpleBench Actions secrets](https://github.com/MaciejKolerski/simplebench/settings/secrets/actions).
+[Lomi Actions secrets](https://github.com/lomi-dev/lomi/settings/secrets/actions).
 The corresponding secrets in Simple Voice are not automatically available to
-SimpleBench. Keep their values out of source files, commits, and logs.
+Lomi. Keep their values out of source files, commits, and logs.
 
 For a local signed and notarized build, make the same Apple account variables
 available in the shell and install the Developer ID identity in Keychain Access,
@@ -157,7 +157,7 @@ configure all listed Apple secrets before starting a release.
 
 ## Publish a version
 
-SimpleBench uses Apache-2.0, with the license text in [`LICENSE`](../LICENSE)
+Lomi uses Apache-2.0, with the license text in [`LICENSE`](../LICENSE)
 and its SPDX identifier in `package.json` and `src-tauri/Cargo.toml`. The workflow
 requires matching license identifiers and the license file before publication.
 Both AUR recipes declare the same license.
@@ -201,9 +201,9 @@ requires a Flatpak manifest, upstream application metadata, a tested sandbox,
 and review. A terminal application must also design and verify host-shell and
 project-folder access before claiming Flatpak support.
 
-After a dedicated `flathub/io.github.MaciejKolerski.simplebench` repository and
+After a dedicated `flathub/dev.lomi.desktop` repository and
 its maintenance workflow exist, configure `FLATHUB_TOKEN` with access to that
-repository. Successful releases then dispatch `simplebench-release` with
+repository. Successful releases then dispatch `lomi-release` with
 `client_payload.tag` and `client_payload.commit`, matching Simple Voice. Leave
 the token unset until the receiving workflow is ready; this hook alone does not
 publish an application on Flathub.

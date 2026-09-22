@@ -62,18 +62,16 @@ export function activate(context: PluginContext) {
         className="text-button"
         disabled={!host.workspaceName}
         onClick={() =>
-          void context
-            .executeCommand("simplebench.context.open")
-            .catch(() => {})
+          void context.executeCommand("lomi.context.open").catch(() => {})
         }
       >
         Context
       </button>
     );
   }
-  context.registerView("simplebench.context.view", View);
-  context.registerCommand("simplebench.context.open", async () => {
-    await context.openView("simplebench.context.view", { expanded: false });
+  context.registerView("lomi.context.view", View);
+  context.registerCommand("lomi.context.open", async () => {
+    await context.openView("lomi.context.view", { expanded: false });
   });
-  context.registerFill("simplebench.context.status", Status);
+  context.registerFill("lomi.context.status", Status);
 }

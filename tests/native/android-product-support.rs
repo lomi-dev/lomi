@@ -4,8 +4,7 @@ use tauri::{Manager, Window};
 
 fn root() -> Result<PathBuf, String> {
     let managed = PathBuf::from(
-        std::env::var_os("SIMPLEBENCH_ANDROID_PRODUCT_DIRECTORY")
-            .ok_or("Product probe is disabled")?,
+        std::env::var_os("LOMI_ANDROID_PRODUCT_DIRECTORY").ok_or("Product probe is disabled")?,
     )
     .canonicalize()
     .map_err(|e| e.to_string())?;

@@ -16,7 +16,7 @@ use std::{
 };
 
 const JOURNAL: &str = "device-operation.json";
-const MARKER: &str = ".simplebench-avd.json";
+const MARKER: &str = ".lomi-avd.json";
 pub const TOOLS: &str = "cmdline-tools;23.0";
 
 #[derive(Clone, Deserialize)]
@@ -182,7 +182,7 @@ fn profile(directory: &Directory, device: &Device) -> Result<catalog::Profile, S
         );
     }
     if !device.input_bridge {
-        return Err("Full text input requires the SimpleBench input method in this device".into());
+        return Err("Full text input requires the Lomi input method in this device".into());
     }
     Ok(profile)
 }
@@ -853,7 +853,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "Creates, boots, updates, wipes and deletes a real phone in the isolated Rust-installed SDK"]
     async fn native_managed_phone_creation_and_maintenance() {
-        let trial = PathBuf::from(std::env::var_os("SIMPLEBENCH_ANDROID_PROBE_DIRECTORY").unwrap());
+        let trial = PathBuf::from(std::env::var_os("LOMI_ANDROID_PROBE_DIRECTORY").unwrap());
         let installation: serde_json::Value = serde_json::from_slice(
             &fs::read(trial.join("evidence/native-managed-installation.json")).unwrap(),
         )

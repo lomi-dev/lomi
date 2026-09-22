@@ -40,8 +40,8 @@ if resources.parent != trial.product:
     raise RuntimeError("Use the current fixture's product resource report")
 measured = json.loads(resources.read_text())
 trial.groups = {name: group["pids"] for name, group in measured["summary"]["groups"].items()}
-trial.options.helpers = [pid for pid in trial.groups["simplebench"] if pid != trial.app["pid"]]
-if trial.app["pid"] not in trial.groups["simplebench"] or any(record["process"]["pid"] not in trial.groups["emulator"] for record in trial.records.values()):
+trial.options.helpers = [pid for pid in trial.groups["lomi"] if pid != trial.app["pid"]]
+if trial.app["pid"] not in trial.groups["lomi"] or any(record["process"]["pid"] not in trial.groups["emulator"] for record in trial.records.values()):
     raise RuntimeError("The resource report belongs to an earlier product generation")
 trial.identities = {int(pid): values["processStartAbstime"]
                     for pid, values in measured["samples"][-1]["processes"].items()}
@@ -125,14 +125,14 @@ try:
             raise RuntimeError("A source changed or did not render throughout the trace")
     if errors or trial.cancelled.is_set():
         raise RuntimeError(errors or "GPU trial cancelled")
-    for group in ("simplebench", "emulator"):
+    for group in ("lomi", "emulator"):
         if active["groups"][group]["intervals"] == 0:
             raise RuntimeError("The trace missed an active GPU process group")
     if baseline["groups"]["emulator"]["intervals"] == 0:
         raise RuntimeError("The baseline missed the animated guest GPU")
     delta = sum(max(0, active["groups"][group]["activeSecondsPerSecond"]
                     - baseline["groups"][group]["activeSecondsPerSecond"])
-                for group in ("simplebench", "emulator"))
+                for group in ("lomi", "emulator"))
     budget = .10 * len(trial.records)
     report = dict(completed=True, baseline=baseline, active=active, deltaSecondsPerSecond=delta,
                   budget=budget, budgetBasis="0.10 GPU active seconds per second per independent phone",

@@ -1,10 +1,7 @@
 .context-plugin {
   padding: var(--space-16);
   color: var(--color-background-text);
-  background: var(
-    --plugin-simplebench-context-background,
-    var(--color-background)
-  );
+  background: var(--plugin-lomi-context-background, var(--color-background));
   height: 100%;
   overflow: auto;
 }

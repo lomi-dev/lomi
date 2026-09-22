@@ -93,7 +93,7 @@ test("the footer changes indentation inline for the current buffer without chang
     ),
   ).toEqual([]);
   await expect(page.getByRole("contentinfo")).not.toContainText(
-    /\d+ tabs|\d+ terminals|SimpleBench/,
+    /\d+ tabs|\d+ terminals|Lomi/,
   );
 
   const settings = await context.newPage();

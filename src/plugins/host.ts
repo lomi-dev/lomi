@@ -225,7 +225,7 @@ export class PluginHost {
       );
     if (entry.restartRequired)
       return Promise.reject(
-        new Error("Restart SimpleBench to use the updated plugin."),
+        new Error("Restart Lomi to use the updated plugin."),
       );
     const activation: Activation = {
       abort: new AbortController(),

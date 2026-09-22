@@ -184,16 +184,16 @@ export function useCliTitleSetup(
         <div className="dialog-form">
           <div className="cli-title-description">
             <p id={descriptionId}>
-              {cliNames[request.cli]} is running. Allow SimpleBench to enable
-              terminal titles in its settings for all terminals?
+              {cliNames[request.cli]} is running. Allow Lomi to enable terminal
+              titles in its settings for all terminals?
             </p>
             <p style={{ overflowWrap: "anywhere" }}>
               <code>{request.path}</code>
             </p>
             {request.cli === "agy" && (
               <p>
-                agy will use its existing title command, or SimpleBench’s local
-                title formatter if none is configured.
+                agy will use its existing title command, or Lomi’s local title
+                formatter if none is configured.
               </p>
             )}
             <p>A backup of the existing file will be saved beside it.</p>

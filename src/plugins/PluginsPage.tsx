@@ -187,10 +187,10 @@ export default function PluginsPage() {
         )}
         {plugins.error && (
           <p className="settings-help">
-            Recovery: close SimpleBench, back up plugins/installed.json by
-            renaming it to installed.backup.json in the application data folder,
-            then restart with --safe-mode and reimport your packages. Keep
-            package folders and the session file.
+            Recovery: close Lomi, back up plugins/installed.json by renaming it
+            to installed.backup.json in the application data folder, then
+            restart with --safe-mode and reimport your packages. Keep package
+            folders and the session file.
           </p>
         )}
         {pending && (
@@ -369,7 +369,7 @@ export default function PluginsPage() {
                           void run(() => api("request_plugin_restart"))
                         }
                       >
-                        Restart SimpleBench
+                        Restart Lomi
                       </button>
                     </p>
                   )}
@@ -441,8 +441,8 @@ export default function PluginsPage() {
             <p>Source: {trust.source}</p>
             <p>
               Enabling this plugin executes trusted code with application
-              access, including files and terminals available to SimpleBench. It
-              is not sandboxed. Approve only code you trust.
+              access, including files and terminals available to Lomi. It is not
+              sandboxed. Approve only code you trust.
             </p>
             <p className="settings-help">
               Approval applies to this installed revision. Changed code requires

@@ -34,7 +34,7 @@ Light tokens and supplies the authoring defaults.
       "syntax": { "comment": { "fontStyle": "italic" } },
     },
     "terminal": { "preset": "AdventureTime", "fontSize": 14 },
-    "plugins": { "simplebench.context": { "surface": "var(--color-surface)" } },
+    "plugins": { "lomi.context": { "surface": "var(--color-surface)" } },
   },
   "light": { "editor": { "colors": { "background": "#fafafa" } } },
   "dark": { "editor": { "colors": { "background": "#101010" } } },
@@ -79,8 +79,8 @@ formatting retains comments. Controls and the JSONC editor share one draft.
   editor use **Load terminal presets** to discover names. Explicit colors win.
 - `plugins`: owner → token map. Tokens cannot target core properties through this
   field. The CSS name is `--plugin-<encoded-owner>-<token>`: encode `-` as `-h`
-  and `.` as `-d`, in that order. Thus `simplebench.context.surface` maps to
-  `--plugin-simplebench-dcontext-surface`. This encoding avoids owner collisions.
+  and `.` as `-d`, in that order. Thus `lomi.context.surface` maps to
+  `--plugin-lomi-dcontext-surface`. This encoding avoids owner collisions.
 
 ## Resolution and resources
 
@@ -129,9 +129,9 @@ Unsupported legacy data produces an error instead of being silently dropped.
 under `src/theme/`. Theme selection and System/Light/Dark settings retain their
 existing `theme-settings.json` format. Terminal preference files are unchanged.
 
-Start `simplebench --safe-mode` (or `SIMPLEBENCH_SAFE_MODE=1 simplebench`) to skip
+Start `lomi --safe-mode` (or `LOMI_SAFE_MODE=1 lomi`) to skip
 third-party code and themes before evaluation. `--disable-plugins` also selects
-the baseline; legacy `SIMPLEBENCH_SAFE_THEME=1` skips only custom themes. In this
+the baseline; legacy `LOMI_SAFE_THEME=1` skips only custom themes. In this
 mode use Settings → Themes and select DeepMono, then restart normally. Invalid
 files stay intact until an explicit recovery/save. Plugin-supplied themes are
 available without enabling code, remain immutable, and can be duplicated before
@@ -146,7 +146,7 @@ fixtures exercise the overlap; the two validators do not claim identical roles.
 The `xterm-theme` 1.1.0 npm manifest lists ISC, while its upstream license is MIT
 and the npm tarball omits that license file. The upstream MIT notice is retained
 in `public/licenses/xterm-theme-MIT.txt`. The package supplies palette data only;
-SimpleBench uses a single `@xterm/xterm` runtime.
+Lomi uses a single `@xterm/xterm` runtime.
 
 ## VS Code color-theme exchange
 
@@ -159,7 +159,7 @@ above its mapping. Extension code is never evaluated.
 See [the compatibility analysis](../docs/vscode-theme-compatibility.md) for the
 VS Code loading pipeline, supported mappings, import/export behavior and limits.
 CodeMirror syntax is an approximation of TextMate; semantic rules are retained
-for export. SimpleBench CSS, layouts and assets have no standard VS Code
+for export. Lomi CSS, layouts and assets have no standard VS Code
 color-theme equivalent. This is not full visual or semantic parity.
 
 File and interface icon themes use separate selections in Settings → Themes.

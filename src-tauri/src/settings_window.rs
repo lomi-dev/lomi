@@ -28,7 +28,7 @@ pub async fn prepare(app: &tauri::AppHandle) -> Result<(), String> {
         "settings",
         WebviewUrl::App("index.html?window=settings".into()),
     )
-    .title("Settings — SimpleBench")
+    .title("Settings — Lomi")
     .inner_size(920.0, 680.0)
     .min_inner_size(560.0, 420.0)
     .visible(false)

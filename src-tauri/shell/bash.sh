@@ -2,7 +2,7 @@ if [ -f "$HOME/.bashrc" ]; then
   source "$HOME/.bashrc"
 fi
 
-__simplebench_prompt() {
+__lomi_prompt() {
   local status=$?
   local directory=${PWD//\%/%25}
   directory=${directory//#/%23}
@@ -13,7 +13,7 @@ __simplebench_prompt() {
 }
 
 # Preserve existing prompt hooks and readline's non-printing character accounting.
-PROMPT_COMMAND=(__simplebench_prompt "${PROMPT_COMMAND[@]}")
+PROMPT_COMMAND=(__lomi_prompt "${PROMPT_COMMAND[@]}")
 # Keep the start marker outside PS1: Readline can miscount separate invisible
 # spans after a wrapped prompt is widened, moving input back into the prompt.
 PS1="$PS1"'\[\e]133;B\a\]'

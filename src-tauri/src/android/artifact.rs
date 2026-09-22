@@ -293,7 +293,7 @@ mod tests {
             environment, installation::Installed, installer_process::InstallerChild,
             storage::Directory,
         };
-        let root = PathBuf::from(std::env::var_os("SIMPLEBENCH_ANDROID_PROBE_DIRECTORY").unwrap());
+        let root = PathBuf::from(std::env::var_os("LOMI_ANDROID_PROBE_DIRECTORY").unwrap());
         let consent: serde_json::Value =
             serde_json::from_slice(&fs::read(root.join("evidence/consent.json")).unwrap()).unwrap();
         assert_eq!(consent["accepted"], true);

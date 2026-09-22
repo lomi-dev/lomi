@@ -244,7 +244,7 @@ export default function SettingsWindow() {
           <main className="keybindings-page">
             <header className="settings-page-heading">
               <div>
-                <h1>SimpleBench</h1>
+                <h1>Lomi</h1>
                 <p>Version {version}</p>
               </div>
               <button
@@ -261,8 +261,8 @@ export default function SettingsWindow() {
               </button>
             </header>
             <p className="settings-help">
-              SimpleBench checks GitHub Releases for updates after startup.
-              Update details open in the workspace window.
+              Lomi checks GitHub Releases for updates after startup. Update
+              details open in the workspace window.
             </p>
             {error && (
               <p className="keybindings-error" role="alert">
@@ -302,7 +302,7 @@ export default function SettingsWindow() {
             </p>
             <p className="settings-help">
               Clear a shortcut to pass those keys to the terminal. Shortcuts are
-              active while SimpleBench is focused.
+              active while Lomi is focused.
             </p>
             {(error || preferences.error) && (
               <div className="keybindings-error" role="alert">

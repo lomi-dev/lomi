@@ -62,7 +62,7 @@ pub fn result(
                 .map_err(|error| error.to_string())?;
         }
         "passed" | "failed" => {
-            let directory = std::env::var("SIMPLEBENCH_NOTIFICATION_SMOKE_DIRECTORY")
+            let directory = std::env::var("LOMI_NOTIFICATION_SMOKE_DIRECTORY")
                 .map_err(|error| error.to_string())?;
             std::fs::write(
                 std::path::Path::new(&directory).join("result.json"),

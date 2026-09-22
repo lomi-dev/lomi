@@ -4,8 +4,8 @@ packages:
 allowBuilds:
   esbuild: false
 minimumReleaseAgeExclude:
-  - '@ai-sdk/openai-compatible@3.0.52'
-  - '@ai-sdk/provider-utils@5.0.44'
-  - '@lomi-dev/plugin-sdk@1.1.0-alpha.0'
+  - "@ai-sdk/openai-compatible@3.0.52"
+  - "@ai-sdk/provider-utils@5.0.44"
+  - "@lomi-dev/plugin-sdk@1.1.0-alpha.1"
 patchedDependencies:
   "@xterm/addon-webgl@0.19.0": patches/@xterm__addon-webgl@0.19.0.patch

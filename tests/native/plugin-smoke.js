@@ -9,7 +9,7 @@
   };
   try {
     const entry = SMOKE_ENTRY;
-    await wait(() => !!globalThis[Symbol.for("simplebench.plugin-api.v1")]);
+    await wait(() => !!globalThis[Symbol.for("lomi.plugin-api.v1")]);
     let blocked = false;
     try {
       await invoke("prepare_plugin", {

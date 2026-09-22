@@ -1,4 +1,4 @@
-# VS Code themes and SimpleBench
+# VS Code themes and Lomi
 
 ## VS Code's theme pipeline
 
@@ -42,9 +42,9 @@ Primary references, consulted 2026-09-17:
 - [Theme contributions](https://code.visualstudio.com/api/references/contribution-points#contributes.themes)
 - [VS Code's color-theme loader](https://github.com/microsoft/vscode/blob/main/src/vs/workbench/services/themes/common/colorThemeData.ts)
 
-## Existing SimpleBench pipeline
+## Existing Lomi pipeline
 
-SimpleBench v2 themes have common/light/dark sections, semantic CSS variables,
+Lomi v2 themes have common/light/dark sections, semantic CSS variables,
 component declarations, layout, backgrounds, local resources, editor syntax,
 terminal palettes, and plugin tokens. The runtime applies a complete validated
 appearance transaction and reads computed CSS values. CodeMirror compartments
@@ -52,7 +52,7 @@ and retained xterm instances update in place. Main and Settings use the same
 native source revisions; previews stay local. Invalid themes keep the last
 working appearance.
 
-SimpleBench's editor uses Lezer/CodeMirror tags, not TextMate scope stacks or
+Lomi's editor uses Lezer/CodeMirror tags, not TextMate scope stacks or
 VS Code language-service tokens. The theme change does not replace its editor,
 install a language server, or execute VS Code extensions.
 
@@ -62,17 +62,17 @@ In **Settings → Themes**:
 
 - **Import VS Code** accepts color or icon `.json`/`.jsonc`, `.tmTheme`, an
   extension's `package.json`, or `.vsix`.
-- **Import folder** accepts either a SimpleBench package or a VS Code extension
+- **Import folder** accepts either a Lomi package or a VS Code extension
   folder. Dropping one file/folder follows the same import path.
 - Each contributed color or icon theme becomes a separate local theme. Imports do not
   select a theme automatically. Extension code is neither copied nor executed.
 - **Export to VS Code** writes a new `.vsix` into the chosen folder. Existing files
   are never overwritten. Use VS Code's **Extensions: Install from VSIX** command.
-  Adaptive SimpleBench themes export separate Dark and Light entries; fixed
+  Adaptive Lomi themes export separate Dark and Light entries; fixed
   themes export one entry. High contrast metadata is retained for imported themes.
 - **Edit theme → VS Code compatibility** explains which data is mapped and which
   is retained only for export. The original resolved VS Code data lives in the
-  `vscode` property of the installed `theme.jsonc`; ordinary SimpleBench overrides
+  `vscode` property of the installed `theme.jsonc`; ordinary Lomi overrides
   remain editable in common/light/dark sections.
 
 The order is baseline → imported VS Code mapping → common → appearance variant
@@ -102,30 +102,30 @@ so formatting/comments and the original file structure are not reproduced.
 
 ## Compatibility boundaries
 
-| Area                              | Current behavior                                                                                                                                                                                                                                                                                                                       |
-| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Workbench colors                  | Explicit mapping for existing SimpleBench surfaces and states. Missing colors inherit SimpleBench's baseline, not VS Code's full color registry.                                                                                                                                                                                       |
-| Terminal                          | Foreground/background, cursor, selection, all 16 ANSI colors, and search decorations map to xterm. Terminal rendering and user overrides can affect the final appearance.                                                                                                                                                              |
-| Editor colors                     | Editor background/foreground, gutter, line/selection/cursor colors and selected decorations map to CodeMirror.                                                                                                                                                                                                                         |
-| TextMate syntax                   | Approximation to SimpleBench's existing 16 syntax categories. Prefix specificity, per-property inheritance, array/comma scopes and style resets are handled. Contextual selectors do not leak into global categories. Language-specific grammar distinctions and strikethrough are retained in source data but are not fully rendered. |
-| Semantic tokens                   | Preserved and exported. SimpleBench has no VS Code semantic-token provider, so these rules do not claim semantic rendering in SimpleBench.                                                                                                                                                                                             |
-| Unknown color IDs                 | Preserved, exported, and exposed as `--vscode-*` variables; no invented UI component is created.                                                                                                                                                                                                                                       |
-| High contrast                     | Light/dark mode metadata and mapped contrast borders are retained. This does not reproduce every VS Code accessibility state.                                                                                                                                                                                                          |
-| CSS/layout/images/fonts/plugin UI | Remain SimpleBench features. Export can capture mapped colors, but a VS Code color extension cannot express their layout or resource effects. Pseudo-state or structural CSS without a mapped representative may need manual adjustment.                                                                                               |
-| File/product icons                | Independent data-only imports, selections, scoped assets, live rendering and VSIX exports; details below.                                                                                                                                                                                                                              |
-| Licensing/publishing              | The VSIX is a local extension under `simplebench-local`. It is not published or installed automatically. Original author metadata is retained in SimpleBench; review the original license before redistributing an imported theme.                                                                                                     |
+| Area                              | Current behavior                                                                                                                                                                                                                                                                                                                |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Workbench colors                  | Explicit mapping for existing Lomi surfaces and states. Missing colors inherit Lomi's baseline, not VS Code's full color registry.                                                                                                                                                                                              |
+| Terminal                          | Foreground/background, cursor, selection, all 16 ANSI colors, and search decorations map to xterm. Terminal rendering and user overrides can affect the final appearance.                                                                                                                                                       |
+| Editor colors                     | Editor background/foreground, gutter, line/selection/cursor colors and selected decorations map to CodeMirror.                                                                                                                                                                                                                  |
+| TextMate syntax                   | Approximation to Lomi's existing 16 syntax categories. Prefix specificity, per-property inheritance, array/comma scopes and style resets are handled. Contextual selectors do not leak into global categories. Language-specific grammar distinctions and strikethrough are retained in source data but are not fully rendered. |
+| Semantic tokens                   | Preserved and exported. Lomi has no VS Code semantic-token provider, so these rules do not claim semantic rendering in Lomi.                                                                                                                                                                                                    |
+| Unknown color IDs                 | Preserved, exported, and exposed as `--vscode-*` variables; no invented UI component is created.                                                                                                                                                                                                                                |
+| High contrast                     | Light/dark mode metadata and mapped contrast borders are retained. This does not reproduce every VS Code accessibility state.                                                                                                                                                                                                   |
+| CSS/layout/images/fonts/plugin UI | Remain Lomi features. Export can capture mapped colors, but a VS Code color extension cannot express their layout or resource effects. Pseudo-state or structural CSS without a mapped representative may need manual adjustment.                                                                                               |
+| File/product icons                | Independent data-only imports, selections, scoped assets, live rendering and VSIX exports; details below.                                                                                                                                                                                                                       |
+| Licensing/publishing              | The VSIX is a local extension under `lomi-local`. It is not published or installed automatically. Original author metadata is retained in Lomi; review the original license before redistributing an imported theme.                                                                                                            |
 
 Consequently, this is a bidirectional color and icon theme bridge with retained source
 data, **not full visual or semantic parity** between both applications. Achieving
 that parity for source code would also require compatible TextMate grammars,
 selector evaluation, semantic-token providers, and per-language extension
-behavior. CSS-driven SimpleBench layouts would still have no representation in
+behavior. CSS-driven Lomi layouts would still have no representation in
 standard VS Code color themes.
 
 ## File and product icon themes
 
 VS Code registers `contributes.iconThemes` and `contributes.productIconThemes`
-separately from `contributes.themes`. SimpleBench imports all three lists from a
+separately from `contributes.themes`. Lomi imports all three lists from a
 single extension atomically. **Colors**, **File icons**, and **Interface icons**
 in Settings select independent preferences. Selecting an icon theme preserves
 colors, appearance, the other icon selection, editor history and PTY instances.
@@ -164,24 +164,24 @@ Product icons render the declared glyph fonts, inherit control colors and fall
 back to the built-in Lucide icon for missing definitions. The explicit semantic
 identifier/default alias mapping is in `src/theme/product-icons.ts`; all existing
 application icon controls use it. This does not add VS Code controls absent from
-SimpleBench or replace icons drawn inside third-party web pages or plugin views.
+Lomi or replace icons drawn inside third-party web pages or plugin views.
 Resource icons have an independent built-in fallback and are not changed by
 product themes.
 
-Language associations use SimpleBench's filename language detection and may take
-an explicit language ID. SimpleBench does not install VS Code language extensions
+Language associations use Lomi's filename language detection and may take
+an explicit language ID. Lomi does not install VS Code language extensions
 or their separately registered language-mode icons; `showLanguageModeIcons` is
 retained, but those external fallback images are unavailable. The High Contrast
 variant follows an imported high-contrast color theme. There is no separate new
 high-contrast preference or automatic VS Code settings import.
 
 **Export to VS Code** includes the selected icon document and every referenced
-image/font in a data-only VSIX. Built-in SimpleBench file and interface icons also
+image/font in a data-only VSIX. Built-in Lomi file and interface icons also
 export using Lucide SVGs and the matching glyph font, with its license. **Create
 icon theme** and **Duplicate** create local editable packages; **Open icon
 definitions** opens their folder for editing the standard JSONC/JSON document.
 Filesystem watches reload the selected package in open windows. Editing native
-icon definitions externally can add icons for VS Code surfaces that SimpleBench
+icon definitions externally can add icons for VS Code surfaces that Lomi
 does not display; they remain present in the exported extension.
 
 Primary references:
@@ -208,4 +208,4 @@ commands, parses installed VS Code default variants, exercises WKWebView export,
 checks cross-window updates, verifies native PTY identity/output and dirty editor
 undo, renders file SVGs and product glyph fonts, round-trips both imported and
 built-in icon VSIX assets, and rejects color/icon export from main. It prints isolated data and artifact paths;
-it does not use the normal SimpleBench data directory.
+it does not use the normal Lomi data directory.

@@ -61,10 +61,10 @@
     if (Object.keys(before.terminals).length !== 1)
       throw Error("Expected one live initial shell");
     const terminal = Object.keys(before.terminals)[0];
-    globalThis.__simplebenchSmoke = { before, terminal, entry };
+    globalThis.__lomiSmoke = { before, terminal, entry };
     await invoke("write_terminal", {
       id: terminal,
-      data: "for i in 1 2 3 4 5 6 7 8 9 10; do printf '\\nSIMPLEBENCH_NATIVE_%s\\n' \"$i\"; sleep 0.1; done\n",
+      data: "for i in 1 2 3 4 5 6 7 8 9 10; do printf '\\nLOMI_NATIVE_%s\\n' \"$i\"; sleep 0.1; done\n",
     });
     await command("Show workspace context");
     await wait(() =>

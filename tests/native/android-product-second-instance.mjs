@@ -8,7 +8,7 @@ const name = process.argv[3];
 if (!/^[a-zA-Z0-9-]{1,50}$/.test(name ?? ""))
   throw Error("Use a fresh second-instance evidence name");
 const primary = JSON.parse(await readFile(join(root, "application.json")));
-const binary = join(primary.repository, "src-tauri/target/release/simplebench");
+const binary = join(primary.repository, "src-tauri/target/release/lomi");
 if (
   createHash("sha256")
     .update(await readFile(binary))
@@ -57,7 +57,7 @@ const child = spawn(binary, [], {
   cwd: primary.repository,
   env: {
     ...process.env,
-    SIMPLEBENCH_ANDROID_PRODUCT_DIRECTORY: primary.managed,
+    LOMI_ANDROID_PRODUCT_DIRECTORY: primary.managed,
   },
   stdio: ["ignore", "ignore", "pipe"],
 });

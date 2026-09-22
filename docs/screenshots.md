@@ -1,37 +1,41 @@
 # README screenshots
 
-These PNGs are captures of the running Tauri desktop application. They were
-recorded on Linux with Hyprland/Wayland and WebKitGTK on 2026-09-15, using the
-bundled DeepMono dark theme and application source at commit
-`9fce16549daafe33b63dffc2e885744d1c92490c`.
+These PNGs were captured from the running Lomi Tauri application on macOS ARM64
+on 22 September 2026, after the local rebrand. They use the bundled DeepMono dark
+theme. The application layout and styling were not changed for the captures.
 
-| Image                                       | Native window size | Content                                                                                       |
-| ------------------------------------------- | ------------------ | --------------------------------------------------------------------------------------------- |
-| [Workbench](images/workbench.png)           | 1600 × 960         | Explorer, `src/browser-url.ts`, real Node test output, and a running Vite development server. |
-| [Source Control](images/source-control.png) | 1600 × 960         | Repository history and the `src/Explorer.tsx` diff in commit `9fce165`.                       |
-| [Keybinds](images/keybindings.png)          | 1120 × 820         | The separate Settings window showing configurable shortcuts.                                  |
+| Image                                       | Native window size | PNG size    | Content                                                                            |
+| ------------------------------------------- | ------------------ | ----------- | ---------------------------------------------------------------------------------- |
+| [Workbench](images/workbench.png)           | 1440 × 900         | 2880 × 1800 | Explorer, `src/browser-url.ts`, and eight passing tests in a real native terminal. |
+| [Source Control](images/source-control.png) | 1440 × 900         | 2880 × 1800 | The native Git diff for a local demonstration comment in `src/browser-url.ts`.     |
+| [Keybinds](images/keybindings.png)          | 920 × 680          | 1840 × 1360 | The separate Settings window, including the Lomi product name.                     |
 
-The capture session used a temporary local clone and separate XDG data, config,
-and cache directories. The native backend was built with
-`cargo build --manifest-path src-tauri/Cargo.toml --locked`; `pnpm dev` served the
-frontend. The terminal output came from eight tests in `browser.test.ts`,
-`editor-text.test.ts`, and `editor-preferences.test.ts`, followed by a Vite server
-on port 4175. Git displayed the clone's actual commit history.
+The session used a disposable clone named `lomi`, a separate application ID
+`dev.lomi.rebrand-demo`, and its own application data directory. The desktop
+frontend and Rust backend were built from the rebranded working tree. The
+candidate SDK archive was installed in the disposable application checkout.
+The editor, shell, filesystem and Git commands used the real native backend.
+The terminal ran:
 
-Window bounds were captured directly with `grim`. The images have no mock native
-commands, generated UI, compositing, or added annotations. Application behavior
-and rendering code were not changed for the screenshots.
+```sh
+node --experimental-strip-types --test --test-reporter=spec tests/browser.test.ts tests/editor-text.test.ts tests/editor-preferences.test.ts
+```
+
+A temporary capture helper in the disposable checkout selected views and sent
+this command to the terminal. It did not replace native commands or alter UI
+rendering and is not part of the application sources. macOS `screencapture`
+captured each window without shadows. No generated UI, image compositing or
+text replacement was applied to the PNGs.
 
 ## Refreshing the images
 
-1. Run the current desktop build with a separate demonstration session and a
+1. Run the current desktop build with a separate demonstration profile and a
    disposable project copy.
-2. Use the built-in theme, keep text legible, and run the commands shown in the
-   terminals. Wait for files, diffs, and fonts to finish loading.
-3. Capture the application window without unrelated desktop content, dialogs,
-   tooltips, or private information. Keep the sizes above for consistent framing.
-4. Replace the PNGs, update their descriptions and capture details here, and
-   inspect the rendered README at desktop and narrow widths.
+2. Use the bundled dark theme, real commands and a local Git diff. Wait for
+   files, fonts and terminal output to finish loading.
+3. Capture each native window without unrelated desktop content, dialogs,
+   tooltips or private information. Preserve logical sizes and native scale.
+4. Replace the PNGs and update this provenance. Inspect the actual images.
 
-For browser, PTY, and native-window imagery, capture the desktop application;
-the Playwright test frontend uses mocked native commands.
+For browser, PTY and native-window imagery, capture the desktop application;
+Playwright's mocked native bridge is not evidence of those native features.

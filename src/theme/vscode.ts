@@ -381,12 +381,12 @@ export function vscodeCompatibility(theme: VSCodeTheme) {
       ...(Object.keys(theme.semanticTokenColors ?? {}).length ||
       theme.semanticHighlighting
         ? [
-            "Semantic rules are preserved for VS Code export. SimpleBench does not provide VS Code language-service tokens.",
+            "Semantic rules are preserved for VS Code export. Lomi does not provide VS Code language-service tokens.",
           ]
         : []),
       ...(unmatchedColors.length
         ? [
-            `${unmatchedColors.length} color identifiers have no mapped SimpleBench component. They are retained for export.`,
+            `${unmatchedColors.length} color identifiers have no mapped Lomi component. They are retained for export.`,
           ]
         : []),
     ],

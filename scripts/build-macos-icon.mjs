@@ -10,7 +10,7 @@ if (process.platform !== "darwin") {
 }
 
 const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-const iconSource = path.join(projectRoot, "public", "Simplebench.icon");
+const iconSource = path.join(projectRoot, "public", "Lomi.icon");
 const outputDirectory = path.join(
   projectRoot,
   "src-tauri",
@@ -28,7 +28,7 @@ execFileSync(
     "--compile",
     outputDirectory,
     "--app-icon",
-    "Simplebench",
+    "Lomi",
     "--output-partial-info-plist",
     path.join(outputDirectory, "icon-info.plist"),
     "--platform",
@@ -45,9 +45,7 @@ execFileSync(
   { stdio: "inherit" },
 );
 
-const compiledIcon = readFileSync(
-  path.join(outputDirectory, "Simplebench.icns"),
-);
+const compiledIcon = readFileSync(path.join(outputDirectory, "Lomi.icns"));
 if (
   !existsSync(fallbackIcon) ||
   !readFileSync(fallbackIcon).equals(compiledIcon)

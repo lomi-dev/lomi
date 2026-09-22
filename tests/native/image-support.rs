@@ -4,7 +4,7 @@ pub fn page(webview: &tauri::Webview, payload: &tauri::webview::PageLoadPayload<
     if webview.label() == "main"
         && matches!(payload.event(), tauri::webview::PageLoadEvent::Finished)
     {
-        let directory = std::env::var("SIMPLEBENCH_IMAGE_SMOKE_DIRECTORY").unwrap();
+        let directory = std::env::var("LOMI_IMAGE_SMOKE_DIRECTORY").unwrap();
         let script = include_str!("image-smoke.js").replace(
             "SMOKE_DIRECTORY",
             &serde_json::to_string(&directory).unwrap(),
@@ -18,8 +18,7 @@ pub fn result(
     stage: &str,
     data: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
-    let directory =
-        std::env::var("SIMPLEBENCH_IMAGE_SMOKE_DIRECTORY").map_err(|e| e.to_string())?;
+    let directory = std::env::var("LOMI_IMAGE_SMOKE_DIRECTORY").map_err(|e| e.to_string())?;
     if stage == "image-settings" {
         let script = format!(
             r#"(async()=>{{const invoke=window.__TAURI_INTERNALS__.invoke;let denied=false;try{{await invoke('read_image_file',{{root:{},relative:'picture.png'}});}}catch{{denied=true;}}await invoke('plugin_smoke_result',{{stage:denied?'passed':'failed',data:denied?'Native image reads, rendering, zoom, errors and settings isolation passed':'Settings could read project images'}});}})();"#,

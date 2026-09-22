@@ -15,7 +15,7 @@ use std::{
 };
 use tokio::sync::watch;
 
-const MARKER: &str = ".simplebench-toolchain.json";
+const MARKER: &str = ".lomi-toolchain.json";
 const JOURNAL: &str = "toolchain-installation.json";
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -615,7 +615,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "Downloads pinned official tools into a clean subdirectory of the accepted native trial"]
     async fn actual_bootstrap_downloads_and_runs_private_cli_and_java() {
-        let trial = PathBuf::from(std::env::var_os("SIMPLEBENCH_ANDROID_PROBE_DIRECTORY").unwrap());
+        let trial = PathBuf::from(std::env::var_os("LOMI_ANDROID_PROBE_DIRECTORY").unwrap());
         let consent: serde_json::Value =
             serde_json::from_slice(&fs::read(trial.join("evidence/consent.json")).unwrap())
                 .unwrap();

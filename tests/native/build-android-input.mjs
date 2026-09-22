@@ -16,7 +16,7 @@ const env = Object.fromEntries(
 );
 env.JAVA_HOME = javaHome;
 // This fixture key is never used to sign a release or distributed bridge.
-env.SIMPLEBENCH_FIXTURE_PASSWORD = "isolated-native-fixture";
+env.LOMI_FIXTURE_PASSWORD = "isolated-native-fixture";
 function run(program, args) {
   const result = spawnSync(program, args, {
     env,
@@ -43,7 +43,7 @@ if (!existsSync(key))
     "-keystore",
     key,
     "-storepass:env",
-    "SIMPLEBENCH_FIXTURE_PASSWORD",
+    "LOMI_FIXTURE_PASSWORD",
     "-alias",
     "fixture",
     "-keyalg",
@@ -53,7 +53,7 @@ if (!existsSync(key))
     "-validity",
     "365",
     "-dname",
-    "CN=SimpleBench native test fixture",
+    "CN=Lomi native test fixture",
   ]);
 const repository = resolve(import.meta.dirname, "../..");
 for (const [name, source] of [
@@ -127,7 +127,7 @@ for (const [name, source] of [
     "--ks",
     key,
     "--ks-pass",
-    "env:SIMPLEBENCH_FIXTURE_PASSWORD",
+    "env:LOMI_FIXTURE_PASSWORD",
     apk,
   ]);
   run(join(buildTools, "apksigner"), [

@@ -71,9 +71,7 @@ test("a heavily zoomed minimum window fits the pane without scrolling the worksp
   page,
 }) => {
   await mockDesktop(page, true, undefined, undefined, {}, "macos");
-  await page.addInitScript(() =>
-    localStorage.setItem("simplebench.zoom.main", "200"),
-  );
+  await page.addInitScript(() => localStorage.setItem("lomi.zoom.main", "200"));
   await page.setViewportSize({ width: 400, height: 210 });
   await page.goto("/");
   await expect(page.locator(".xterm-screen")).toBeVisible();
@@ -237,7 +235,7 @@ test("queued zoom shortcuts respect limits, composition and native failures", as
   );
   expect(await zoom(page)).toBe(1);
   expect(
-    await page.evaluate(() => localStorage.getItem("simplebench.zoom.main")),
+    await page.evaluate(() => localStorage.getItem("lomi.zoom.main")),
   ).toBe("100");
   await page.evaluate(() => {
     (window as any).__nativeTest.failZoom = false;

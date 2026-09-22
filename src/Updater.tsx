@@ -7,8 +7,7 @@ import { api, errorMessage, native } from "./api";
 import { Modal } from "./ui";
 import type { ReleaseClosePreparation } from "./application-close";
 
-const releases =
-  "https://github.com/MaciejKolerski/simplebench/releases/latest";
+const releases = "https://github.com/lomi-dev/lomi/releases/latest";
 type Status =
   | "idle"
   | "checking"
@@ -164,13 +163,13 @@ export function useUpdater(
           <div className="update-content">
             {update && (
               <p>
-                SimpleBench {update.currentVersion} → {update.version}
+                Lomi {update.currentVersion} → {update.version}
               </p>
             )}
             {error && (
               <p role="alert">
                 {installed.current
-                  ? "The update is installed. Restart SimpleBench to finish. "
+                  ? "The update is installed. Restart Lomi to finish. "
                   : "Update failed: "}
                 {error}
               </p>
@@ -178,7 +177,7 @@ export function useUpdater(
             {update?.body && <pre className="update-notes">{update.body}</pre>}
             {instruction && update && (
               <>
-                <p>Update SimpleBench outside the app:</p>
+                <p>Update Lomi outside the app:</p>
                 <pre className="update-instruction">{instruction}</pre>
                 <button
                   className="button"
@@ -194,13 +193,13 @@ export function useUpdater(
             )}
             {update && !instruction && !working && (
               <p>
-                The update will restart SimpleBench and end terminal sessions.
-                You can save unsaved files before installation.
+                The update will restart Lomi and end terminal sessions. You can
+                save unsaved files before installation.
               </p>
             )}
             <div role="status">
               {status === "checking" && "Checking for updates…"}
-              {status === "idle" && "SimpleBench is up to date."}
+              {status === "idle" && "Lomi is up to date."}
               {status === "downloading" && (
                 <>
                   Downloading update…{" "}
@@ -214,8 +213,7 @@ export function useUpdater(
               )}
               {status === "preparing" && "Preparing to close the workspace…"}
               {status === "installing" && "Installing update…"}
-              {status === "installed" &&
-                "Update installed. Restarting SimpleBench…"}
+              {status === "installed" && "Update installed. Restarting Lomi…"}
             </div>
           </div>
           <div className="dialog-actions">

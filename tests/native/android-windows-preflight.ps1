@@ -76,7 +76,7 @@ Record 'inheritedConfiguration' {
 }
 Record 'integrity' {
     $manifest = Get-Content -Raw -LiteralPath (Join-Path $repo 'src-tauri/android-input/artifact.json') | ConvertFrom-Json
-    $files = @(@{ path = 'src-tauri/android-input/simplebench-input.apk'; expected = $manifest.apkSha256 })
+    $files = @(@{ path = 'src-tauri/android-input/lomi-input.apk'; expected = $manifest.apkSha256 })
     foreach ($property in $manifest.sources.PSObject.Properties) {
         $files += @{ path = "src-tauri/android-input/$($property.Name)"; expected = $property.Value }
     }

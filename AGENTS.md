@@ -1,8 +1,8 @@
-# SimpleBench agent instructions
+# Lomi agent instructions
 
 ## Project
 
-SimpleBench is a desktop ADE application developed incrementally around project
+Lomi is a desktop ADE application developed incrementally around project
 folders, named workspaces, and terminal tabs. A project owns workspaces sharing
 its folder; each workspace owns tabs; each terminal tab owns a default shell
 environment and a tree of terminal, file editor, browser, and Android panels. Browser, Android,

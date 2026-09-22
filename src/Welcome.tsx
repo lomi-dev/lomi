@@ -15,7 +15,7 @@ export default function Welcome({
         <header className="welcome-heading">
           <img src="/app-icon.svg" width="44" height="44" alt="" />
           <div>
-            <h1>Welcome to SimpleBench</h1>
+            <h1>Welcome to Lomi</h1>
             <p>A place for your files, terminal, and next idea.</p>
           </div>
         </header>

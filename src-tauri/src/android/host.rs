@@ -38,7 +38,7 @@ fn qualification(host: Host) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!(
-            "Android setup and Start are unavailable on {} in this build. Native process, image and input verification is required before enabling this host. Use a SimpleBench build qualified for this OS and CPU.",
+            "Android setup and Start are unavailable on {} in this build. Native process, image and input verification is required before enabling this host. Use a Lomi build qualified for this OS and CPU.",
             super::bootstrap::host_key(host)
         ))
     }
@@ -89,7 +89,7 @@ fn native_acceleration() -> (&'static str, Result<(), String>) {
     };
     let name: Vec<u16> = "WinHvPlatform.dll".encode_utf16().chain(Some(0)).collect();
     // Load the optional platform DLL from System32 only; a missing Windows feature
-    // must produce setup guidance instead of preventing SimpleBench from opening.
+    // must produce setup guidance instead of preventing Lomi from opening.
     let library = unsafe {
         LoadLibraryExW(
             name.as_ptr(),
@@ -124,7 +124,7 @@ fn native_acceleration() -> (&'static str, Result<(), String>) {
         if available {
             Ok(())
         } else {
-            Err("Enable CPU virtualization in UEFI/BIOS and Windows Hypervisor Platform in Windows Features, then restart Windows. These changes require an administrator; SimpleBench cannot enable them automatically.".into())
+            Err("Enable CPU virtualization in UEFI/BIOS and Windows Hypervisor Platform in Windows Features, then restart Windows. These changes require an administrator; Lomi cannot enable them automatically.".into())
         },
     )
 }

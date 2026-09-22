@@ -5183,7 +5183,7 @@ details[open] > .disclosure-summary > .disclosure-summary-icon {
   width: 100%;
   height: 100%;
 }
-.dockview-theme-simplebench {
+.dockview-theme-lomi {
   --dv-group-view-background-color: transparent;
   --dv-separator-border: var(--color-outline);
   --dv-active-sash-color: var(--color-accent);

@@ -67,9 +67,7 @@ export function useCloseGuard() {
         {request && (
           <Modal
             title={
-              request.application
-                ? "Quit SimpleBench?"
-                : "Close running processes?"
+              request.application ? "Quit Lomi?" : "Close running processes?"
             }
             descriptionId={descriptionId}
             initialFocus={request.application ? cancelButton : confirmButton}

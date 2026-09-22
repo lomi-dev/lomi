@@ -499,12 +499,7 @@ test("new workspaces share a folder while retaining independent tabs and restore
     "local:bash",
     "Voice 2",
   );
-  const third = addWorkspace(
-    second,
-    "/work/simplebench",
-    "local:bash",
-    "Bench",
-  );
+  const third = addWorkspace(second, "/work/lomi", "local:bash", "Bench");
   assert.equal(first.projects[0].workspaces.length, 1);
   assert.equal(third.projects.length, 2);
   assert.equal(third.projects[0].workspaces.length, 2);

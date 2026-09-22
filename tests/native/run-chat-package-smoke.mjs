@@ -7,18 +7,18 @@ if (process.platform !== "darwin")
   throw Error("This installed-package probe currently supports macOS.");
 const root = resolve(import.meta.dirname, "../..");
 const directory = await realpath(
-  await mkdtemp(join(tmpdir(), "simplebench-chat-package-")),
+  await mkdtemp(join(tmpdir(), "lomi-chat-package-")),
 );
-const app = join(directory, "SimpleBench.app");
+const app = join(directory, "Lomi.app");
 execFileSync("/usr/bin/ditto", [
   join(
     process.env.CARGO_TARGET_DIR ?? join(root, "src-tauri/target"),
-    "release/bundle/macos/SimpleBench.app",
+    "release/bundle/macos/Lomi.app",
   ),
   app,
 ]);
 execFileSync("/usr/bin/codesign", ["--verify", "--deep", "--strict", app]);
-const executable = join(app, "Contents/MacOS/simplebench");
+const executable = join(app, "Contents/MacOS/lomi");
 console.log(`Installed package probe: ${directory}`);
 const offline = process.argv.includes("--offline");
 const browser = await browserProbe(directory);
@@ -34,9 +34,9 @@ const child = spawn(
       TMPDIR: tmpdir(),
       PATH: "/usr/bin:/bin",
       LANG: "en_US.UTF-8",
-      SIMPLEBENCH_CHAT_PROBE_DIRECTORY: directory,
-      SIMPLEBENCH_CHAT_BROWSER_URL: browser.url,
-      ...(offline ? { SIMPLEBENCH_CHAT_PROBE_OFFLINE: "1" } : {}),
+      LOMI_CHAT_PROBE_DIRECTORY: directory,
+      LOMI_CHAT_BROWSER_URL: browser.url,
+      ...(offline ? { LOMI_CHAT_PROBE_OFFLINE: "1" } : {}),
     },
     stdio: ["ignore", "pipe", "pipe"],
   },

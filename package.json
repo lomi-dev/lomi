@@ -1,5 +1,5 @@
 {
-  "name": "simplebench",
+  "name": "lomi",
   "version": "0.4.0",
   "license": "Apache-2.0",
   "private": true,
@@ -12,7 +12,7 @@
     "dev": "vite",
     "check": "pnpm sdk:verify && tsc --noEmit && pnpm ai:check",
     "test": "node --experimental-strip-types --test tests/*.test.ts && pnpm ai:test",
-    "test:ui": "pnpm --filter simplebench-plugin-fixture build && playwright test",
+    "test:ui": "pnpm --filter lomi-plugin-fixture build && playwright test",
     "test:ui:webkit": "pnpm test:ui --config=playwright.webkit.config.ts",
     "format": "prettier --write src tests *.ts *.json *.md .github/*.md .github/workflows/*.yml scripts/*.mjs docs/*.md releases/*.md packages themes vendor",
     "format:check": "prettier --check src tests *.ts *.json *.md .github/*.md .github/workflows/*.yml scripts/*.mjs docs/*.md releases/*.md packages themes vendor",
@@ -22,8 +22,8 @@
     "release:check": "node scripts/check-release.mjs",
     "tauri": "tauri",
     "ai:prepare": "node scripts/prepare-ai-runtime.mjs",
-    "ai:check": "pnpm --filter @simplebench/ai-runtime check",
-    "ai:test": "pnpm --filter @simplebench/ai-runtime test",
+    "ai:check": "pnpm --filter @lomi-dev/ai-runtime check",
+    "ai:test": "pnpm --filter @lomi-dev/ai-runtime test",
     "sdk:test": "node --experimental-strip-types --test tests/plugin-contract.test.ts",
     "sdk:verify": "node scripts/check-plugin-sdk.mjs",
     "sdk:sync-contract": "node scripts/check-plugin-sdk.mjs --sync",
@@ -75,7 +75,7 @@
     "react-slot-fill": "file:vendor/react-slot-fill",
     "remark-gfm": "^4.0.1",
     "xterm-theme": "1.1.0",
-    "@lomi-dev/plugin-sdk": "1.1.0-alpha.0"
+    "@lomi-dev/plugin-sdk": "1.1.0-alpha.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",

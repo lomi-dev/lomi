@@ -158,7 +158,7 @@ async fn create(window: &Window, slot: &Slot) -> Result<Webview, String> {
                 .map_err(|e| e.to_string())?
                 .join("browser-data"),
         )
-        .data_store_identifier(*b"SimpleBenchWeb01")
+        .data_store_identifier(*b"LomiBrowserWeb01")
         .initialization_script(SCRIPT)
         .on_navigation(move |url| {
             if address(url.as_str()).is_err() {

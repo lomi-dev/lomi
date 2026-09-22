@@ -31,7 +31,7 @@
     await wait(() => runtime.getSnapshot().cwd && document.hasFocus());
     await invoke("write_terminal", {
       id,
-      data: "printf '\\033]2;⠋ Native agent task\\007\\033]777;notify;SimpleBench;claude;working\\007'; sleep 3\r",
+      data: "printf '\\033]2;⠋ Native agent task\\007\\033]777;notify;Lomi;claude;working\\007'; sleep 3\r",
     });
     await wait(
       () =>
@@ -52,7 +52,7 @@
     checkpoint = "native agent quit confirmation";
     await invoke("write_terminal", {
       id,
-      data: "printf '\\033]777;notify;SimpleBench;claude;working\\007'; sleep 30\r",
+      data: "printf '\\033]777;notify;Lomi;claude;working\\007'; sleep 30\r",
     });
     await wait(async () =>
       (await invoke("busy_terminals", { ids: [id] })).includes(id),
@@ -63,7 +63,7 @@
       await wait(
         () =>
           document.querySelector("dialog[open] h2")?.textContent ===
-          "Quit SimpleBench?",
+          "Quit Lomi?",
       );
       const dialog = document.querySelector("dialog[open]");
       const cancel = [...dialog.querySelectorAll("button")].find(
@@ -90,7 +90,7 @@
     await invoke("write_terminal", { id, data: "\u0003" });
     await wait(() => runtime.getSnapshot().agentSignal === null);
     const configuration = await invoke("inspect_agent_notifications");
-    if (!configuration.path.includes("simplebench-notification-native-"))
+    if (!configuration.path.includes("lomi-notification-native-"))
       throw Error("Configuration is not isolated");
     await invoke("enable_agent_notifications", {
       path: configuration.path,
@@ -102,7 +102,7 @@
     const signal = async (kind) => {
       await invoke("write_terminal", {
         id,
-        data: `printf '\\033]777;notify;SimpleBench;claude;${kind}\\007'\r`,
+        data: `printf '\\033]777;notify;Lomi;claude;${kind}\\007'\r`,
       });
     };
     checkpoint = "foreground focus";

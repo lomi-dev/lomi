@@ -113,7 +113,7 @@ test("plugin search and filters combine without enabling code and remain usable 
       id: "local.unavailable",
       manifest: null,
       source: "/external/" + "very-long-package-folder-".repeat(15),
-      error: "This package requires a newer version of SimpleBench.",
+      error: "This package requires a newer version of Lomi.",
     },
   ];
   await page.addInitScript((entries) => {
@@ -361,7 +361,7 @@ test("dirty plugin views stop disable on cancel and failed save, then retain the
     const id = document.querySelector<HTMLElement>("[data-plugin-pane-id]")!
       .dataset.pluginPaneId!;
     pluginHost.dirtyViews.set(id, {
-      owner: "simplebench.context",
+      owner: "lomi.context",
       view: {
         title: "Plugin draft",
         isDirty: () => true,
@@ -561,7 +561,7 @@ test("sidebar contributions retain placement, instance state and focused context
         return pluginHost.context.viewType;
       }),
     )
-    .toBe("simplebench.context.view");
+    .toBe("lomi.context.view");
   await page
     .getByRole("button", { name: "Workspace context", exact: true })
     .click({ button: "right" });
@@ -584,7 +584,7 @@ test("sidebar contributions retain placement, instance state and focused context
       page.evaluate(
         () =>
           JSON.parse(localStorage.getItem("test-session") ?? "null")
-            ?.sidebarSides["simplebench.context.view"],
+            ?.sidebarSides["lomi.context.view"],
       ),
     )
     .toBe("right");

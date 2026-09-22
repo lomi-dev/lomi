@@ -46,7 +46,7 @@ def adb_shell(command):
     with socket.create_connection(("127.0.0.1", 15037), timeout=5) as connection:
         connection.settimeout(20)
         adb_request(connection, "host:transport:emulator-5580")
-        guard = '[ "$(getprop ro.boot.simplebench.device)" = "00000000-0000-0000-0000-000000000001" ] || exit 77; '
+        guard = '[ "$(getprop ro.boot.lomi.device)" = "00000000-0000-0000-0000-000000000001" ] || exit 77; '
         adb_request(connection, "shell,v2,raw:" + guard + command)
         output = bytearray()
         while True:
@@ -255,7 +255,7 @@ class Trial:
             pid, parent = map(int, line.split())
             if parent == info["emulator"]:
                 emulator.add(pid)
-        self.groups = dict(simplebench=sorted(apps), emulator=sorted(emulator), adb=[info["adb"]])
+        self.groups = dict(lomi=sorted(apps), emulator=sorted(emulator), adb=[info["adb"]])
         self.control("one-view-before-baseline", "one-view")
         self.control("hide-before-baseline", "hide-views")
         adb_shell("am start -a android.settings.SETTINGS")

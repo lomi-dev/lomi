@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 test("release preparation rejects mismatched versions, unsafe tags, and missing license decisions", () => {
-  const root = mkdtempSync(path.join(tmpdir(), "simplebench-release-test-"));
+  const root = mkdtempSync(path.join(tmpdir(), "lomi-release-test-"));
   try {
     mkdirSync(path.join(root, "scripts"));
     mkdirSync(path.join(root, "src-tauri"));
@@ -33,14 +33,14 @@ test("release preparation rejects mismatched versions, unsafe tags, and missing 
       write("src-tauri/tauri.conf.json", JSON.stringify({ version: "0.1.0" }));
       write(
         "src-tauri/Cargo.toml",
-        '[package]\nname = "simplebench"\nversion = "0.1.0"\nlicense = "MIT"\n'.replaceAll(
+        '[package]\nname = "lomi"\nversion = "0.1.0"\nlicense = "MIT"\n'.replaceAll(
           "\n",
           lineEnding,
         ),
       );
       write(
         "src-tauri/Cargo.lock",
-        '[[package]]\nname = "dependency"\nversion = "9.9.9"\n\n[[package]]\nname = "simplebench"\nversion = "0.1.0"\n'.replaceAll(
+        '[[package]]\nname = "dependency"\nversion = "9.9.9"\n\n[[package]]\nname = "lomi"\nversion = "0.1.0"\n'.replaceAll(
           "\n",
           lineEnding,
         ),
@@ -72,7 +72,7 @@ test("release preparation rejects mismatched versions, unsafe tags, and missing 
         file,
         file.endsWith("json")
           ? JSON.stringify({ version: "0.2.0", license: "MIT" })
-          : '[[package]]\nname = "simplebench"\nversion = "0.2.0"\nlicense = "MIT"\n',
+          : '[[package]]\nname = "lomi"\nversion = "0.2.0"\nlicense = "MIT"\n',
       );
       assert.notEqual(run("v0.1.0").status, 0, file);
     }

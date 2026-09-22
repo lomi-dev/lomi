@@ -1,15 +1,15 @@
 {
   "version": 1,
-  "package": "org.simplebench.input",
+  "package": "org.lomi.input",
   "versionCode": 3,
   "minApi": 26,
   "targetApi": 36,
-  "apkSha256": "4a1dc0861c689f986732172fefee2f33008d534cc6f59931e71afd916cda2bc7",
+  "apkSha256": "6e9884d8f901fb8b75892e58c3ccd52768c95d6d7d8de1d55a58fca1243ff5b4",
   "certificateSha256": "d9753b5a9b5dfce06b6e7d45d74a094776d8110aa3d14eaecfd4611c4e542de1",
   "sources": {
-    "AndroidManifest.xml": "d26a4f842c7ec31e40018a71733cb4e125a2cdbd47750046fe9796ef848210da",
+    "AndroidManifest.xml": "3b5bd31088686d69bcce9479aebe2055eac38961737dc838d36ebb0b376aa0c4",
     "res/xml/input_method.xml": "63a8fbf832bca89108f7cd2f2451d34179abde3773fb18fb58889cf881dde2a7",
-    "src/org/simplebench/input/SimpleBenchInput.java": "31f2c21bc4531ac5e87f9091ff157e34b849d64084e158a099e27491ff950401"
+    "src/org/lomi/input/LomiInput.java": "b4224bd6f30c3e6cfedec915753c79797330f6b50ffa0fba54da1ee36f6ac3fd"
   },
   "tools": {
     "javac": "javac 17.0.19",

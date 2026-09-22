@@ -16,7 +16,7 @@
       (button) => button.textContent.trim() === text,
     );
   try {
-    const { before, terminal } = globalThis.__simplebenchSmoke;
+    const { before, terminal } = globalThis.__lomiSmoke;
     phase = "Explorer native directory watch without Git";
     await wait(() => document.querySelector(".file-tree"));
     await invoke("write_terminal", {
@@ -65,9 +65,9 @@
       stage: "check-settings",
       data: document.documentElement.dataset.themeSourceRevision,
     });
-    await wait(() => globalThis.__simplebenchSmokeSettings);
+    await wait(() => globalThis.__lomiSmokeSettings);
     if (
-      globalThis.__simplebenchSmokeSettings.sourceRevision !==
+      globalThis.__lomiSmokeSettings.sourceRevision !==
       document.documentElement.dataset.themeSourceRevision
     )
       throw Error("Windows have different theme source revisions");
@@ -181,7 +181,7 @@
     await wait(() => document.querySelector(".context-plugin"));
     await invoke("write_terminal", {
       id: terminal,
-      data: "printf '\\nSIMPLEBENCH_NATIVE_AFTER_THEME\\n'\n",
+      data: "printf '\\nLOMI_NATIVE_AFTER_THEME\\n'\n",
     });
     // The terminal exposes its accessible buffer on request; this also exercises its real parser.
     const textarea = document.querySelector(".terminal-pane textarea");
@@ -205,7 +205,7 @@
     Object.getOwnPropertyDescriptor(
       HTMLInputElement.prototype,
       "value",
-    ).set.call(search, "SIMPLEBENCH_NATIVE_AFTER_THEME");
+    ).set.call(search, "LOMI_NATIVE_AFTER_THEME");
     search.dispatchEvent(new Event("input", { bubbles: true }));
     search.dispatchEvent(
       new KeyboardEvent("keydown", {

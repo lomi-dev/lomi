@@ -77,16 +77,16 @@ reported usage when provided; absent usage is unavailable, not zero cost.
 
 ## Local data and credentials
 
-The application identifier is `dev.simplebench.desktop`. The `chat-ai/` folder
+The application identifier is `dev.lomi.desktop`. The `chat-ai/` folder
 inside Tauri's application data directory contains `history.sqlite3` (with WAL/SHM),
 `attachments/`, `owner.lock` and the credential-ID cleanup journal. Connection metadata is
 `chat-ai-preferences.json` in Tauri's application configuration directory.
 
-| System  | Application data                                            | Configuration                                            |
-| ------- | ----------------------------------------------------------- | -------------------------------------------------------- |
-| macOS   | `~/Library/Application Support/dev.simplebench.desktop/`    | Same directory                                           |
-| Linux   | `${XDG_DATA_HOME:-~/.local/share}/dev.simplebench.desktop/` | `${XDG_CONFIG_HOME:-~/.config}/dev.simplebench.desktop/` |
-| Windows | `%APPDATA%/dev.simplebench.desktop/`                        | Same directory                                           |
+| System  | Application data                                     | Configuration                                     |
+| ------- | ---------------------------------------------------- | ------------------------------------------------- |
+| macOS   | `~/Library/Application Support/dev.lomi.desktop/`    | Same directory                                    |
+| Linux   | `${XDG_DATA_HOME:-~/.local/share}/dev.lomi.desktop/` | `${XDG_CONFIG_HOME:-~/.config}/dev.lomi.desktop/` |
+| Windows | `%APPDATA%/dev.lomi.desktop/`                        | Same directory                                    |
 
 Keys use the system Keychain/Credential Manager/Secret Service, or native memory
 for the explicitly selected session-only mode. Saved keys are never returned to
@@ -122,7 +122,7 @@ or power failure. Unsupported/corrupt history and preference files are preserved
 History recovery includes WAL/SHM and attachments. Settings recovery keeps history;
 keys with unreadable identities may require manual removal from the system store.
 A corrupt secret cleanup journal is preserved and requires manual repair.
-Before manual recovery, exit all SimpleBench instances and copy the complete
+Before manual recovery, exit all Lomi instances and copy the complete
 chat data directory, including WAL/SHM and attachments, plus preferences. Do not
 edit a live SQLite database. Restoring a known good backup is safer than deleting
 files; resetting history does not recover unsaved RAM or provider responses.

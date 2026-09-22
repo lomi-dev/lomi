@@ -18,7 +18,7 @@ const managed = await realpath(process.argv[2]);
 const trial = resolve(managed, "..");
 if (
   !basename(managed).startsWith("native-managed-") ||
-  !basename(trial).startsWith("simplebench-android-stage0-")
+  !basename(trial).startsWith("lomi-android-stage0-")
 )
   throw Error("Use the isolated SDK prepared by the native installer trial.");
 const consent = JSON.parse(
@@ -42,7 +42,7 @@ if (
   );
 
 const repository = resolve(import.meta.dirname, "../..");
-const binary = join(repository, "src-tauri/target/release/simplebench");
+const binary = join(repository, "src-tauri/target/release/lomi");
 const reuse = process.argv.includes("--reuse-binary");
 const digest = async () =>
   createHash("sha256")
@@ -59,8 +59,8 @@ if (
 )
   throw Error("The previous product fixture executable does not match.");
 const identifier =
-  previous?.identifier ?? `dev.simplebench.android-product-${Date.now()}`;
-if (!/^dev\.simplebench\.android-product-\d+$/.test(identifier))
+  previous?.identifier ?? `dev.lomi.android-product-${Date.now()}`;
+if (!/^dev\.lomi\.android-product-\d+$/.test(identifier))
   throw Error("Invalid fixture identity");
 const appData = join(homedir(), "Library/Application Support", identifier);
 await mkdir(appData, { recursive: true, mode: 0o700 });
@@ -92,7 +92,7 @@ await writeFile(
       windows: [
         {
           ...application.app.windows[0],
-          title: "SimpleBench Android product test",
+          title: "Lomi Android product test",
           width: 1000,
           height: 760,
         },
@@ -100,8 +100,8 @@ await writeFile(
     },
   }),
 );
-const env = { ...process.env, SIMPLEBENCH_ANDROID_PRODUCT_DIRECTORY: managed };
-delete env.SIMPLEBENCH_ANDROID_PROBE_DIRECTORY;
+const env = { ...process.env, LOMI_ANDROID_PRODUCT_DIRECTORY: managed };
+delete env.LOMI_ANDROID_PROBE_DIRECTORY;
 if (!reuse) {
   const build = spawn(
     "pnpm",

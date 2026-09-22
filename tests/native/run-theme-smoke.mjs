@@ -7,8 +7,8 @@ import { newSession, newProject, openFileTab } from "../../src/model.ts";
 if (process.platform !== "darwin")
   throw Error("This native theme smoke runner currently supports macOS.");
 const root = resolve(import.meta.dirname, "../..");
-const directory = await mkdtemp(join(tmpdir(), "simplebench-theme-native-"));
-const identifier = `dev.simplebench.theme-smoke-${Date.now()}`;
+const directory = await mkdtemp(join(tmpdir(), "lomi-theme-native-"));
+const identifier = `dev.lomi.theme-smoke-${Date.now()}`;
 const appData = join(homedir(), "Library/Application Support", identifier);
 const projectFolder = join(directory, "project");
 await mkdir(projectFolder);
@@ -93,7 +93,7 @@ const child = spawn(
   ],
   {
     cwd: root,
-    env: { ...process.env, SIMPLEBENCH_THEME_SMOKE_DIRECTORY: directory },
+    env: { ...process.env, LOMI_THEME_SMOKE_DIRECTORY: directory },
     detached: true,
     stdio: ["ignore", "pipe", "pipe"],
   },

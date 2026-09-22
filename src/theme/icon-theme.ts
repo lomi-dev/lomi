@@ -327,7 +327,7 @@ export async function prepareIcons(
     });
   try {
     for (const [index, font] of (data.fonts ?? []).entries()) {
-      const family = `SimpleBench icons ${namespace} ${index}`;
+      const family = `Lomi icons ${namespace} ${index}`;
       const face = new FontFace(
         family,
         font.src

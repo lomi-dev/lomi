@@ -27,7 +27,7 @@ pub async fn fetch(host: Host) -> Result<Snapshot, String> {
         .connect_timeout(Duration::from_secs(15))
         .read_timeout(Duration::from_secs(20))
         .timeout(Duration::from_secs(60))
-        .user_agent("SimpleBench Android catalog")
+        .user_agent("Lomi Android catalog")
         .build()
         .map_err(|e| e.to_string())?;
     let (tools, aosp, google, play) = tokio::try_join!(

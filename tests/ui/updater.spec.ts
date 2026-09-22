@@ -40,7 +40,7 @@ async function calls(page: Page, command: string) {
 }
 
 for (const instruction of [
-  "yay -Syu simplebench-bin",
+  "yay -Syu lomi-bin",
   "flatpak update",
   "Download the latest package from GitHub Releases and reinstall it with your distribution’s package manager, or replace your AppImage.",
 ]) {
@@ -67,7 +67,7 @@ for (const instruction of [
     ).toBe(instruction);
     await dialog.getByRole("button", { name: "GitHub Releases" }).click();
     expect((await calls(page, "plugin:opener|open_url"))[0].args.url).toContain(
-      "simplebench/releases/latest",
+      "lomi/releases/latest",
     );
     await page.setViewportSize({ width: 800, height: 420 });
     await page.screenshot({ path: testInfo.outputPath("linux-update.png") });
@@ -103,7 +103,7 @@ test("About requests a check in the workspace; concurrent checks share the reque
     () => ((window as any).__nativeTest.updateCheckError = ""),
   );
   await dialog.getByRole("button", { name: "Try again" }).click();
-  await expect(dialog).toContainText("SimpleBench is up to date.");
+  await expect(dialog).toContainText("Lomi is up to date.");
 });
 
 for (const platform of ["windows", "macos"] as const) {
@@ -198,7 +198,7 @@ test("Windows download failures preserve the workspace and offer manual download
   expect(await calls(page, "check_app_update")).toHaveLength(1);
   await dialog.getByRole("button", { name: "GitHub Releases" }).click();
   expect((await calls(page, "plugin:opener|open_url"))[0].args.url).toContain(
-    "simplebench/releases/latest",
+    "lomi/releases/latest",
   );
   await page.setViewportSize({ width: 800, height: 420 });
   await page.screenshot({

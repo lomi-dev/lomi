@@ -15,7 +15,7 @@ use std::{
 };
 
 const JOURNAL: &str = "package-removal.json";
-const MARKER: &str = ".simplebench-package.json";
+const MARKER: &str = ".lomi-package.json";
 
 #[derive(Deserialize)]
 #[serde(
@@ -424,7 +424,7 @@ fn contains_avd_data(root: &Path) -> Result<bool, String> {
         if name.ends_with(".avd")
             || name.ends_with(".qcow2")
             || name.starts_with("userdata")
-            || name == ".simplebench-avd.json"
+            || name == ".lomi-avd.json"
         {
             return Ok(true);
         }

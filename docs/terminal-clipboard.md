@@ -49,7 +49,7 @@ Other platforms and agents require their own native qualification.
   commands are mocked in these browser tests.
 - `node tests/native/run-terminal-clipboard-smoke.mjs` is an opt-in macOS fixture
   behind `native-smoke`. It requires Python 3 and Swift.
-  It uses isolated SimpleBench data and an empty temporary project, saves and
+  It uses isolated Lomi data and an empty temporary project, saves and
   restores all clipboard representations unless the user copies something else,
   and tests native clipboard reads through real PTYs, including the actual
   AppKit Paste menu action with an image-only clipboard.

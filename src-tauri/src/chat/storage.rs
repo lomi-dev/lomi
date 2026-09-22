@@ -25,7 +25,7 @@ impl Owner {
             .map_err(|_| "Cannot open the chat owner lock.")?;
         private(&path, false)?;
         lock.try_lock()
-            .map_err(|_| "Another SimpleBench instance owns Chat AI. Close it and retry.")?;
+            .map_err(|_| "Another Lomi instance owns Chat AI. Close it and retry.")?;
         Ok(Self { root, lock })
     }
 }

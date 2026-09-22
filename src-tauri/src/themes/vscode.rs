@@ -316,7 +316,7 @@ fn documents(path: &Path) -> Result<Vec<icons::Document>, String> {
                             .ok_or("Theme contributions must be objects.")?
                             .clone(),
                     );
-                    contribution["simplebenchKind"] = kind.into();
+                    contribution["lomiKind"] = kind.into();
                     themes.push(contribution);
                 }
             }
@@ -341,7 +341,7 @@ fn documents(path: &Path) -> Result<Vec<icons::Document>, String> {
                 .as_str()
                 .ok_or("Theme contribution needs a path.")?,
         )?;
-        let contribution_kind = contribution["simplebenchKind"].as_str().unwrap_or("auto");
+        let contribution_kind = contribution["lomiKind"].as_str().unwrap_or("auto");
         let detected =
             if contribution_kind == "auto" && !path.to_ascii_lowercase().ends_with(".tmtheme") {
                 let raw = String::from_utf8(source.read_limit(&path, icons::ICON_JSON_LIMIT)?)
@@ -535,7 +535,7 @@ fn export_package(
             }
         })
         .collect();
-    let slug = format!("simplebench-{}", slug.trim_matches('-'));
+    let slug = format!("lomi-{}", slug.trim_matches('-'));
     let slug = slug.trim_end_matches('-');
     let mut target = directory.join(format!("{slug}.vsix"));
     let mut suffix = 2;
@@ -580,7 +580,7 @@ fn export_package(
             serde_json::json!({ "label": item.name, "uiTheme": kind, "path": format!("./{file}") }),
         );
     }
-    let mut package = serde_json::json!({ "name": slug, "displayName": name, "version": "1.0.0", "publisher": "simplebench-local", "engines": { "vscode": "^1.85.0" }, "categories": ["Themes"], "contributes": { "themes": contributions } });
+    let mut package = serde_json::json!({ "name": slug, "displayName": name, "version": "1.0.0", "publisher": "lomi-local", "engines": { "vscode": "^1.85.0" }, "categories": ["Themes"], "contributes": { "themes": contributions } });
     if let Some(document) = icons {
         let field = match icons::kind(&document.manifest) {
             "file" => "iconThemes",
@@ -603,9 +603,9 @@ fn export_package(
     }
     let files = [
         ("extension/package.json", serde_json::to_string_pretty(&package).map_err(|e| e.to_string())?),
-        ("extension/README.md", "# Local theme\n\nExported from SimpleBench for local use. Install this VSIX using Extensions: Install from VSIX in VS Code.\n\nColors, token rules and icon definitions are portable. Icon extensions include their images and fonts. SimpleBench layouts, CSS, backgrounds and plugin UI are not VS Code theme features. Imported semantic and contextual rules remain available in VS Code. Review the original theme's license before redistribution.\n".into()),
+        ("extension/README.md", "# Local theme\n\nExported from Lomi for local use. Install this VSIX using Extensions: Install from VSIX in VS Code.\n\nColors, token rules and icon definitions are portable. Icon extensions include their images and fonts. Lomi layouts, CSS, backgrounds and plugin UI are not VS Code theme features. Imported semantic and contextual rules remain available in VS Code. Review the original theme's license before redistribution.\n".into()),
         ("[Content_Types].xml", r#"<?xml version="1.0" encoding="utf-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="json" ContentType="application/json"/><Default Extension="md" ContentType="text/markdown"/><Default Extension="txt" ContentType="text/plain"/><Default Extension="svg" ContentType="image/svg+xml"/><Default Extension="png" ContentType="image/png"/><Default Extension="jpg" ContentType="image/jpeg"/><Default Extension="jpeg" ContentType="image/jpeg"/><Default Extension="gif" ContentType="image/gif"/><Default Extension="webp" ContentType="image/webp"/><Default Extension="avif" ContentType="image/avif"/><Default Extension="ico" ContentType="image/x-icon"/><Default Extension="woff" ContentType="font/woff"/><Default Extension="woff2" ContentType="font/woff2"/><Default Extension="ttf" ContentType="font/ttf"/><Default Extension="otf" ContentType="font/otf"/><Default Extension="vsixmanifest" ContentType="text/xml"/></Types>"#.into()),
-        ("extension.vsixmanifest", format!(r#"<?xml version="1.0" encoding="utf-8"?><PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011"><Metadata><Identity Language="en-US" Id="{slug}" Version="1.0.0" Publisher="simplebench-local"/><DisplayName>{slug}</DisplayName><Description xml:space="preserve">Local SimpleBench theme</Description><Tags>theme</Tags><Categories>Themes</Categories><Properties><Property Id="Microsoft.VisualStudio.Code.Engine" Value="^1.85.0"/></Properties></Metadata><Installation><InstallationTarget Id="Microsoft.VisualStudio.Code"/></Installation><Dependencies/><Assets><Asset Type="Microsoft.VisualStudio.Code.Manifest" Path="extension/package.json" Addressable="true"/></Assets></PackageManifest>"#)),
+        ("extension.vsixmanifest", format!(r#"<?xml version="1.0" encoding="utf-8"?><PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011"><Metadata><Identity Language="en-US" Id="{slug}" Version="1.0.0" Publisher="lomi-local"/><DisplayName>{slug}</DisplayName><Description xml:space="preserve">Local Lomi theme</Description><Tags>theme</Tags><Categories>Themes</Categories><Properties><Property Id="Microsoft.VisualStudio.Code.Engine" Value="^1.85.0"/></Properties></Metadata><Installation><InstallationTarget Id="Microsoft.VisualStudio.Code"/></Installation><Dependencies/><Assets><Asset Type="Microsoft.VisualStudio.Code.Manifest" Path="extension/package.json" Addressable="true"/></Assets></PackageManifest>"#)),
     ];
     for (path, body) in files {
         account(body.len())?;
@@ -834,7 +834,7 @@ mod tests {
             "light"
         );
         assert_ne!(install(root.path(), source.path()).unwrap(), ids);
-        // A VS Code extension may use a root theme.json, like a legacy SimpleBench package.
+        // A VS Code extension may use a root theme.json, like a legacy Lomi package.
         fs::write(
             source.path().join("theme.json"),
             r##"{"colors":{"foreground":"#abcdef"}}"##,

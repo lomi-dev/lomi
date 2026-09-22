@@ -7,7 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const MARKER: &str = ".simplebench-package.json";
+const MARKER: &str = ".lomi-package.json";
 const REVISION_LIMIT: u64 = (1 << 53) - 1;
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]

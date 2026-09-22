@@ -17,7 +17,7 @@ assert.deepEqual(
 );
 assert.equal(compatibility.schemaVersion, 1);
 assert.equal(compatibility.hostApi, 1);
-assert.equal(compatibility.runtimeSymbol, "simplebench.plugin-api.v1");
+assert.equal(compatibility.runtimeSymbol, "lomi.plugin-api.v1");
 const metadata = JSON.parse(
   await readFile(
     new URL(import.meta.resolve("@lomi-dev/plugin-sdk/package.json")),

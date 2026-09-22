@@ -7,10 +7,8 @@ import { newSession, newProject } from "../../src/model.ts";
 if (process.platform !== "darwin")
   throw Error("This native notification runner currently supports macOS.");
 const root = resolve(import.meta.dirname, "../..");
-const directory = await mkdtemp(
-  join(tmpdir(), "simplebench-notification-native-"),
-);
-const identifier = `dev.simplebench.notification-smoke-${Date.now()}`;
+const directory = await mkdtemp(join(tmpdir(), "lomi-notification-native-"));
+const identifier = `dev.lomi.notification-smoke-${Date.now()}`;
 const appData = join(homedir(), "Library/Application Support", identifier);
 const folder = join(directory, "project");
 const claude = join(directory, "claude");
@@ -54,7 +52,7 @@ const child = spawn(
     env: {
       ...process.env,
       CLAUDE_CONFIG_DIR: claude,
-      SIMPLEBENCH_NOTIFICATION_SMOKE_DIRECTORY: directory,
+      LOMI_NOTIFICATION_SMOKE_DIRECTORY: directory,
     },
     detached: true,
     stdio: ["ignore", "pipe", "pipe"],

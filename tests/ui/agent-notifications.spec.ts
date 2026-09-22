@@ -21,8 +21,8 @@ async function emit(page: Page, id: string, signal = "finished") {
   await page.evaluate(
     ({ id, signal }) => {
       const native = (window as any).__nativeTest;
-      native.emit(id, "\x1b]777;notify;Simple");
-      native.emit(id, `Bench;claude;${signal}\x07`);
+      native.emit(id, "\x1b]777;notify;Lo");
+      native.emit(id, `mi;claude;${signal}\x07`);
     },
     { id, signal },
   );

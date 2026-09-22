@@ -139,7 +139,7 @@ export function useAgentNotifications(
       onConfigured(
         granted
           ? "Claude Code notifications are configured. Start a new Claude Code session to apply the hooks."
-          : "Claude Code hooks are configured, but notifications are blocked. Allow SimpleBench notifications in your system settings.",
+          : "Claude Code hooks are configured, but notifications are blocked. Allow Lomi notifications in your system settings.",
       );
     } catch (error) {
       setError(errorMessage(error));
@@ -165,8 +165,8 @@ export function useAgentNotifications(
           <div className="cli-title-description" id={descriptionId}>
             <p>
               {setup.configured
-                ? "SimpleBench notification hooks are already configured. You can check notification permission below."
-                : "Add hooks that notify SimpleBench when Claude Code finishes responding or needs your input. They only send signals inside SimpleBench terminals."}
+                ? "Lomi notification hooks are already configured. You can check notification permission below."
+                : "Add hooks that notify Lomi when Claude Code finishes responding or needs your input. They only send signals inside Lomi terminals."}
             </p>
             <p>
               <code>{setup.path}</code>

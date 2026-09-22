@@ -161,7 +161,7 @@ impl Streams {
             .next_epoch
             .checked_add(1)
             .filter(|n| *n <= MAX_SAFE_INTEGER)
-            .ok_or("Android stream epochs exhausted. Restart SimpleBench.")?;
+            .ok_or("Android stream epochs exhausted. Restart Lomi.")?;
         core.next_epoch = epoch;
         let previous = core.devices.get(&status.device_id).map(|entry| {
             entry.cancel.send_replace(true);
@@ -564,7 +564,7 @@ mod tests {
     #[ignore = "Boots a real isolated managed AVD and tests the production authenticated source/ACK lifecycle"]
     async fn native_managed_stream_input_and_cancellation() {
         use std::{fs, path::PathBuf};
-        let trial = PathBuf::from(std::env::var_os("SIMPLEBENCH_ANDROID_PROBE_DIRECTORY").unwrap())
+        let trial = PathBuf::from(std::env::var_os("LOMI_ANDROID_PROBE_DIRECTORY").unwrap())
             .canonicalize()
             .unwrap();
         let installation: serde_json::Value = serde_json::from_slice(

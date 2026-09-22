@@ -70,8 +70,8 @@ export default function DockviewLayout(props: Props) {
       disableDnd: true,
       disableFloatingGroups: true,
       theme: {
-        name: "simplebench",
-        className: "dockview-theme-simplebench",
+        name: "lomi",
+        className: "dockview-theme-lomi",
         gap: 3,
       },
       createComponent: ({ id }) => ({

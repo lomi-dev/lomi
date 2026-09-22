@@ -28,19 +28,19 @@ pub fn guest(root: &std::path::Path, device: &str) -> Result<super::adb::Guest, 
 }
 
 pub fn directory() -> Result<Option<PathBuf>, String> {
-    let Some(value) = std::env::var_os("SIMPLEBENCH_ANDROID_PRODUCT_DIRECTORY") else {
+    let Some(value) = std::env::var_os("LOMI_ANDROID_PRODUCT_DIRECTORY") else {
         return Ok(None);
     };
     let root = PathBuf::from(value)
         .canonicalize()
         .map_err(|e| e.to_string())?;
     let trial = root.parent().ok_or("Missing Android fixture parent")?;
-    if !trial.file_name().is_some_and(|name| {
-        name.to_string_lossy()
-            .starts_with("simplebench-android-stage0-")
-    }) || !root
+    if !trial
         .file_name()
-        .is_some_and(|name| name.to_string_lossy().starts_with("native-managed-"))
+        .is_some_and(|name| name.to_string_lossy().starts_with("lomi-android-stage0-"))
+        || !root
+            .file_name()
+            .is_some_and(|name| name.to_string_lossy().starts_with("native-managed-"))
     {
         return Err(
             "Production Android probes require the isolated, licensed native trial directory"
@@ -56,7 +56,7 @@ pub fn directory() -> Result<Option<PathBuf>, String> {
 }
 
 pub fn adb_port() -> u16 {
-    if std::env::var_os("SIMPLEBENCH_ANDROID_PRODUCT_DIRECTORY").is_some() {
+    if std::env::var_os("LOMI_ANDROID_PRODUCT_DIRECTORY").is_some() {
         15047
     } else {
         5037

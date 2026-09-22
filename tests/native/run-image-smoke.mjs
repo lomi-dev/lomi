@@ -14,8 +14,8 @@ import { newProject, newSession, openFileTab } from "../../src/model.ts";
 if (process.platform !== "darwin")
   throw Error("This native image smoke runner currently supports macOS.");
 const repository = resolve(import.meta.dirname, "../..");
-const directory = await mkdtemp(join(tmpdir(), "simplebench-image-native-"));
-const identifier = `dev.simplebench.image-smoke-${Date.now()}`;
+const directory = await mkdtemp(join(tmpdir(), "lomi-image-native-"));
+const identifier = `dev.lomi.image-smoke-${Date.now()}`;
 const appData = join(homedir(), "Library/Application Support", identifier);
 const projectFolder = join(directory, "project");
 await mkdir(projectFolder);
@@ -74,7 +74,7 @@ const session = openFileTab(
 );
 await writeFile(join(appData, "session.json"), JSON.stringify(session));
 const config = join(directory, "config.json");
-const port = Number(process.env.SIMPLEBENCH_IMAGE_SMOKE_PORT ?? 1431);
+const port = Number(process.env.LOMI_IMAGE_SMOKE_PORT ?? 1431);
 await writeFile(
   config,
   JSON.stringify({
@@ -99,7 +99,7 @@ const child = spawn(
   ],
   {
     cwd: repository,
-    env: { ...process.env, SIMPLEBENCH_IMAGE_SMOKE_DIRECTORY: directory },
+    env: { ...process.env, LOMI_IMAGE_SMOKE_DIRECTORY: directory },
     detached: true,
     stdio: ["ignore", "pipe", "pipe"],
   },

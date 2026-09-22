@@ -26,7 +26,7 @@ fn main() {
         let (tx, rx) = mpsc::channel();
         let handle = app.clone();
         let screenshot = (stage == "fullscreen exit")
-            .then(|| std::env::var_os("SIMPLEBENCH_TRAFFIC_LIGHT_SCREENSHOTS"))
+            .then(|| std::env::var_os("LOMI_TRAFFIC_LIGHT_SCREENSHOTS"))
             .flatten()
             .map(|directory| std::path::PathBuf::from(directory).join(format!("{label}.png")));
         app.run_on_main_thread(move || {
@@ -123,7 +123,7 @@ fn main() {
                 .build()
                 .unwrap();
                 let css = include_str!("../../src/theme/baseline.css");
-                let html = format!("<style>{css} body{{margin:0;background:var(--color-surface);color:var(--color-surface-text);font:13px system-ui}} header{{height:43px;border-bottom:1px solid var(--color-outline);padding-left:100px;line-height:43px}} p{{padding:24px}}</style><header>SimpleBench</header><p>Native macOS traffic light regression</p>");
+                let html = format!("<style>{css} body{{margin:0;background:var(--color-surface);color:var(--color-surface-text);font:13px system-ui}} header{{height:43px;border-bottom:1px solid var(--color-outline);padding-left:100px;line-height:43px}} p{{padding:24px}}</style><header>Lomi</header><p>Native macOS traffic light regression</p>");
                 window
                     .eval(format!(
                         "document.documentElement.innerHTML={}",
@@ -140,7 +140,7 @@ fn main() {
                 );
                 for index in 0..10 {
                     window
-                        .set_title(&format!("Project — workspace {index} — SimpleBench"))
+                        .set_title(&format!("Project — workspace {index} — Lomi"))
                         .unwrap();
                     assert_eq!(measure(&handle, label, "title changed"), baseline);
                 }

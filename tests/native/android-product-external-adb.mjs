@@ -14,7 +14,7 @@ if (
   basename(root) !== "product" ||
   dirname(managed) !== dirname(root) ||
   !basename(managed).startsWith("native-managed-") ||
-  !basename(join(root, "..")).startsWith("simplebench-android-stage0-")
+  !basename(join(root, "..")).startsWith("lomi-android-stage0-")
 )
   throw Error("Use only the isolated Android fixture");
 const output = join(root, `${name}.json`);

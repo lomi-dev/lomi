@@ -17,7 +17,7 @@ const cargoVersion = read("src-tauri/Cargo.toml").match(
   /^version = "([^"]+)"$/m,
 )?.[1];
 const lockVersion = read("src-tauri/Cargo.lock").match(
-  /\[\[package\]\]\nname = "simplebench"\nversion = "([^"]+)"/,
+  /\[\[package\]\]\nname = "lomi"\nversion = "([^"]+)"/,
 )?.[1];
 for (const [file, actual] of [
   ["package.json", packageMetadata.version],

@@ -156,7 +156,7 @@ fn authorize(label: &str, write: bool) -> Result<(), String> {
 }
 pub(crate) fn safe_mode() -> bool {
     std::env::args().any(|a| a == "--safe-mode" || a == "--disable-plugins")
-        || std::env::var_os("SIMPLEBENCH_SAFE_MODE").is_some()
+        || std::env::var_os("LOMI_SAFE_MODE").is_some()
 }
 fn root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let root = app
@@ -671,7 +671,7 @@ pub fn prepare_plugin(
         .get(&id)
         .is_some_and(|(r, _)| r != &expected)
     {
-        return Err("Restart SimpleBench to load the replacement code.".into());
+        return Err("Restart Lomi to load the replacement code.".into());
     }
     let files = snapshot(&inside(&root, &format!("{id}/{expected}"))?)?;
     if snapshot_revision(&files) != expected {

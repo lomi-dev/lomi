@@ -39,8 +39,7 @@ impl Android {
         }
         if loaded.exit.is_some() {
             return Err(
-                "SimpleBench is preparing to close. Cancel closing before setting up Android."
-                    .into(),
+                "Lomi is preparing to close. Cancel closing before setting up Android.".into(),
             );
         }
         let directory = Directory::acquire(root)?;
@@ -123,7 +122,7 @@ impl Android {
         if state.exit_ready {
             Ok(())
         } else {
-            Err("Prepare application shutdown before restarting SimpleBench.".into())
+            Err("Prepare application shutdown before restarting Lomi.".into())
         }
     }
 
@@ -212,7 +211,7 @@ impl Core {
     fn editable(&self) -> Result<(), String> {
         if self.preparing_exit.is_some() {
             return Err(
-                "SimpleBench is preparing to close. Finish or cancel that operation first.".into(),
+                "Lomi is preparing to close. Finish or cancel that operation first.".into(),
             );
         }
         if self.mutation.is_some() {

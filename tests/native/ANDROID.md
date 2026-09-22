@@ -51,7 +51,7 @@ the higher terminal-view baseline; it does not claim a negative transport cost.
 `run-android-product.mjs` builds the actual workbench and Settings UI with a
 unique application identifier and separate app-data/workspace. It reuses only
 the isolated `native-managed-*` SDK installed by the native installer trial;
-it never uses the user's SimpleBench session, SDK or AVD. The directory owner
+it never uses the user's Lomi session, SDK or AVD. The directory owner
 lock remains active. The product's Rust runtime owns emulator children and a
 private ADB listener on 15047. File pickers open at fixed trial locations in
 this feature-only build; selection and all file/guest operations still use
@@ -59,7 +59,7 @@ production commands. The fixture never accepts vendor terms.
 
 ```sh
 node --experimental-strip-types tests/native/run-android-product.mjs \
-  /tmp/simplebench-android-stage0-20260918/native-managed-<trial-id>
+  /tmp/lomi-android-stage0-20260918/native-managed-<trial-id>
 ```
 
 Supply a working `SDKROOT` for the local Xcode installation when necessary.
@@ -71,7 +71,7 @@ Drive the actual trusted application webview using unique instruction IDs:
 
 ```sh
 node tests/native/android-product-control.mjs \
-  /tmp/simplebench-android-stage0-20260918/product inspect-1 <<'JSON'
+  /tmp/lomi-android-stage0-20260918/product inspect-1 <<'JSON'
 {"window":"main","script":"return {text:document.body.innerText,visibility:document.visibilityState};"}
 JSON
 ```
@@ -96,7 +96,7 @@ directory. CPU-heavy builds and other tests should run outside this measurement.
 
 ```sh
 python3 tests/native/android-product-perf.py \
-  /tmp/simplebench-android-stage0-20260918 \
+  /tmp/lomi-android-stage0-20260918 \
   --device <fixture-device-uuid> --name product-qualification --duration 1800
 ```
 
@@ -255,7 +255,7 @@ It uses the real emulator, system WKWebView and binary IPC, without an external
 emulator window or screencap polling.
 
 Prerequisites in a disposable directory (the recorded run used
-`/tmp/simplebench-android-stage0-20260918`):
+`/tmp/lomi-android-stage0-20260918`):
 
 - An explicitly accepted SDK license, recorded in `evidence/consent.json` as
   `{ "accepted": true, ... }`. Only record a real, scoped acceptance after
@@ -277,7 +277,7 @@ managed installer tests and integrated product fixture for those paths.
 Run from the repository root:
 
 ```sh
-node tests/native/run-android-smoke.mjs /tmp/simplebench-android-stage0-20260918
+node tests/native/run-android-smoke.mjs /tmp/lomi-android-stage0-20260918
 ```
 
 `--avd sb_stage0_small` selects a separately provisioned Small Phone AVD in
@@ -381,7 +381,7 @@ For a reproducible macOS ARM64 resource measurement, keep the native window
 visible and run the developer-only harness from the repository root:
 
 ```sh
-python3 tests/native/android-perf.py /tmp/simplebench-android-stage0-20260918 \
+python3 tests/native/android-perf.py /tmp/lomi-android-stage0-20260918 \
   --name unique-rgba-run --duration 1800 --decoder rgba --surface 2d
 ```
 
@@ -432,7 +432,7 @@ The dangerous behavior of a normal ADB client is reproduced **only against a
 private fake server** by:
 
 ```sh
-node tests/native/android-adb-race.mjs /tmp/simplebench-android-stage0-20260918
+node tests/native/android-adb-race.mjs /tmp/lomi-android-stage0-20260918
 ```
 
 This test deliberately changes the server version after preflight, records
@@ -443,7 +443,7 @@ The selected emulator's negative case, with a real independently owned ADB
 server and a proxy changing its reported version after preflight, is:
 
 ```sh
-node tests/native/android-emulator-adb-race.mjs /tmp/simplebench-android-stage0-20260918
+node tests/native/android-emulator-adb-race.mjs /tmp/lomi-android-stage0-20260918
 ```
 
 It checks the actual guest connection, authenticated gRPC, absence of
@@ -471,7 +471,7 @@ Rust foundations separately test interprocess locking, immutable used images,
 interrupted package publication, corrupt metadata preservation and cancellation
 of actual child processes. Explicitly ignored tests run the real provider
 catalogs, archives, download and owned guest fixture; their required environment
-is `SIMPLEBENCH_ANDROID_PROBE_DIRECTORY`. These are complementary checks, not
+is `LOMI_ANDROID_PROBE_DIRECTORY`. These are complementary checks, not
 proof that the Android product or another host platform is ready.
 
 The additional ignored test

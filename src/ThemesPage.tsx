@@ -140,8 +140,8 @@ export default function ThemesPage() {
         kind === "color"
           ? builtinTheme.name
           : kind === "file"
-            ? "SimpleBench file icons"
-            : "SimpleBench interface icons",
+            ? "Lomi file icons"
+            : "Lomi interface icons",
       description:
         kind === "color"
           ? builtinTheme.description
@@ -175,7 +175,7 @@ export default function ThemesPage() {
         <header className="settings-page-heading">
           <div>
             <h1>Themes</h1>
-            <p>Make SimpleBench feel like your workspace.</p>
+            <p>Make Lomi feel like your workspace.</p>
           </div>
           <div className="catalog-heading-actions">
             <IconButton
@@ -250,8 +250,7 @@ export default function ThemesPage() {
                   const path = await open({
                     directory: true,
                     multiple: false,
-                    title:
-                      "Import a SimpleBench theme or VS Code extension folder",
+                    title: "Import a Lomi theme or VS Code extension folder",
                   });
                   if (typeof path !== "string") return;
                   await api("import_theme", { path });
@@ -617,14 +616,14 @@ export default function ThemesPage() {
             <div>
               <h2>Your theme folder</h2>
               <p>
-                Import SimpleBench folders, VS Code extension folders, color or
-                icon theme files, or VSIX packages. Refresh after editing files.
+                Import Lomi folders, VS Code extension folders, color or icon
+                theme files, or VSIX packages. Refresh after editing files.
               </p>
               <p className="settings-help">
                 VS Code exchange includes colors, syntax rules, file icons and
                 interface icons with their images and fonts. Editor highlighting
-                may differ. Custom layouts, CSS and backgrounds remain
-                SimpleBench features.
+                may differ. Custom layouts, CSS and backgrounds remain Lomi
+                features.
               </p>
             </div>
             <button

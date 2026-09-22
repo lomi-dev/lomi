@@ -12,8 +12,7 @@ pub fn result(
     stage: &str,
     data: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
-    let directory =
-        std::env::var("SIMPLEBENCH_THEME_SMOKE_DIRECTORY").map_err(|e| e.to_string())?;
+    let directory = std::env::var("LOMI_THEME_SMOKE_DIRECTORY").map_err(|e| e.to_string())?;
     match stage {
         "theme-main-ready" => {
             let script = include_str!("theme-smoke-settings.js").replace(

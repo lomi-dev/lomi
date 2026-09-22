@@ -53,7 +53,7 @@ jobs:
           version: "11.25.0"
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm --filter simplebench-plugin-fixture build
+      - run: pnpm --filter lomi-plugin-fixture build
       - run: pnpm exec playwright test tests/ui/plugins.spec.ts
       - uses: actions/upload-artifact@v4
         if: failure()

@@ -27,7 +27,7 @@ struct Running {
 }
 
 fn cpu_seconds(pid: u32) -> Option<f64> {
-    if !cfg!(target_os = "macos") || std::env::var_os("SIMPLEBENCH_CHAT_PROBE_OFFLINE").is_some() {
+    if !cfg!(target_os = "macos") || std::env::var_os("LOMI_CHAT_PROBE_OFFLINE").is_some() {
         return None;
     }
     let output = std::process::Command::new("/bin/ps")
@@ -45,7 +45,7 @@ fn cpu_seconds(pid: u32) -> Option<f64> {
 }
 
 fn directory() -> Result<PathBuf, String> {
-    std::env::var_os("SIMPLEBENCH_CHAT_PROBE_DIRECTORY")
+    std::env::var_os("LOMI_CHAT_PROBE_DIRECTORY")
         .map(PathBuf::from)
         .ok_or("Chat probe is not enabled.".into())
 }
@@ -96,9 +96,9 @@ pub async fn chat_probe_start(
         let base = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let target = if cfg!(target_os="macos") { if cfg!(target_arch="aarch64") {"aarch64-apple-darwin"} else {"x86_64-apple-darwin"} } else if cfg!(windows) {"x86_64-pc-windows-msvc.exe"} else {"x86_64-unknown-linux-gnu"};
         let (node, bundle) = if cfg!(debug_assertions) {
-            (base.join(format!("binaries/simplebench-node-{target}")),base.join("resources/ai-runtime/fixture.cjs"))
+            (base.join(format!("binaries/lomi-node-{target}")),base.join("resources/ai-runtime/fixture.cjs"))
         } else {
-            (std::env::current_exe().map_err(|_| "Missing app executable.")?.parent().ok_or("Missing app directory.")?.join(if cfg!(windows) {"simplebench-node.exe"} else {"simplebench-node"}), resources.join("ai-runtime/fixture.cjs"))
+            (std::env::current_exe().map_err(|_| "Missing app executable.")?.parent().ok_or("Missing app directory.")?.join(if cfg!(windows) {"lomi-node.exe"} else {"lomi-node"}), resources.join("ai-runtime/fixture.cjs"))
         };
         let started = Instant::now();
         let (process, events) = Process::start(&node, &bundle)?;
@@ -258,11 +258,11 @@ pub async fn chat_probe_backend(
     crate::files::main_window(&window)?;
     directory()?;
     if action.as_deref() == Some("mode") {
-        return Ok(json!({"live":std::env::var_os("SIMPLEBENCH_CHAT_LIVE_KEYS_FILE").is_some()}));
+        return Ok(json!({"live":std::env::var_os("LOMI_CHAT_LIVE_KEYS_FILE").is_some()}));
     }
     if action.as_deref() == Some("browser-url") {
         return Ok(
-            json!({"url":std::env::var("SIMPLEBENCH_CHAT_BROWSER_URL").ok(),"offline":std::env::var_os("SIMPLEBENCH_CHAT_PROBE_OFFLINE").is_some()}),
+            json!({"url":std::env::var("LOMI_CHAT_BROWSER_URL").ok(),"offline":std::env::var_os("LOMI_CHAT_PROBE_OFFLINE").is_some()}),
         );
     }
     if action.as_deref() == Some("browser-result") {
@@ -278,7 +278,7 @@ pub async fn chat_probe_backend(
             .set_focus()
             .map_err(|_| "Cannot focus native live test.")?;
         return tauri::async_runtime::spawn_blocking(move || {
-            let path = std::env::var_os("SIMPLEBENCH_CHAT_LIVE_KEYS_FILE")
+            let path = std::env::var_os("LOMI_CHAT_LIVE_KEYS_FILE")
                 .ok_or("Provide an explicit live-test key file.")?;
             let mut bytes = Vec::new();
             std::fs::File::open(path)
@@ -361,7 +361,7 @@ pub async fn chat_probe_backend(
         .map_err(|_| "Live-test setup failed.")?;
     }
     if action.as_deref() == Some("metrics") {
-        if std::env::var_os("SIMPLEBENCH_CHAT_PROBE_OFFLINE").is_some() {
+        if std::env::var_os("LOMI_CHAT_PROBE_OFFLINE").is_some() {
             return Ok(
                 json!({"unavailable":"The offline sandbox does not allow process metrics."}),
             );

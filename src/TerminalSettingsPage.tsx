@@ -71,7 +71,7 @@ const help: Record<string, string> = {
   alwaysShowTitles:
     "When off, press Control to show titles for 5 seconds. Hold Control for more than 1 second to show them until you release it.",
   agentNotifications:
-    "Notify when Claude Code finishes responding or needs your input while SimpleBench is in the background. Configure Claude Code once below.",
+    "Notify when Claude Code finishes responding or needs your input while Lomi is in the background. Configure Claude Code once below.",
   windowsShell:
     "Used for new terminal tabs and workspaces. Existing terminals keep their shell, including when split or restored. PowerShell uses version 7 when installed, otherwise Windows PowerShell.",
   fontFamily:
@@ -243,7 +243,7 @@ function TerminalPreview() {
       fit.fit();
       const width = terminal.cols - 1;
       const lines = [
-        "simplebench ~/project".slice(0, width),
+        "lomi ~/project".slice(0, width),
         "$ echo 'Your terminal, your style'".slice(0, width),
         `\x1b[1mBold\x1b[0m  \x1b[3mItalic\x1b[0m${width >= 32 ? "  Zażółć  0O 1Il" : ""}`,
         Array.from(

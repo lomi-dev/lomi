@@ -1,4 +1,4 @@
-const SERVICE: &str = "dev.simplebench.desktop.chat-ai";
+const SERVICE: &str = "dev.lomi.desktop.chat-ai";
 
 pub fn put(id: &str, secret: &str) -> Result<(), String> {
     entry(id)?.set_password(secret).map_err(|_| "The system key store is locked or unavailable. Unlock it or explicitly choose session-only storage.".into())

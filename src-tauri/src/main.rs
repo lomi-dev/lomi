@@ -3,7 +3,7 @@
 
 fn main() {
     if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--agy-terminal-title")) {
-        if let Err(error) = simplebench_lib::print_agy_title() {
+        if let Err(error) = lomi_lib::print_agy_title() {
             eprintln!("{error}");
             std::process::exit(1);
         }
@@ -19,5 +19,5 @@ fn main() {
         std::env::set_var("__NV_DISABLE_EXPLICIT_SYNC", "1");
     }
 
-    simplebench_lib::run()
+    lomi_lib::run()
 }

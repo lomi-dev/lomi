@@ -186,7 +186,7 @@ for (const [cli, name, path] of [
     expect(await calls(page, "enable_cli_titles")).toHaveLength(0);
     if (cli === "agy") {
       await page.setViewportSize({ width: 800, height: 420 });
-      await expect(dialog).toContainText("SimpleBench’s local title formatter");
+      await expect(dialog).toContainText("Lomi’s local title formatter");
       const button = await dialog
         .getByRole("button", { name: "Allow changes" })
         .boundingBox();

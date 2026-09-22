@@ -96,7 +96,7 @@ test("listing never imports code; concurrent lazy activation runs once and clean
       return {
         activate(ctx) {
           activations++;
-          ctx.registerCommand("simplebench.context.open", () => {
+          ctx.registerCommand("lomi.context.open", () => {
             handled++;
           });
           ctx.add(() => {
@@ -120,7 +120,7 @@ test("listing never imports code; concurrent lazy activation runs once and clean
   await Promise.all([
     host.activate(entry.id),
     host.activate(entry.id),
-    host.execute("simplebench.context.open"),
+    host.execute("lomi.context.open"),
   ]);
   assert.equal(imports, 1);
   assert.equal(activations, 1);
@@ -148,10 +148,10 @@ test("partial and canceled activation cannot retain or recreate owned registrati
     css: async () => () => {},
     import: async () => ({
       async activate(ctx) {
-        ctx.registerCommand("simplebench.context.open", () => {});
+        ctx.registerCommand("lomi.context.open", () => {});
         await gate;
         assert.throws(() =>
-          ctx.registerFill("simplebench.context.status", () => null),
+          ctx.registerFill("lomi.context.status", () => null),
         );
         return () => {
           lateCleanup++;
@@ -180,7 +180,7 @@ test("partial and canceled activation cannot retain or recreate owned registrati
     css: async () => () => {},
     import: async () => ({
       activate(ctx) {
-        ctx.registerCommand("simplebench.context.open", () => {});
+        ctx.registerCommand("lomi.context.open", () => {});
         throw Error("fault fixture");
       },
     }),

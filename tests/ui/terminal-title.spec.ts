@@ -354,7 +354,7 @@ for (const colorScheme of ["dark", "light"] as const) {
     await expect.poll(() => buffer(page, id)).toContain("bash $ ");
     const activity = pane.locator(".terminal-activity");
     const signal = (kind: string) =>
-      emit(page, id, "\x1b]777;notify;Simple", `Bench;claude;${kind}\x07`);
+      emit(page, id, "\x1b]777;notify;Lo", `mi;claude;${kind}\x07`);
     await emit(page, id, "\x1b]133;C\x07");
     await signal("working");
     await expect(activity).toHaveText("Working");

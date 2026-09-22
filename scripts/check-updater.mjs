@@ -20,9 +20,8 @@ export function checkUpdater(tag, manifest) {
     const url = new URL(entry.url);
     assert.equal(url.origin, "https://github.com");
     assert.ok(
-      ["lomi-dev/simplebench", "MaciejKolerski/simplebench"].some(
-        (repository) =>
-          url.pathname.startsWith(`/${repository}/releases/download/${tag}/`),
+      ["lomi-dev/lomi"].some((repository) =>
+        url.pathname.startsWith(`/${repository}/releases/download/${tag}/`),
       ),
       `Unexpected release URL: ${target}`,
     );

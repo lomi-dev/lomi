@@ -832,8 +832,8 @@ export default function Workbench() {
     void getCurrentWindow()
       .setTitle(
         selected
-          ? `${basename(selected.project.path)} — ${selected.workspace.name} — SimpleBench`
-          : "SimpleBench",
+          ? `${basename(selected.project.path)} — ${selected.workspace.name} — Lomi`
+          : "Lomi",
       )
       .catch(() => {});
   }, [selected?.project.path, selected?.workspace.name]);
@@ -1235,7 +1235,7 @@ export default function Workbench() {
       <div className="app-shell browser-preview">
         <header className="titlebar">
           <Folder size={16} />
-          <span>SimpleBench</span>
+          <span>Lomi</span>
         </header>
         <main className="empty-message">
           <Terminal size={28} />
@@ -1249,7 +1249,7 @@ export default function Workbench() {
       <div className="app-shell">
         <main className="empty-message">
           <Layers size={28} />
-          <h1>SimpleBench</h1>
+          <h1>Lomi</h1>
           <p>{error || "Restoring your workspace…"}</p>
           {error && (
             <button

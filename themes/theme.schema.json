@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "SimpleBench theme",
+  "title": "Lomi theme",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "name"],
@@ -73,7 +73,7 @@
     },
     "vscode": {
       "type": "object",
-      "description": "Resolved VS Code color-theme data. Import resolves include and TextMate file paths. Unmapped colors and semantic rules remain available for export. SimpleBench common/light/dark values override this layer.",
+      "description": "Resolved VS Code color-theme data. Import resolves include and TextMate file paths. Unmapped colors and semantic rules remain available for export. Lomi common/light/dark values override this layer.",
       "properties": {
         "type": {
           "enum": ["dark", "light", "hcDark", "hcLight"]

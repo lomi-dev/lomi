@@ -6,8 +6,8 @@ import { actionForEvent, isZoomAction } from "./keybindings";
 
 const storageKey =
   new URLSearchParams(window.location.search).get("window") === "settings"
-    ? "simplebench.zoom.settings"
-    : "simplebench.zoom.main";
+    ? "lomi.zoom.settings"
+    : "lomi.zoom.main";
 let percentage = 100;
 try {
   const saved = Number(localStorage.getItem(storageKey));

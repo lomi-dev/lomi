@@ -108,7 +108,7 @@ counted as passing evidence. The first formatting check failed on CRLF files;
 the check passed after LF normalization. The final configuration instead permits
 the original checkout endings, avoiding repository-wide working-tree changes.
 The final process inventory found no remaining Node, pnpm, Cargo, rustc,
-SimpleBench, emulator/QEMU or ADB process after the runs; no unrelated process
+Lomi, emulator/QEMU or ADB process after the runs; no unrelated process
 was terminated.
 
 The normal release Cargo fingerprint records `features=[]`: no android-probe,
@@ -118,9 +118,9 @@ an installed-package trial. SHA-256 values:
 
 | Artifact                        | SHA-256                                                            |
 | ------------------------------- | ------------------------------------------------------------------ |
-| simplebench.exe                 | `0f8518a21d81e52f17785616ad64c426c283c6ecd1c56f7c32b4f551c82f8e6d` |
-| SimpleBench_0.3.0_x64_en-US.msi | `d08627205aa3ebf34771ddd5a2dd4324dc0517b5c112ce6c2bf02c5ef1372fee` |
-| SimpleBench_0.3.0_x64-setup.exe | `ecdad5605d45373e5eae5f041e91db2cf65209135eb8c2e7f7b5d3a2d569148f` |
+| lomi.exe                        | `0f8518a21d81e52f17785616ad64c426c283c6ecd1c56f7c32b4f551c82f8e6d` |
+| Lomi_0.3.0_x64_en-US.msi        | `d08627205aa3ebf34771ddd5a2dd4324dc0517b5c112ce6c2bf02c5ef1372fee` |
+| Lomi_0.3.0_x64-setup.exe        | `ecdad5605d45373e5eae5f041e91db2cf65209135eb8c2e7f7b5d3a2d569148f` |
 | Bundled Windows Node executable | `ba4e6d110e8c1592a1ecd390f6b05f3da124b13871a5be62b341a07a853c6c32` |
 
 IME APK SHA-256, all three manifest-listed source hashes and the vendored

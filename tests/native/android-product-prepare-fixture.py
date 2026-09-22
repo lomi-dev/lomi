@@ -13,7 +13,7 @@ parser.add_argument("device")
 parser.add_argument("name")
 options = parser.parse_args()
 root = pathlib.Path(options.root).resolve(strict=True)
-if not root.name.startswith("simplebench-android-stage0-"):
+if not root.name.startswith("lomi-android-stage0-"):
     raise RuntimeError("Use the isolated native trial")
 if str(uuid.UUID(options.device)) != options.device or not options.name.isascii() or not options.name.replace("-", "").isalnum() or len(options.name) > 50:
     raise RuntimeError("Invalid fixture identity")
@@ -46,8 +46,8 @@ with socket.create_connection(("127.0.0.1", 15047), timeout=5) as connection:
 with socket.create_connection(("127.0.0.1", 15047), timeout=5) as connection:
     connection.settimeout(30)
     base.adb_request(connection, "host:transport:emulator-" + str(port))
-    guard = ('[ "$(getprop ro.boot.simplebench.device)" = "' + options.device + '" ] && '
-             '[ "$(settings get global simplebench_generation)" = "' + record["generationKey"] + '" ] || exit 77; ')
+    guard = ('[ "$(getprop ro.boot.lomi.device)" = "' + options.device + '" ] && '
+             '[ "$(settings get global lomi_generation)" = "' + record["generationKey"] + '" ] || exit 77; ')
     guard = guard.replace('"', '\\"').replace('$', '\\$')
     base.adb_request(connection, 'exec:sh -c "' + guard + "printf 'SBOK'; exec cmd package install -r -S " + str(len(apk)) + '"')
     if base.read_exact(connection, 4) != b"SBOK":

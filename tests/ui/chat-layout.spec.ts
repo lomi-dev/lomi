@@ -193,7 +193,7 @@ test("chat contains long content, resizes drafts, and preserves reading position
   await page.evaluate(() => {
     (window as any).__chatTest.chunks = 1;
     (window as any).__chatTest.response =
-      "A quieter space to think.\n\nKeep the conversation readable, with room for your ideas and the details that matter.\n\n```ts\nconst message = 'Hello, SimpleBench';\n```";
+      "A quieter space to think.\n\nKeep the conversation readable, with room for your ideas and the details that matter.\n\n```ts\nconst message = 'Hello, Lomi';\n```";
   });
   const input = page.getByRole("textbox", { name: "Message", exact: true });
   await input.fill("Can you help me simplify this interface?");

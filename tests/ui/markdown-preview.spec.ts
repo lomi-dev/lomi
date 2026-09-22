@@ -11,7 +11,7 @@ import {
 } from "../../src/model";
 
 const markdown = [
-  "# SimpleBench",
+  "# Lomi",
   "",
   "A **live preview** with *Markdown* and `code`.",
   "",
@@ -62,9 +62,7 @@ test("the corner button opens a live split preview of unsaved Markdown without r
   const preview = page.getByRole("region", {
     name: "Markdown preview for README.md",
   });
-  await expect(
-    preview.getByRole("heading", { name: "SimpleBench" }),
-  ).toBeVisible();
+  await expect(preview.getByRole("heading", { name: "Lomi" })).toBeVisible();
   await expect(preview.getByRole("table")).toBeVisible();
   await expect(preview.getByRole("checkbox").first()).toBeChecked();
   await expect(preview.getByRole("checkbox").first()).toBeDisabled();
@@ -93,7 +91,11 @@ test("the corner button opens a live split preview of unsaved Markdown without r
     const file = fileTabs(JSON.parse(localStorage.getItem("test-session")!))[0];
     const document = loadedEditor(file)!;
     (document as any).view.dispatch({
-      changes: { from: 2, to: 13, insert: "ChangedName" },
+      changes: {
+        from: 2,
+        to: document.state.doc.line(1).to,
+        insert: "ChangedName",
+      },
       selection: document.state.selection,
     });
   });

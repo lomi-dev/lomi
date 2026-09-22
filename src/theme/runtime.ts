@@ -148,7 +148,7 @@ export function terminalPalette() {
   return { ...searchPalette };
 }
 
-export const themeAppliedEvent = "simplebench-theme-applied";
+export const themeAppliedEvent = "lomi-theme-applied";
 let revision = 0;
 let appliedRevision = 0;
 let terminalOptions: ITerminalOptions | undefined;
@@ -540,7 +540,7 @@ export async function prepareTheme(
           new Promise<void>((resolve, reject) => {
             let finished = false;
             const face = new FontFace(
-              "SimpleBench theme preflight",
+              "Lomi theme preflight",
               `url("${asset(path)}")`,
             );
             const finish = (error?: unknown) => {

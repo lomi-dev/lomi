@@ -23,7 +23,7 @@ async function setup(page: Page, saved?: unknown) {
       context.fillRect(200, 200, 1200, 600);
       context.fillStyle = "#e5e5e5";
       context.font = "60px monospace";
-      context.fillText("SimpleBench", 350, 525);
+      context.fillText("Lomi", 350, 525);
       const png = canvas.toDataURL("image/png").split(",")[1];
       native.imageFiles = {
         "picture.PNG": png,

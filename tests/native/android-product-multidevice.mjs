@@ -40,7 +40,7 @@ const panes=devices.map(id=>{
 if(document.querySelectorAll('.android-screen').length!==2)throw Error('The fixture needs exactly two visible canvases');
 const read=async id=>new DOMParser().parseFromString(await invoke('android_probe_product_guest',{deviceId:id,action:'screen'}),'application/xml');
 const touchLabel=doc=>[...doc.querySelectorAll('node')].map(e=>e.getAttribute('text')).find(t=>/^Touch /.test(t))??null;
-const text=doc=>doc.querySelector('[content-desc="simplebench-test-editor"]')?.getAttribute('text');
+const text=doc=>doc.querySelector('[content-desc="lomi-test-editor"]')?.getAttribute('text');
 for(const deviceId of devices)await invoke('android_probe_product_guest',{deviceId,action:'launch'});
 await sleep(700);
 const native=async(index,phase,u,v)=>{

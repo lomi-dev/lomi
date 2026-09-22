@@ -341,8 +341,8 @@ mod tests {
     fn cancellation_deadline_survives_blocked_output_delivery() {
         let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let node = root.join(format!(
-            "binaries/simplebench-node-{}{}",
-            env!("SIMPLEBENCH_AI_TARGET"),
+            "binaries/lomi-node-{}{}",
+            env!("LOMI_AI_TARGET"),
             if cfg!(windows) { ".exe" } else { "" }
         ));
         let temp = tempfile::tempdir().unwrap();
@@ -363,9 +363,9 @@ mod tests {
     #[test]
     fn cancellation_deadline_survives_a_blocked_input_pipe() {
         let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let target = env!("SIMPLEBENCH_AI_TARGET");
+        let target = env!("LOMI_AI_TARGET");
         let suffix = if cfg!(windows) { ".exe" } else { "" };
-        let node = root.join(format!("binaries/simplebench-node-{target}{suffix}"));
+        let node = root.join(format!("binaries/lomi-node-{target}{suffix}"));
         let temp = tempfile::tempdir().unwrap();
         let bundle = temp.path().join("blocked.cjs");
         std::fs::write(&bundle, "setInterval(() => {}, 1000)").unwrap();

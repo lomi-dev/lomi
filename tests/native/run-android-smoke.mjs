@@ -17,7 +17,7 @@ import { createHash, generateKeyPairSync, randomUUID, sign } from "node:crypto";
 if (process.platform !== "darwin" || process.arch !== "arm64")
   throw Error("This probe has only been tested on macOS ARM64.");
 const root = await realpath(
-  resolve(process.argv[2] ?? "/tmp/simplebench-android-stage0-20260918"),
+  resolve(process.argv[2] ?? "/tmp/lomi-android-stage0-20260918"),
 );
 await chmod(root, 0o700);
 await chmod(join(root, "emulator-home"), 0o700);
@@ -48,7 +48,7 @@ if (consent.accepted !== true)
     "Explicit SDK license acceptance is required; this runner does not accept licenses.",
   );
 const repository = resolve(import.meta.dirname, "../..");
-const binary = join(repository, "src-tauri/target/release/simplebench");
+const binary = join(repository, "src-tauri/target/release/lomi");
 const options = process.argv.slice(3);
 const reuse = options.includes("--reuse-binary");
 const avdOption = options.indexOf("--avd");
@@ -69,14 +69,14 @@ if (
   reuse &&
   (previousBuild.root !== root ||
     previousBuild.repository !== repository ||
-    !/^dev\.simplebench\.android-probe-\d+$/.test(previousBuild.identifier) ||
+    !/^dev\.lomi\.android-probe-\d+$/.test(previousBuild.identifier) ||
     previousBuild.binarySha256 !== (await binaryHash()))
 )
   throw Error(
     "The prior owned probe executable could not be verified for reuse",
   );
 const identifier =
-  previousBuild?.identifier ?? `dev.simplebench.android-probe-${Date.now()}`;
+  previousBuild?.identifier ?? `dev.lomi.android-probe-${Date.now()}`;
 const appData = join(homedir(), "Library/Application Support", identifier);
 await mkdir(appData, { recursive: true });
 await mkdir(join(root, "runtime"), { recursive: true, mode: 0o700 });
@@ -105,7 +105,7 @@ await writeFile(
   join(root, "runtime/allowlist.json"),
   JSON.stringify({
     unprotected: [],
-    allowlist: [{ iss: "simplebench", protected: methods }],
+    allowlist: [{ iss: "lomi", protected: methods }],
   }),
 );
 function credentials() {
@@ -132,7 +132,7 @@ function token(aud, expired = false) {
     encode({ alg: "ES256", kid: authority.publicJwk.kid }) +
     "." +
     encode({
-      iss: "simplebench",
+      iss: "lomi",
       aud,
       iat: now - 60,
       exp: expired ? now - 30 : now + 120,
@@ -200,8 +200,8 @@ await writeFile(
 );
 const env = {
   ...process.env,
-  SIMPLEBENCH_ANDROID_PROBE_DIRECTORY: root,
-  SIMPLEBENCH_ANDROID_PROBE_AVD: avd,
+  LOMI_ANDROID_PROBE_DIRECTORY: root,
+  LOMI_ANDROID_PROBE_AVD: avd,
 };
 if (!reuse) {
   const builder = spawn(
@@ -284,7 +284,7 @@ while (!exited) {
         }
         await renewTokens();
         await writeFile(
-          join(jwks, "simplebench-stage0.jwk"),
+          join(jwks, "lomi-stage0.jwk"),
           JSON.stringify({ keys: [authority.publicJwk] }),
           { mode: 0o600 },
         );

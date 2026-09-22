@@ -22,14 +22,11 @@ const trial = resolve(root, "..");
 const application = JSON.parse(await readFile(join(root, "application.json")));
 if (
   basename(root) !== "product" ||
-  !basename(trial).startsWith("simplebench-android-stage0-") ||
+  !basename(trial).startsWith("lomi-android-stage0-") ||
   resolve(application.managed, "..") !== trial
 )
   throw Error("Use only the isolated native product fixture");
-const binary = join(
-  application.repository,
-  "src-tauri/target/release/simplebench",
-);
+const binary = join(application.repository, "src-tauri/target/release/lomi");
 if (
   createHash("sha256")
     .update(await readFile(binary))
@@ -44,7 +41,7 @@ if (sdk.accepted !== true || java.accepted !== true)
   throw Error("Record actual user consent for this isolated trial first");
 const accepted = {
   "android-sdk-license": sdk.sha256,
-  "simplebench-temurin-21": java.licenseSha256,
+  "lomi-temurin-21": java.licenseSha256,
 };
 try {
   const extra = JSON.parse(

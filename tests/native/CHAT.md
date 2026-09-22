@@ -24,7 +24,7 @@ The accepted fields are `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` and
 `googleModel` are accepted. Omitted providers are skipped.
 
 ```sh
-SIMPLEBENCH_CHAT_LIVE_KEYS_FILE=/absolute/path/to/test-keys.json \
+LOMI_CHAT_LIVE_KEYS_FILE=/absolute/path/to/test-keys.json \
   node tests/native/run-chat-smoke.mjs
 ```
 
@@ -46,7 +46,7 @@ Availability and billing depend on the supplied account.
 
 Build with `--features chat-probe`, an isolated identifier and an extra resource
 mapping from `resources/ai-runtime/fixture.cjs` to `ai-runtime/fixture.cjs`.
-After `pnpm build`, run `pnpm --filter @simplebench/ai-runtime build --fixture`
+After `pnpm build`, run `pnpm --filter @lomi-dev/ai-runtime build --fixture`
 so the frontend contains `chat-native-probe.js`. A local macOS test may use ad-hoc
 signing and disable updater artifacts; it does not replace release notarization.
 

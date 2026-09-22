@@ -89,7 +89,7 @@ for (const renderer of ["WebGL", "DOM"] as const) {
         runtime.terminal.write(
           "\x1b[2J\x1b[H" +
             [
-              "[woro@woro-home simplebench]$ ls",
+              "[woro@woro-home lomi]$ ls",
               "AGENTS.md  package.json  src-tauri  src  tests",
               "Zażółć gęślą jaźń — 0O 1Il {} [] ()",
               "\x1b[1mBold\x1b[0m  \x1b[3mItalic\x1b[0m  \x1b[1;3mBold italic\x1b[0m",

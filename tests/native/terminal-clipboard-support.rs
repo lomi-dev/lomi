@@ -4,12 +4,12 @@ pub fn page(webview: &tauri::Webview, payload: &tauri::webview::PageLoadPayload<
     if webview.label() == "main"
         && matches!(payload.event(), tauri::webview::PageLoadEvent::Finished)
     {
-        let directory = std::env::var("SIMPLEBENCH_CLIPBOARD_SMOKE_DIRECTORY").unwrap();
+        let directory = std::env::var("LOMI_CLIPBOARD_SMOKE_DIRECTORY").unwrap();
         let _ = webview.eval(
             include_str!("terminal-clipboard-smoke.js")
                 .replace(
                     "SMOKE_AGENTS",
-                    if std::env::var_os("SIMPLEBENCH_CLIPBOARD_SMOKE_AGENTS").is_some() {
+                    if std::env::var_os("LOMI_CLIPBOARD_SMOKE_AGENTS").is_some() {
                         "true"
                     } else {
                         "false"
@@ -38,7 +38,7 @@ pub fn result(
     data: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
     let directory = std::path::PathBuf::from(
-        std::env::var("SIMPLEBENCH_CLIPBOARD_SMOKE_DIRECTORY").map_err(|e| e.to_string())?,
+        std::env::var("LOMI_CLIPBOARD_SMOKE_DIRECTORY").map_err(|e| e.to_string())?,
     );
     match stage {
         #[cfg(target_os = "macos")]

@@ -63,7 +63,7 @@ pub fn write(path: &Path, source: Option<&str>, mut output: String) -> Result<()
         .ok_or("CLI configuration has no parent directory.")?;
     fs::create_dir_all(directory).map_err(|error| error.to_string())?;
     let mut temporary = tempfile::Builder::new()
-        .prefix(".simplebench-cli-")
+        .prefix(".lomi-cli-")
         .tempfile_in(directory)
         .map_err(|error| error.to_string())?;
     temporary
@@ -92,7 +92,7 @@ pub fn write(path: &Path, source: Option<&str>, mut output: String) -> Result<()
         }
         let mut backup = tempfile::Builder::new()
             .prefix(&format!(
-                "{}.simplebench-backup-",
+                "{}.lomi-backup-",
                 path.file_name().unwrap_or_default().to_string_lossy()
             ))
             .tempfile_in(directory)

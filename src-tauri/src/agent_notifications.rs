@@ -13,7 +13,7 @@ const EVENTS: [(&str, &str); 3] = [
 
 fn command(signal: &str) -> String {
     format!(
-        r#"[ "$TERM_PROGRAM" = "SimpleBench" ] && printf '%s' '{{"terminalSequence":"\u001b]777;notify;SimpleBench;claude;{signal}\u0007"}}' || true"#
+        r#"[ "$TERM_PROGRAM" = "Lomi" ] && printf '%s' '{{"terminalSequence":"\u001b]777;notify;Lomi;claude;{signal}\u0007"}}' || true"#
     )
 }
 
@@ -221,7 +221,7 @@ pub fn notify_agent(
             .map_err(|error| error.to_string())?;
     }
     #[cfg(feature = "native-smoke")]
-    if std::env::var_os("SIMPLEBENCH_NOTIFICATION_SMOKE_DIRECTORY").is_some() {
+    if std::env::var_os("LOMI_NOTIFICATION_SMOKE_DIRECTORY").is_some() {
         let _ = app.emit_to(
             "main",
             "notification-smoke-result",
@@ -269,7 +269,7 @@ mod tests {
                 path.file_name()
                     .unwrap()
                     .to_string_lossy()
-                    .contains("simplebench-backup")
+                    .contains("lomi-backup")
             })
             .collect();
         assert_eq!(backups.len(), 1);
@@ -305,9 +305,9 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn hook_returns_terminal_sequence_only_inside_simplebench() {
+    fn hook_returns_terminal_sequence_only_inside_lomi() {
         for (_, signal) in EVENTS {
-            for terminal in ["SimpleBench", "Other"] {
+            for terminal in ["Lomi", "Other"] {
                 let output = std::process::Command::new("sh")
                     .args(["-c", &command(signal)])
                     .env("TERM_PROGRAM", terminal)
@@ -321,7 +321,7 @@ mod tests {
                     let output: Value = serde_json::from_slice(&output.stdout).unwrap();
                     assert_eq!(
                         output["terminalSequence"],
-                        format!("\x1b]777;notify;SimpleBench;claude;{signal}\x07")
+                        format!("\x1b]777;notify;Lomi;claude;{signal}\x07")
                     );
                 }
             }

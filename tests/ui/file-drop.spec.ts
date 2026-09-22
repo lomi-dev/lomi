@@ -28,7 +28,7 @@ async function setup(page: Page, platform: Platform, scale = 2, zoom = 1) {
   );
   await page.addInitScript(
     ({ platform, scale, zoom }) => {
-      localStorage.setItem("simplebench.zoom.main", String(zoom * 100));
+      localStorage.setItem("lomi.zoom.main", String(zoom * 100));
       Object.defineProperty(window, "devicePixelRatio", {
         configurable: true,
         value: platform === "windows" ? scale * zoom : scale,

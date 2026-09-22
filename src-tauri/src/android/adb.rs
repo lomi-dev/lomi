@@ -10,7 +10,7 @@ use std::{
 
 const LIMIT: usize = 1024 * 1024;
 const VERSION: &str = "0029";
-const INPUT_METHOD: &str = "org.simplebench.input/.SimpleBenchInput";
+const INPUT_METHOD: &str = "org.lomi.input/.LomiInput";
 
 struct Connection {
     socket: TcpStream,
@@ -132,7 +132,7 @@ impl Server {
         request(&mut socket, "host:version")?;
         let version = read_string(&mut socket, 4)?;
         if version != VERSION {
-            return Err(format!("ADB server protocol {version} is incompatible with the managed tools (expected {VERSION}). Stop or update it in the application that owns it, then retry. SimpleBench did not replace it."));
+            return Err(format!("ADB server protocol {version} is incompatible with the managed tools (expected {VERSION}). Stop or update it in the application that owns it, then retry. Lomi did not replace it."));
         }
         Ok(())
     }
@@ -153,14 +153,14 @@ impl Server {
 impl Guest {
     #[cfg(any(test, feature = "android-probe"))]
     pub fn native_input_fixture(&self, open: bool) -> Result<String, String> {
-        self.shell(&(self.guard()? + if open { "am start -n org.simplebench.inputtest/.InputTest" } else { "uiautomator dump /data/local/tmp/simplebench-input-check.xml >/dev/null && cat /data/local/tmp/simplebench-input-check.xml && rm /data/local/tmp/simplebench-input-check.xml" }))
+        self.shell(&(self.guard()? + if open { "am start -n org.lomi.inputtest/.InputTest" } else { "uiautomator dump /data/local/tmp/lomi-input-check.xml >/dev/null && cat /data/local/tmp/lomi-input-check.xml && rm /data/local/tmp/lomi-input-check.xml" }))
     }
     #[cfg(any(test, feature = "android-probe"))]
     pub fn native_runtime_marker(&self, write: Option<&str>) -> Result<String, String> {
         let command = match write {
-            Some(value) if super::storage::valid_id(value) => format!("printf '%s' '{value}' > /data/local/tmp/simplebench-runtime-marker; cat /data/local/tmp/simplebench-runtime-marker"),
+            Some(value) if super::storage::valid_id(value) => format!("printf '%s' '{value}' > /data/local/tmp/lomi-runtime-marker; cat /data/local/tmp/lomi-runtime-marker"),
             Some(_) => return Err("Invalid native fixture marker".into()),
-            None => "cat /data/local/tmp/simplebench-runtime-marker".into(),
+            None => "cat /data/local/tmp/lomi-runtime-marker".into(),
         };
         self.shell(&(self.guard()? + &command))
     }
@@ -176,12 +176,12 @@ impl Guest {
 
     fn guard(&self) -> Result<String, String> {
         self.identity()?;
-        Ok(format!("[ \"$(getprop ro.boot.simplebench.device)\" = '{}' ] && [ \"$(settings get global simplebench_generation)\" = '{}' ] || exit 77; ", self.device_id, self.generation_key))
+        Ok(format!("[ \"$(getprop ro.boot.lomi.device)\" = '{}' ] && [ \"$(settings get global lomi_generation)\" = '{}' ] || exit 77; ", self.device_id, self.generation_key))
     }
 
     pub fn claim_generation(&self) -> Result<(), String> {
         self.identity()?;
-        let command = format!("[ \"$(getprop ro.boot.simplebench.device)\" = '{}' ] || exit 77; settings put global simplebench_device '{}'; settings put global simplebench_generation '{}'", self.device_id, self.device_id, self.generation_key);
+        let command = format!("[ \"$(getprop ro.boot.lomi.device)\" = '{}' ] || exit 77; settings put global lomi_device '{}'; settings put global lomi_generation '{}'", self.device_id, self.device_id, self.generation_key);
         self.shell(&command).map(|_| ())
     }
 
@@ -201,7 +201,7 @@ impl Guest {
                 return Err("Android input setup cancelled".into());
             }
             if Instant::now() >= deadline {
-                return Err("Android has not registered the SimpleBench keyboard after installation. Stop and Start the phone to retry input setup; its apps and data are preserved.".into());
+                return Err("Android has not registered the Lomi keyboard after installation. Stop and Start the phone to retry input setup; its apps and data are preserved.".into());
             }
             let methods = self.shell_until(&command, deadline, Some(cancel))?;
             if methods.lines().any(|method| method.trim() == INPUT_METHOD) {
@@ -217,7 +217,7 @@ impl Guest {
         // package-change notification. Poll its registry before enabling the IME.
         self.wait_for_input_registration(cancel, Instant::now() + Duration::from_secs(15))?;
         self.shell_until(
-            &(guard.clone() + "ime disable org.simplebench.input/.SimpleBenchInput"),
+            &(guard.clone() + "ime disable org.lomi.input/.LomiInput"),
             Instant::now() + Duration::from_secs(5),
             Some(cancel),
         )?;
@@ -242,7 +242,7 @@ impl Guest {
             std::thread::sleep(Duration::from_millis(100));
         }
         self.shell_until(
-            &(guard + "ime enable org.simplebench.input/.SimpleBenchInput && ime set org.simplebench.input/.SimpleBenchInput"),
+            &(guard + "ime enable org.lomi.input/.LomiInput && ime set org.lomi.input/.LomiInput"),
             Instant::now() + Duration::from_secs(5),
             Some(cancel),
         )?;
@@ -348,7 +348,7 @@ impl Guest {
         let mut socket = self.server.select(self.console_port)?;
         socket.deadline =
             Instant::now() + Duration::from_secs(if operation == "ping" { 2 } else { 5 });
-        request(&mut socket, "localabstract:simplebench.input.v1")?;
+        request(&mut socket, "localabstract:lomi.input.v1")?;
         let data = serde_json::to_vec(&serde_json::json!({"version":1,"id":1,"deviceId":self.device_id,"generationKey":self.generation_key,"action":operation,"text":text})).map_err(error)?;
         if data.len() > 65536 {
             return Err("Encoded Android text exceeds the bridge message limit.".into());
@@ -391,17 +391,17 @@ impl Guest {
 
     pub fn prepare_input(&self, cancel: &Arc<AtomicBool>) -> Result<(), String> {
         use sha2::{Digest, Sha256};
-        let apk = include_bytes!("../../android-input/simplebench-input.apk");
+        let apk = include_bytes!("../../android-input/lomi-input.apk");
         let manifest: serde_json::Value =
             serde_json::from_str(include_str!("../../android-input/artifact.json"))
                 .map_err(error)?;
         let hash = format!("{:x}", Sha256::digest(apk));
         if manifest["apkSha256"].as_str() != Some(&hash) {
-            return Err("The bundled Android keyboard is damaged. Reinstall SimpleBench.".into());
+            return Err("The bundled Android keyboard is damaged. Reinstall Lomi.".into());
         }
         // The path is produced and quoted entirely inside the owned guest. No
         // frontend path, application filename or command enters this shell.
-        let installed = self.shell(&(self.guard()? + "path=$(pm path org.simplebench.input); case \"$path\" in package:/data/app/*/base.apk) sha256sum \"${path#package:}\" ;; *) printf missing ;; esac"))?;
+        let installed = self.shell(&(self.guard()? + "path=$(pm path org.lomi.input); case \"$path\" in package:/data/app/*/base.apk) sha256sum \"${path#package:}\" ;; *) printf missing ;; esac"))?;
         if installed.split_whitespace().next() != Some(hash.as_str()) {
             self.install_bytes(&mut std::io::Cursor::new(apk), apk.len() as u64, cancel)?;
         }
@@ -510,7 +510,7 @@ mod tests {
             manifest["apkSha256"],
             format!(
                 "{:x}",
-                Sha256::digest(include_bytes!("../../android-input/simplebench-input.apk"))
+                Sha256::digest(include_bytes!("../../android-input/lomi-input.apk"))
             )
         );
         for (path, expected) in manifest["sources"].as_object().unwrap() {
@@ -578,7 +578,7 @@ mod tests {
                 let mut socket = transport();
                 assert_eq!(
                     read_string(&mut socket, 256).unwrap(),
-                    "localabstract:simplebench.input.v1"
+                    "localabstract:lomi.input.v1"
                 );
                 socket.write_all(b"OKAY").unwrap();
                 let mut length = [0; 4];
@@ -604,15 +604,30 @@ mod tests {
 
     #[test]
     fn input_setup_waits_for_registration_before_selecting_and_authenticating_keyboard() {
-        let (guest, worker) = input_fixture(vec![
-            ("ime list -a -s", "com.android.inputmethod.latin/.LatinIME\n", 0),
-            ("ime list -a -s", "org.simplebench.input/.SimpleBenchInputOther\n", 0),
-            ("ime list -a -s", "org.simplebench.input/.SimpleBenchInput\n", 0),
-            ("ime disable org.simplebench.input/.SimpleBenchInput", "disabled", 0),
-            ("settings get secure default_input_method", INPUT_METHOD, 0),
-            ("settings get secure default_input_method", "com.android.inputmethod.latin/.LatinIME", 0),
-            ("ime enable org.simplebench.input/.SimpleBenchInput && ime set org.simplebench.input/.SimpleBenchInput", "enabled and selected", 0),
-        ], true);
+        let (guest, worker) = input_fixture(
+            vec![
+                (
+                    "ime list -a -s",
+                    "com.android.inputmethod.latin/.LatinIME\n",
+                    0,
+                ),
+                ("ime list -a -s", "org.lomi.input/.LomiInputOther\n", 0),
+                ("ime list -a -s", "org.lomi.input/.LomiInput\n", 0),
+                ("ime disable org.lomi.input/.LomiInput", "disabled", 0),
+                ("settings get secure default_input_method", INPUT_METHOD, 0),
+                (
+                    "settings get secure default_input_method",
+                    "com.android.inputmethod.latin/.LatinIME",
+                    0,
+                ),
+                (
+                    "ime enable org.lomi.input/.LomiInput && ime set org.lomi.input/.LomiInput",
+                    "enabled and selected",
+                    0,
+                ),
+            ],
+            true,
+        );
         guest
             .enable_input(&Arc::new(AtomicBool::new(false)))
             .unwrap();
@@ -757,10 +772,8 @@ mod tests {
                 );
                 socket.write_all(b"OKAY").unwrap();
                 let command = read_string(&mut socket, 1024).unwrap();
-                assert!(
-                    command.starts_with("shell,v2,raw:[ \"$(getprop ro.boot.simplebench.device)\"")
-                );
-                assert!(command.contains("settings get global simplebench_generation"));
+                assert!(command.starts_with("shell,v2,raw:[ \"$(getprop ro.boot.lomi.device)\""));
+                assert!(command.contains("settings get global lomi_generation"));
                 assert!(command.ends_with("|| exit 77; sync && printf SBSD && svc power shutdown"));
                 socket.write_all(b"OKAY").unwrap();
                 if ack {
@@ -782,10 +795,9 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Powers off only the isolated SIMPLEBENCH_ANDROID_PROBE_DIRECTORY fixture"]
+    #[ignore = "Powers off only the isolated LOMI_ANDROID_PROBE_DIRECTORY fixture"]
     fn native_guarded_shutdown() {
-        let root =
-            std::path::PathBuf::from(std::env::var("SIMPLEBENCH_ANDROID_PROBE_DIRECTORY").unwrap());
+        let root = std::path::PathBuf::from(std::env::var("LOMI_ANDROID_PROBE_DIRECTORY").unwrap());
         let consent: serde_json::Value =
             serde_json::from_slice(&std::fs::read(root.join("evidence/consent.json")).unwrap())
                 .unwrap();
@@ -798,17 +810,22 @@ mod tests {
         };
         guest.claim_generation().unwrap();
         assert!(guest.booted().unwrap());
-        guest.shell(&(guest.guard().unwrap() + "printf simplebench-rust-shutdown > /data/local/tmp/simplebench-rust-shutdown")).unwrap();
+        guest
+            .shell(
+                &(guest.guard().unwrap()
+                    + "printf lomi-rust-shutdown > /data/local/tmp/lomi-rust-shutdown"),
+            )
+            .unwrap();
         guest.request_shutdown().unwrap();
         std::fs::write(root.join("evidence/native-rust-shutdown.json"),
-            b"{\"requested\":true,\"exitVerified\":false,\"marker\":\"/data/local/tmp/simplebench-rust-shutdown\"}").unwrap();
+            b"{\"requested\":true,\"exitVerified\":false,\"marker\":\"/data/local/tmp/lomi-rust-shutdown\"}").unwrap();
     }
 
     #[test]
-    #[ignore = "Requires SIMPLEBENCH_ANDROID_PROBE_DIRECTORY and the owned native fixture"]
+    #[ignore = "Requires LOMI_ANDROID_PROBE_DIRECTORY and the owned native fixture"]
     fn native_transport_identity_and_install() {
         let root = std::path::PathBuf::from(
-            std::env::var("SIMPLEBENCH_ANDROID_PROBE_DIRECTORY")
+            std::env::var("LOMI_ANDROID_PROBE_DIRECTORY")
                 .expect("Start the isolated Android probe first"),
         );
         let consent: serde_json::Value =
@@ -835,7 +852,7 @@ mod tests {
             .unwrap();
         guest.open_settings().unwrap();
         guest
-            .shell(&(guest.guard().unwrap() + "am start -n org.simplebench.inputtest/.InputTest"))
+            .shell(&(guest.guard().unwrap() + "am start -n org.lomi.inputtest/.InputTest"))
             .unwrap();
         std::thread::sleep(Duration::from_secs(1));
         guest
@@ -849,7 +866,7 @@ mod tests {
         guest.text("delete", "").unwrap();
         guest.text("commit", "語").unwrap();
         guest.text("finish", "").unwrap();
-        let screen = guest.shell(&(guest.guard().unwrap() + "uiautomator dump /data/local/tmp/simplebench-input-check.xml >/dev/null && cat /data/local/tmp/simplebench-input-check.xml && rm /data/local/tmp/simplebench-input-check.xml")).unwrap();
+        let screen = guest.shell(&(guest.guard().unwrap() + "uiautomator dump /data/local/tmp/lomi-input-check.xml >/dev/null && cat /data/local/tmp/lomi-input-check.xml && rm /data/local/tmp/lomi-input-check.xml")).unwrap();
         assert!(
             screen.contains("text=\"Zażółć gęślą jaźń日本語\""),
             "Guest editor did not preserve Unicode and composition: {screen}"

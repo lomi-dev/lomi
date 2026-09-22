@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "SimpleBench",
+  "productName": "Lomi",
   "version": "0.4.0",
-  "identifier": "dev.simplebench.desktop",
+  "identifier": "dev.lomi.desktop",
   "build": {
     "beforeDevCommand": "pnpm ai:prepare && pnpm dev",
     "devUrl": "http://127.0.0.1:1420",
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "SimpleBench",
+        "title": "Lomi",
         "width": 1440,
         "height": 900,
         "minWidth": 800,
@@ -26,12 +26,7 @@
       }
     ],
     "security": {
-      "capabilities": [
-        "default",
-        "settings",
-        "browser",
-        "updater"
-      ],
+      "capabilities": ["default", "settings", "browser", "updater"],
       "csp": "default-src 'self'; script-src 'self' plugin: http://plugin.localhost https://plugin.localhost; connect-src 'self' ipc: http://ipc.localhost; style-src 'self' plugin: http://plugin.localhost https://plugin.localhost 'unsafe-inline' theme: http://theme.localhost https://theme.localhost; img-src 'self' plugin: http://plugin.localhost https://plugin.localhost data: theme: http://theme.localhost https://theme.localhost; font-src 'self' plugin: http://plugin.localhost https://plugin.localhost theme: http://theme.localhost https://theme.localhost; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
       "devCsp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost ws://127.0.0.1:1420; script-src 'self' 'unsafe-inline' plugin: http://plugin.localhost https://plugin.localhost; style-src 'self' plugin: http://plugin.localhost https://plugin.localhost 'unsafe-inline' theme: http://theme.localhost https://theme.localhost; img-src 'self' plugin: http://plugin.localhost https://plugin.localhost data: theme: http://theme.localhost https://theme.localhost; font-src 'self' plugin: http://plugin.localhost https://plugin.localhost theme: http://theme.localhost https://theme.localhost; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
     }
@@ -50,9 +45,7 @@
       "icons/icon.ico"
     ],
     "createUpdaterArtifacts": true,
-    "externalBin": [
-      "binaries/simplebench-node"
-    ],
+    "externalBin": ["binaries/lomi-node"],
     "resources": {
       "resources/ai-runtime/index.cjs": "ai-runtime/index.cjs",
       "resources/ai-runtime/NODE-LICENSE": "ai-runtime/NODE-LICENSE",
@@ -64,7 +57,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/MaciejKolerski/simplebench/releases/latest/download/latest.json"
+        "https://github.com/lomi-dev/lomi/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDZFMUJCRUUyNzczMEREOEMKUldTTTNUQjM0cjRiYm12T1JxbEo3Y213ZEFyVHVnNENNdU4rc0tHQklCUTZ6aGhhYVFqbytVWE4K",
       "windows": {

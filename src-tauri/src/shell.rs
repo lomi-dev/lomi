@@ -302,9 +302,9 @@ pub fn prepare(path: &Path) -> Result<(), String> {
         fs::write(path.join(name), content).map_err(|error| error.to_string())?;
     }
     // Zsh reads .zshenv before .zshrc; forward the user's original file as well.
-    fs::write(path.join("zsh/.zshenv"), "[[ -f \"${SIMPLEBENCH_ZDOTDIR:-$HOME}/.zshenv\" ]] && source \"${SIMPLEBENCH_ZDOTDIR:-$HOME}/.zshenv\"\n").map_err(|error| error.to_string())?;
+    fs::write(path.join("zsh/.zshenv"), "[[ -f \"${LOMI_ZDOTDIR:-$HOME}/.zshenv\" ]] && source \"${LOMI_ZDOTDIR:-$HOME}/.zshenv\"\n").map_err(|error| error.to_string())?;
     // Login zsh reads this before .zshrc restores the user's ZDOTDIR.
-    fs::write(path.join("zsh/.zprofile"), "[[ -f \"${SIMPLEBENCH_ZDOTDIR:-$HOME}/.zprofile\" ]] && source \"${SIMPLEBENCH_ZDOTDIR:-$HOME}/.zprofile\"\n").map_err(|error| error.to_string())?;
+    fs::write(path.join("zsh/.zprofile"), "[[ -f \"${LOMI_ZDOTDIR:-$HOME}/.zprofile\" ]] && source \"${LOMI_ZDOTDIR:-$HOME}/.zprofile\"\n").map_err(|error| error.to_string())?;
     Ok(())
 }
 
@@ -346,11 +346,11 @@ pub fn build(
             "env",
             "TERM=xterm-256color",
             "COLORTERM=truecolor",
-            "TERM_PROGRAM=SimpleBench",
+            "TERM_PROGRAM=Lomi",
         ]);
         if profile.kind == "zsh" {
             command.arg(format!("ZDOTDIR={}", join("zsh")));
-            command.arg(format!("SIMPLEBENCH_ZDOTDIR={}", profile.home));
+            command.arg(format!("LOMI_ZDOTDIR={}", profile.home));
         }
         command.arg(&profile.program);
         command
@@ -361,14 +361,14 @@ pub fn build(
     };
     command.env("TERM", "xterm-256color");
     command.env("COLORTERM", "truecolor");
-    command.env("TERM_PROGRAM", "SimpleBench");
+    command.env("TERM_PROGRAM", "Lomi");
     match profile.kind.as_str() {
         "bash" => {
             command.args(["--rcfile", &join("bash.sh"), "-i"]);
         }
         "zsh" => {
             command.env(
-                "SIMPLEBENCH_ZDOTDIR",
+                "LOMI_ZDOTDIR",
                 env::var("ZDOTDIR").unwrap_or_else(|_| profile.home.clone()),
             );
             command.env("ZDOTDIR", join("zsh"));
@@ -618,7 +618,7 @@ mod tests {
         let integration = directory.path().join("integration");
         fs::write(
             directory.path().join(".bashrc"),
-            "PS1='[woro@woro-home simplebench]$ '\n",
+            "PS1='[woro@woro-home lomi]$ '\n",
         )
         .unwrap();
         prepare(&integration).unwrap();
@@ -700,24 +700,20 @@ mod tests {
         let config = directory.path().join("shell config #50%? żółć");
         let integration = directory.path().join("integration");
         fs::create_dir(&config).unwrap();
-        fs::write(
-            config.join(".zshenv"),
-            "export SIMPLEBENCH_TEST_ORDER=env\n",
-        )
-        .unwrap();
+        fs::write(config.join(".zshenv"), "export LOMI_TEST_ORDER=env\n").unwrap();
         fs::write(
             config.join(".zprofile"),
-            "export SIMPLEBENCH_TEST_ORDER=$SIMPLEBENCH_TEST_ORDER,profile\n",
+            "export LOMI_TEST_ORDER=$LOMI_TEST_ORDER,profile\n",
         )
         .unwrap();
         fs::write(
             config.join(".zshrc"),
-            "export SIMPLEBENCH_TEST_ORDER=$SIMPLEBENCH_TEST_ORDER,rc\nPROMPT='ready> '\n",
+            "export LOMI_TEST_ORDER=$LOMI_TEST_ORDER,rc\nPROMPT='ready> '\n",
         )
         .unwrap();
         fs::write(
             config.join(".zlogin"),
-            "export SIMPLEBENCH_TEST_ORDER=$SIMPLEBENCH_TEST_ORDER,login\n",
+            "export LOMI_TEST_ORDER=$LOMI_TEST_ORDER,login\n",
         )
         .unwrap();
         prepare(&integration).unwrap();
@@ -731,7 +727,7 @@ mod tests {
         };
         let (mut command, _) = build(&profile, &config.to_string_lossy(), &integration).unwrap();
         // Isolate the spawned shell without changing the test process's environment.
-        command.env("SIMPLEBENCH_ZDOTDIR", &config);
+        command.env("LOMI_ZDOTDIR", &config);
         command.env_remove("HISTFILE");
         let pair = portable_pty::native_pty_system()
             .openpty(portable_pty::PtySize {
@@ -752,7 +748,7 @@ mod tests {
             let _ = send.send(String::from_utf8_lossy(&output).into_owned());
         });
         writer
-            .write_all(b"printf '\\nORDER=%s\\n' \"$SIMPLEBENCH_TEST_ORDER\"; cd ..\rexit\r")
+            .write_all(b"printf '\\nORDER=%s\\n' \"$LOMI_TEST_ORDER\"; cd ..\rexit\r")
             .unwrap();
         let output = receive.recv_timeout(Duration::from_secs(10));
         let _ = child.kill();

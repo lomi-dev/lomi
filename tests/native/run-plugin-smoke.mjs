@@ -6,7 +6,7 @@ import { createServer } from "node:http";
 import { newSession, newProject, newBrowserTab } from "../../src/model.ts";
 import { pluginSDKSpec } from "../../scripts/plugin-sdk-dependency.mjs";
 const root = resolve(import.meta.dirname, "../..");
-const directory = await mkdtemp(join(tmpdir(), "simplebench-native-"));
+const directory = await mkdtemp(join(tmpdir(), "lomi-native-"));
 const run = (args, cwd) => {
   const result = spawnSync("pnpm", args, { cwd, encoding: "utf8" });
   if (result.status !== 0) throw new Error(result.stdout + result.stderr);
@@ -35,7 +35,7 @@ await writeFile(
 const data = join(directory, "data"),
   config = join(directory, "config"),
   cache = join(directory, "cache");
-const appData = join(data, "dev.simplebench.desktop");
+const appData = join(data, "dev.lomi.desktop");
 await mkdir(appData, { recursive: true });
 const folder = join(directory, "project żółć");
 await mkdir(folder);
@@ -64,7 +64,7 @@ await writeFile(join(appData, "session.json"), JSON.stringify(session));
 const report = join(directory, "result.json");
 console.log(`Native proof artifacts: ${directory}`);
 const binary = resolve(
-  process.argv[2] ?? join(root, "src-tauri/target/release/simplebench"),
+  process.argv[2] ?? join(root, "src-tauri/target/release/lomi"),
 );
 const child = spawn(binary, [], {
   cwd: root,
@@ -73,8 +73,8 @@ const child = spawn(binary, [], {
     XDG_DATA_HOME: data,
     XDG_CONFIG_HOME: config,
     XDG_CACHE_HOME: cache,
-    SIMPLEBENCH_PLUGIN_SMOKE_PACKAGE: join(author, "package"),
-    SIMPLEBENCH_PLUGIN_SMOKE_REPORT: report,
+    LOMI_PLUGIN_SMOKE_PACKAGE: join(author, "package"),
+    LOMI_PLUGIN_SMOKE_REPORT: report,
   },
   stdio: ["ignore", "pipe", "pipe"],
 });
@@ -107,8 +107,8 @@ else {
       XDG_DATA_HOME: data,
       XDG_CONFIG_HOME: config,
       XDG_CACHE_HOME: cache,
-      SIMPLEBENCH_PLUGIN_SMOKE_PACKAGE: join(author, "package"),
-      SIMPLEBENCH_PLUGIN_SMOKE_REPORT: safeReport,
+      LOMI_PLUGIN_SMOKE_PACKAGE: join(author, "package"),
+      LOMI_PLUGIN_SMOKE_REPORT: safeReport,
     },
     stdio: ["ignore", "ignore", "ignore"],
   });

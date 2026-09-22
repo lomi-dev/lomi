@@ -7,20 +7,17 @@ import {
 } from "../src/agent-notifications.ts";
 import { newProject, newSession, newWorkspace } from "../src/model.ts";
 
-test("only explicit SimpleBench Claude signals can trigger agent notifications", () => {
+test("only explicit Lomi Claude signals can trigger agent notifications", () => {
   for (const signal of ["working", "attention", "finished"])
-    assert.equal(
-      parseAgentSignal(`notify;SimpleBench;claude;${signal}`),
-      signal,
-    );
+    assert.equal(parseAgentSignal(`notify;Lomi;claude;${signal}`), signal);
   for (const invalid of [
     "",
     "finished",
     "notify;Other;claude;finished",
-    "notify;SimpleBench;other;finished",
-    "notify;SimpleBench;claude;finished;extra",
-    "notify;SimpleBench;claude;finished\n",
-    "notify;SimpleBench;claude;" + "x".repeat(10000),
+    "notify;Lomi;other;finished",
+    "notify;Lomi;claude;finished;extra",
+    "notify;Lomi;claude;finished\n",
+    "notify;Lomi;claude;" + "x".repeat(10000),
   ])
     assert.equal(parseAgentSignal(invalid), null);
 });

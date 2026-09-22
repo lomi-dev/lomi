@@ -324,8 +324,8 @@ export default function AndroidPane({
               <>
                 <p>
                   Android setup and Start are unavailable on {snapshot.host} in
-                  this build. Use a SimpleBench build qualified for this
-                  operating system and CPU.
+                  this build. Use a Lomi build qualified for this operating
+                  system and CPU.
                 </p>
                 <button className="button" onClick={setup}>
                   Android settings

@@ -8,7 +8,7 @@ pub async fn collect(manager: Arc<Manager>) -> Result<String, String> {
     }
     tauri::async_runtime::spawn_blocking(move || {
         let directory = manager.directory.lock().map_err(|_| "Android directory failed")?;
-        let mut text = format!("SimpleBench Android diagnostics\nHost: {} / {}\nLogs are limited to 64 KiB each. Authentication lines and managed/home paths are removed.\n\n", std::env::consts::OS, std::env::consts::ARCH);
+        let mut text = format!("Lomi Android diagnostics\nHost: {} / {}\nLogs are limited to 64 KiB each. Authentication lines and managed/home paths are removed.\n\n", std::env::consts::OS, std::env::consts::ARCH);
         let path = installation::checked_path(&directory.root, Path::new("logs"))?;
         if path.exists() {
             for (index, entry) in fs::read_dir(path).map_err(|e| e.to_string())?.enumerate() {

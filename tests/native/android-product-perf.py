@@ -92,8 +92,8 @@ class ProductTrial(base.Trial):
             base.adb_request(connection, "host:transport:emulator-" + str(record["consolePort"]))
             # The fixed fixture commands share their transport with both ownership checks.
             # No ADB executable, shell interpolation of user text or host:kill is used.
-            guard = ('[ "$(getprop ro.boot.simplebench.device)" = "' + device_id + '" ] && '
-                     '[ "$(settings get global simplebench_generation)" = "'
+            guard = ('[ "$(getprop ro.boot.lomi.device)" = "' + device_id + '" ] && '
+                     '[ "$(settings get global lomi_generation)" = "'
                      + record["generationKey"] + '" ] || exit 77; ')
             base.adb_request(connection, "shell,v2,raw:" + guard + command)
             output = bytearray()
@@ -262,7 +262,7 @@ try{
             raise RuntimeError("Cannot identify the owned fixture's private ADB listener")
         apps |= descendants - emulator - adb
         self.options.helpers = sorted(apps - {application})
-        self.groups = dict(simplebench=sorted(apps), emulator=sorted(emulator), adb=sorted(adb))
+        self.groups = dict(lomi=sorted(apps), emulator=sorted(emulator), adb=sorted(adb))
         self.send(script="click('Android actions');await sleep(150);click('Phone settings');await sleep(1000);return true;")
         hide = ("for(const host of document.querySelectorAll('.android-viewport'))host.style.display='none';"
                 if self.options.fixed_layout_baseline else "click(" + json.dumps(self.options.baseline_tab) + ");")

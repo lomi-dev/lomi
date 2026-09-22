@@ -902,7 +902,7 @@ export default function ChatSettingsPage() {
                   <ShieldCheck size={14} />{" "}
                   {editing.secretMode === "system"
                     ? "Your key will be saved in your system credential store."
-                    : "Key kept in memory until SimpleBench closes."}
+                    : "Key kept in memory until Lomi closes."}
                 </p>
                 <details className="chat-advanced">
                   <DisclosureSummary>Advanced options</DisclosureSummary>

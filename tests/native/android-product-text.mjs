@@ -15,7 +15,7 @@ const application = JSON.parse(await readFile(join(root, "application.json")));
 const managed = await realpath(application.managed);
 if (
   basename(root) !== "product" ||
-  !basename(dirname(root)).startsWith("simplebench-android-stage0-") ||
+  !basename(dirname(root)).startsWith("lomi-android-stage0-") ||
   !basename(managed).startsWith("native-managed-") ||
   dirname(managed) !== dirname(root)
 )
@@ -74,7 +74,7 @@ if(!document.hasFocus())throw Error('Activate the product window before native t
 const before=(await invoke('android_state')).statuses.find(s=>s.deviceId===deviceId);
 await invoke('android_probe_product_guest',{deviceId,action:'launch'});
 await sleep(500);
-const read=async()=>new DOMParser().parseFromString(await invoke('android_probe_product_guest',{deviceId,action:'screen'}),'application/xml').querySelector('[content-desc="simplebench-test-editor"]')?.getAttribute('text')??'';
+const read=async()=>new DOMParser().parseFromString(await invoke('android_probe_product_guest',{deviceId,action:'screen'}),'application/xml').querySelector('[content-desc="lomi-test-editor"]')?.getAttribute('text')??'';
 const canvas=document.querySelector('.android-screen');
 if(!canvas||canvas.width<1||canvas.height<=canvas.width||canvas.width*canvas.height>720*1280)throw Error('Use one portrait phone with a bounded preview');
 const rect=canvas.getBoundingClientRect();

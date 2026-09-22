@@ -71,7 +71,7 @@
     );
     const family = getComputedStyle(glyph).fontFamily;
     if (
-      !family.includes("SimpleBench icons") ||
+      !family.includes("Lomi icons") ||
       !document.fonts.check(`16px ${family}`, glyph.textContent) ||
       !glyph.getBBox().width
     )

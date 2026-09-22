@@ -6,7 +6,7 @@ let board = NSPasteboard.general
 let mode = CommandLine.arguments[1]
 let directory = URL(fileURLWithPath: CommandLine.arguments[2])
 let backup = directory.appendingPathComponent("clipboard-backup.plist")
-let marker = NSPasteboard.PasteboardType("dev.simplebench.clipboard-smoke")
+let marker = NSPasteboard.PasteboardType("dev.lomi.clipboard-smoke")
 switch mode {
 case "backup":
     let items = (board.pasteboardItems ?? []).map { item in

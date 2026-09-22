@@ -253,7 +253,7 @@ impl Installer {
             }
             let text = include_str!("../../licenses/android-java.txt").to_string();
             licenses.push(License {
-                id: "simplebench-temurin-21".into(),
+                id: "lomi-temurin-21".into(),
                 digest: format!("{:x}", Sha256::digest(text.as_bytes())),
                 text,
             });
@@ -862,7 +862,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "Installs a real SDK and image in the accepted isolated native trial; retains its managed directory"]
     async fn actual_installer_prepares_clean_sdk_and_cancels_safely_during_exit() {
-        let trial = PathBuf::from(std::env::var_os("SIMPLEBENCH_ANDROID_PROBE_DIRECTORY").unwrap());
+        let trial = PathBuf::from(std::env::var_os("LOMI_ANDROID_PROBE_DIRECTORY").unwrap());
         let consent: serde_json::Value =
             serde_json::from_slice(&fs::read(trial.join("evidence/consent.json")).unwrap())
                 .unwrap();
@@ -897,13 +897,13 @@ mod tests {
         assert!(plan
             .licenses
             .iter()
-            .filter(|license| license.id != "simplebench-temurin-21")
+            .filter(|license| license.id != "lomi-temurin-21")
             .all(|license| consent["sha256"] == license.digest));
         assert_eq!(
             java_consent["licenseSha256"],
             plan.licenses
                 .iter()
-                .find(|license| license.id == "simplebench-temurin-21")
+                .find(|license| license.id == "lomi-temurin-21")
                 .unwrap()
                 .digest
         );

@@ -13,10 +13,8 @@ import { newProject, newSession } from "../../src/model.ts";
 if (process.platform !== "darwin")
   throw Error("This clipboard fixture requires macOS.");
 const repository = resolve(import.meta.dirname, "../..");
-const directory = await mkdtemp(
-  join(tmpdir(), "simplebench-clipboard-native-"),
-);
-const identifier = `dev.simplebench.clipboard-smoke-${Date.now()}`;
+const directory = await mkdtemp(join(tmpdir(), "lomi-clipboard-native-"));
+const identifier = `dev.lomi.clipboard-smoke-${Date.now()}`;
 const appData = join(homedir(), "Library/Application Support", identifier);
 const projectFolder = join(directory, "project with spaces");
 await mkdir(projectFolder);
@@ -58,7 +56,7 @@ try:
 finally: termios.tcsetattr(0,termios.TCSADRAIN,old)
 `,
 );
-const port = Number(process.env.SIMPLEBENCH_CLIPBOARD_SMOKE_PORT ?? 1434);
+const port = Number(process.env.LOMI_CLIPBOARD_SMOKE_PORT ?? 1434);
 const config = join(directory, "config.json");
 await writeFile(
   config,
@@ -86,9 +84,9 @@ const child = spawn(
     cwd: repository,
     env: {
       ...process.env,
-      SIMPLEBENCH_CLIPBOARD_SMOKE_DIRECTORY: directory,
+      LOMI_CLIPBOARD_SMOKE_DIRECTORY: directory,
       ...(process.argv.includes("--agents")
-        ? { SIMPLEBENCH_CLIPBOARD_SMOKE_AGENTS: "1" }
+        ? { LOMI_CLIPBOARD_SMOKE_AGENTS: "1" }
         : {}),
     },
     detached: true,

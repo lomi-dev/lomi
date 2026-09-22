@@ -16,9 +16,9 @@ module_spec.loader.exec_module(perf)
 
 def screen():
     return ET.fromstring(perf.adb_shell(
-        "uiautomator dump /data/local/tmp/simplebench-input-check.xml >/dev/null && "
-        "cat /data/local/tmp/simplebench-input-check.xml && "
-        "rm /data/local/tmp/simplebench-input-check.xml"))
+        "uiautomator dump /data/local/tmp/lomi-input-check.xml >/dev/null && "
+        "cat /data/local/tmp/lomi-input-check.xml && "
+        "rm /data/local/tmp/lomi-input-check.xml"))
 
 
 def touch_result():
@@ -31,7 +31,7 @@ def touch_result():
 
 def editor_text():
     for node in screen().iter("node"):
-        if node.get("content-desc") == "simplebench-test-editor":
+        if node.get("content-desc") == "lomi-test-editor":
             return node.get("text", "")
     raise AssertionError("The owned guest editor is unavailable")
 
@@ -72,7 +72,7 @@ def run(options):
     control("large-window")
     control("show-views")
     control("renderer", decoder="rgba", surface="webgl")
-    perf.adb_shell("am force-stop org.simplebench.inputtest; am start -n org.simplebench.inputtest/.InputTest")
+    perf.adb_shell("am force-stop org.lomi.inputtest; am start -n org.lomi.inputtest/.InputTest")
     for turn in range(4):
         geometry = orientation(turn)
         control("native-pointer", phase="down", u=0.3, v=0.75)
@@ -100,7 +100,7 @@ def run(options):
     results["letterbox"] = "Margin input did not reach the guest"
     control("fit", enabled=True)
 
-    perf.adb_shell("am force-stop org.simplebench.inputtest; am start -n org.simplebench.inputtest/.InputTest")
+    perf.adb_shell("am force-stop org.lomi.inputtest; am start -n org.lomi.inputtest/.InputTest")
     time.sleep(1)
     control("native-text", operation="commit", text="Zażółć gęślą jaźń")
     control("native-text", operation="compose", text="に")

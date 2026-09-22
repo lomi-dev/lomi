@@ -48,7 +48,7 @@ impl Directory {
             .open(path)
             .map_err(|e| e.to_string())?;
         lock.try_lock().map_err(|error| match error {
-            fs::TryLockError::WouldBlock => "Another SimpleBench process owns this Android directory. Close its Android session and retry.".into(),
+            fs::TryLockError::WouldBlock => "Another Lomi process owns this Android directory. Close its Android session and retry.".into(),
             fs::TryLockError::Error(error) => format!("Cannot lock the Android directory: {error}"),
         })?;
         Ok(Self { root, _lock: lock })
@@ -408,9 +408,9 @@ mod tests {
                     "android::storage::tests::directory_lock_child",
                     "--ignored",
                 ])
-                .env("SIMPLEBENCH_LOCK_TEST_DIRECTORY", &root)
+                .env("LOMI_LOCK_TEST_DIRECTORY", &root)
                 .env(
-                    "SIMPLEBENCH_LOCK_TEST_AVAILABLE",
+                    "LOMI_LOCK_TEST_AVAILABLE",
                     if available { "1" } else { "0" },
                 )
                 .output()
@@ -429,9 +429,8 @@ mod tests {
     #[test]
     #[ignore = "Subprocess fixture for directory_lock_is_shared_between_processes"]
     fn directory_lock_child() {
-        let path =
-            std::env::var_os("SIMPLEBENCH_LOCK_TEST_DIRECTORY").expect("Missing test directory");
-        let available = std::env::var("SIMPLEBENCH_LOCK_TEST_AVAILABLE").unwrap() == "1";
+        let path = std::env::var_os("LOMI_LOCK_TEST_DIRECTORY").expect("Missing test directory");
+        let available = std::env::var("LOMI_LOCK_TEST_AVAILABLE").unwrap() == "1";
         assert_eq!(Directory::acquire(path.into()).is_ok(), available);
     }
 

@@ -932,13 +932,13 @@ async function execute(task) {
     dpr: devicePixelRatio,
   });
   mount();
-  let last = sessionStorage.getItem("simplebench.android.probe.last");
+  let last = sessionStorage.getItem("lomi.android.probe.last");
   for (;;) {
     try {
       const task = await control("instruction");
       if (task.id && task.id !== last) {
         last = task.id;
-        sessionStorage.setItem("simplebench.android.probe.last", task.id);
+        sessionStorage.setItem("lomi.android.probe.last", task.id);
         try {
           const result = await execute(task);
           await report(task.id, { ok: true, result });
