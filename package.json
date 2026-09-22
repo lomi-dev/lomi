@@ -75,7 +75,7 @@
     "react-slot-fill": "file:vendor/react-slot-fill",
     "remark-gfm": "^4.0.1",
     "xterm-theme": "1.1.0",
-    "@lomi-dev/plugin-sdk": "https://github.com/lomi-dev/plugin-sdk/releases/download/v1.1.0-alpha.0/lomi-dev-plugin-sdk-1.1.0-alpha.0.tgz"
+    "@lomi-dev/plugin-sdk": "1.1.0-alpha.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",

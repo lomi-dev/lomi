@@ -6,12 +6,11 @@ Public types are imported from the package root; runtime validators use the pure
 `/manifest` and `/shortcuts` exports. The application's React context and host
 implementation stay in `src/plugins`. There is no local SDK source package.
 
-The initial dependency uses the exact SDK 1.1.0-alpha.0 GitHub prerelease archive
-and a SHA-512 integrity entry in `pnpm-lock.yaml`. A clean checkout installs with
-`pnpm install --frozen-lockfile`, without cloning SDK or building it during
-installation. npm scope authentication is still pending. After registry
-publication, replace the archive URL with the same verified exact version and
-commit the regenerated lockfile. Do not substitute a floating range or Git branch.
+The application pins SDK 1.1.0-alpha.0 from npm, with SHA-512 integrity in
+`pnpm-lock.yaml`. Registry bytes match the original tested GitHub prerelease
+archive. A clean checkout installs with `pnpm install --frozen-lockfile`, without
+cloning SDK or building it during installation. Do not substitute a floating
+range or Git branch.
 
 Vite bundles the validators needed by the host. The installed application does
 not fetch SDK code from npm or GitHub. Build helpers and Node-only package tools

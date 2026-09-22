@@ -78,8 +78,8 @@ importers:
         specifier: ^1.2.3
         version: 1.2.3
       '@lomi-dev/plugin-sdk':
-        specifier: https://github.com/lomi-dev/plugin-sdk/releases/download/v1.1.0-alpha.0/lomi-dev-plugin-sdk-1.1.0-alpha.0.tgz
-        version: https://github.com/lomi-dev/plugin-sdk/releases/download/v1.1.0-alpha.0/lomi-dev-plugin-sdk-1.1.0-alpha.0.tgz(postcss@8.5.28)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: 1.1.0-alpha.0
+        version: 1.1.0-alpha.0(postcss@8.5.28)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@tauri-apps/api':
         specifier: ^2.11.1
         version: 2.11.1
@@ -212,8 +212,8 @@ importers:
   tests/fixtures/context-plugin:
     dependencies:
       '@lomi-dev/plugin-sdk':
-        specifier: https://github.com/lomi-dev/plugin-sdk/releases/download/v1.1.0-alpha.0/lomi-dev-plugin-sdk-1.1.0-alpha.0.tgz
-        version: https://github.com/lomi-dev/plugin-sdk/releases/download/v1.1.0-alpha.0/lomi-dev-plugin-sdk-1.1.0-alpha.0.tgz(postcss@8.5.28)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: 1.1.0-alpha.0
+        version: 1.1.0-alpha.0(postcss@8.5.28)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react:
         specifier: 19.2.8
         version: 19.2.8
@@ -571,9 +571,8 @@ packages:
   '@lezer/yaml@1.0.4':
     resolution: {integrity: sha512-2lrrHqxalACEbxIbsjhqGpSW8kWpUKuY6RHgnSAFZa6qK62wvnPxA8hGOwOoDbwHcOFs5M4o27mjGu+P7TvBmw==}
 
-  '@lomi-dev/plugin-sdk@https://github.com/lomi-dev/plugin-sdk/releases/download/v1.1.0-alpha.0/lomi-dev-plugin-sdk-1.1.0-alpha.0.tgz':
-    resolution: {integrity: sha512-s2O6kglthBqjn/AYP1UzPrjDpT3oRKOxn55VwrmypyN9B273IfRGB4vAK0jlo2brerxJhji/zTDdeq13Dgr5TA==, tarball: https://github.com/lomi-dev/plugin-sdk/releases/download/v1.1.0-alpha.0/lomi-dev-plugin-sdk-1.1.0-alpha.0.tgz}
-    version: 1.1.0-alpha.0
+  '@lomi-dev/plugin-sdk@1.1.0-alpha.0':
+    resolution: {integrity: sha512-s2O6kglthBqjn/AYP1UzPrjDpT3oRKOxn55VwrmypyN9B273IfRGB4vAK0jlo2brerxJhji/zTDdeq13Dgr5TA==}
     engines: {node: '>=22.14.0'}
     peerDependencies:
       react: 19.2.8
@@ -2302,7 +2301,7 @@ snapshots:
       '@lezer/highlight': 1.2.3
       '@lezer/lr': 1.4.10
 
-  '@lomi-dev/plugin-sdk@https://github.com/lomi-dev/plugin-sdk/releases/download/v1.1.0-alpha.0/lomi-dev-plugin-sdk-1.1.0-alpha.0.tgz(postcss@8.5.28)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@lomi-dev/plugin-sdk@1.1.0-alpha.0(postcss@8.5.28)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
       es-module-lexer: 1.7.0
       tsup: 8.5.1(postcss@8.5.28)(typescript@7.0.2)

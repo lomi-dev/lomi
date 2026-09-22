@@ -9,7 +9,7 @@
   "dependencies": {
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "@lomi-dev/plugin-sdk": "https://github.com/lomi-dev/plugin-sdk/releases/download/v1.1.0-alpha.0/lomi-dev-plugin-sdk-1.1.0-alpha.0.tgz"
+    "@lomi-dev/plugin-sdk": "1.1.0-alpha.0"
   },
   "devDependencies": {
     "tsup": "8.5.1",
