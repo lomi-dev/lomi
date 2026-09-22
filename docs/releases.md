@@ -8,8 +8,11 @@ did not exist when this workflow was prepared on 2026-09-11.
 
 ## Release workflow
 
-`.github/workflows/release.yml` is named **publish** and follows Simple Voice's
-tag-triggered `publish-tauri` matrix:
+`.github/workflows/release.yml` is the only GitHub Actions workflow. It is
+named **publish** and starts when a version tag matching `v*` is pushed.
+Branch pushes and pull requests do not start a workflow, and there is no
+manual dispatch trigger. Create release tags using the `vX.Y.Z` format below.
+The workflow follows Simple Voice's `publish-tauri` matrix:
 
 1. Start four parallel jobs on `macos-latest` (Apple Silicon), `macos-15-intel`,
    `ubuntu-22.04`, and `windows-latest`.
@@ -24,8 +27,8 @@ tag-triggered `publish-tauri` matrix:
    `releases/vX.Y.Z.md` for the release description and updater notes when present.
 5. After all four builds succeed, validate `latest.json` with
    `scripts/check-updater.mjs` and publish the complete release. Then publish `lomi` and `lomi-bin`
-   to AUR. Retry temporary AUR failures up to three times; the **publish AUR**
-   workflow can also be started independently for an existing release.
+   to AUR in the same workflow. Retry temporary AUR failures up to three times;
+   failed AUR jobs can be rerun from that release's workflow run.
 6. Notify Flathub only when `FLATHUB_TOKEN` is configured.
 
 The release stays a draft if a platform fails or updater metadata is incomplete.
@@ -186,9 +189,10 @@ For a source change after publication, use a new version. Never move a tag alrea
 used by a published release. The first Apple notarization can take considerably
 longer than later submissions; Tauri waits for Apple's response.
 
-If GitHub publication succeeded but AUR failed, run **publish AUR** with the
-same tag. It only accepts the latest stable release, avoiding an accidental
-package downgrade. The `SKIP` checksums in the upstream PKGBUILD templates are
+If GitHub publication succeeded but AUR failed, rerun the failed `publish-aur`
+jobs in the existing **publish** run. They only accept the latest stable
+release, avoiding an accidental package downgrade. The `SKIP` checksums in
+the upstream PKGBUILD templates are
 replaced before anything is sent to AUR; published package recipes contain the
 real SHA-256 values. Arch's standard package hooks maintain desktop and icon
 caches without custom install scripts.
