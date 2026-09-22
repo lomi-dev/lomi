@@ -6,14 +6,18 @@ Public types are imported from the package root; runtime validators use the pure
 `/manifest` and `/shortcuts` exports. The application's React context and host
 implementation stay in `src/plugins`. There is no local SDK source package.
 
-The application pins the rebrand candidate SDK 1.1.0-alpha.1. Publish the tested
-archive before installing that version from npm in a clean checkout. During
-local qualification, use the candidate tarball override in a disposable checkout
-as described in the SDK's consumer guide. A candidate archive test does not
-establish npm publication or verify registry installation.
+The application installs SDK 1.1.0-alpha.1 from the packed artifact in
+`vendor/plugin-sdk/`. This version uses the Lomi runtime identity and has not
+been published to npm; the older npm release uses the previous identity.
+The committed archive lets `pnpm install` work in a clean checkout without a
+neighbouring SDK repository or local links. Its source commit and integrity are
+recorded in `vendor/plugin-sdk/release.json`; `pnpm sdk:verify` checks the archive
+and the installed contract. SDK source changes belong in the standalone repository.
 
-The workspace exempts this exact SDK version from pnpm's minimum release age.
-Do not substitute a floating range or Git branch.
+After publishing and verifying this SDK version, replace both file dependencies
+with the exact npm version and regenerate the lockfile. Exempt only that version
+from pnpm's minimum release age if needed. Do not substitute a floating range or
+Git branch. Archive tests do not establish npm publication.
 
 Vite bundles the validators needed by the host. The installed application does
 not fetch SDK code from npm or GitHub. Build helpers and Node-only package tools
@@ -34,8 +38,8 @@ are authoring dependencies and are not imported into the browser entry points.
    Mocked browser tests do not qualify native webview engines.
 
 SDK CI installs candidate tarballs in disposable consumer checkouts using an
-explicit `LOMI_SDK_TARBALL` override. Normal application CI requires a qualified
-external pin and verifies the snapshot byte-for-byte, including on Windows.
+explicit `LOMI_SDK_TARBALL` override. Normal application CI uses the pinned package
+and verifies the snapshot byte-for-byte, including on Windows.
 
 For rollback, revert the dependency, lockfile and fixture snapshot together.
 Keep the previous SDK release available and rerun the same checks. The rebrand intentionally changes runtime identity; previously built plugins

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile, writeFile, lstat } from "node:fs/promises";
 import { resolve } from "node:path";
+import { createHash } from "node:crypto";
 import { compatibility } from "@lomi-dev/plugin-sdk/compatibility";
 
 const root = resolve(import.meta.dirname, "..");
@@ -35,18 +36,40 @@ const fixture = JSON.parse(
   ),
 );
 const spec = application.dependencies[metadata.name];
+const normalizeSpec = (value, directory) =>
+  value?.startsWith("file:")
+    ? `file:${resolve(directory, value.slice(5))}`
+    : value;
 assert.equal(
-  fixture.dependencies[metadata.name],
-  spec,
+  normalizeSpec(
+    fixture.dependencies[metadata.name],
+    resolve(root, "tests/fixtures/context-plugin"),
+  ),
+  normalizeSpec(spec, root),
   "The app and its fixture must pin the same SDK.",
 );
 const archiveURL = `https://github.com/lomi-dev/plugin-sdk/releases/download/v${metadata.version}/lomi-dev-plugin-sdk-${metadata.version}.tgz`;
 const candidate =
   process.env.LOMI_SDK_TARBALL &&
   spec === `file:${resolve(process.env.LOMI_SDK_TARBALL)}`;
+const bundled =
+  spec === `file:vendor/plugin-sdk/lomi-dev-plugin-sdk-${metadata.version}.tgz`;
+if (bundled) {
+  const release = JSON.parse(
+    await readFile(resolve(root, "vendor/plugin-sdk/release.json"), "utf8"),
+  );
+  const archive = await readFile(resolve(root, spec.slice(5)));
+  assert.equal(release.name, metadata.name);
+  assert.equal(release.version, metadata.version);
+  assert.equal(
+    release.integrity,
+    `sha512-${createHash("sha512").update(archive).digest("base64")}`,
+    "The bundled SDK archive differs from its recorded release integrity.",
+  );
+}
 assert.ok(
-  spec === metadata.version || spec === archiveURL || candidate,
-  "Pin an exact SDK version or qualified release URL. Local archives are allowed only with an explicit LOMI_SDK_TARBALL override.",
+  spec === metadata.version || spec === archiveURL || bundled || candidate,
+  "Pin an exact SDK version, qualified release URL or verified bundled archive. Other local archives require an explicit LOMI_SDK_TARBALL override.",
 );
 await assert.rejects(lstat(resolve(root, "packages/plugin-sdk")), {
   code: "ENOENT",
