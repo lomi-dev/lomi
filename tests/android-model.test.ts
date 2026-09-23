@@ -121,3 +121,32 @@ test("Android descriptors survive docking, file changes and all supported sessio
   );
   assert.deepEqual(androidTabs(changed), [android]);
 });
+
+test("manual Android start survives persistence and rejects unknown modes", () => {
+  const project = newProject("/project", "shell");
+  const phone = {
+    ...newAndroidTab("12345678-1234-4567-8123-123456789abc"),
+    startMode: "manual" as const,
+  };
+  project.workspaces[0].tabs = [phone];
+  project.workspaces[0].activeTabId = phone.id;
+  const session = {
+    ...newSession(),
+    projects: [project],
+    activeProjectId: project.id,
+  };
+  const info = {
+    directory: "/project",
+    home: "/home",
+    platform: "linux",
+    profiles: [],
+  };
+  assert.equal(
+    androidTabs(restoreSession(JSON.parse(JSON.stringify(session)), info))[0]
+      .startMode,
+    "manual",
+  );
+  const invalid = JSON.parse(JSON.stringify(session));
+  invalid.projects[0].workspaces[0].tabs[0].startMode = "automatic";
+  assert.throws(() => restoreSession(invalid, info), /Android start mode/);
+});

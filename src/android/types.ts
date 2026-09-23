@@ -138,7 +138,17 @@ export type Changed =
   | { kind: "operation"; value: Progress }
   | { kind: "status"; value: Status }
   | { kind: "stream"; value: StreamStatus }
-  | { kind: "inputError"; value: string };
+  | { kind: "inputError"; value: string }
+  | {
+      kind: "inputControl";
+      value: {
+        deviceId: string;
+        generation: string;
+        controlled: boolean;
+        viewId?: string | null;
+        leaseId?: string | null;
+      };
+    };
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const control = /[\u0000-\u001f\u007f-\u009f]/;

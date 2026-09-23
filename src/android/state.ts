@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { api, errorMessage, native } from "../api";
 import { parseDevices, parsePreferences } from "./types";
 import type {
@@ -11,11 +12,17 @@ import type {
 } from "./types";
 
 interface State {
+  agentInput: Record<string, string | undefined>;
   snapshot: Snapshot | null;
   loading: boolean;
   error: string;
 }
-let state: State = { snapshot: null, loading: false, error: "" };
+let state: State = {
+  snapshot: null,
+  loading: false,
+  error: "",
+  agentInput: {},
+};
 const subscribers = new Set<() => void>();
 const eventListeners = new Set<(event: Changed) => void>();
 let stop: (() => void) | undefined;
@@ -69,7 +76,7 @@ export function refreshAndroid(): Promise<void> {
         }
         if (progressEvent && progressEvent.sequence > before)
           snapshot.operation = progressEvent.value;
-        publish({ snapshot, loading: false, error: "" });
+        publish({ ...state, snapshot, loading: false, error: "" });
         break;
       }
     } catch (error) {
@@ -82,6 +89,17 @@ export function refreshAndroid(): Promise<void> {
 }
 
 function receive(event: Changed) {
+  if (event.kind === "inputControl") {
+    publish({
+      ...state,
+      agentInput: {
+        ...state.agentInput,
+        [event.value.deviceId]: event.value.controlled
+          ? event.value.generation
+          : undefined,
+      },
+    });
+  }
   changes++;
   if (event.kind === "metadata") metadataChanges++;
   if (event.kind === "status")
@@ -155,7 +173,13 @@ function subscribe(listener: () => void) {
   if (subscribers.size === 1) {
     const current = ++connection;
     if (native)
-      void listen<Changed>("android-changed", ({ payload }) => receive(payload))
+      void listen<Changed>(
+        "android-changed",
+        ({ payload }) => {
+          if (current === connection) receive(payload);
+        },
+        { target: { kind: "Webview", label: getCurrentWebview().label } },
+      )
         .then((unlisten) => {
           if (current !== connection) unlisten();
           else {

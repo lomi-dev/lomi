@@ -416,14 +416,22 @@ pub fn change_index(root: &str, paths: &[String], stage: bool) -> Result<(), Str
     let has_head = command(&root, &["rev-parse", "--verify", "HEAD"])?
         .status
         .success();
-    let mut args = if stage {
-        vec!["--literal-pathspecs", "add", "--"]
-    } else if has_head {
-        vec!["--literal-pathspecs", "restore", "--staged", "--"]
-    } else {
-        vec!["--literal-pathspecs", "rm", "--cached", "--"]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    let owned = lomi_control_core::git_execution::index_arguments(paths, stage, has_head);
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    let args: Vec<&str> = owned.iter().map(String::as_str).collect();
+    #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+    let args = {
+        let mut args = if stage {
+            vec!["--literal-pathspecs", "add", "--"]
+        } else if has_head {
+            vec!["--literal-pathspecs", "restore", "--staged", "--"]
+        } else {
+            vec!["--literal-pathspecs", "rm", "--cached", "--"]
+        };
+        args.extend(paths.iter().map(String::as_str));
+        args
     };
-    args.extend(paths.iter().map(String::as_str));
     checked_repository(&root, &args)?;
     Ok(())
 }

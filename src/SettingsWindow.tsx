@@ -30,13 +30,18 @@ import type { ActionId, Keybindings } from "./keybindings";
 import { useKeybindings } from "./KeybindingsProvider";
 import ReadyWindow from "./ReadyWindow";
 import { useWindowZoom } from "./useWindowZoom";
+import { useProtectedTheme } from "./useProtectedTheme";
 
 const AndroidSettingsPage = lazy(() => import("./android/AndroidSettingsPage"));
+const AgentControlSettingsPage = lazy(
+  () => import("./AgentControlSettingsPage"),
+);
 
 export default function SettingsWindow() {
   const [page, setPage] = useState(() => {
     const requested = new URLSearchParams(window.location.search).get("page");
     return requested === "android" ||
+      requested === "agent-control" ||
       requested === "chat-ai" ||
       requested === "plugins" ||
       requested === "editor" ||
@@ -47,6 +52,7 @@ export default function SettingsWindow() {
       : "keybinds";
   });
   const preferences = useKeybindings();
+  useProtectedTheme(page === "agent-control");
   const [listening, setListening] = useState(!native);
   const [recording, setRecording] = useState<ActionId | null>(null);
   const [busy, setBusy] = useState(false);
@@ -63,6 +69,7 @@ export default function SettingsWindow() {
         current &&
         [
           "android",
+          "agent-control",
           "chat-ai",
           "keybinds",
           "editor",
@@ -227,8 +234,26 @@ export default function SettingsWindow() {
             <Info size={16} />
             About
           </button>
+          <button
+            className="settings-nav-item"
+            aria-current={page === "agent-control" ? "page" : undefined}
+            onClick={() => setPage("agent-control")}
+          >
+            <Code size={16} />
+            Agent control
+          </button>
         </nav>
-        {page === "android" ? (
+        {page === "agent-control" ? (
+          <Suspense
+            fallback={
+              <main className="keybindings-page" role="status">
+                Loading agent control…
+              </main>
+            }
+          >
+            <AgentControlSettingsPage />
+          </Suspense>
+        ) : page === "android" ? (
           <Suspense
             fallback={
               <main className="keybindings-page" role="status">

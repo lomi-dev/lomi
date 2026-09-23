@@ -7,6 +7,10 @@ use std::{
 };
 use tauri::{Manager, State, Window};
 
+#[cfg(unix)]
+pub(crate) mod agent;
+#[cfg(unix)]
+pub(crate) mod agent_image;
 pub mod editor;
 pub mod images;
 pub mod markdown;

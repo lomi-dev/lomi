@@ -312,3 +312,47 @@ test("server results stream before scan completion and stay cached across browse
   await expect(list.getByRole("status")).toHaveCount(0);
   await expect(list.getByRole("option")).toHaveText(["http://localhost:4000"]);
 });
+
+test("late browser state cannot erase a newer navigation error", async ({
+  page,
+}) => {
+  await mockDesktop(page, false);
+  await page.goto("/");
+  await expect(page.locator(".xterm-screen")).toBeVisible();
+  await page.getByRole("button", { name: /^New tab/ }).click();
+  await page.getByRole("menuitem", { name: "New browser" }).click();
+  const address = page.getByRole("combobox", { name: "Web address" });
+  await address.fill("https://example.com");
+  await address.press("Enter");
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__nativeTest.browsers.size))
+    .toBe(1);
+  await page.evaluate(async () => {
+    const native = (window as any).__nativeTest;
+    const browser = [...native.browsers.values()][0] as any;
+    browser.revision = "9007199254740993";
+    browser.error = "Navigation blocked by agent browser permissions.";
+    await native.emitEvent("browser-page", { ...browser });
+    await native.emitEvent("browser-page", {
+      ...browser,
+      revision: "9007199254740992",
+      error: "",
+    });
+  });
+  await expect(page.getByRole("alert")).toHaveText(
+    "Navigation blocked by agent browser permissions.",
+  );
+  await page.setViewportSize({ width: 850, height: 500 });
+  await expect(page.getByRole("alert")).toHaveText(
+    "Navigation blocked by agent browser permissions.",
+  );
+  await page.screenshot({ path: "test-results/browser-navigation-denied.png" });
+  await page.evaluate(async () => {
+    const native = (window as any).__nativeTest;
+    const browser = [...native.browsers.values()][0] as any;
+    browser.revision = "9007199254740994";
+    browser.error = "";
+    await native.emitEvent("browser-page", { ...browser });
+  });
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});

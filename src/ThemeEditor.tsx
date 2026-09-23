@@ -452,6 +452,7 @@ export default function ThemeEditor({
       </form>
       {discard && (
         <Modal
+          protectTheme
           title="Discard theme changes?"
           tone="warning"
           onClose={() => setDiscard(false)}

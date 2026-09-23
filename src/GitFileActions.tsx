@@ -189,6 +189,7 @@ export function useGitFileActions(props: {
       )}
       {discard && (
         <Modal
+          protectTheme
           title="Discard Changes"
           tone="danger"
           onClose={() => {

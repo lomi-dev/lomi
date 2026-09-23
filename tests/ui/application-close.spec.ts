@@ -20,6 +20,7 @@ async function actions(page: Page) {
         .filter((call: any) =>
           [
             "android_exit",
+            "agent_control_closing",
             "save_session",
             "restart_plugins",
             "plugin:window|destroy",
@@ -28,10 +29,51 @@ async function actions(page: Page) {
         .map((call: any) =>
           call.command === "android_exit"
             ? call.args.action.type
-            : call.command,
+            : call.command === "agent_control_closing"
+              ? `agent-control:${call.args.closing ? "freeze" : "resume"}`
+              : call.command,
         ) as string[],
   );
 }
+
+test("a pending autosave cannot run after the final close save and resumes after cancellation", async ({
+  page,
+}) => {
+  await prepare(page);
+  await page.locator(".xterm-helper-textarea").focus();
+  await page.keyboard.press("Control+d");
+  await expect(page.locator(".xterm-screen")).toHaveCount(2);
+  await page.evaluate(() => {
+    const mock = (window as any).__nativeTest;
+    mock.calls.length = 0;
+    void mock.emitEvent("tauri://close-requested");
+  });
+  const progress = page.getByRole("dialog", { name: "Preparing to close" });
+  await expect(progress).toBeVisible();
+  await expect.poll(() => actions(page)).toContain("finish");
+  await page.keyboard.press("Escape");
+  await expect(progress).toHaveCount(0);
+  const order = await actions(page);
+  const duringShutdown = order.slice(0, order.indexOf("resume"));
+  expect(
+    duringShutdown.filter((action) => action === "save_session"),
+  ).toHaveLength(1);
+  expect(duringShutdown.lastIndexOf("save_session")).toBeLessThan(
+    duringShutdown.indexOf("finish"),
+  );
+  const count = order.filter((action) => action === "save_session").length;
+  await page.locator(".xterm-helper-textarea").last().focus();
+  await page.keyboard.press("Control+d");
+  await expect(page.locator(".xterm-screen")).toHaveCount(3);
+  await expect
+    .poll(
+      async () =>
+        (await actions(page)).filter((action) => action === "save_session")
+          .length,
+    )
+    .toBeGreaterThan(count);
+  expect(await actions(page)).not.toContain("plugin:window|destroy");
+});
 
 for (const event of ["tauri://close-requested", "plugin-restart-request"]) {
   test(`${event} can cancel after saving and waits for native stop before releasing its gate`, async ({
@@ -55,9 +97,15 @@ for (const event of ["tauri://close-requested", "plugin-restart-request"]) {
     await expect(progress).toContainText("Stopped phones will stay stopped");
     await expect(progress).toHaveCount(0);
     const order = await actions(page);
+    expect(order.indexOf("agent-control:freeze")).toBeLessThan(
+      order.indexOf("begin"),
+    );
     expect(order.indexOf("begin")).toBeLessThan(order.indexOf("save_session"));
     expect(order.indexOf("save_session")).toBeLessThan(order.indexOf("finish"));
     expect(order.indexOf("finish")).toBeLessThan(order.indexOf("resume"));
+    expect(order.indexOf("resume")).toBeLessThan(
+      order.indexOf("agent-control:resume"),
+    );
     expect(order).not.toContain("restart_plugins");
     expect(order).not.toContain("plugin:window|destroy");
     await expect

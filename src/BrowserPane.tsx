@@ -189,6 +189,16 @@ export default function BrowserPane({
           }
         }}
       >
+        {page.agentControlled && (
+          <button
+            type="button"
+            className="browser-control"
+            onClick={() => run({ type: "takeControl" })}
+            title="End agent access and keep browsing in this isolated profile."
+          >
+            Agent · Take control
+          </button>
+        )}
         <IconButton
           title="Back"
           disabled={tab.url === "about:blank"}

@@ -354,6 +354,13 @@ export async function mockAndroid(page: Page, prepared = false) {
           return;
         }
         if (command === "android_ack_frame") return;
+        if (command === "android_agent_input_blur") {
+          await desktop.__nativeTest.emitEvent("android-changed", {
+            kind: "inputControl",
+            value: { deviceId: args.deviceId, generation, controlled: false },
+          });
+          return;
+        }
         if (
           ["android_install_apk", "android_save_screenshot"].includes(command)
         ) {
@@ -361,6 +368,15 @@ export async function mockAndroid(page: Page, prepared = false) {
             await new Promise<void>((resolve) => {
               desktop.__androidTest.finishFileAction = resolve;
             });
+          return;
+        }
+        if (command === "android_take_control") {
+          desktop.__androidTest.takeControls =
+            (desktop.__androidTest.takeControls ?? 0) + 1;
+          await desktop.__nativeTest.emitEvent("android-changed", {
+            kind: "inputControl",
+            value: { deviceId: args.deviceId, generation, controlled: false },
+          });
           return;
         }
         if (command === "android_input") {

@@ -5,6 +5,7 @@ import type { FileTab } from "./model";
 import { imagePreviewType } from "./image-preview";
 import ResourceIcon from "./ResourceIcon";
 import { IconButton } from "./ui";
+import { useAgentPreview } from "./agent-preview";
 
 export default function ImagePreview({
   tab,
@@ -19,6 +20,7 @@ export default function ImagePreview({
   sourceText?: string;
   children?: ReactNode;
 }) {
+  const prepared = useAgentPreview(tab.id)?.image;
   const [source, setSource] = useState("");
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
@@ -43,7 +45,14 @@ export default function ImagePreview({
       if (current)
         setError("Cannot read this image. Try reloading it from disk.");
     };
-    if (sourceText !== undefined) {
+    if (sourceText === undefined && tab.agentPreview) {
+      if (prepared)
+        setSource(`data:${prepared.mimeType};base64,${prepared.dataBase64}`);
+      else
+        setError(
+          "Reopen this preview through Agent control to load the image.",
+        );
+    } else if (sourceText !== undefined) {
       reader.readAsDataURL(
         new Blob([sourceText], { type: "image/svg+xml;charset=utf-8" }),
       );
@@ -65,7 +74,7 @@ export default function ImagePreview({
       current = false;
       reader.abort();
     };
-  }, [tab.root, tab.relative, sourceText, attempt]);
+  }, [tab.root, tab.relative, tab.agentPreview, prepared, sourceText, attempt]);
 
   useEffect(() => {
     if (
@@ -116,7 +125,7 @@ export default function ImagePreview({
           </IconButton>
           <button
             className="button"
-            title="Actual size"
+            title={prepared ? "Preview pixels" : "Actual size"}
             disabled={!ready}
             aria-pressed={zoom === 1}
             onClick={() => setZoom(1)}
@@ -139,7 +148,7 @@ export default function ImagePreview({
           >
             Fit
           </button>
-          {sourceText === undefined && (
+          {sourceText === undefined && !tab.agentPreview && (
             <IconButton
               title="Reload image from disk"
               onClick={() => setAttempt((value) => value + 1)}

@@ -55,6 +55,29 @@ function projectSession() {
   return { ...newSession(), projects: [project], activeProjectId: project.id };
 }
 
+test("isolated browser restoration preserves its profile and rejects a malformed descriptor", () => {
+  const session = projectSession();
+  const workspace = session.projects[0].workspaces[0];
+  const tab = {
+    ...newBrowserTab("https://example.com"),
+    automation: { generation: "a".repeat(32), profileId: "b".repeat(32) },
+  };
+  workspace.tabs = [tab];
+  workspace.activeTabId = tab.id;
+  const restored = active(
+    restoreSession(JSON.parse(JSON.stringify(session)), info),
+  )!.tab;
+  assert.equal(restored.type, "browser");
+  if (restored.type !== "browser") throw Error("Expected browser");
+  assert.deepEqual(restored.automation, tab.automation);
+  const invalid = JSON.parse(JSON.stringify(session));
+  invalid.projects[0].workspaces[0].tabs[0].automation.profileId = "../shared";
+  assert.throws(
+    () => restoreSession(invalid, info),
+    /Invalid isolated browser descriptor/,
+  );
+});
+
 test("untitled files keep distinct identities and become ordinary persisted file views", () => {
   const session = projectSession();
   const workspace = session.projects[0].workspaces[0];

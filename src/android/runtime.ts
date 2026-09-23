@@ -44,6 +44,7 @@ interface Stream {
   active: boolean;
   frame: number;
   pending?: ArrayBuffer;
+  replacementUntil?: number;
   channel: Channel<ArrayBuffer>;
 }
 const views = new Map<string, View>();
@@ -64,6 +65,11 @@ let stopEvents: (() => void) | undefined;
 let nativeEvents: (() => void) | undefined;
 let viewEpoch = 0;
 let mainVisible = true;
+let visibilityRevision = 0;
+let agentInput:
+  | { deviceId: string; viewId: string; generation: string; leaseId: string }
+  | undefined;
+let agentObserver: MutationObserver | undefined;
 let scheduled = 0;
 const errors = new Map<string, string>();
 const observers = new Set<() => void>();
@@ -273,9 +279,10 @@ function schedule() {
     }, 60);
 }
 
-async function disconnect(deviceId: string, stream: Stream) {
+async function disconnect(deviceId: string, stream: Stream, replacing = false) {
   stream.active = false;
   if (streams.get(deviceId) === stream) streams.delete(deviceId);
+  if (!replacing) checkAgentInput();
   cancelAnimationFrame(stream.frame);
   if (stream.pending) {
     releaseFrame(stream.pending);
@@ -302,6 +309,7 @@ function disposeView(view: View) {
 function detach(view: View) {
   if (views.get(view.id) !== view) return;
   views.delete(view.id);
+  checkAgentInput();
   view.resize.disconnect();
   view.cleanupViewport?.();
   disposeView(view);
@@ -321,26 +329,111 @@ function detach(view: View) {
   } else schedule();
 }
 function blur() {
+  releaseAgentInput();
   void releaseInput().catch((reason) =>
     reportAndroidError(errorMessage(reason)),
   );
+  visibility();
+}
+
+export function agentInputReady(viewId: string, generation: string) {
+  const view = views.get(viewId);
+  const stream = view && streams.get(view.deviceId);
+  return !!(
+    agentInputContextReady(viewId, generation) &&
+    stream?.active &&
+    stream.generation === generation &&
+    stream.epoch &&
+    !stream.replacementUntil
+  );
+}
+function agentInputContextReady(viewId: string, generation: string) {
+  const view = views.get(viewId);
+  if (
+    !mainVisible ||
+    !view?.visible ||
+    view.generation !== generation ||
+    !view.metadata ||
+    !view.renderer?.element.isConnected
+  )
+    return false;
+  const rect = view.host.getBoundingClientRect();
+  if (
+    rect.width <= 0 ||
+    rect.height <= 0 ||
+    rect.right <= 0 ||
+    rect.bottom <= 0 ||
+    rect.left >= window.innerWidth ||
+    rect.top >= window.innerHeight ||
+    getComputedStyle(view.host).visibility === "hidden" ||
+    view.overview ||
+    document.querySelector('dialog[open], [role="dialog"], [role="menu"]')
+  )
+    return false;
+  const active = document.activeElement;
+  return (
+    !active?.closest(
+      'input, textarea, select, [contenteditable]:not([contenteditable="false"])',
+    ) || active === view.input
+  );
+}
+function releaseAgentInput() {
+  const current = agentInput;
+  agentInput = undefined;
+  agentObserver?.disconnect();
+  agentObserver = undefined;
+  document.removeEventListener("focusin", checkAgentInput);
+  if (current)
+    void api("android_agent_input_blur", {
+      deviceId: current.deviceId,
+      leaseId: current.leaseId,
+    }).catch((reason) => reportAndroidError(errorMessage(reason)));
+}
+function checkAgentInput() {
+  if (!agentInput || agentInputReady(agentInput.viewId, agentInput.generation))
+    return;
+  const stream = streams.get(agentInput.deviceId);
+  // An intentional same-generation resize pauses input until the replacement
+  // frame arrives. It must not turn rotation into a loss of input ownership.
+  if (
+    stream?.active &&
+    stream.generation === agentInput.generation &&
+    stream.replacementUntil &&
+    performance.now() < stream.replacementUntil &&
+    agentInputContextReady(agentInput.viewId, agentInput.generation)
+  )
+    return;
+  releaseAgentInput();
 }
 function visibility() {
   if (!views.size) return;
   const epoch = viewEpoch;
+  const revision = ++visibilityRevision;
   void (
     native
       ? Promise.all([
           getCurrentWindow().isVisible(),
           getCurrentWindow().isMinimized(),
-        ]).then(([visible, minimized]) => visible && !minimized)
-      : Promise.resolve(true)
+          getCurrentWindow().isFocused(),
+        ]).then(
+          ([visible, minimized, focused]) =>
+            visible &&
+            !minimized &&
+            (document.visibilityState !== "hidden" || focused),
+        )
+      : Promise.resolve(document.visibilityState !== "hidden")
   )
     .then((visible) => {
-      if (!views.size || epoch !== viewEpoch) return;
-      mainVisible = visible && document.visibilityState !== "hidden";
+      if (!views.size || epoch !== viewEpoch || revision !== visibilityRevision)
+        return;
+      // A focused native window may outlive WK's stale visibility event. A
+      // hidden document without native focus (including screen lock) stays idle.
+      mainVisible = visible;
       if (!mainVisible) {
-        blur();
+        releaseAgentInput();
+        void releaseInput().catch((reason) =>
+          reportAndroidError(errorMessage(reason)),
+        );
         for (const [id, stream] of streams) void disconnect(id, stream);
         for (const view of views.values()) disposeView(view);
       }
@@ -384,6 +477,38 @@ export function mount(
   resize.observe(host);
   if (!stopEvents) {
     stopEvents = observeAndroid((event) => {
+      if (event.kind === "inputControl") {
+        const value = event.value;
+        if (
+          value.controlled &&
+          agentInput &&
+          agentInput.deviceId === value.deviceId &&
+          agentInput.generation === value.generation &&
+          agentInput.viewId === value.viewId &&
+          agentInput.leaseId === value.leaseId
+        ) {
+          checkAgentInput();
+          return;
+        }
+        releaseAgentInput();
+        if (value.controlled && value.viewId && value.leaseId) {
+          agentInput = {
+            deviceId: value.deviceId,
+            generation: value.generation,
+            viewId: value.viewId,
+            leaseId: value.leaseId,
+          };
+          agentObserver = new MutationObserver(checkAgentInput);
+          agentObserver.observe(document.body, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ["open", "role", "hidden", "class", "style"],
+          });
+          document.addEventListener("focusin", checkAgentInput);
+          checkAgentInput();
+        }
+      }
       if (event.kind === "metadata") {
         schedule();
         return;
@@ -430,7 +555,8 @@ export function mount(
     if (!androidSnapshot()?.qualified) return;
     if (visited.get(tab.id) !== tab.deviceId) {
       visited.set(tab.id, tab.deviceId!);
-      if (!restarting.has(tab.deviceId!))
+      notify();
+      if (tab.startMode !== "manual" && !restarting.has(tab.deviceId!))
         void start(tab.deviceId!).catch(() => {});
     }
     schedule();
@@ -632,6 +758,7 @@ async function synchronize() {
     )
       wanted.set(view.deviceId, size);
   }
+  checkAgentInput();
   for (const [deviceId, stream] of streams)
     if (!wanted.has(deviceId)) void disconnect(deviceId, stream);
   for (const [deviceId, size] of wanted) {
@@ -639,7 +766,8 @@ async function synchronize() {
     const old = streams.get(deviceId);
     if (old?.generation === size.generation && old.size === key) continue;
     if (errors.get(deviceId)) continue;
-    if (old) void disconnect(deviceId, old);
+    const replacing = old?.active && old.generation === size.generation;
+    if (old) void disconnect(deviceId, old, replacing);
     const generation = generationBytes(size.generation);
     const channel = new Channel<ArrayBuffer>();
     const stream: Stream = {
@@ -649,8 +777,13 @@ async function synchronize() {
       active: true,
       frame: 0,
       channel,
+      replacementUntil: replacing ? performance.now() + 5000 : undefined,
     };
     streams.set(deviceId, stream);
+    if (replacing)
+      window.setTimeout(() => {
+        if (streams.get(deviceId) === stream) checkAgentInput();
+      }, 5000);
     channel.onmessage = (bytes) => {
       if (!stream.active || streams.get(deviceId) !== stream || !mainVisible) {
         releaseFrame(bytes);
@@ -666,9 +799,19 @@ async function synchronize() {
         return;
       }
       stream.pending = bytes;
-      stream.frame = requestAnimationFrame(() => {
+      const render = () => {
+        // Disconnect owns and releases a queued frame. A microtask cannot be
+        // cancelled, so it must never draw, ACK or release that frame again.
+        if (stream.pending !== bytes) return;
         stream.pending = undefined;
+        stream.frame = 0;
         try {
+          if (
+            !stream.active ||
+            streams.get(deviceId) !== stream ||
+            !mainVisible
+          )
+            return;
           const frame = decodeFrame(bytes, generation);
           if (stream.epoch && stream.epoch !== frame.epoch) return;
           stream.epoch = frame.epoch;
@@ -722,6 +865,8 @@ async function synchronize() {
             for (const target of targets)
               if (target !== primary)
                 target.view.renderer!.draw(frame, source.element, target);
+            stream.replacementUntil = undefined;
+            checkAgentInput();
           }
           void api("android_ack_frame", {
             deviceId,
@@ -739,7 +884,10 @@ async function synchronize() {
         } finally {
           releaseFrame(bytes);
         }
-      });
+      };
+      if (native && document.visibilityState === "hidden")
+        queueMicrotask(render);
+      else stream.frame = requestAnimationFrame(render);
     };
     void api<number>("android_subscribe_frames", {
       deviceId,

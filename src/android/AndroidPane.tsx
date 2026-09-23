@@ -418,6 +418,23 @@ export default function AndroidPane({
           </div>
         )}
       </div>
+      {running &&
+        tab.deviceId &&
+        state.agentInput[tab.deviceId] === status?.generation &&
+        status?.generation && (
+          <button
+            className="button android-agent-control"
+            disabled={busy}
+            onClick={() =>
+              void act(async () => {
+                await api("android_take_control", { deviceId: tab.deviceId });
+                input.current?.focus({ preventScroll: true });
+              })
+            }
+          >
+            Agent input · Take control
+          </button>
+        )}
       <textarea
         ref={input}
         className="android-input"
@@ -573,6 +590,7 @@ export default function AndroidPane({
       )}
       {force && device && (
         <Modal
+          protectTheme
           className="android-dialog"
           title={`Force stop ${device.name}?`}
           onClose={() => setForce(false)}

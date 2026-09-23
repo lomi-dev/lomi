@@ -9,7 +9,7 @@ use tauri::{ipc::Response, Window};
 const FILE_LIMIT: u64 = 32 * 1024 * 1024;
 const PIXEL_LIMIT: u64 = 16 * 1024 * 1024;
 // Serial decoding bounds concurrent allocations when several panels open at once.
-static READ_LOCK: Mutex<()> = Mutex::new(());
+pub(super) static READ_LOCK: Mutex<()> = Mutex::new(());
 
 fn converted_format(extension: &str) -> Result<Option<ImageFormat>, String> {
     Ok(match extension {

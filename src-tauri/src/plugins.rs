@@ -381,7 +381,10 @@ fn preferences(root: &Path) -> Result<Preferences, String> {
     if !path.exists() {
         return Ok(Preferences::default());
     }
-    let data: Preferences = serde_json::from_slice(&read(&path, JSON_LIMIT)?)
+    parse_preferences(&read(&path, JSON_LIMIT)?)
+}
+fn parse_preferences(bytes: &[u8]) -> Result<Preferences, String> {
+    let data: Preferences = serde_json::from_slice(bytes)
         .map_err(|e| format!("Plugin preferences are invalid and were preserved: {e}"))?;
     if data.version != 1 || data.packages.len() > 128 {
         return Err("Unsupported plugin preferences; file preserved.".into());
@@ -394,6 +397,102 @@ fn preferences(root: &Path) -> Result<Preferences, String> {
         }
     }
     Ok(data)
+}
+
+#[cfg(unix)]
+#[derive(Serialize)]
+pub(crate) struct ShortcutContribution {
+    id: String,
+    label: String,
+    shortcut: Option<String>,
+}
+
+/// Read immutable shortcut metadata while holding the same lock as package
+/// lifecycle changes. The callback may publish a keybinding CAS under that lock.
+#[cfg(unix)]
+pub(crate) fn with_shortcut_definitions<T, E>(
+    app: &tauri::AppHandle,
+    check: &dyn Fn() -> Result<(), lomi_control_protocol::ErrorCode>,
+    apply: impl FnOnce(String, Vec<ShortcutContribution>) -> Result<T, E>,
+) -> Result<T, E>
+where
+    E: From<lomi_control_protocol::ErrorCode>,
+{
+    use crate::settings_control::PreferenceSource;
+    use lomi_control_core::project_files::ProjectDirectory;
+    use lomi_control_protocol::ErrorCode;
+    let state = app.state::<Plugins>();
+    let _guard = state
+        .inner
+        .lock()
+        .map_err(|_| ErrorCode::StorageUnavailable)?;
+    check()?;
+    let source = PreferenceSource::open(app, "plugins/installed.json", JSON_LIMIT as u64, check)?;
+    let prefs = source
+        .bytes
+        .as_deref()
+        .map(parse_preferences)
+        .transpose()
+        .map_err(|_| ErrorCode::UnsupportedCapability)?
+        .unwrap_or_default();
+    let directory = app
+        .path()
+        .app_data_dir()
+        .map_err(|_| ErrorCode::StorageUnavailable)?
+        .canonicalize()
+        .map_err(|_| ErrorCode::StorageUnavailable)?;
+    let root = ProjectDirectory::open(&directory)?;
+    let mut hash = Sha256::new();
+    hash.update(source.revision.as_deref().unwrap_or("missing").as_bytes());
+    let mut contributions = Vec::new();
+    for (id, installed) in prefs.packages {
+        check()?;
+        let relative = format!("plugins/{id}/{}/plugin.json", installed.revision);
+        hash.update(id.as_bytes());
+        hash.update(installed.revision.as_bytes());
+        match root
+            .open_file(&relative, JSON_LIMIT as u64)
+            .and_then(|file| file.read_bytes(JSON_LIMIT as u64, check))
+        {
+            Ok(bytes) => {
+                hash.update(Sha256::digest(&bytes));
+                if let Ok(manifest) = manifest(&bytes) {
+                    for command in manifest.contributes.commands {
+                        contributions.push(ShortcutContribution {
+                            shortcut: manifest
+                                .contributes
+                                .keybindings
+                                .iter()
+                                .find(|b| b.command == command.id)
+                                .and_then(|b| b.shortcut.clone()),
+                            id: command.id,
+                            label: command.label,
+                        });
+                        if contributions.len() > 4096 {
+                            return Err(ErrorCode::ResourceExhausted.into());
+                        }
+                    }
+                }
+            }
+            // A missing or invalid package has no commands in the existing provider.
+            Err(
+                ErrorCode::TargetNotFound
+                | ErrorCode::ScopeDenied
+                | ErrorCode::UnsupportedCapability,
+            ) => hash.update(b"unavailable"),
+            Err(error) => return Err(error.into()),
+        }
+    }
+    if serde_json::to_vec(&contributions)
+        .map_err(|_| ErrorCode::ResourceExhausted)?
+        .len()
+        > 256 * 1024
+    {
+        return Err(ErrorCode::ResourceExhausted.into());
+    }
+    check()?;
+    root.check()?;
+    apply(format!("{:x}", hash.finalize()), contributions)
 }
 fn revision(value: &str) -> Result<(), String> {
     if value.len() != 64

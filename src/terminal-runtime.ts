@@ -38,6 +38,7 @@ interface Snapshot {
   titleBusy: boolean;
   agentSignal: AgentSignal | null;
   foregroundProgram: string;
+  agentControlled: boolean;
   error: string | null;
   cwd: string;
   renderer: "WebGL" | "DOM";
@@ -56,6 +57,7 @@ export interface TerminalContext {
   cwd: string | null;
   foregroundProgram: string | null;
   titleCli: TitleProcess | null;
+  agentControlled?: boolean;
 }
 type DirectoryListener = (id: string, cwd: string) => void;
 let directoryListener: DirectoryListener = () => {};
@@ -70,8 +72,39 @@ export function configureTerminals(
   reportError = onError;
 }
 
+interface AgentTerminalStart {
+  sessionId: string;
+  operationId: string;
+  nonce: string;
+}
+const agentStarts = new Map<string, AgentTerminalStart>();
+export function stageAgentTerminal(panelId: string, start: AgentTerminalStart) {
+  if (agentStarts.has(panelId) || runtimes.has(panelId))
+    throw new Error("Terminal already exists.");
+  agentStarts.set(panelId, start);
+}
+export const clearAgentTerminal = (panelId: string) =>
+  agentStarts.delete(panelId);
+export async function waitForAgentTerminal(panelId: string, sessionId: string) {
+  const deadline = performance.now() + 20000;
+  while (performance.now() < deadline) {
+    const runtime = runtimes.get(panelId);
+    if (runtime) {
+      if (runtime.sessionId !== sessionId)
+        throw new Error("Terminal generation changed.");
+      const status = runtime.getSnapshot().status;
+      if (status === "running") return;
+      if (status === "error" || status === "exited")
+        throw new Error("Terminal could not start.");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error("Terminal panel could not render.");
+}
+
 export class TerminalRuntime {
-  readonly sessionId = newId();
+  readonly sessionId: string;
+  private readonly agentStart?: AgentTerminalStart;
   readonly terminal: Terminal;
   readonly fitAddon = new FitAddon();
   readonly searchAddon = new SearchAddon();
@@ -96,6 +129,8 @@ export class TerminalRuntime {
   private pendingResize?: { cols: number; rows: number };
   private resizing = false;
   private unacknowledged = 0;
+  private controlStreamSequence = 0n;
+  private controlParsedSequence = 0n;
   private ackTimer: ReturnType<typeof setTimeout> | undefined;
   private listeners = new Set<() => void>();
   private snapshot: Snapshot;
@@ -111,12 +146,16 @@ export class TerminalRuntime {
     readonly profile: ShellProfile,
     cwd: string,
   ) {
+    this.agentStart = agentStarts.get(paneId);
+    agentStarts.delete(paneId);
+    this.sessionId = this.agentStart?.sessionId ?? newId();
     this.snapshot = {
       status: "starting",
       title: "",
       titleBusy: false,
       agentSignal: null,
       foregroundProgram: "",
+      agentControlled: false,
       error: null,
       cwd,
       renderer: "DOM",
@@ -280,6 +319,47 @@ export class TerminalRuntime {
       this.listeners.delete(listener);
     };
   };
+  /** Read the same parsed buffer that the retained visible xterm renders. */
+  controlScreen(maxBytes: number) {
+    const terminal = this.terminal;
+    if (this.disposed || terminal.rows > 1024 || terminal.cols > 1024)
+      return null;
+    const buffer = terminal.buffer.active;
+    const encoder = new TextEncoder();
+    let text = "";
+    let bytes = 0;
+    let truncated = false;
+    outer: for (let row = 0; row < terminal.rows; row++) {
+      const line =
+        (row ? "\n" : "") +
+        (buffer.getLine(buffer.viewportY + row)?.translateToString(true) ?? "");
+      for (const scalar of line) {
+        const size = encoder.encode(scalar).length;
+        if (bytes + size > maxBytes) {
+          truncated = true;
+          break outer;
+        }
+        bytes += size;
+        text += scalar;
+      }
+    }
+    const cursorRow = buffer.baseY + buffer.cursorY - buffer.viewportY;
+    return {
+      columns: terminal.cols,
+      rows: terminal.rows,
+      cursorColumn: Math.min(buffer.cursorX, terminal.cols - 1),
+      cursorRow: Math.max(0, Math.min(cursorRow, terminal.rows - 1)),
+      cursorVisible: cursorRow >= 0 && cursorRow < terminal.rows,
+      viewportOffset: buffer.viewportY,
+      buffer: buffer.type,
+      text,
+      truncated,
+      parsedSequence: String(this.controlParsedSequence),
+      streamSequence: String(this.controlStreamSequence),
+      parserPending: this.controlParsedSequence < this.controlStreamSequence,
+    };
+  }
+
   readonly getSnapshot = () => this.snapshot;
   async prepareCloseCheck() {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -303,6 +383,19 @@ export class TerminalRuntime {
       ]);
     } finally {
       clearTimeout(timer);
+    }
+  }
+  observeControl(agentControlled: boolean) {
+    if (agentControlled !== this.snapshot.agentControlled)
+      this.update({ agentControlled });
+  }
+  async takeControl() {
+    try {
+      await api("take_terminal_control", { id: this.sessionId });
+      this.observeControl(false);
+      this.terminal.focus();
+    } catch (error) {
+      reportError(errorMessage(error));
     }
   }
   observeForegroundProgram(value: string | null) {
@@ -535,8 +628,10 @@ export class TerminalRuntime {
           this.finishExit();
           return;
         }
+        const controlSequence = ++this.controlStreamSequence;
         // Output stays outside React; acknowledgements follow xterm's parser callback.
         this.terminal.write(bytes, () => {
+          this.controlParsedSequence = controlSequence;
           this.receivedOutput = true;
           this.unacknowledged += bytes.length;
           if (this.unacknowledged >= 32 * 1024) this.acknowledge();
@@ -558,6 +653,12 @@ export class TerminalRuntime {
             cwd: this.snapshot.cwd,
             cols: this.terminal.cols,
             rows: this.terminal.rows,
+            agentTicket: this.agentStart
+              ? {
+                  operationId: this.agentStart.operationId,
+                  nonce: this.agentStart.nonce,
+                }
+              : null,
           },
           output,
           exited,
@@ -628,6 +729,7 @@ export class TerminalRuntime {
   }
 
   private async writeInput(data: string) {
+    this.observeControl(false);
     // Accept titles after submission even when a shell has no pre-execution hook.
     if (data === "\r" || data === "\n") this.atPrompt = false;
     if (
@@ -870,6 +972,7 @@ export function observeTerminalContexts(
   for (const [id, runtime] of runtimes) {
     const context = contexts[runtime.sessionId];
     runtime.observeForegroundProgram(context?.foregroundProgram ?? null);
+    runtime.observeControl(context?.agentControlled ?? false);
     if (context?.cwd) result[id] = context.cwd;
   }
   return result;

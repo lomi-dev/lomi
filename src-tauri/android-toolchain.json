@@ -5,7 +5,7 @@
     "darwin_arm64": {
       "cli": {
         "version": "1.0.16261425",
-        "url": "https://dl.google.com/android/cli/latest/darwin_arm64/android-cli",
+        "url": "https://dl.google.com/android/cli/1.0.16261425/darwin_arm64/android-cli",
         "size": 83918832,
         "sha256": "d1ebf7fc1517aba98d6a34961ea89f843ea3acc7c1ced693fa103a0e279052fd"
       },

@@ -1,5 +1,5 @@
 import ResourceIcon from "./ResourceIcon";
-import { useCallback, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { CircleAlert, Save } from "./icons";
 import { closingEditorDocuments } from "./editor-service";
 import { pluginHost } from "./plugins/runtime";
@@ -16,6 +16,14 @@ import { Modal } from "./ui";
 interface Request {
   documents: CloseDocument[];
   finish: (close: boolean) => void;
+  decision?: EditorCloseDecision;
+  cancelled?: boolean;
+}
+export interface EditorCloseDecision {
+  description: string;
+  onDecision: (choice: "save" | "discard") => Promise<void>;
+  onSaveStart?: () => Promise<void>;
+  isActive: () => Promise<boolean>;
 }
 
 export function useEditorCloseGuard() {
@@ -25,33 +33,70 @@ export function useEditorCloseGuard() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const saveButton = useRef<HTMLButtonElement>(null);
-  const confirm = useCallback((ids?: ReadonlySet<string>): Promise<boolean> => {
-    if (current.current) return Promise.resolve(false);
-    const documents: CloseDocument[] = [
-      ...closingEditorDocuments(ids),
-      ...[...pluginHost.dirtyViews]
-        .filter(([id]) => !ids || ids.has(id))
-        .map(([id, { view }]): CloseDocument => ({
-          path: view.title || id,
-          get dirty() {
-            return pluginHost.isDirty(id);
-          },
-          save: async () => {
-            await view.save();
-            return !view.isDirty();
-          },
-          discard: () => view.discard(),
-        }))
-        .filter((view) => view.dirty),
-    ];
-    if (!documents.length) return Promise.resolve(true);
-    return new Promise((finish) => {
-      const request = { documents, finish };
-      current.current = request;
-      setRequest(request);
-      setError("");
-    });
-  }, []);
+  useEffect(
+    () => () => {
+      current.current?.finish(false);
+      current.current = undefined;
+    },
+    [],
+  );
+  useEffect(() => {
+    if (!request?.decision) return;
+    let stopped = false;
+    let pending = false;
+    const check = async () => {
+      if (pending) return;
+      pending = true;
+      const active = await request.decision!.isActive().catch(() => false);
+      pending = false;
+      if (stopped || current.current !== request) return;
+      if (!active) request.cancelled = true;
+      if (request.cancelled && !busy) {
+        request.finish(false);
+        current.current = undefined;
+        setRequest(undefined);
+      }
+    };
+    const timer = window.setInterval(() => void check(), 500);
+    void check();
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [request, busy]);
+  const confirm = useCallback(
+    (
+      ids?: ReadonlySet<string>,
+      decision?: EditorCloseDecision,
+    ): Promise<boolean> => {
+      if (current.current) return Promise.resolve(false);
+      const documents: CloseDocument[] = [
+        ...closingEditorDocuments(ids),
+        ...[...pluginHost.dirtyViews]
+          .filter(([id]) => !ids || ids.has(id))
+          .map(([id, { view }]): CloseDocument => ({
+            path: view.title || id,
+            get dirty() {
+              return pluginHost.isDirty(id);
+            },
+            save: async () => {
+              await view.save();
+              return !view.isDirty();
+            },
+            discard: () => view.discard(),
+          }))
+          .filter((view) => view.dirty),
+      ];
+      if (!documents.length) return Promise.resolve(true);
+      return new Promise((finish) => {
+        const request = { documents, finish, decision };
+        current.current = request;
+        setRequest(request);
+        setError("");
+      });
+    },
+    [],
+  );
   const finish = (close: boolean) => {
     if (busy) return;
     current.current?.finish(close);
@@ -63,10 +108,14 @@ export function useEditorCloseGuard() {
     setBusy(true);
     setError("");
     try {
+      if (request.cancelled) return;
+      await request.decision?.onSaveStart?.();
       for (const document of request.documents)
         if (document.dirty && !(await document.save())) return;
       if (request.documents.some((document) => document.dirty))
         throw new Error("Some files still have unsaved changes.");
+      if (request.cancelled) return;
+      await request.decision?.onDecision("save");
       request.finish(true);
       current.current = undefined;
       setRequest(undefined);
@@ -80,6 +129,7 @@ export function useEditorCloseGuard() {
     confirm,
     dialog: request && (
       <Modal
+        protectTheme
         title="Save changes before closing?"
         tone="warning"
         className="editor-close-dialog"
@@ -89,6 +139,7 @@ export function useEditorCloseGuard() {
       >
         <div className="editor-close-content">
           <p id={descriptionId} className="editor-close-description">
+            {request.decision && <>{request.decision.description} </>}
             {request.documents.length === 1
               ? "This file has unsaved changes."
               : `${request.documents.length} files have unsaved changes.`}{" "}
@@ -130,12 +181,21 @@ export function useEditorCloseGuard() {
             type="button"
             className="button button-danger"
             disabled={busy}
-            onClick={() => {
+            onClick={async () => {
+              if (busy) return;
+              setBusy(true);
+              setError("");
               try {
+                if (request.cancelled) return;
+                await request.decision?.onDecision("discard");
                 for (const document of request.documents) document.discard?.();
-                finish(true);
+                request.finish(true);
+                current.current = undefined;
+                setRequest(undefined);
               } catch (error) {
                 setError(errorMessage(error));
+              } finally {
+                setBusy(false);
               }
             }}
           >

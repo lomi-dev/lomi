@@ -1,3 +1,4 @@
+mod agent_control;
 mod agent_notifications;
 mod android;
 #[cfg(feature = "android-probe")]
@@ -14,6 +15,12 @@ mod chat;
 mod chat_probe;
 mod cli_config;
 mod cli_titles;
+#[cfg(all(feature = "mcp-probe", target_os = "macos"))]
+#[path = "../../tests/native/mcp-browser-support.rs"]
+mod mcp_browser_probe;
+#[cfg(all(feature = "mcp-probe", target_os = "macos"))]
+#[path = "../../tests/native/mcp-control-support.rs"]
+mod mcp_control_probe;
 pub use cli_titles::print_agy_title;
 mod editor_preferences;
 mod files;
@@ -25,6 +32,8 @@ mod macos;
 #[path = "../../tests/native/support.rs"]
 mod native_smoke;
 mod plugins;
+#[cfg(unix)]
+mod settings_control;
 mod settings_window;
 mod shell;
 mod terminal;
@@ -136,6 +145,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(chat::commands::Chats::default())
+        .manage(agent_control::Control::default())
         .manage(android::manager::Android::default())
         .manage(android::open::Requests::default())
         .manage(browser::Browsers::default())
@@ -155,6 +165,7 @@ pub fn run() {
             android::commands::window_event(window, event);
         })
         .on_page_load(|_view, _payload| {
+            agent_control::page_load(_view, _payload);
             #[cfg(feature = "native-smoke")]
             native_smoke::page(_view, _payload);
             #[cfg(feature = "chat-probe")]
@@ -172,6 +183,10 @@ pub fn run() {
             #[cfg(feature = "chat-probe")]
             app.manage(chat_probe::Probe::default());
             let handle = app.handle().clone();
+            #[cfg(all(feature = "mcp-probe", target_os = "macos"))]
+            mcp_browser_probe::start(app.handle().clone());
+            #[cfg(all(feature = "mcp-probe", target_os = "macos"))]
+            mcp_control_probe::start(app.handle().clone());
             #[cfg(feature = "android-probe")]
             app.manage(android_probe::Probe::default());
             #[cfg(feature = "android-probe")]
@@ -227,6 +242,47 @@ pub fn run() {
                 return probe(invoke);
             }
             let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+                agent_control::agent_control_state,
+                agent_control::agent_control_settings_open,
+                agent_control::agent_control_settings_prepare,
+                agent_control::agent_control_settings_source,
+                agent_control::agent_control_settings_decide,
+                agent_control::agent_control_settings_read_reply,
+                agent_control::agent_control_enable,
+                agent_control::agent_control_approve,
+                agent_control::agent_control_project_open_decide,
+                agent_control::agent_control_project_open_ready,
+                agent_control::agent_control_project_open_commit,
+                agent_control::agent_control_reject,
+                agent_control::agent_control_revoke,
+                agent_control::agent_control_closing,
+                agent_control::agent_control_ui_register,
+                agent_control::agent_control_ui_publish,
+                agent_control::agent_control_ui_claim,
+                agent_control::agent_control_ui_commit_close,
+                agent_control::agent_control_workspace_close_pending,
+                agent_control::agent_control_terminal_screen_reply,
+                agent_control::agent_control_editor_read_reply,
+                agent_control::agent_control_editor_open_file,
+                agent_control::agent_control_git_open,
+                agent_control::agent_control_git_mutation_prepare,
+                agent_control::agent_control_git_mutation_pending,
+                agent_control::agent_control_git_mutation_decide,
+                agent_control::agent_control_git_mutation_commit,
+                agent_control::agent_control_git_read,
+                agent_control::agent_control_git_release,
+                agent_control::agent_control_preview_asset,
+                agent_control::agent_control_preview_release,
+                agent_control::agent_control_files_mutate,
+                agent_control::agent_control_file_trash_prepare,
+                agent_control::agent_control_file_trash_decide,
+                agent_control::agent_control_file_trash_pending,
+                agent_control::agent_control_open_recovery,
+                agent_control::agent_control_editor_save_file,
+                agent_control::agent_control_decide_terminal,
+                agent_control::agent_control_ui_ack,
+                agent_control::agent_artifact_import,
+                agent_control::agent_control_decide_install,
                 android::commands::android_state,
                 android::commands::android_prepare_setup,
                 android::commands::android_setup_context,
@@ -241,6 +297,11 @@ pub fn run() {
                 android::commands::android_manage_device,
                 android::commands::android_maintenance,
                 android::commands::save_android_preferences,
+                android::commands::android_take_control,
+                android::commands::android_agent_input_blur,
+                android::commands::agent_android_input,
+                android::commands::agent_android_runtime,
+                android::commands::agent_android_launch,
                 android::commands::android_start,
                 android::commands::android_stop,
                 android::commands::android_exit,
@@ -267,6 +328,8 @@ pub fn run() {
                 chat::commands::chat_recover,
                 browser::sync_browsers,
                 browser::browser_action,
+                browser::agent_browser_navigate,
+                browser::agent_browser_interact,
                 browser::servers::local_web_servers,
                 app_info,
                 updater::update_environment,
@@ -339,6 +402,7 @@ pub fn run() {
                 git::history::git_commit_diff,
                 terminal::start_terminal,
                 terminal::write_terminal,
+                terminal::take_terminal_control,
                 terminal::resize_terminal,
                 terminal::acknowledge_terminal,
                 terminal::close_terminal,
@@ -362,6 +426,7 @@ pub fn run() {
         #[cfg(target_os = "macos")]
         macos::handle_run_event(app, &event);
         if matches!(event, tauri::RunEvent::Exit) {
+            tauri::async_runtime::block_on(agent_control::shutdown(app));
             if let Err(error) = tauri::async_runtime::block_on(
                 app.state::<android::manager::Android>().emergency_cleanup(),
             ) {

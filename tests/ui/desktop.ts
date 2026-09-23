@@ -208,6 +208,11 @@ export async function mockDesktop(
         },
         async invoke(command: string, args: Record<string, any> = {}) {
           calls.push({ command, args: JSON.parse(JSON.stringify(args)) });
+          if (command === "agent_control_ui_register") return null;
+          if (command === "agent_control_closing") {
+            desktop.__nativeTest.agentControlClosing = args.closing;
+            return;
+          }
           if (command.startsWith("chat_") && desktop.__chatInvoke)
             return desktop.__chatInvoke(command, args);
           if (
@@ -357,6 +362,7 @@ export async function mockDesktop(
               if (!browsers.has(slot.id))
                 browsers.set(slot.id, {
                   id: slot.id,
+                  revision: "1",
                   url: slot.url,
                   title: "Browser",
                   loading: false,
@@ -370,8 +376,9 @@ export async function mockDesktop(
               });
             }
             return [...browsers.values()].map(
-              ({ id, url, title, loading, error, download }) => ({
+              ({ id, revision, url, title, loading, error, download }) => ({
                 id,
+                revision,
                 url,
                 title,
                 loading,
@@ -388,8 +395,10 @@ export async function mockDesktop(
               browser.visits++;
             }
             if (args.action.type === "reload") browser.visits++;
+            browser.revision = String(BigInt(browser.revision) + 1n);
             await emitEvent("browser-page", {
               id: browser.id,
+              revision: browser.revision,
               url: browser.url,
               title: browser.title,
               loading: false,
@@ -1048,6 +1057,7 @@ export async function mockDesktop(
             return desktop.__nativeTest.folder;
           if (command === "plugin:window|scale_factor") return 1;
           if (command === "plugin:window|is_visible") return true;
+          if (command === "plugin:window|is_focused") return true;
           if (command === "plugin:window|is_minimized") return false;
           if (command === "plugin:window|is_fullscreen")
             return desktop.__nativeTest.fullscreen;

@@ -1,3 +1,4 @@
+import { agentDiff, readAgentGit, useAgentGit } from "./agent-git";
 import ResourceIcon from "./ResourceIcon";
 import { useEffect, useState } from "react";
 import { FileDiff as FileDiffIcon, RefreshCw } from "./icons";
@@ -16,6 +17,7 @@ export default function FileDiff({
   requestRevision: number;
   onOpenFile: () => void;
 }) {
+  const agentSource = useAgentGit(tab.id);
   const [result, setResult] = useState<GitFileDiff>();
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
@@ -24,11 +26,17 @@ export default function FileDiff({
     let current = true;
     setResult(undefined);
     setError("");
-    void api<GitFileDiff>("git_diff", {
-      root: tab.root,
-      path: tab.relative,
-      staged: tab.staged,
-    })
+    const load = tab.agentGit
+      ? (agentSource && revision === 0
+          ? Promise.resolve(agentSource.body)
+          : readAgentGit(agentSource)
+        ).then(agentDiff)
+      : api<GitFileDiff>("git_diff", {
+          root: tab.root,
+          path: tab.relative,
+          staged: tab.staged,
+        });
+    void load
       .then((result) => {
         if (current) setResult(result);
       })
@@ -38,7 +46,15 @@ export default function FileDiff({
     return () => {
       current = false;
     };
-  }, [tab.root, tab.relative, tab.staged, revision, requestRevision]);
+  }, [
+    tab.root,
+    tab.relative,
+    tab.staged,
+    tab.agentGit,
+    agentSource,
+    revision,
+    requestRevision,
+  ]);
   return (
     <section
       className="commit-file-diff working-file-diff"

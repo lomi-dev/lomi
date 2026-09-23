@@ -89,6 +89,11 @@ fn read(path: &Path) -> Result<Option<serde_json::Value>, String> {
 }
 
 fn save(path: &Path, data: &Keybindings) -> Result<(), String> {
+    validate(data)?;
+    crate::files::write_json(path, data, LIMIT as usize)
+}
+
+fn validate(data: &Keybindings) -> Result<(), String> {
     if data.version != 1
         || data.bindings.len() > 2048
         || data.bindings.iter().any(|(id, value)| {
@@ -99,7 +104,148 @@ fn save(path: &Path, data: &Keybindings) -> Result<(), String> {
     {
         return Err("Invalid keybindings settings.".into());
     }
-    crate::files::write_json(path, data, LIMIT as usize)
+    Ok(())
+}
+
+#[cfg(unix)]
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AgentSource {
+    data: Option<serde_json::Value>,
+    source_revision: Option<String>,
+    definitions_revision: String,
+    contributions: Vec<crate::plugins::ShortcutContribution>,
+}
+
+#[cfg(unix)]
+pub(crate) fn agent_source(
+    app: &tauri::AppHandle,
+    check: &dyn Fn() -> Result<(), lomi_control_protocol::ErrorCode>,
+) -> Result<AgentSource, lomi_control_protocol::ErrorCode> {
+    use lomi_control_protocol::ErrorCode;
+    let state = app.state::<KeybindingsFile>();
+    let _guard = state.0.lock().map_err(|_| ErrorCode::StorageUnavailable)?;
+    let source =
+        crate::settings_control::PreferenceSource::open(app, "keybindings.json", LIMIT, check)?;
+    let data = source
+        .bytes
+        .as_deref()
+        .map(serde_json::from_slice)
+        .transpose()
+        .map_err(|_| ErrorCode::UnsupportedCapability)?;
+    crate::plugins::with_shortcut_definitions(app, check, |definitions_revision, contributions| {
+        Ok(AgentSource {
+            data,
+            source_revision: source.revision,
+            definitions_revision,
+            contributions,
+        })
+    })
+}
+
+#[cfg(unix)]
+fn agent_patch(
+    source: Option<&[u8]>,
+    patch: &lomi_control_protocol::settings::SettingsPatch,
+) -> Result<Vec<u8>, lomi_control_protocol::ErrorCode> {
+    use lomi_control_protocol::{settings::SettingsPatch, ErrorCode};
+    let mut data = match source {
+        Some(bytes) => serde_json::from_slice::<serde_json::Value>(bytes)
+            .map_err(|_| ErrorCode::UnsupportedCapability)?,
+        None => serde_json::json!({"version":1,"bindings":{}}),
+    };
+    let typed = serde_json::from_value::<Keybindings>(data.clone())
+        .map_err(|_| ErrorCode::UnsupportedCapability)?;
+    validate(&typed).map_err(|_| ErrorCode::UnsupportedCapability)?;
+    match patch {
+        SettingsPatch::KeybindingSet { action, shortcut } => {
+            data["bindings"]
+                .as_object_mut()
+                .ok_or(ErrorCode::UnsupportedCapability)?
+                .insert(action.clone(), serde_json::json!(shortcut));
+        }
+        SettingsPatch::KeybindingReset { action } => {
+            data["bindings"]
+                .as_object_mut()
+                .ok_or(ErrorCode::UnsupportedCapability)?
+                .remove(action);
+        }
+        SettingsPatch::KeybindsFocusFollowsPointer { value } => {
+            data["focusFollowsPointer"] = serde_json::json!(value)
+        }
+        _ => return Err(ErrorCode::UnsupportedCapability),
+    }
+    let typed = serde_json::from_value::<Keybindings>(data.clone())
+        .map_err(|_| ErrorCode::ResourceExhausted)?;
+    validate(&typed).map_err(|_| ErrorCode::ResourceExhausted)?;
+    let bytes = serde_json::to_vec_pretty(&data).map_err(|_| ErrorCode::ResourceExhausted)?;
+    if bytes.len() as u64 > LIMIT {
+        return Err(ErrorCode::ResourceExhausted);
+    }
+    Ok(bytes)
+}
+
+#[cfg(unix)]
+pub(crate) fn agent_prepare(
+    app: &tauri::AppHandle,
+    patch: &lomi_control_protocol::settings::SettingsPatch,
+    current: &lomi_control_protocol::settings::SettingsUpdateValues,
+    check: &dyn Fn() -> Result<(), lomi_control_protocol::ErrorCode>,
+) -> Result<lomi_control_core::broker::SettingsPlan, lomi_control_protocol::ErrorCode> {
+    use crate::settings_control::PreferenceSource;
+    use lomi_control_core::{atomic_file, broker::SettingsPlan};
+    use lomi_control_protocol::{settings::SettingsUpdateValues, ErrorCode};
+    use std::sync::Arc;
+    let SettingsUpdateValues::Keybinds(values) = current else {
+        return Err(ErrorCode::UnsupportedCapability);
+    };
+    if values.action.as_ref().is_some_and(|a| {
+        a.id.is_empty()
+            || a.id.len() > 160
+            || a.label.is_empty()
+            || a.label.len() > 640
+            || [&a.shortcut, &a.default_shortcut]
+                .iter()
+                .any(|s| s.as_ref().is_some_and(|s| !valid_shortcut(s)))
+    }) {
+        return Err(ErrorCode::ResourceExhausted);
+    }
+    let state = app.state::<KeybindingsFile>();
+    let _guard = state.0.lock().map_err(|_| ErrorCode::StorageUnavailable)?;
+    let source = PreferenceSource::open(app, "keybindings.json", LIMIT, check)?;
+    if source.revision != values.source_revision {
+        return Err(ErrorCode::RevisionConflict);
+    }
+    let bytes = agent_patch(source.bytes.as_deref(), patch)?;
+    crate::plugins::with_shortcut_definitions(app, check, |revision, _| {
+        if revision != values.definitions_revision {
+            return Err(ErrorCode::RevisionConflict);
+        }
+        Ok(())
+    })?;
+    let definitions_revision = values.definitions_revision.clone();
+    let mut after = current.clone();
+    patch.apply_values(&mut after)?;
+    let apply_app = app.clone();
+    Ok(SettingsPlan {
+        before: current.clone(),
+        after,
+        source_revision: source.revision.clone(),
+        apply: Arc::new(move |check| {
+            let state = apply_app.state::<KeybindingsFile>();
+            let _guard = state.0.lock().map_err(|_| ErrorCode::StorageUnavailable)?;
+            crate::plugins::with_shortcut_definitions(&apply_app, check, |revision, _| {
+                if revision != definitions_revision {
+                    return Err(ErrorCode::RevisionConflict.into());
+                }
+                let revision = source.commit(&bytes, check)?;
+                apply_app
+                    .emit("keybindings-changed", ())
+                    .map_err(|_| atomic_file::ReplaceError::Uncertain)?;
+                Ok(revision)
+            })
+        }),
+    })
 }
 
 #[tauri::command]
@@ -144,6 +290,51 @@ pub fn save_keybindings(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn agent_changes_one_stored_field_and_preserves_unavailable_descriptors() {
+        use lomi_control_protocol::settings::SettingsPatch;
+        let source = br#"{"version":1,"bindings":{"saveFile":"Meta+KeyS","missing.plugin":null},"opaque":{"preserved":true}}"#;
+        for patch in [
+            SettingsPatch::KeybindingSet {
+                action: "saveFile".into(),
+                shortcut: None,
+            },
+            SettingsPatch::KeybindingReset {
+                action: "saveFile".into(),
+            },
+            SettingsPatch::KeybindsFocusFollowsPointer { value: true },
+        ] {
+            let output: serde_json::Value =
+                serde_json::from_slice(&agent_patch(Some(source), &patch).unwrap()).unwrap();
+            assert_eq!(output["opaque"]["preserved"], true);
+            assert!(output["bindings"]
+                .as_object()
+                .unwrap()
+                .contains_key("missing.plugin"));
+            match patch {
+                SettingsPatch::KeybindingSet { .. } => {
+                    assert!(output["bindings"]["saveFile"].is_null())
+                }
+                SettingsPatch::KeybindingReset { .. } => assert!(!output["bindings"]
+                    .as_object()
+                    .unwrap()
+                    .contains_key("saveFile")),
+                _ => assert_eq!(output["focusFollowsPointer"], true),
+            }
+        }
+        let invalid = SettingsPatch::KeybindingSet {
+            action: "saveFile".into(),
+            shortcut: Some("KeyA".into()),
+        };
+        assert!(agent_patch(Some(source), &invalid).is_err());
+        assert!(agent_patch(
+            Some(b"invalid"),
+            &SettingsPatch::KeybindsFocusFollowsPointer { value: true }
+        )
+        .is_err());
+    }
 
     #[test]
     fn saves_overrides_and_disabled_bindings_and_preserves_invalid_files() {

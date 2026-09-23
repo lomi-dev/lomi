@@ -15,15 +15,18 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { api, errorMessage } from "./api";
 import type { EditorDocument } from "./editor-runtime";
 import { markdownTarget } from "./markdown";
+import { readAgentPreviewAsset } from "./agent-preview";
 
 const plugins = [remarkGfm];
 
 export default memo(function MarkdownPreview({
   document,
   onOpenFile,
+  assetPermit,
 }: {
   document: EditorDocument;
   onOpenFile: (root: string, relative: string) => void;
+  assetPermit?: string | null;
 }) {
   const current = useSyncExternalStore(
     document.subscribeText,
@@ -96,6 +99,7 @@ export default memo(function MarkdownPreview({
               relative={target.value}
               alt={alt ?? ""}
               title={title}
+              assetPermit={assetPermit}
             />
           );
         if (target?.kind === "external")
@@ -114,7 +118,7 @@ export default memo(function MarkdownPreview({
         return <span>{alt}</span>;
       },
     };
-  }, [document, onOpenFile, root, relative]);
+  }, [document, onOpenFile, root, relative, assetPermit]);
   return (
     <section
       className="markdown-preview"
@@ -139,11 +143,13 @@ function MarkdownImage({
   relative,
   alt,
   title,
+  assetPermit,
 }: {
   root: string;
   relative: string;
   alt: string;
   title?: string;
+  assetPermit?: string | null;
 }) {
   const [source, setSource] = useState("");
   const [error, setError] = useState("");
@@ -152,6 +158,19 @@ function MarkdownImage({
     const reader = new FileReader();
     setSource("");
     setError("");
+    if (assetPermit !== undefined) {
+      void readAgentPreviewAsset(assetPermit, relative)
+        .then((image) => {
+          if (active)
+            setSource(`data:${image.mimeType};base64,${image.dataBase64}`);
+        })
+        .catch((error) => {
+          if (active) setError(errorMessage(error));
+        });
+      return () => {
+        active = false;
+      };
+    }
     const types: Record<string, string> = {
       png: "image/png",
       jpg: "image/jpeg",
@@ -184,7 +203,7 @@ function MarkdownImage({
       active = false;
       reader.abort();
     };
-  }, [root, relative]);
+  }, [root, relative, assetPermit]);
   if (error)
     return (
       <span className="markdown-image-error" title={error}>

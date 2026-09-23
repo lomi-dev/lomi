@@ -58,6 +58,7 @@ function Confirmation({
   const [busy, setBusy] = useState(false);
   return (
     <Modal
+      protectTheme
       className="android-dialog"
       title={value.title}
       tone="warning"
@@ -134,6 +135,7 @@ function Installation({
   const [error, setError] = useState("");
   return (
     <Modal
+      protectTheme
       className="android-dialog"
       title="Review Android installation"
       wide

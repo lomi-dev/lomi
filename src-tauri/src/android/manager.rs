@@ -50,15 +50,17 @@ impl Android {
             installer: super::installer::Installer::default(),
             streams: super::frames::Streams::default(),
             input: super::input::Router::default(),
+            #[cfg(unix)]
+            agent_controls: Mutex::new(BTreeMap::new()),
             boot_gate: tokio::sync::Semaphore::new(1),
             emitter: std::sync::OnceLock::new(),
-            #[cfg(any(test, feature = "android-probe"))]
+            #[cfg(any(test, feature = "android-probe", feature = "mcp-probe"))]
             test_adb_port: std::sync::atomic::AtomicU16::new({
-                #[cfg(feature = "android-probe")]
+                #[cfg(any(feature = "android-probe", feature = "mcp-probe"))]
                 {
                     super::fixture::adb_port()
                 }
-                #[cfg(not(feature = "android-probe"))]
+                #[cfg(not(any(feature = "android-probe", feature = "mcp-probe")))]
                 {
                     5037
                 }
@@ -142,7 +144,7 @@ impl Android {
             }
         }
         manager.emergency_stop_all().await?;
-        #[cfg(feature = "android-probe")]
+        #[cfg(any(feature = "android-probe", feature = "mcp-probe"))]
         if super::fixture::directory()?.is_some() {
             manager.stop_private_adb_fixture()?;
         }
@@ -167,6 +169,8 @@ impl Android {
 }
 
 pub struct Manager {
+    #[cfg(unix)]
+    agent_controls: Mutex<BTreeMap<String, Arc<lomi_control_core::android::AndroidControl>>>,
     pub directory: Arc<Mutex<Directory>>,
     pub installer: super::installer::Installer,
     pub streams: super::frames::Streams,
@@ -175,7 +179,7 @@ pub struct Manager {
     core: Mutex<Core>,
     adb: Arc<Mutex<SharedServer>>,
     emitter: std::sync::OnceLock<Box<dyn Fn(super::events::Event) + Send + Sync>>,
-    #[cfg(any(test, feature = "android-probe"))]
+    #[cfg(any(test, feature = "android-probe", feature = "mcp-probe"))]
     pub test_adb_port: std::sync::atomic::AtomicU16,
 }
 
@@ -189,6 +193,7 @@ struct Core {
 }
 
 struct Starting {
+    guard: Option<super::runtime::DispatchGuard>,
     cancel: AtomicBool,
     result: watch::Sender<Option<Result<Status, String>>>,
 }
@@ -237,6 +242,90 @@ impl Drop for Mutation {
 }
 
 impl Manager {
+    #[cfg(unix)]
+    pub fn agent_control(
+        &self,
+        device: &str,
+    ) -> Option<Arc<lomi_control_core::android::AndroidControl>> {
+        self.agent_controls.lock().ok()?.get(device).cloned()
+    }
+
+    #[cfg(unix)]
+    pub fn revoke_agent(&self, device: &str) {
+        if let Ok(controls) = self.agent_controls.lock() {
+            if let Some(control) = controls.get(device) {
+                control.revoke();
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    pub fn claim_agent(
+        &self,
+        control: Arc<lomi_control_core::android::AndroidControl>,
+    ) -> Result<(), lomi_control_protocol::ErrorCode> {
+        use lomi_control_protocol::ErrorCode;
+        control.check()?;
+        let mut controls = self
+            .agent_controls
+            .lock()
+            .map_err(|_| ErrorCode::AppUnavailable)?;
+        controls.retain(|_, current| current.check().is_ok());
+        if let Some(current) = controls.get(&control.device) {
+            return if Arc::ptr_eq(current, &control) {
+                control.check()
+            } else {
+                Err(ErrorCode::TargetBusy)
+            };
+        }
+        if controls.len() >= 16 {
+            return Err(ErrorCode::ResourceExhausted);
+        }
+        let core = self.core.lock().map_err(|_| ErrorCode::AppUnavailable)?;
+        core.editable().map_err(|_| ErrorCode::TargetBusy)?;
+        if core.starting.contains_key(&control.device)
+            || core
+                .devices
+                .get(&control.device)
+                .is_some_and(|(_, runtime)| runtime.is_busy())
+        {
+            return Err(ErrorCode::TargetBusy);
+        }
+        control.check()?;
+        controls.insert(control.device.clone(), control);
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    pub fn agent_runtime(
+        &self,
+        control: &Arc<lomi_control_core::android::AndroidControl>,
+        generation: &str,
+    ) -> Result<DeviceRuntime, lomi_control_protocol::ErrorCode> {
+        use lomi_control_protocol::ErrorCode;
+        control.check_generation(generation)?;
+        let controls = self
+            .agent_controls
+            .lock()
+            .map_err(|_| ErrorCode::AppUnavailable)?;
+        if !controls
+            .get(&control.device)
+            .is_some_and(|current| Arc::ptr_eq(current, control))
+        {
+            return Err(ErrorCode::ControlRevoked);
+        }
+        let core = self.core.lock().map_err(|_| ErrorCode::AppUnavailable)?;
+        let runtime = &core
+            .devices
+            .get(&control.device)
+            .ok_or(ErrorCode::TargetNotFound)?
+            .1;
+        if runtime.status().generation.as_deref() != Some(generation) {
+            return Err(ErrorCode::StaleGeneration);
+        }
+        Ok(runtime.clone())
+    }
+
     pub fn can_open(&self, id: &str) -> Result<(), String> {
         self.core
             .lock()
@@ -322,6 +411,17 @@ impl Manager {
     }
 
     pub async fn start(self: &Arc<Self>, device: &str) -> Result<Status, String> {
+        #[cfg(unix)]
+        self.revoke_agent(device);
+        self.start_guarded(device, None).await
+    }
+
+    pub async fn start_guarded(
+        self: &Arc<Self>,
+        device: &str,
+        guard: Option<super::runtime::DispatchGuard>,
+    ) -> Result<Status, String> {
+        super::runtime::check_guard(&guard)?;
         if !super::storage::valid_id(device) {
             return Err("Invalid Android device ID".into());
         }
@@ -329,10 +429,18 @@ impl Manager {
             let mut core = self.core.lock().map_err(|_| "Android manager failed")?;
             core.editable()?;
             if let Some(request) = core.starting.get(device) {
+                super::runtime::check_guard(&request.guard)?;
+                if request.guard.is_some() != guard.is_some() {
+                    return Err(
+                        "Android start is owned by another controller; wait for it to settle"
+                            .into(),
+                    );
+                }
                 request.clone()
             } else {
                 let (result, _) = watch::channel(None);
                 let request = Arc::new(Starting {
+                    guard,
                     cancel: AtomicBool::new(false),
                     result,
                 });
@@ -358,6 +466,7 @@ impl Manager {
         id: &str,
         request: &Starting,
     ) -> Result<Status, String> {
+        super::runtime::check_guard(&request.guard)?;
         let existing = {
             let core = self.core.lock().map_err(|_| "Android manager failed")?;
             if request.cancel.load(Ordering::Acquire) {
@@ -366,7 +475,7 @@ impl Manager {
             core.devices
                 .get(id)
                 .filter(|(_, runtime)| runtime.is_busy())
-                .map(|(_, runtime)| runtime.request_start())
+                .map(|(_, runtime)| runtime.request_start_guarded(request.guard.clone()))
                 .transpose()?
         };
         if let Some(existing) = existing {
@@ -380,6 +489,7 @@ impl Manager {
                 }
             } => return Err("Android start cancelled while waiting for resources".into()),
         };
+        super::runtime::check_guard(&request.guard)?;
         let (device, plan, adb) = {
             let directory = self
                 .directory
@@ -392,7 +502,7 @@ impl Manager {
             )?;
             super::devices::apply_stopped(&directory, &device)?;
             let plan = avd::launch(&directory, &device)?;
-            #[cfg(any(test, feature = "android-probe"))]
+            #[cfg(any(test, feature = "android-probe", feature = "mcp-probe"))]
             let plan = super::runtime::Launch {
                 adb_port: self.test_adb_port.load(Ordering::Acquire),
                 ..plan
@@ -408,8 +518,11 @@ impl Manager {
         let root = plan.root.clone();
         let adb_port = plan.adb_port;
         let server = self.adb.clone();
+        let guard = request.guard.clone();
         tokio::task::spawn_blocking(move || {
+            super::runtime::check_guard(&guard)?;
             let mut server = server.lock().map_err(|_| "ADB startup failed")?;
+            super::runtime::check_guard(&guard)?;
             if adb_port == 5037 {
                 server.ensure(&root, &adb)
             } else {
@@ -419,6 +532,7 @@ impl Manager {
         .await
         .map_err(|e| e.to_string())??;
         let result = {
+            super::runtime::check_guard(&request.guard)?;
             let mut core = self.core.lock().map_err(|_| "Android manager failed")?;
             if request.cancel.load(Ordering::Acquire) {
                 return Err("Android start cancelled".into());
@@ -448,12 +562,12 @@ impl Manager {
                 .get(id)
                 .ok_or("Android runtime was not created")?
                 .1
-                .request_start()?
+                .request_start_guarded(request.guard.clone())?
         };
         result.await.map_err(|_| "Android start response ended")?
     }
 
-    #[cfg(any(test, feature = "android-probe"))]
+    #[cfg(any(test, feature = "android-probe", feature = "mcp-probe"))]
     pub fn stop_private_adb_fixture(&self) -> Result<(), String> {
         self.adb
             .lock()
@@ -462,6 +576,8 @@ impl Manager {
     }
 
     pub async fn stop(&self, id: &str, force: bool) -> Result<Status, String> {
+        #[cfg(unix)]
+        self.revoke_agent(id);
         if !super::storage::valid_id(id) {
             return Err("Invalid Android device ID".into());
         }
@@ -621,6 +737,40 @@ impl Manager {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn revoked_agent_boot_leaves_the_preparation_queue_without_starting_tools() {
+        let root = tempfile::tempdir().unwrap();
+        let manager = Android::default().get(root.path().join("android")).unwrap();
+        let occupied = manager.boot_gate.acquire().await.unwrap();
+        let allowed = Arc::new(AtomicBool::new(true));
+        let active = allowed.clone();
+        let guard: super::super::runtime::DispatchGuard = Arc::new(move || {
+            if active.load(Ordering::SeqCst) {
+                Ok(())
+            } else {
+                Err("revoked fixture authority".into())
+            }
+        });
+        let starting = manager.clone();
+        let start = tokio::spawn(async move {
+            starting
+                .start_guarded("00000000-0000-0000-0000-000000000001", Some(guard))
+                .await
+        });
+        while manager.core.lock().unwrap().starting.is_empty() {
+            tokio::task::yield_now().await;
+        }
+        allowed.store(false, Ordering::SeqCst);
+        drop(occupied);
+        let result = tokio::time::timeout(std::time::Duration::from_secs(2), start)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(result.unwrap_err().contains("revoked fixture"));
+        assert!(manager.core.lock().unwrap().starting.is_empty());
+        assert!(!root.path().join("android/sdk").exists());
+    }
 
     #[tokio::test]
     async fn queued_boot_can_be_cancelled_before_preparation_without_spawning_tools() {

@@ -22,6 +22,7 @@ import FilePreviewToggle from "./FilePreviewToggle";
 import ImagePreview from "./ImagePreview";
 import { imagePreviewType, isSvgFile } from "./image-preview";
 import SvgPreview from "./SvgPreview";
+import { useAgentPreview } from "./agent-preview";
 
 const MarkdownPreview = lazy(() => import("./MarkdownPreview"));
 
@@ -101,6 +102,7 @@ function DocumentEditor({
   onPreviewView,
   onOpenFile,
 }: Props & { document: EditorDocument }) {
+  const agentPreview = useAgentPreview(tab.id);
   const status = useSyncExternalStore(document.subscribe, document.getSnapshot);
   const { bindings } = useKeybindings();
   const host = useRef<HTMLDivElement>(null);
@@ -266,13 +268,22 @@ function DocumentEditor({
               </div>
             }
           >
-            <MarkdownPreview document={document} onOpenFile={onOpenFile} />
+            <MarkdownPreview
+              document={document}
+              onOpenFile={onOpenFile}
+              assetPermit={
+                tab.agentPreview
+                  ? (agentPreview?.assetPermit ?? null)
+                  : undefined
+              }
+            />
           </Suspense>
         )}
         {(!svg || view === "editor") && previewToggle}
       </div>
       {confirmation && (
         <Modal
+          protectTheme
           tone="warning"
           title={
             confirmation === "reload"

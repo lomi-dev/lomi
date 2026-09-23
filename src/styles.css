@@ -5369,3 +5369,142 @@ html[data-hide-explorer-arrows="true"] .tree-entry > .lucide:first-child {
 .source-panel:has(.source-repositories) .git-groups {
   min-height: 28px;
 }
+
+.agent-control-page .agent-control-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+.agent-control-config {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  margin: 8px 0 12px;
+  padding: 10px;
+  font-family: var(--font-family-mono);
+  font-size: 12px;
+}
+.agent-control-request {
+  margin: 12px 0;
+  padding: 12px;
+  border: var(--border-width) solid var(--color-outline);
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+
+.agent-control-request > label {
+  display: block;
+  margin-block: 10px 6px;
+}
+
+.agent-control-request > label:has(input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 1.5;
+}
+
+.agent-control-request > label > input[type="checkbox"] {
+  flex: none;
+  margin: 3px 0 0;
+}
+.agent-control-request select,
+.agent-control-request textarea {
+  display: block;
+  max-width: 100%;
+  margin: 8px 0;
+}
+.agent-control-request textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 64px;
+  padding: var(--space-8);
+  border: var(--border-width) solid var(--color-outline);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-container);
+  color: var(--color-surface-text);
+  font: inherit;
+}
+.agent-control-request textarea:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.terminal-control,
+.browser-control {
+  pointer-events: auto;
+  padding: var(--space-4) var(--space-8);
+  border: var(--border-width) solid var(--color-outline);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-container);
+  color: var(--color-surface-variant-text);
+  font: inherit;
+  font-size: var(--font-size-11);
+  cursor: pointer;
+}
+.terminal-control:focus-visible,
+.browser-control:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.android-agent-control {
+  position: absolute;
+  inset-block-start: 8px;
+  inset-inline-start: 8px;
+  z-index: 2;
+  font-size: 12px;
+}
+
+.agent-git-repository {
+  overflow-wrap: anywhere;
+}
+.agent-git-files {
+  display: grid;
+  gap: 12px;
+  max-height: min(32vh, 260px);
+  overflow-y: auto;
+  padding-inline-start: 20px;
+}
+.agent-git-files li > span,
+.agent-git-files li > code {
+  display: block;
+}
+.agent-git-files strong,
+.agent-git-files code {
+  overflow-wrap: anywhere;
+}
+.agent-git-files code {
+  font-size: 11px;
+}
+
+.agent-git-message {
+  width: 100%;
+  resize: vertical;
+  min-height: 6em;
+  max-height: 25vh;
+  white-space: pre;
+  font-family: var(--font-family-mono);
+  margin-bottom: var(--space-12);
+}
+.agent-git-approval .modal-surface {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 70px);
+}
+.agent-git-approval .dialog-form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.agent-git-approval header,
+.agent-git-approval .dialog-actions {
+  flex-shrink: 0;
+}
+.agent-git-details {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}

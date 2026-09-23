@@ -1,5 +1,8 @@
 import { useCallback, useId, useRef, useState } from "react";
-import { useEditorCloseGuard } from "./EditorCloseGuard";
+import {
+  useEditorCloseGuard,
+  type EditorCloseDecision,
+} from "./EditorCloseGuard";
 import { terminalsWithProcesses } from "./terminal-runtime";
 import { errorMessage } from "./api";
 import { closeChatViews, hasActiveChatRequests } from "./chat/chat-service";
@@ -18,7 +21,11 @@ export function useCloseGuard() {
   const confirmButton = useRef<HTMLButtonElement>(null);
   const cancelButton = useRef<HTMLButtonElement>(null);
   const confirm = useCallback(
-    async (fileIds?: ReadonlySet<string>, terminalIds?: readonly string[]) => {
+    async (
+      fileIds?: ReadonlySet<string>,
+      terminalIds?: readonly string[],
+      decision?: EditorCloseDecision,
+    ) => {
       if (checking.current) return false;
       checking.current = true;
       try {
@@ -43,7 +50,7 @@ export function useCloseGuard() {
           });
           if (!approved) return false;
         }
-        if (!(await editor.confirm(fileIds))) return false;
+        if (!(await editor.confirm(fileIds, decision))) return false;
         await closeChatViews(fileIds);
         return true;
       } catch (error) {
@@ -66,6 +73,7 @@ export function useCloseGuard() {
       <>
         {request && (
           <Modal
+            protectTheme
             tone="warning"
             title={
               request.application ? "Quit Lomi?" : "Close running processes?"
@@ -99,6 +107,7 @@ export function useCloseGuard() {
         )}
         {chatError && (
           <Modal
+            protectTheme
             tone="danger"
             title="Conversation could not be saved"
             onClose={() => setChatError("")}

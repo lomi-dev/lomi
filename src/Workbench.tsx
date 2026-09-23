@@ -1,3 +1,5 @@
+import { useAgentControlBridge } from "./agent-control";
+import { useAgentGitApproval } from "./AgentGitApproval";
 import {
   configureChats,
   retainChats,
@@ -215,6 +217,7 @@ function initialize() {
 export default function Workbench() {
   const [sourceControlState] = useState(() => new SourceControlState());
   const closeGuard = useCloseGuard();
+  const gitApproval = useAgentGitApproval();
   const theme = useThemes();
   useSyncExternalStore(subscribeEditors, editorRevision);
   const fileOpenRequest = useRef(0);
@@ -274,6 +277,167 @@ export default function Workbench() {
       );
     },
     [renderPaneLayout],
+  );
+  useAgentControlBridge(
+    session,
+    () => currentSession.current,
+    setSession,
+    (id, terminal) => closeGuard.confirm(new Set([id]), terminal ? [id] : []),
+    async (operation, trash) => {
+      if (fileOperationBusy.current || closing.current || updater.busy.current)
+        throw new Error("TARGET_BUSY");
+      fileOperationBusy.current = true;
+      let resume: (() => void) | undefined;
+      try {
+        let verifyTrashBuffers: (() => void) | undefined;
+        if (trash) {
+          const current = currentSession.current;
+          const targetProject = current?.projects.find(
+            (p) => p.id === trash.projectId,
+          );
+          if (!current || !targetProject) throw new Error("TARGET_NOT_FOUND");
+          const path = `${targetProject.path}/${trash.relativePath}`;
+          const canonical = `${trash.projectPath}/${trash.relativePath}`;
+          if (
+            current.projects.some(
+              (p) =>
+                containsPath(path, p.path) || containsPath(canonical, p.path),
+            )
+          )
+            throw new Error("TARGET_BUSY");
+          const files = fileTabs(current).filter(
+            (file) =>
+              containsPath(path, absoluteFilePath(file)) ||
+              containsPath(
+                canonical,
+                loadedEditor(file)?.path ?? absoluteFilePath(file),
+              ),
+          );
+          const documents = [
+            ...new Set(
+              files.flatMap((file) => {
+                const document = loadedEditor(file);
+                return document ? [document] : [];
+              }),
+            ),
+          ];
+          const captured = documents.map((document) => ({
+            document,
+            revision: document.trashRevision(),
+            dirty: document.dirty,
+          }));
+          const check = () => {
+            if (currentSession.current !== current)
+              throw new Error("REVISION_CONFLICT");
+            if (Date.now() >= Number(trash.notAfterMillis))
+              throw new Error("DEADLINE_EXCEEDED");
+            const loaded = new Set(
+              files.map((file) => loadedEditor(file)).filter(Boolean),
+            );
+            if (
+              loaded.size !== captured.length ||
+              captured.some(({ document }) => !loaded.has(document))
+            )
+              throw new Error("REVISION_CONFLICT");
+            for (const { document, revision } of captured) {
+              const now = document.trashRevision();
+              if (
+                now.documentId !== revision.documentId ||
+                now.path !== revision.path ||
+                now.bufferRevision !== revision.bufferRevision
+              )
+                throw new Error("REVISION_CONFLICT");
+            }
+          };
+          verifyTrashBuffers = check;
+          const buffers = captured
+            .filter((v) => v.dirty)
+            .map(({ revision }) => {
+              if (!revision.path.startsWith(`${trash.projectPath}/`))
+                throw new Error("SCOPE_DENIED");
+              return {
+                documentId: revision.documentId,
+                relativePath: revision.path.slice(trash.projectPath.length + 1),
+                bufferRevision: revision.bufferRevision,
+                diskRevision: revision.diskRevision,
+              };
+            });
+          const plan = await api<{ planHash: string; awaitingUser: boolean }>(
+            "agent_control_file_trash_prepare",
+            {
+              operationId: trash.operationId,
+              nonce: trash.nonce,
+              buffers,
+            },
+          );
+          if (plan.awaitingUser !== buffers.length > 0)
+            throw new Error("REVISION_CONFLICT");
+          if (plan.awaitingUser) {
+            const approve = async (choice: "save" | "discard") => {
+              check();
+              await api("agent_control_file_trash_decide", {
+                operationId: trash.operationId,
+                nonce: trash.nonce,
+                planHash: plan.planHash,
+                approved: choice === "discard",
+              });
+            };
+            if (
+              !(await closeGuard.confirm(new Set(files.map((f) => f.id)), [], {
+                description: `An agent requested moving “${trash.relativePath}” to Trash. Saving changes will require the agent to request Trash again for the saved version.`,
+                onDecision: approve,
+                isActive: async () => {
+                  check();
+                  return await api<boolean>(
+                    "agent_control_file_trash_pending",
+                    {
+                      operationId: trash.operationId,
+                      nonce: trash.nonce,
+                      planHash: plan.planHash,
+                    },
+                  );
+                },
+              }))
+            ) {
+              await api("agent_control_file_trash_decide", {
+                operationId: trash.operationId,
+                nonce: trash.nonce,
+                planHash: plan.planHash,
+                approved: false,
+              }).catch(() => {});
+              throw new Error("CONTROL_REVOKED");
+            }
+          }
+        }
+        resume = await pauseEditorFileOperations();
+        verifyTrashBuffers?.();
+        return await operation();
+      } finally {
+        resume?.();
+        fileOperationBusy.current = false;
+      }
+    },
+    (result, canonicalChange) => applyDiskFileChange(result, canonicalChange),
+    gitApproval.confirm,
+    (ids, decision) => {
+      if (fileOperationBusy.current || closing.current || updater.busy.current)
+        throw new Error("TARGET_BUSY");
+      return closeGuard.confirm(ids, [], decision);
+    },
+    () => git.refresh(),
+    () => {
+      if (
+        fileOperationBusy.current ||
+        closing.current ||
+        updater.busy.current ||
+        folderPickerBusy.current
+      )
+        throw new Error("TARGET_BUSY");
+      const container = terminalLayout.current;
+      return container?.isConnected
+        ? { width: container.clientWidth, height: container.clientHeight }
+        : null;
+    },
   );
   useEffect(
     () =>
@@ -455,6 +619,8 @@ export default function Workbench() {
     terminalLayout,
   );
   const savingEnabled = useRef(false);
+  const [autosavePaused, setAutosavePaused] = useState(false);
+  const autosaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const closing = useRef(false);
   const [stoppingForClose, setStoppingForClose] = useState<
     "stopping" | "cancelling" | null
@@ -518,26 +684,46 @@ export default function Workbench() {
       void listener.then((stop) => stop()).catch(() => {});
     };
   }, []);
-  const prepareClose = (showProgress = true) =>
-    prepareApplicationClose(
-      closeGuard.confirm,
-      async () => {
-        if (currentSession.current && savingEnabled.current) {
-          await saveSession(captureEditorPositions(currentSession.current));
-        }
-      },
-      showProgress
-        ? () => {
-            cancelClose.current = false;
-            // Enter the modal before saving; edits must not race the final session.
-            flushSync(() => setStoppingForClose("stopping"));
-            return {
-              cancelled: () => cancelClose.current,
-              release: () => setStoppingForClose(null),
-            };
+  const prepareClose = async (showProgress = true) => {
+    try {
+      const release = await prepareApplicationClose(
+        closeGuard.confirm,
+        async () => {
+          // A debounce from an earlier layout must not overtake the final save.
+          clearTimeout(autosaveTimer.current);
+          flushSync(() => setAutosavePaused(true));
+          if (currentSession.current && savingEnabled.current) {
+            await saveSession(captureEditorPositions(currentSession.current));
           }
-        : undefined,
-    );
+        },
+        showProgress
+          ? () => {
+              cancelClose.current = false;
+              // Enter the modal before saving; edits must not race the final session.
+              flushSync(() => setStoppingForClose("stopping"));
+              return {
+                cancelled: () => cancelClose.current,
+                release: () => setStoppingForClose(null),
+              };
+            }
+          : undefined,
+      );
+      if (!release) {
+        setAutosavePaused(false);
+        return null;
+      }
+      return async () => {
+        try {
+          await release();
+        } finally {
+          setAutosavePaused(false);
+        }
+      };
+    } catch (error) {
+      setAutosavePaused(false);
+      throw error;
+    }
+  };
   const updater = useUpdater(!!info, async () => {
     if (closing.current || fileOperationBusy.current) return null;
     return prepareClose(false);
@@ -694,16 +880,17 @@ export default function Workbench() {
     );
   }, []);
   useEffect(() => {
-    if (!session || !savingEnabled.current) return;
-    const timer = setTimeout(
-      () =>
-        void saveSession(captureEditorPositions(session)).catch((error) =>
+    if (!session || !savingEnabled.current || autosavePaused) return;
+    const timer = setTimeout(() => {
+      const latest = currentSession.current;
+      if (latest)
+        void saveSession(captureEditorPositions(latest)).catch((error) =>
           setError(`Could not save the session: ${errorMessage(error)}`),
-        ),
-      400,
-    );
+        );
+    }, 400);
+    autosaveTimer.current = timer;
     return () => clearTimeout(timer);
-  }, [session]);
+  }, [session, autosavePaused]);
   useEffect(() => {
     if (!info) return;
     const timer = setInterval(() => {
@@ -1512,6 +1699,7 @@ export default function Workbench() {
             )}
             {updater.dialog}
             {closeGuard.dialog}
+            {gitApproval.dialog}
             {cliTitles.dialog}
             {agentNotifications.dialog}
           </div>
@@ -1795,6 +1983,31 @@ export default function Workbench() {
       setError(errorMessage(error));
     }
   };
+  const applyDiskFileChange = (
+    result: FileChange,
+    canonicalChange?: FileChange,
+  ) => {
+    change((state) => {
+      const next = applyFileChange(state, result, defaultProfileId);
+      relocateEditorFiles(state, next, canonicalChange);
+      const kept = new Set(next.projects.map((project) => project.id));
+      closeTerminals(
+        state.projects
+          .filter((project) => !kept.has(project.id))
+          .flatMap((project) =>
+            project.workspaces.flatMap((workspace) =>
+              workspace.tabs.flatMap((tab) =>
+                tab.type === "terminal"
+                  ? panes(tab.layout).map((pane) => pane.id)
+                  : [],
+              ),
+            ),
+          ),
+      );
+      return next;
+    });
+    git.refresh();
+  };
   const operateFile = async (
     relative: string,
     operation: FileOperation,
@@ -1873,26 +2086,7 @@ export default function Workbench() {
         operation,
         expectedPath,
       });
-      change((state) => {
-        const next = applyFileChange(state, result, defaultProfileId);
-        relocateEditorFiles(state, next);
-        const kept = new Set(next.projects.map((project) => project.id));
-        closeTerminals(
-          state.projects
-            .filter((project) => !kept.has(project.id))
-            .flatMap((project) =>
-              project.workspaces.flatMap((workspace) =>
-                workspace.tabs.flatMap((tab) =>
-                  tab.type === "terminal"
-                    ? panes(tab.layout).map((pane) => pane.id)
-                    : [],
-                ),
-              ),
-            ),
-        );
-        return next;
-      });
-      git.refresh();
+      applyDiskFileChange(result);
       return true;
     } finally {
       resume?.();
@@ -2145,6 +2339,8 @@ export default function Workbench() {
                   key={tab.id}
                   root={tab.root}
                   commitId={tab.commit}
+                  agentPanelId={tab.id}
+                  agentRestricted={tab.agentGit === true}
                   onOpenFile={(path) => void openFile(path, tab.root)}
                   onOpenCommit={(commit) => openHistoryCommit(commit, tab.root)}
                   onError={setError}
@@ -2537,8 +2733,10 @@ export default function Workbench() {
           )}
           {updater.dialog}
           {closeGuard.dialog}
+          {gitApproval.dialog}
           {stoppingForClose && (
             <Modal
+              protectTheme
               title="Preparing to close"
               className="close-progress-dialog"
               descriptionId={closeDescriptionId}
@@ -2601,6 +2799,7 @@ function AppDialog({
   );
   return (
     <Modal
+      protectTheme={dialog.type === "confirm" || dialog.type === "environment"}
       title={dialog.title}
       tone={
         dialog.type === "confirm" || dialog.type === "environment"

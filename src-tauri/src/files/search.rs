@@ -96,6 +96,55 @@ fn file_filter(
         .map_err(|error| format!("Invalid file filter: {error}"))
 }
 
+fn query_pattern(query: &str, options: &SearchOptions) -> Result<regex::Regex, String> {
+    let expression = if options.regex {
+        query.to_owned()
+    } else {
+        regex::escape(query)
+    };
+    let expression = if options.whole_word {
+        format!(r"\b{{start-half}}(?:{expression})\b{{end-half}}")
+    } else {
+        expression
+    };
+    RegexBuilder::new(&expression)
+        .case_insensitive(!options.case_sensitive)
+        .size_limit(1024 * 1024)
+        .dfa_size_limit(1024 * 1024)
+        .build()
+        .map_err(|error| error.to_string())
+}
+
+fn line_match(
+    relative: &str,
+    line_index: usize,
+    line: &str,
+    found: regex::Match<'_>,
+) -> SearchMatch {
+    let start = line[..found.start()]
+        .char_indices()
+        .rev()
+        .nth(60)
+        .map_or(0, |(index, _)| index);
+    let end = line[found.start()..]
+        .char_indices()
+        .nth(240)
+        .map_or(line.len(), |(index, _)| found.start() + index);
+    SearchMatch {
+        relative: relative.replace(std::path::MAIN_SEPARATOR, "/"),
+        line: line_index + 1,
+        column: line[..found.start()].encode_utf16().count() + 1,
+        length: found.as_str().encode_utf16().count(),
+        preview: line[start..end].to_owned(),
+        preview_start: line[..start].encode_utf16().count(),
+    }
+}
+#[cfg(unix)]
+#[path = "agent_search.rs"]
+mod agent;
+#[cfg(unix)]
+pub(crate) use agent::search as agent_search;
+
 fn search(
     root: &str,
     relative: &str,
@@ -111,20 +160,7 @@ fn search(
         return Err("Choose a folder to search.".into());
     }
     let root = directory(root)?;
-    let expression = if options.regex {
-        query.to_owned()
-    } else {
-        regex::escape(query)
-    };
-    let expression = if options.whole_word {
-        format!(r"\b{{start-half}}(?:{expression})\b{{end-half}}")
-    } else {
-        expression
-    };
-    let pattern = RegexBuilder::new(&expression)
-        .case_insensitive(!options.case_sensitive)
-        .build()
-        .map_err(|error| error.to_string())?;
+    let pattern = query_pattern(query, options)?;
     let include = file_filter(&root, &options.include)?;
     let exclude = file_filter(&root, &options.exclude)?;
     let mut walk = WalkBuilder::new(folder);
@@ -223,23 +259,9 @@ fn search(
                     result.limited = true;
                     break 'files;
                 }
-                let start = line[..found.start()]
-                    .char_indices()
-                    .rev()
-                    .nth(60)
-                    .map_or(0, |(index, _)| index);
-                let end = line[found.start()..]
-                    .char_indices()
-                    .nth(240)
-                    .map_or(line.len(), |(index, _)| found.start() + index);
-                result.matches.push(SearchMatch {
-                    relative: relative.replace(std::path::MAIN_SEPARATOR, "/"),
-                    line: line_index + 1,
-                    column: line[..found.start()].encode_utf16().count() + 1,
-                    length: found.as_str().encode_utf16().count(),
-                    preview: line[start..end].to_owned(),
-                    preview_start: line[..start].encode_utf16().count(),
-                });
+                result
+                    .matches
+                    .push(line_match(relative, line_index, line, found));
             }
         }
     }

@@ -1,4 +1,9 @@
 fn main() {
+    assert!(
+        !(std::env::var_os("CARGO_FEATURE_MCP_PROBE").is_some()
+            && std::env::var("PROFILE").as_deref() == Ok("release")),
+        "The mcp-probe qualification fixture must not enter a release build"
+    );
     println!("cargo:rerun-if-changed=../packages/ai-runtime");
     println!("cargo:rerun-if-changed=../src/chat/provider-presets.ts");
     println!("cargo:rerun-if-changed=../scripts/prepare-ai-runtime.mjs");

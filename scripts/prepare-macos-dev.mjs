@@ -35,6 +35,10 @@ mkdirSync(path.dirname(executable), { recursive: true });
 if (existsSync(executable)) unlinkSync(executable);
 // A hard link keeps the executable inside the bundle without copying each build.
 linkSync(binary, executable);
+const helper = path.join(path.dirname(binary), "lomi-mcp");
+const bundledHelper = path.join(path.dirname(executable), "lomi-mcp");
+if (existsSync(bundledHelper)) unlinkSync(bundledHelper);
+if (existsSync(helper)) linkSync(helper, bundledHelper);
 copyFileSync(
   path.join(compiledIcons, "Assets.car"),
   path.join(resources, "Assets.car"),

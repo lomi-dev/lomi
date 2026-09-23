@@ -6,7 +6,7 @@ import {
 } from "@codemirror/state";
 import type { Extension, Text, TransactionSpec } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { redo, undo } from "@codemirror/commands";
+import { isolateHistory, redo, undo } from "@codemirror/commands";
 import { indentUnit } from "@codemirror/language";
 import { gotoLine, openSearchPanel } from "@codemirror/search";
 import { codeEditorExtensions } from "./editor-extensions";
@@ -35,7 +35,16 @@ import type { LineEndings } from "./editor-text";
 import { editorAppearance } from "./theme/editor";
 import { themeAppliedEvent } from "./theme/runtime";
 
-interface DiskFile {
+import {
+  bufferChanges,
+  readBufferSlice,
+  type EditorReadInput,
+  type EditorEditsInput,
+  type EditorSaveInput,
+  type EditorSaved,
+} from "./editor-control";
+
+export interface DiskFile {
   path: string;
   relative: string;
   content: string | null;
@@ -66,6 +75,16 @@ export interface EditorSnapshot {
 const buffers = new Map<string, EditorDocument>();
 const aliases = new Map<string, EditorDocument>();
 const opening = new Map<string, Promise<EditorDocument>>();
+const preparedReads = new Map<string, DiskFile>();
+export function stageDocumentRead(tab: FileTab, data: DiskFile) {
+  const key = editorFileKey(tab);
+  if (preparedReads.has(key) || preparedReads.size >= 16)
+    throw new Error("TARGET_BUSY");
+  preparedReads.set(key, data);
+  return () => {
+    if (preparedReads.get(key) === data) preparedReads.delete(key);
+  };
+}
 let retained = new Set<string>();
 const attachedViews = new Map<EditorDocument, string>();
 let notifyAll = () => {};
@@ -149,7 +168,11 @@ export function retainDocuments(tabs: FileTab[]) {
 }
 
 export const documents = () => [...buffers.values()];
-export function relocateDocuments(previous: FileTab[], next: FileTab[]) {
+export function relocateDocuments(
+  previous: FileTab[],
+  next: FileTab[],
+  canonicalChange?: { oldPath: string | null; newPath: string | null },
+) {
   const before = new Map(
     previous.map((tab) => [
       tab.id,
@@ -166,7 +189,7 @@ export function relocateDocuments(previous: FileTab[], next: FileTab[]) {
   for (const { tab, old } of changes) {
     const document = old.document!;
     buffers.delete(document.path);
-    document.relocate(tab);
+    document.relocate(tab, canonicalChange);
     buffers.set(document.path, document);
     aliases.set(editorFileKey(tab), document);
   }
@@ -191,20 +214,23 @@ export function openDocument(tab: FileTab): Promise<EditorDocument> {
   }
   let pending = opening.get(key);
   if (!pending) {
+    const prepared = preparedReads.get(key);
     pending = (
-      tab.untitled
-        ? Promise.resolve<DiskFile>({
-            path: tab.title,
-            relative: "",
-            content: "",
-            revision: "",
-            encoding: "utf8",
-            readOnly: false,
-          })
-        : api<DiskFile>("read_editor_file", {
-            root: tab.root,
-            relative: tab.relative,
-          })
+      prepared
+        ? Promise.resolve(prepared)
+        : tab.untitled
+          ? Promise.resolve<DiskFile>({
+              path: tab.title,
+              relative: "",
+              content: "",
+              revision: "",
+              encoding: "utf8",
+              readOnly: false,
+            })
+          : api<DiskFile>("read_editor_file", {
+              root: tab.root,
+              relative: tab.relative,
+            })
     )
       .then((data) => {
         if (!retained.has(key))
@@ -228,6 +254,9 @@ export function openDocument(tab: FileTab): Promise<EditorDocument> {
 }
 
 export class EditorDocument {
+  readonly documentId = crypto.randomUUID();
+  private bufferVersion = 0;
+  private sourcePath: string;
   untitled?: string;
   location: { root: string; relative: string };
   path: string;
@@ -267,6 +296,7 @@ export class EditorDocument {
     this.untitled = tab.untitled ? tab.id : undefined;
     this.location = { root: tab.root, relative: tab.relative };
     this.path = data.path;
+    this.sourcePath = data.path;
     this.revision = data.revision;
     const content = data.content ?? "";
     const large = needsLargeFileMode(content);
@@ -403,7 +433,8 @@ export class EditorDocument {
   }
 
   get dirty() {
-    return this.snapshot.dirty;
+    // Close guards can run before the scheduled UI snapshot notification.
+    return !this.matchesSaved();
   }
   private currentIndentation(): Indentation {
     const defaults = editorPreferences();
@@ -450,8 +481,196 @@ export class EditorDocument {
   focus() {
     this.view?.focus();
   }
+  assertCleanDiskChange(paths: ReadonlySet<string>) {
+    if (paths.has(this.path) || paths.has(this.sourcePath)) {
+      if (
+        this.disposed ||
+        !this.matchesSaved() ||
+        this.snapshot.conflict ||
+        this.snapshot.saving
+      )
+        throw new Error("TARGET_BUSY");
+    }
+  }
   getSnapshot = () => this.snapshot;
+  trashRevision() {
+    if (this.disposed || this.untitled || this.snapshot.saving)
+      throw new Error("TARGET_BUSY");
+    return {
+      documentId: this.documentId,
+      path: this.sourcePath,
+      bufferRevision: `${this.documentId}:${this.bufferVersion}`,
+      diskRevision: this.revision,
+    };
+  }
   getTextSnapshot = () => this.state.doc;
+  applyAgentEdits(input: EditorEditsInput, sourcePath: string) {
+    if (this.disposed || this.untitled) throw new Error("TARGET_NOT_FOUND");
+    if (this.fileOperationsPaused || this.savePromise)
+      throw new Error("TARGET_BUSY");
+    if (this.snapshot.readOnly || this.sourcePath !== sourcePath)
+      throw new Error("SCOPE_DENIED");
+    if (input.documentId !== this.documentId)
+      throw new Error("STALE_GENERATION");
+    const previousBufferRevision = `${this.documentId}:${this.bufferVersion}`;
+    if (
+      input.expectedBufferRevision !== previousBufferRevision ||
+      input.expectedDiskRevision !== this.revision ||
+      this.snapshot.conflict
+    )
+      throw new Error("REVISION_CONFLICT");
+    const changes = bufferChanges(this.state.doc, input.edits);
+    try {
+      this.dispatch({ changes, annotations: isolateHistory.of("full") });
+    } catch {
+      throw new Error("OUTCOME_UNKNOWN");
+    }
+    return {
+      workspaceId: input.workspaceId,
+      panelId: input.panelId,
+      relativePath: input.relativePath,
+      documentId: this.documentId,
+      previousBufferRevision,
+      bufferRevision: `${this.documentId}:${this.bufferVersion}`,
+      diskRevision: this.revision,
+      dirty: !this.matchesSaved(),
+      editCount: input.edits.length,
+    };
+  }
+  saveAgent(
+    input: EditorSaveInput,
+    sourcePath: string,
+    operationId: string,
+    nonce: string,
+  ): Promise<EditorSaved> {
+    if (this.disposed || this.untitled) throw new Error("TARGET_NOT_FOUND");
+    if (this.fileOperationsPaused || this.savePromise)
+      throw new Error("TARGET_BUSY");
+    if (this.snapshot.readOnly || this.sourcePath !== sourcePath)
+      throw new Error("SCOPE_DENIED");
+    if (input.documentId !== this.documentId)
+      throw new Error("STALE_GENERATION");
+    const bufferRevision = `${this.documentId}:${this.bufferVersion}`;
+    if (
+      input.expectedBufferRevision !== bufferRevision ||
+      input.expectedDiskRevision !== this.revision ||
+      this.snapshot.conflict
+    )
+      throw new Error("REVISION_CONFLICT");
+    const savedState = this.state;
+    const content = writeEditorText(savedState);
+    if (
+      new TextEncoder().encode(content).length > 4 * 1024 * 1024 ||
+      content.includes("\0")
+    )
+      throw new Error("RESOURCE_EXHAUSTED");
+    this.publish({ saving: true, error: "" });
+    const pending = api<EditorSaved>("agent_control_editor_save_file", {
+      operationId,
+      nonce,
+      body: {
+        documentId: this.documentId,
+        bufferRevision,
+        diskRevision: this.revision,
+        sourcePath,
+        content,
+      },
+    })
+      .then((saved) => {
+        if (
+          saved.documentId !== input.documentId ||
+          saved.savedBufferRevision !== bufferRevision ||
+          saved.previousDiskRevision !== input.expectedDiskRevision ||
+          saved.workspaceId !== input.workspaceId ||
+          saved.panelId !== input.panelId ||
+          saved.relativePath !== input.relativePath ||
+          !/^[a-f0-9]{64}$/.test(saved.diskRevision)
+        )
+          throw new Error("OUTCOME_UNKNOWN");
+        this.revision = saved.diskRevision;
+        this.savedDoc = savedState.doc;
+        this.savedEndings = savedState.field(lineEndings);
+        this.external = undefined;
+        this.publish({
+          dirty: !this.matchesSaved(),
+          conflict: false,
+          error: "",
+        });
+        return saved;
+      })
+      .catch((reason: unknown) => {
+        const code =
+          typeof reason === "string"
+            ? reason
+            : reason instanceof Error
+              ? reason.message
+              : "OUTCOME_UNKNOWN";
+        this.publish({
+          error:
+            code === "REVISION_CONFLICT"
+              ? "The file changed on disk. Reload it before saving."
+              : "The agent save did not complete. Check the disk version before saving again.",
+          ...(code === "REVISION_CONFLICT" ? { conflict: true } : {}),
+        });
+        this.recheck = true;
+        throw new Error(code);
+      })
+      .finally(() => {
+        this.savePromise = undefined;
+        this.publish({ saving: false });
+        if (this.recheck) this.scheduleRefresh();
+      });
+    this.savePromise = pending.then(
+      () => true,
+      () => false,
+    );
+    return pending;
+  }
+  readAgentBuffer(input: EditorReadInput) {
+    if (this.disposed || this.untitled) throw new Error("TARGET_NOT_FOUND");
+    if (this.fileOperationsPaused) throw new Error("TARGET_BUSY");
+    if (input.documentId && input.documentId !== this.documentId)
+      throw new Error("STALE_GENERATION");
+    const bufferRevision = `${this.documentId}:${this.bufferVersion}`;
+    if (
+      input.expectedBufferRevision &&
+      input.expectedBufferRevision !== bufferRevision
+    )
+      throw new Error("REVISION_CONFLICT");
+    if (
+      (input.startUtf16 ?? 0) > 0 &&
+      (!input.documentId || !input.expectedBufferRevision)
+    )
+      throw new Error("REVISION_CONFLICT");
+    const endings = this.state.field(lineEndings);
+    return {
+      sourcePath: this.sourcePath,
+      text: {
+        workspaceId: input.workspaceId,
+        panelId: input.panelId,
+        relativePath: input.relativePath,
+        documentId: this.documentId,
+        bufferRevision,
+        diskRevision: this.revision,
+        source: "buffer",
+        dirty: !this.matchesSaved(),
+        conflict: this.snapshot.conflict,
+        encoding: this.snapshot.encoding.toLowerCase(),
+        lineEndings:
+          this.state.doc.lines === 1
+            ? "none"
+            : endings.endings
+              ? "mixed"
+              : endings.separator === "\r\n"
+                ? "cr_lf"
+                : endings.separator === "\r"
+                  ? "cr"
+                  : "lf",
+        ...readBufferSlice(this.state.doc, input.startUtf16, input.maxChars),
+      },
+    };
+  }
+
   subscribeText = (listener: () => void) => {
     this.textListeners.add(listener);
     return () => {
@@ -553,6 +772,14 @@ export class EditorDocument {
     );
   }
   private afterTransactions(transactions: readonly Transaction[]) {
+    if (
+      transactions.some(
+        (t) =>
+          t.docChanged ||
+          t.startState.field(lineEndings) !== t.state.field(lineEndings),
+      )
+    )
+      ++this.bufferVersion;
     if (transactions.some((transaction) => transaction.docChanged)) {
       for (const listener of this.textListeners) listener();
       this.publish({ dirty: true });
@@ -697,6 +924,7 @@ export class EditorDocument {
     this.untitled = undefined;
     this.relocate({ type: "file", id, title: "", ...result.location });
     this.path = result.file.path;
+    this.sourcePath = result.file.path;
     buffers.set(this.path, this);
     aliases.set(
       editorFileKey({ type: "file", id, title: "", ...result.location }),
@@ -723,7 +951,13 @@ export class EditorDocument {
     this.fileOperationsPaused = false;
     this.scheduleRefresh();
   }
-  relocate(tab: FileTab) {
+  relocate(
+    tab: FileTab,
+    canonicalChange?: { oldPath: string | null; newPath: string | null },
+  ) {
+    const previousPath = this.path;
+    const previousSource = this.sourcePath;
+    ++this.bufferVersion;
     ++this.reloadVersion;
     this.location = { root: tab.root, relative: tab.relative };
     const separator = tab.root.includes("\\") ? "\\" : "/";
@@ -731,6 +965,17 @@ export class EditorDocument {
       tab.root.replace(/[\\/]$/, "") +
       separator +
       tab.relative.replace(/[\\/]/g, separator);
+    if (this.sourcePath === previousPath) this.sourcePath = this.path;
+    if (
+      canonicalChange?.newPath &&
+      canonicalChange.oldPath &&
+      previousSource &&
+      (previousSource === canonicalChange.oldPath ||
+        previousSource.startsWith(`${canonicalChange.oldPath}/`))
+    )
+      this.sourcePath =
+        canonicalChange.newPath +
+        previousSource.slice(canonicalChange.oldPath.length);
     if (this.diskError === this.snapshot.error) this.publish({ error: "" });
     this.diskError = "";
     if (this.snapshot.languageMode === "auto") this.setLanguage("auto");
@@ -804,6 +1049,8 @@ export class EditorDocument {
     this.publish({ readOnly: value });
   }
   private replaceFromDisk(data: DiskFile) {
+    ++this.bufferVersion;
+    this.sourcePath = data.path;
     const position = this.position();
     this.revision = data.revision;
     const content = data.content ?? "";

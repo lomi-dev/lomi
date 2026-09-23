@@ -646,25 +646,106 @@ fn read_preferences(path: &Path) -> Result<Preferences, String> {
     if !path.try_exists().map_err(|error| error.to_string())? {
         return Ok(Preferences::builtin());
     }
-    let result = (|| {
-        let value: Preferences = serde_json::from_slice(&read_limited(path, JSON_LIMIT)?)
-            .map_err(|error| error.to_string())?;
-        if value.version != 1 {
-            return Err("Unsupported theme settings version.".into());
-        }
-        for id in [&value.active, &value.file_icons, &value.product_icons]
-            .into_iter()
-            .flatten()
-        {
-            valid_id(id)?;
-        }
-        Ok(value)
-    })();
+    let result = read_limited(path, JSON_LIMIT).and_then(|bytes| parse_preferences(&bytes));
     result.map_err(|error: String| {
         format!(
             "{error} Theme settings have been left intact at {}. Select Lomi to recover.",
             path.display()
         )
+    })
+}
+
+fn parse_preferences(bytes: &[u8]) -> Result<Preferences, String> {
+    let value: Preferences = serde_json::from_slice(bytes).map_err(|error| error.to_string())?;
+    if value.version != 1 {
+        return Err("Unsupported theme settings version.".into());
+    }
+    for id in [&value.active, &value.file_icons, &value.product_icons]
+        .into_iter()
+        .flatten()
+    {
+        valid_id(id)?;
+    }
+    Ok(value)
+}
+
+#[cfg(unix)]
+pub(crate) fn agent_prepare(
+    app: &tauri::AppHandle,
+    patch: &lomi_control_protocol::settings::SettingsPatch,
+    check: &dyn Fn() -> Result<(), lomi_control_protocol::ErrorCode>,
+) -> Result<lomi_control_core::broker::SettingsPlan, lomi_control_protocol::ErrorCode> {
+    use crate::settings_control::PreferenceSource;
+    use lomi_control_core::{atomic_file, broker::SettingsPlan};
+    use lomi_control_protocol::{
+        settings::{SettingsPatch, SettingsThemeValues, SettingsUpdateValues},
+        ErrorCode,
+    };
+    use std::sync::Arc;
+    use tauri::Manager;
+    check()?;
+    if crate::plugins::safe_mode() || std::env::var_os("LOMI_SAFE_THEME").is_some_and(|v| v == "1")
+    {
+        return Err(ErrorCode::UnsupportedCapability);
+    }
+    let state = app.state::<Themes>();
+    let _guard = state
+        .lock
+        .lock()
+        .map_err(|_| ErrorCode::StorageUnavailable)?;
+    let source = PreferenceSource::open(app, "theme-settings.json", JSON_LIMIT, check)?;
+    let before = source
+        .bytes
+        .as_deref()
+        .map(parse_preferences)
+        .transpose()
+        .map_err(|_| ErrorCode::UnsupportedCapability)?
+        .unwrap_or_else(Preferences::builtin);
+    let mut values = serde_json::to_value(&before).map_err(|_| ErrorCode::ResourceExhausted)?;
+    values.as_object_mut().unwrap().remove("version");
+    let before = SettingsUpdateValues::Themes(
+        serde_json::from_value::<SettingsThemeValues>(values)
+            .map_err(|_| ErrorCode::UnsupportedCapability)?,
+    );
+    let mut after = before.clone();
+    patch.apply_values(&mut after)?;
+    let mut stored = source
+        .bytes
+        .as_deref()
+        .map(serde_json::from_slice::<Value>)
+        .transpose()
+        .map_err(|_| ErrorCode::UnsupportedCapability)?
+        .unwrap_or_else(|| serde_json::json!({"version":1,"active":null}));
+    match patch {
+        SettingsPatch::ThemeBuiltin { value } => stored["active"] = serde_json::json!(value.id()),
+        SettingsPatch::ThemeAppearance { value } => stored["appearance"] = serde_json::json!(value),
+        _ => return Err(ErrorCode::UnsupportedCapability),
+    }
+    let bytes = serde_json::to_vec_pretty(&stored).map_err(|_| ErrorCode::ResourceExhausted)?;
+    if bytes.len() as u64 > JSON_LIMIT {
+        return Err(ErrorCode::ResourceExhausted);
+    }
+    let validated = parse_preferences(&bytes).map_err(|_| ErrorCode::UnsupportedCapability)?;
+    validate_selections(app, &validated).map_err(|_| ErrorCode::UnsupportedCapability)?;
+    let apply_app = app.clone();
+    Ok(SettingsPlan {
+        before,
+        after,
+        source_revision: source.revision.clone(),
+        apply: Arc::new(move |check| {
+            let state = apply_app.state::<Themes>();
+            let _guard = state
+                .lock
+                .lock()
+                .map_err(|_| ErrorCode::StorageUnavailable)?;
+            validate_selections(&apply_app, &validated).map_err(|_| ErrorCode::RevisionConflict)?;
+            let revision = source.commit(&bytes, check)?;
+            let event_revision = state.revision.fetch_add(1, Ordering::SeqCst) + 1;
+            apply_app
+                .emit("theme-changed", event_revision)
+                .map_err(|_| atomic_file::ReplaceError::Uncertain)?;
+            Ok(revision)
+        }),
     })
 }
 
@@ -826,20 +907,7 @@ pub fn save_theme_preferences(
 ) -> Result<(), String> {
     authorize(window.label(), true)?;
     let _guard = state.lock.lock().map_err(|error| error.to_string())?;
-    if data.version != 1 {
-        return Err("Unsupported theme settings version.".into());
-    }
-    for (id, expected) in [
-        (&data.active, "color"),
-        (&data.file_icons, "file"),
-        (&data.product_icons, "product"),
-    ] {
-        if let Some(id) = id {
-            if icons::kind(&parse_raw(&app_bundle(&app, id)?.raw)?) != expected {
-                return Err(format!("Expected a {expected} theme."));
-            }
-        }
-    }
+    validate_selections(&app, &data)?;
     let directory = data_dir(&app)?;
     fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
     crate::files::write_json(
@@ -850,6 +918,24 @@ pub fn save_theme_preferences(
     let revision = state.revision.fetch_add(1, Ordering::SeqCst) + 1;
     app.emit("theme-changed", revision)
         .map_err(|error| error.to_string())
+}
+
+fn validate_selections(app: &tauri::AppHandle, data: &Preferences) -> Result<(), String> {
+    if data.version != 1 {
+        return Err("Unsupported theme settings version.".into());
+    }
+    for (id, expected) in [
+        (&data.active, "color"),
+        (&data.file_icons, "file"),
+        (&data.product_icons, "product"),
+    ] {
+        if let Some(id) = id {
+            if icons::kind(&parse_raw(&app_bundle(app, id)?.raw)?) != expected {
+                return Err(format!("Expected a {expected} theme."));
+            }
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]

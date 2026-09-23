@@ -16,9 +16,11 @@ struct Connection {
     socket: TcpStream,
     deadline: Instant,
     cancel: Option<Arc<AtomicBool>>,
+    guard: Option<super::runtime::DispatchGuard>,
 }
 impl Connection {
     fn remaining(&self) -> std::io::Result<Duration> {
+        super::runtime::check_guard(&self.guard).map_err(std::io::Error::other)?;
         if self
             .cancel
             .as_ref()
@@ -41,15 +43,16 @@ impl Read for Connection {
     fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
         loop {
             let remaining = self.remaining()?;
-            self.socket
-                .set_read_timeout(Some(if self.cancel.is_some() {
+            self.socket.set_read_timeout(Some(
+                if self.cancel.is_some() || self.guard.is_some() {
                     remaining.min(Duration::from_millis(250))
                 } else {
                     remaining
-                }))?;
+                },
+            ))?;
             match self.socket.read(buffer) {
                 Err(error)
-                    if self.cancel.is_some()
+                    if (self.cancel.is_some() || self.guard.is_some())
                         && matches!(
                             error.kind(),
                             std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
@@ -66,15 +69,16 @@ impl Write for Connection {
     fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
         loop {
             let remaining = self.remaining()?;
-            self.socket
-                .set_write_timeout(Some(if self.cancel.is_some() {
+            self.socket.set_write_timeout(Some(
+                if self.cancel.is_some() || self.guard.is_some() {
                     remaining.min(Duration::from_millis(250))
                 } else {
                     remaining
-                }))?;
+                },
+            ))?;
             match self.socket.write(bytes) {
                 Err(error)
-                    if self.cancel.is_some()
+                    if (self.cancel.is_some() || self.guard.is_some())
                         && matches!(
                             error.kind(),
                             std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
@@ -124,6 +128,7 @@ impl Server {
             socket,
             deadline: Instant::now() + Duration::from_secs(5),
             cancel: None,
+            guard: None,
         })
     }
 
@@ -151,7 +156,26 @@ impl Server {
 }
 
 impl Guest {
-    #[cfg(any(test, feature = "android-probe"))]
+    pub fn hierarchy(
+        &self,
+        deadline: Instant,
+        guard: super::runtime::DispatchGuard,
+    ) -> Result<String, String> {
+        guard()?;
+        let id = super::auth::new_id()?;
+        let folder = format!("/data/local/tmp/lomi-mcp-hierarchy-{id}");
+        // The adapter supplies every shell byte. mkdir refuses a pre-existing
+        // path; cleanup touches only this invocation's own child and directory.
+        let command = self.guard()? + &format!("umask 077; mkdir '{folder}' || exit 1; trap 'rm -f -- {folder}/tree.xml; rmdir -- {folder}' EXIT; toybox timeout 8 uiautomator dump --compressed '{folder}/tree.xml' >/dev/null 2>&1 && head -c 262145 '{folder}/tree.xml'");
+        let xml = self.shell_guarded_until(&command, deadline, None, Some(guard.clone()))?;
+        guard()?;
+        if xml.len() > 262144 {
+            return Err("Android hierarchy exceeds 256 KiB".into());
+        }
+        Ok(xml)
+    }
+
+    #[cfg(any(test, feature = "android-probe", feature = "mcp-probe"))]
     pub fn native_input_fixture(&self, open: bool) -> Result<String, String> {
         self.shell(&(self.guard()? + if open { "am start -n org.lomi.inputtest/.InputTest" } else { "uiautomator dump /data/local/tmp/lomi-input-check.xml >/dev/null && cat /data/local/tmp/lomi-input-check.xml && rm /data/local/tmp/lomi-input-check.xml" }))
     }
@@ -259,6 +283,120 @@ impl Guest {
         }
     }
 
+    #[cfg(unix)]
+    pub fn package_version(
+        &self,
+        package: &str,
+        deadline: Instant,
+        guard: super::runtime::DispatchGuard,
+    ) -> Result<Option<String>, String> {
+        if !super::apk_manifest::package_valid(package) {
+            return Err("Invalid package identifier".into());
+        }
+        guard()?;
+        let command = self.guard()? + &format!("dumpsys package {package} | head -c 65536");
+        let output = self.shell_guarded_until(&command, deadline, None, Some(guard))?;
+        let mut versions = output
+            .split_whitespace()
+            .filter_map(|part| part.strip_prefix("versionCode="));
+        let Some(version) = versions.next() else {
+            return Ok(None);
+        };
+        if version.len() > 20
+            || version.is_empty()
+            || !version.bytes().all(|b| b.is_ascii_digit())
+            || versions.any(|v| v != version)
+        {
+            return Ok(None);
+        }
+        Ok(Some(version.into()))
+    }
+
+    #[cfg(unix)]
+    pub fn app_logs(
+        &self,
+        package: &str,
+        priority: lomi_control_protocol::android::AndroidLogPriority,
+        deadline: Instant,
+        guard: super::runtime::DispatchGuard,
+    ) -> Result<lomi_control_core::broker::AndroidLogBatch, String> {
+        if !lomi_control_protocol::android::valid_package(package) {
+            return Err("Invalid package identifier".into());
+        }
+        let identity = || -> Result<(u32, u32), String> {
+            guard()?;
+            let packages = self.shell_guarded_until(
+                &(self.guard()? + "cmd package list packages -U --user 0"),
+                deadline,
+                None,
+                Some(guard.clone()),
+            )?;
+            let uid = app_log_uid(&packages, package)?;
+            let pids = self.shell_guarded_until(
+                &(self.guard()? + &format!("pidof '{package}' || true")),
+                deadline,
+                None,
+                Some(guard.clone()),
+            )?;
+            let pid = pids
+                .trim()
+                .parse::<u32>()
+                .ok()
+                .filter(|p| *p > 0 && *p <= 4_194_304)
+                .ok_or("The app main process is not running or is ambiguous")?;
+            Ok((uid, pid))
+        };
+        let (uid, pid) = identity()?;
+        let command = self.guard()? + &format!("logcat -d -b main -v threadtime,epoch,printable --uid={uid} --pid={pid} -t 256 '*:{}'", priority.filter());
+        let output = self.shell_guarded_until(&command, deadline, None, Some(guard.clone()))?;
+        if identity()? != (uid, pid) {
+            return Err("App process changed while reading logs".into());
+        }
+        guard()?;
+        Ok(bounded_app_logs(pid, &output))
+    }
+
+    pub fn launch_app(
+        &self,
+        package: &str,
+        activity: Option<&str>,
+        cancel: Arc<AtomicBool>,
+        guard: super::runtime::DispatchGuard,
+    ) -> Result<String, String> {
+        use lomi_control_protocol::android::{valid_activity, valid_package};
+        if !valid_package(package) || activity.is_some_and(|a| !valid_activity(a)) {
+            return Err("Invalid app identifier".into());
+        }
+        guard()?;
+        let deadline = Instant::now() + Duration::from_secs(12);
+        let activity = match activity {
+            Some(a) => a.to_owned(),
+            None => {
+                let output = self.shell_guarded_until(&(self.guard()? + &format!("cmd package resolve-activity --brief --user 0 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER '{package}'")), deadline, Some(&cancel), Some(guard.clone()))?;
+                let mut components = output.lines().filter_map(|s| s.trim().split_once('/'));
+                let (resolved, activity) = components.next().ok_or("No launcher activity")?;
+                if resolved != package || !valid_activity(activity) || components.next().is_some() {
+                    return Err("Invalid launcher activity".into());
+                }
+                activity.to_owned()
+            }
+        };
+        guard()?;
+        let output = self.shell_guarded_until(
+            &(self.guard()? + &format!("am start -W --user 0 -n '{package}/{activity}'")),
+            deadline,
+            Some(&cancel),
+            Some(guard.clone()),
+        )?;
+        guard()?;
+        if !output.lines().any(|l| l.trim() == "Status: ok")
+            || output.lines().any(|l| l.trim_start().starts_with("Error:"))
+        {
+            return Err("Android did not confirm launch".into());
+        }
+        Ok(activity)
+    }
+
     pub fn open_settings(&self) -> Result<(), String> {
         self.shell(&(self.guard()? + "am start -a android.settings.SETTINGS"))
             .map(|_| ())
@@ -311,12 +449,24 @@ impl Guest {
         deadline: Instant,
         cancel: Option<&Arc<AtomicBool>>,
     ) -> Result<String, String> {
+        self.shell_guarded_until(command, deadline, cancel, None)
+    }
+
+    fn shell_guarded_until(
+        &self,
+        command: &str,
+        deadline: Instant,
+        cancel: Option<&Arc<AtomicBool>>,
+        guard: Option<super::runtime::DispatchGuard>,
+    ) -> Result<String, String> {
+        super::runtime::check_guard(&guard)?;
         if cancel.is_some_and(|cancel| cancel.load(Ordering::Acquire)) {
             return Err("Android operation cancelled".into());
         }
         let mut socket = self.server.select(self.console_port)?;
         socket.deadline = deadline;
         socket.cancel = cancel.cloned();
+        socket.guard = guard;
         request(&mut socket, &("shell,v2,raw:".to_string() + command))?;
         let mut output = Vec::new();
         loop {
@@ -382,11 +532,22 @@ impl Guest {
         file: &mut std::fs::File,
         cancel: &Arc<AtomicBool>,
     ) -> Result<(), String> {
+        self.install_apk_guarded(file, cancel, None)
+    }
+    pub fn install_apk_guarded(
+        &self,
+        file: &mut std::fs::File,
+        cancel: &Arc<AtomicBool>,
+        guard: Option<super::runtime::DispatchGuard>,
+    ) -> Result<(), String> {
+        if let Some(guard) = &guard {
+            guard()?;
+        }
         let metadata = file.metadata().map_err(error)?;
         if !metadata.is_file() {
             return Err("Select a regular APK file no larger than 2 GiB.".into());
         }
-        self.install_bytes(file, metadata.len(), cancel)
+        self.install_bytes_guarded(file, metadata.len(), cancel, guard)
     }
 
     pub fn prepare_input(&self, cancel: &Arc<AtomicBool>) -> Result<(), String> {
@@ -417,12 +578,25 @@ impl Guest {
         length: u64,
         cancel: &Arc<AtomicBool>,
     ) -> Result<(), String> {
+        self.install_bytes_guarded(reader, length, cancel, None)
+    }
+    fn install_bytes_guarded(
+        &self,
+        reader: &mut impl Read,
+        length: u64,
+        cancel: &Arc<AtomicBool>,
+        guard: Option<super::runtime::DispatchGuard>,
+    ) -> Result<(), String> {
+        if let Some(guard) = &guard {
+            guard()?;
+        }
         if !(4..=2 * 1024 * 1024 * 1024).contains(&length) {
             return Err("Select a regular APK file no larger than 2 GiB.".into());
         }
         let mut socket = self.server.select(self.console_port)?;
         socket.deadline = Instant::now() + Duration::from_secs(90);
         socket.cancel = Some(cancel.clone());
+        socket.guard = guard;
         // The only interpolated values are validated UUIDs and a native file size.
         // APK bytes are streamed over stdin; neither their name nor contents enter a shell.
         let command = format!(
@@ -883,5 +1057,166 @@ mod tests {
             .install_apk(&mut file, &Arc::new(AtomicBool::new(false)))
             .is_err());
         assert_eq!(std::io::Seek::stream_position(&mut file).unwrap(), 0);
+    }
+    #[test]
+    fn apk_guard_stops_stalled_ack_and_mid_transfer_without_replacing_adb() {
+        for mid_transfer in [false, true] {
+            let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+            let server = Server {
+                port: listener.local_addr().unwrap().port(),
+            };
+            let active = Arc::new(AtomicBool::new(true));
+            let revoke = active.clone();
+            let worker = thread::spawn(move || {
+                let (mut socket, _) = listener.accept().unwrap();
+                socket
+                    .set_read_timeout(Some(Duration::from_secs(2)))
+                    .unwrap();
+                assert_eq!(read_string(&mut socket, 256).unwrap(), "host:version");
+                socket.write_all(b"OKAY00040029").unwrap();
+                let (mut socket, _) = listener.accept().unwrap();
+                socket
+                    .set_read_timeout(Some(Duration::from_secs(2)))
+                    .unwrap();
+                assert_eq!(
+                    read_string(&mut socket, 256).unwrap(),
+                    "host:transport:emulator-5580"
+                );
+                socket.write_all(b"OKAY").unwrap();
+                let command = read_string(&mut socket, 1024).unwrap();
+                assert!(command.contains("cmd package install -r -S 67108864"));
+                assert!(command.contains("lomi_generation"));
+                socket.write_all(b"OKAY").unwrap();
+                let mut received = 0;
+                let mut buffer = [0; 65536];
+                if mid_transfer {
+                    socket.write_all(b"SBOK").unwrap();
+                    received += socket.read(&mut buffer).unwrap();
+                    assert!(received > 0);
+                }
+                revoke.store(false, Ordering::SeqCst);
+                let revoked = Instant::now();
+                loop {
+                    match socket.read(&mut buffer) {
+                        Ok(0) => break,
+                        Ok(n) => received += n,
+                        Err(e) if e.kind() == std::io::ErrorKind::ConnectionReset => break,
+                        Err(e) => panic!("Revoked APK transfer remained open: {e}"),
+                    }
+                }
+                assert!(revoked.elapsed() < Duration::from_secs(2));
+                if !mid_transfer {
+                    assert_eq!(received, 0);
+                }
+                assert!(received < 64 * 1024 * 1024);
+            });
+            let guest = Guest {
+                server,
+                console_port: 5580,
+                device_id: "00000000-0000-0000-0000-000000000001".into(),
+                generation_key: "00000000-0000-0000-0000-000000000002".into(),
+            };
+            let mut file = tempfile::tempfile().unwrap();
+            file.set_len(64 * 1024 * 1024).unwrap();
+            let guard: super::super::runtime::DispatchGuard = Arc::new(move || {
+                if active.load(Ordering::SeqCst) {
+                    Ok(())
+                } else {
+                    Err("revoked".into())
+                }
+            });
+            assert!(guest
+                .install_apk_guarded(&mut file, &Arc::new(AtomicBool::new(false)), Some(guard))
+                .is_err());
+            worker.join().unwrap();
+        }
+    }
+}
+
+#[cfg(unix)]
+fn app_log_uid(packages: &str, package: &str) -> Result<u32, String> {
+    let entries: Vec<_> = packages
+        .lines()
+        .filter_map(|line| {
+            let (name, uid) = line.strip_prefix("package:")?.split_once(" uid:")?;
+            Some((name, uid.trim().parse::<u32>().ok()?))
+        })
+        .collect();
+    let mut matching = entries.iter().filter(|(name, _)| *name == package);
+    let uid = matching
+        .next()
+        .map(|(_, uid)| *uid)
+        .ok_or("App is not installed")?;
+    if uid < 10000
+        || matching.next().is_some()
+        || entries
+            .iter()
+            .any(|(name, other)| *other == uid && *name != package)
+    {
+        return Err("Shared or system app identities are not supported for logs".into());
+    }
+    Ok(uid)
+}
+#[cfg(unix)]
+fn bounded_app_logs(pid: u32, output: &str) -> lomi_control_core::broker::AndroidLogBatch {
+    let mut lines = Vec::new();
+    let mut bytes = 0;
+    let mut truncated = false;
+    for line in output.lines() {
+        if line.starts_with("--------- beginning of ") {
+            continue;
+        }
+        if lines.len() == 256 {
+            truncated = true;
+            break;
+        }
+        let mut end = line.len().min(2048);
+        while !line.is_char_boundary(end) {
+            end -= 1;
+        }
+        if end < line.len() {
+            truncated = true;
+        }
+        if bytes + end > 65536 {
+            truncated = true;
+            break;
+        }
+        lines.push(line[..end].into());
+        bytes += end;
+    }
+    // A full tail may already have discarded older matching records inside logd.
+    truncated |= lines.len() == 256;
+    lomi_control_core::broker::AndroidLogBatch {
+        process_id: pid,
+        lines,
+        truncated,
+    }
+}
+#[cfg(all(test, unix))]
+mod app_log_tests {
+    use super::*;
+    #[test]
+    fn package_logs_refuse_shared_uid_and_keep_unicode_within_limits() {
+        assert_eq!(
+            app_log_uid(
+                "package:org.example.app uid:10123\npackage:org.example.other uid:10124\n",
+                "org.example.app"
+            )
+            .unwrap(),
+            10123
+        );
+        for list in [
+            "package:org.example.app uid:1000",
+            "package:org.example.app uid:10123\npackage:org.example.other uid:10123",
+            "package:org.example.other uid:10123",
+            "package:org.example.app uid:10123\npackage:org.example.app uid:10123",
+        ] {
+            assert!(app_log_uid(list, "org.example.app").is_err());
+        }
+        let logs = bounded_app_logs(123, &("🦀".repeat(800) + "\n").repeat(300));
+        assert!(logs.truncated);
+        assert_eq!(logs.lines.len(), 32);
+        assert_eq!(logs.lines.iter().map(String::len).sum::<usize>(), 65536);
+        assert!(logs.lines.iter().all(|l| l.chars().count() == 512));
     }
 }

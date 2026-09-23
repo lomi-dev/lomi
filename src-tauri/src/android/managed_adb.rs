@@ -82,7 +82,7 @@ impl SharedServer {
         }
     }
 
-    #[cfg(any(test, feature = "android-probe"))]
+    #[cfg(any(test, feature = "android-probe", feature = "mcp-probe"))]
     pub fn stop_private_fixture(&mut self, port: u16) -> Result<(), String> {
         assert!(port >= 10_000 && port != 5037);
         if let Some(child) = &mut self.child {

@@ -59,7 +59,7 @@ fn validate(data: &Value) -> Result<(), String> {
                 "fontFamily" => {
                     let font = value.as_str()?;
                     if font.trim().is_empty()
-                        || font.chars().count() > 500
+                        || font.encode_utf16().count() > 500
                         || font
                             .chars()
                             .any(|c| c.is_ascii_control() || ";{}<>".contains(c))
@@ -166,7 +166,9 @@ fn validate(data: &Value) -> Result<(), String> {
             behavior.get(key)?.as_bool()?;
         }
         let separators = behavior.get("wordSeparator")?.as_str()?;
-        if separators.chars().count() > 200 || separators.chars().any(|c| c.is_ascii_control()) {
+        if separators.encode_utf16().count() > 200
+            || separators.chars().any(|c| c.is_ascii_control())
+        {
             return None;
         }
         Some(())
@@ -202,6 +204,97 @@ fn read(path: &Path) -> Result<Option<TerminalPreferences>, String> {
 fn save(path: &Path, data: &TerminalPreferences) -> Result<(), String> {
     validate(data)?;
     crate::files::write_json(path, data, LIMIT as usize)
+}
+
+#[cfg(unix)]
+fn agent_plan_values(
+    source: Option<&[u8]>,
+    patch: &lomi_control_protocol::settings::SettingsPatch,
+) -> Result<
+    (
+        lomi_control_protocol::settings::SettingsUpdateValues,
+        lomi_control_protocol::settings::SettingsUpdateValues,
+        Vec<u8>,
+    ),
+    lomi_control_protocol::ErrorCode,
+> {
+    use lomi_control_protocol::{
+        settings::{SettingsTerminalValues, SettingsUpdateValues},
+        ErrorCode,
+    };
+    use serde_json::json;
+    let mut stored: Value = match source {
+        Some(bytes) => {
+            serde_json::from_slice(bytes).map_err(|_| ErrorCode::UnsupportedCapability)?
+        }
+        None => json!({"version":1,"appearance":{},"behavior":{
+            "scrollback":10000,"scrollSensitivity":1,"fastScrollSensitivity":5,"smoothScrollDuration":0,"tabStopWidth":8,
+            "scrollOnUserInput":true,"scrollOnEraseInDisplay":false,"altClickMovesCursor":true,"rightClickSelectsWord":false,
+            "macOptionIsMeta":false,"macOptionClickForcesSelection":false,"screenReaderMode":false,"customGlyphs":true,
+            "rescaleOverlappingGlyphs":false,"wordSeparator":" ()[]{}',\"`"
+        }}),
+    };
+    let project = |stored: &Value| -> Result<SettingsUpdateValues, ErrorCode> {
+        validate(stored).map_err(|_| ErrorCode::UnsupportedCapability)?;
+        let mut data = json!({
+            "appearance": stored["appearance"], "behavior": stored["behavior"],
+            "windowsShell": stored.get("windowsShell").cloned().unwrap_or(json!("powershell")),
+            "agentNotifications": stored.get("agentNotifications").cloned().unwrap_or(json!(true)),
+            "alwaysShowTitles": stored.get("alwaysShowTitles").cloned().unwrap_or(json!(false))
+        });
+        // The existing validator accepts integral JSON floats. Normalize only
+        // the typed projection; untouched stored fields retain their values.
+        for key in ["scrollback", "smoothScrollDuration", "tabStopWidth"] {
+            data["behavior"][key] = json!(data["behavior"][key].as_f64().unwrap() as u32);
+        }
+        if let Some(value) = data["appearance"]["cursorWidth"].as_f64() {
+            data["appearance"]["cursorWidth"] = json!(value as u8);
+        }
+        let current: SettingsTerminalValues =
+            serde_json::from_value(data).map_err(|_| ErrorCode::UnsupportedCapability)?;
+        Ok(SettingsUpdateValues::Terminal(Box::new(current)))
+    };
+    let before = project(&stored)?;
+    patch.apply_terminal(&mut stored)?;
+    validate(&stored).map_err(|_| ErrorCode::ResourceExhausted)?;
+    let after = project(&stored)?;
+    let bytes = serde_json::to_vec_pretty(&stored).map_err(|_| ErrorCode::ResourceExhausted)?;
+    if bytes.len() as u64 > LIMIT {
+        return Err(ErrorCode::ResourceExhausted);
+    }
+    Ok((before, after, bytes))
+}
+
+#[cfg(unix)]
+pub(crate) fn agent_prepare(
+    app: &tauri::AppHandle,
+    patch: &lomi_control_protocol::settings::SettingsPatch,
+    check: &dyn Fn() -> Result<(), lomi_control_protocol::ErrorCode>,
+) -> Result<lomi_control_core::broker::SettingsPlan, lomi_control_protocol::ErrorCode> {
+    use crate::settings_control::PreferenceSource;
+    use lomi_control_core::{atomic_file, broker::SettingsPlan};
+    use lomi_control_protocol::ErrorCode;
+    use std::sync::Arc;
+    let state = app.state::<TerminalPreferencesFile>();
+    let _guard = state.0.lock().map_err(|_| ErrorCode::StorageUnavailable)?;
+    let source = PreferenceSource::open(app, "terminal-preferences.json", LIMIT, check)?;
+    let (before, after, bytes) = agent_plan_values(source.bytes.as_deref(), patch)?;
+    let source_revision = source.revision.clone();
+    let apply_app = app.clone();
+    Ok(SettingsPlan {
+        before,
+        after,
+        source_revision,
+        apply: Arc::new(move |check| {
+            let state = apply_app.state::<TerminalPreferencesFile>();
+            let _guard = state.0.lock().map_err(|_| ErrorCode::StorageUnavailable)?;
+            let revision = source.commit(&bytes, check)?;
+            apply_app
+                .emit("terminal-preferences-changed", ())
+                .map_err(|_| atomic_file::ReplaceError::Uncertain)?;
+            Ok(revision)
+        }),
+    })
 }
 
 #[tauri::command]
@@ -249,6 +342,133 @@ pub fn save_terminal_preferences(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[cfg(unix)]
+    #[test]
+    fn agent_fields_preserve_unrelated_values_and_reuse_terminal_validation() {
+        use lomi_control_protocol::settings::{
+            SettingsPatch, SettingsScalar, SettingsTerminalField as F,
+        };
+        let source = preferences();
+        let bytes = serde_json::to_vec(&source).unwrap();
+        for (field, value) in [
+            (F::AppearanceFontFamily, json!("Fixture Mono")),
+            (F::AppearanceFontSize, json!(19)),
+            (F::AppearanceFontWeight, json!("bold")),
+            (F::AppearanceFontWeightBold, json!(500)),
+            (F::AppearanceLineHeight, json!(1.5)),
+            (F::AppearanceLetterSpacing, json!(-1)),
+            (F::AppearanceCursorWidth, json!(2)),
+            (F::AppearanceCursorStyle, json!("bar")),
+            (F::AppearanceCursorInactiveStyle, json!("outline")),
+            (F::AppearanceCursorBlink, json!(true)),
+            (F::AppearanceMinimumContrastRatio, json!(4.5)),
+            (F::AppearanceDrawBoldTextInBrightColors, json!(false)),
+            (F::AppearanceColorsRed, json!("#11223388")),
+            (F::AppearanceColorsSearchMatchBorder, json!("#112233")),
+            (F::BehaviorScrollback, json!(20000)),
+            (F::BehaviorScrollSensitivity, json!(1.5)),
+            (F::BehaviorFastScrollSensitivity, json!(7)),
+            (F::BehaviorSmoothScrollDuration, json!(20)),
+            (F::BehaviorTabStopWidth, json!(4)),
+            (F::BehaviorScrollOnUserInput, json!(false)),
+            (F::BehaviorScrollOnEraseInDisplay, json!(true)),
+            (F::BehaviorAltClickMovesCursor, json!(false)),
+            (F::BehaviorRightClickSelectsWord, json!(true)),
+            (F::BehaviorMacOptionIsMeta, json!(true)),
+            (F::BehaviorMacOptionClickForcesSelection, json!(true)),
+            (F::BehaviorScreenReaderMode, json!(true)),
+            (F::BehaviorCustomGlyphs, json!(false)),
+            (F::BehaviorRescaleOverlappingGlyphs, json!(true)),
+            (F::BehaviorWordSeparator, json!(" ().")),
+            (F::WindowsShell, json!("cmd")),
+            (F::AgentNotifications, json!(false)),
+            (F::AlwaysShowTitles, json!(true)),
+        ] {
+            let patch = SettingsPatch::TerminalField {
+                field,
+                value: Some(serde_json::from_value::<SettingsScalar>(value.clone()).unwrap()),
+            };
+            let (mut before, after, result) = agent_plan_values(Some(&bytes), &patch).unwrap();
+            patch.apply_values(&mut before).unwrap();
+            assert_eq!(
+                before,
+                after,
+                "provider/native projection: {}",
+                field.path()
+            );
+            let mut changed: Value = serde_json::from_slice(&result).unwrap();
+            let keys: Vec<_> = field.path().split('.').collect();
+            let mut old = &source;
+            let mut new = &mut changed;
+            for key in &keys[..keys.len() - 1] {
+                old = &old[*key];
+                new = &mut new[*key];
+            }
+            let leaf = keys[keys.len() - 1];
+            assert_eq!(new[leaf], value);
+            match old.get(leaf) {
+                Some(value) => {
+                    new[leaf] = value.clone();
+                }
+                None => {
+                    new.as_object_mut().unwrap().remove(leaf);
+                }
+            }
+            assert_eq!(changed, source, "unrelated preferences: {}", field.path());
+        }
+        let clear = SettingsPatch::TerminalField {
+            field: F::AppearanceFontSize,
+            value: None,
+        };
+        let (_, _, bytes) = agent_plan_values(Some(&bytes), &clear).unwrap();
+        let cleared: Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(cleared["appearance"].get("fontSize").is_none());
+        assert_eq!(
+            cleared["appearance"]["colors"],
+            source["appearance"]["colors"]
+        );
+        for (field, value) in [
+            (F::AppearanceFontSize, json!(5)),
+            (F::AppearanceFontSize, json!(73)),
+            (F::AppearanceCursorWidth, json!(1.5)),
+            (F::AppearanceFontFamily, json!("bad;body{}")),
+            (F::AppearanceColorsRed, json!("transparent")),
+            (F::AppearanceColorsRed, json!("#123")),
+            (F::BehaviorScrollback, json!(100001)),
+            (F::BehaviorTabStopWidth, json!(0)),
+            (F::BehaviorScrollSensitivity, json!(0)),
+            (F::BehaviorScrollOnUserInput, json!("true")),
+            (F::BehaviorWordSeparator, json!("bad\nseparator")),
+            (F::WindowsShell, json!("/bin/custom")),
+            (F::AppearanceFontFamily, json!("🙂".repeat(251))),
+            (F::BehaviorWordSeparator, json!("🙂".repeat(101))),
+        ] {
+            let patch = SettingsPatch::TerminalField {
+                field,
+                value: Some(serde_json::from_value(value).unwrap()),
+            };
+            assert!(
+                agent_plan_values(Some(&bytes), &patch).is_err(),
+                "{}",
+                field.path()
+            );
+        }
+        let invalid = SettingsPatch::TerminalField {
+            field: F::BehaviorScrollback,
+            value: None,
+        };
+        assert!(agent_plan_values(Some(&bytes), &invalid).is_err());
+        assert!(agent_plan_values(Some(b"corrupt"), &clear).is_err());
+        let mut future = source.clone();
+        future["future"] = json!("retained");
+        assert!(agent_plan_values(Some(&serde_json::to_vec(&future).unwrap()), &clear).is_err());
+        let (_, default_after, _) = agent_plan_values(None, &clear).unwrap();
+        let default = serde_json::to_value(default_after).unwrap();
+        assert_eq!(default["behavior"]["wordSeparator"], " ()[]{}',\"`");
+        assert_eq!(default["windowsShell"], "powershell");
+        assert_eq!(default["agentNotifications"], true);
+    }
 
     fn preferences() -> Value {
         json!({"version":1,"appearance":{"fontSize":18,"colors":{"red":"#ff1234","selectionBackground":"#11223388"}},"behavior":{

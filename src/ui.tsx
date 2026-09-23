@@ -3,6 +3,7 @@ import type { ButtonHTMLAttributes, ReactNode, RefObject } from "react";
 import { ChevronRight, CircleAlert, Minus, Square, X } from "./icons";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { errorMessage, macOS, native } from "./api";
+import { useProtectedTheme } from "./useProtectedTheme";
 
 export function DisclosureSummary({ children }: { children: ReactNode }) {
   return (
@@ -83,6 +84,7 @@ export function Modal({
   descriptionId,
   initialFocus,
   tone,
+  protectTheme = false,
 }: {
   title: string;
   children: ReactNode;
@@ -92,7 +94,9 @@ export function Modal({
   descriptionId?: string;
   initialFocus?: RefObject<HTMLElement | null>;
   tone?: "warning" | "danger";
+  protectTheme?: boolean;
 }) {
+  useProtectedTheme(protectTheme);
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   useLayoutEffect(() => {

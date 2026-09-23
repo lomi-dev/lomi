@@ -91,11 +91,36 @@ pub enum Command {
     },
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentInputState {
+    pub device_id: String,
+    pub generation: String,
+    pub controlled: bool,
+    pub view_id: Option<String>,
+    pub lease_id: Option<String>,
+}
+
 struct Owner {
+    #[cfg(unix)]
+    agent: Option<Arc<lomi_control_core::android_input::InputLease>>,
     device: String,
     generation: String,
     view: String,
     lease: String,
+}
+
+impl Owner {
+    fn is_agent(&self) -> bool {
+        #[cfg(unix)]
+        {
+            self.agent.is_some()
+        }
+        #[cfg(not(unix))]
+        {
+            false
+        }
+    }
 }
 
 /// One native focus owner across all phones. The sole in-flight command is
@@ -141,7 +166,7 @@ impl Router {
                     Self::release(&manager).await?;
                     let lease = auth::new_id()?;
                     let reply = runtime.input(generation.clone(), Command::Focus(lease.clone())).await?;
-                    *manager.input.owner.lock().map_err(|_| "Android focus failed")? = Some(Owner { device, generation, view: view_id, lease });
+                    *manager.input.owner.lock().map_err(|_| "Android focus failed")? = Some(Owner { device, generation, view: view_id, lease, #[cfg(unix)] agent: None });
                     Ok(reply)
                 }
                 Request::Blur { lease } => {
@@ -167,13 +192,27 @@ impl Router {
             .map_err(|_| "Android focus failed")?
             .as_ref()
             .map(|owner| {
+                #[cfg(unix)]
+                if let Some(agent) = &owner.agent {
+                    agent.revoke();
+                }
                 (
                     owner.device.clone(),
                     owner.generation.clone(),
                     owner.view.clone(),
+                    owner.is_agent(),
                 )
             });
-        if let Some((device, generation, _view)) = previous {
+        if let Some((device, generation, _view, agent)) = previous {
+            if agent {
+                manager.emit(super::events::Event::InputControl(AgentInputState {
+                    device_id: device.clone(),
+                    generation: generation.clone(),
+                    controlled: false,
+                    view_id: None,
+                    lease_id: None,
+                }));
+            }
             if let Ok(runtime) = manager.runtime(&device, &generation) {
                 runtime.input(generation, Command::Release).await?;
             }
@@ -187,6 +226,12 @@ impl Router {
     }
 
     pub fn release_from_host(manager: Arc<Manager>) {
+        #[cfg(unix)]
+        if let Ok(owner) = manager.input.owner.lock() {
+            if let Some(agent) = owner.as_ref().and_then(|o| o.agent.as_ref()) {
+                agent.revoke();
+            }
+        }
         if manager.input.releasing.swap(true, Ordering::AcqRel) {
             return;
         }
@@ -216,7 +261,9 @@ impl State {
         connection: &Connection,
         guest: &Guest,
         display: (u32, u32),
+        guard: Option<super::runtime::DispatchGuard>,
     ) -> Result<Reply, String> {
+        super::runtime::check_guard(&guard)?;
         match command {
             Command::Release => {
                 self.release(connection, guest).await?;
@@ -224,6 +271,7 @@ impl State {
             }
             Command::Focus(lease) => {
                 self.release(connection, guest).await?;
+                super::runtime::check_guard(&guard)?;
                 self.lease = Some(lease);
                 self.sequence = 0;
             }
@@ -239,6 +287,7 @@ impl State {
                     return Err("Stale or unordered Android input. Focus the phone again.".into());
                 }
                 validate(&event, display)?;
+                super::runtime::check_guard(&guard)?;
                 // A lost response must never replay text or a navigation action.
                 self.sequence = sequence;
                 match event {
@@ -249,12 +298,16 @@ impl State {
                         if down {
                             self.keys.insert(key.clone());
                         }
+                        super::runtime::check_guard(&guard)?;
                         key_event(connection, &key, if down { 0 } else { 1 }).await?;
                         if !down {
                             self.keys.remove(&key);
                         }
                     }
-                    Event::Navigation { key } => key_event(connection, &key, 2).await?,
+                    Event::Navigation { key } => {
+                        super::runtime::check_guard(&guard)?;
+                        key_event(connection, &key, 2).await?;
+                    }
                     Event::Touch {
                         identifier,
                         x,
@@ -273,6 +326,7 @@ impl State {
                             _ => {}
                         }
                         self.touches.insert(identifier, (x, y));
+                        super::runtime::check_guard(&guard)?;
                         touch_event(
                             connection,
                             identifier,
@@ -296,9 +350,13 @@ impl State {
                             TextAction::Finish => "finish",
                             TextAction::Delete => "delete",
                         };
-                        tokio::task::spawn_blocking(move || guest.text(name, &text))
-                            .await
-                            .map_err(|e| e.to_string())??;
+                        let guard = guard.clone();
+                        tokio::task::spawn_blocking(move || {
+                            super::runtime::check_guard(&guard)?;
+                            guest.text(name, &text)
+                        })
+                        .await
+                        .map_err(|e| e.to_string())??;
                         if matches!(action, TextAction::Commit | TextAction::Finish) {
                             self.composing = false;
                         }
@@ -308,12 +366,17 @@ impl State {
                         // The selected IME sets the real guest clipboard and invokes
                         // Android's Paste action in order, only for explicit Paste.
                         let guest = guest.clone();
-                        tokio::task::spawn_blocking(move || guest.text("paste", &text))
-                            .await
-                            .map_err(|e| e.to_string())??;
+                        let guard = guard.clone();
+                        tokio::task::spawn_blocking(move || {
+                            super::runtime::check_guard(&guard)?;
+                            guest.text("paste", &text)
+                        })
+                        .await
+                        .map_err(|e| e.to_string())??;
                     }
                     Event::Rotate { quarter_turns } => {
                         self.release(connection, guest).await?;
+                        super::runtime::check_guard(&guard)?;
                         connection
                             .client()
                             .set_physical_model(connection.request(
@@ -338,9 +401,13 @@ impl State {
                     }
                     Event::Settings => {
                         let guest = guest.clone();
-                        tokio::task::spawn_blocking(move || guest.open_settings())
-                            .await
-                            .map_err(|e| e.to_string())??;
+                        let guard = guard.clone();
+                        tokio::task::spawn_blocking(move || {
+                            super::runtime::check_guard(&guard)?;
+                            guest.open_settings()
+                        })
+                        .await
+                        .map_err(|e| e.to_string())??;
                     }
                 }
             }
@@ -553,5 +620,186 @@ mod tests {
             serde_json::from_str::<Event>(r#"{"type":"shell","command":"echo unexpected"}"#)
                 .is_err()
         );
+    }
+}
+
+#[cfg(unix)]
+impl Router {
+    pub async fn claim_agent(
+        manager: Arc<Manager>,
+        control: Arc<lomi_control_core::android::AndroidControl>,
+        view: String,
+        generation: String,
+        dispatch: super::runtime::DispatchGuard,
+        visibility: super::runtime::DispatchGuard,
+    ) -> Result<Arc<lomi_control_core::android_input::InputLease>, String> {
+        dispatch()?;
+        visibility()?;
+        let _permit = manager
+            .input
+            .gate
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| "Android input is busy")?;
+        if manager.input.releasing.load(Ordering::Acquire) {
+            return Err("Android input is releasing focus".into());
+        }
+        let runtime = manager
+            .agent_runtime(&control, &generation)
+            .map_err(|_| "Android control is no longer available")?;
+        Self::release(&manager).await?;
+        dispatch()?;
+        visibility()?;
+        let lease = control
+            .acquire_input(&view, &generation, &auth::new_id()?)
+            .map_err(|_| "Android panel is no longer selected")?;
+        let token = lease.clone();
+        let visible = visibility.clone();
+        let checked: super::runtime::DispatchGuard = Arc::new(move || {
+            dispatch()?;
+            visible()?;
+            token
+                .check()
+                .map_err(|_| "Android input authority ended".into())
+        });
+        if let Err(error) = runtime
+            .input_guarded(
+                generation.clone(),
+                Command::Focus(lease.id.clone()),
+                Some(checked),
+            )
+            .await
+        {
+            lease.revoke();
+            let _ = runtime.input(generation, Command::Release).await;
+            return Err(error);
+        }
+        *manager
+            .input
+            .owner
+            .lock()
+            .map_err(|_| "Android focus failed")? = Some(Owner {
+            device: control.device.clone(),
+            generation,
+            view,
+            lease: lease.id.clone(),
+            agent: Some(lease.clone()),
+        });
+        manager.emit(super::events::Event::InputControl(AgentInputState {
+            device_id: control.device.clone(),
+            generation: lease.generation.clone(),
+            controlled: true,
+            view_id: Some(lease.view.clone()),
+            lease_id: Some(lease.id.clone()),
+        }));
+        // Only an active agent lease has this watcher. It never initializes a
+        // manager or touches a replacement human owner after waiting for the gate.
+        let weak = Arc::downgrade(&manager);
+        let token = Arc::downgrade(&lease);
+        tokio::spawn(async move {
+            loop {
+                let Some(lease) = token.upgrade() else {
+                    return;
+                };
+                if lease.check().is_err() || visibility().is_err() {
+                    lease.revoke();
+                    if let Some(manager) = weak.upgrade() {
+                        if let Ok(_permit) = manager.input.gate.clone().acquire_owned().await {
+                            let current = manager.input.owner.lock().ok().is_some_and(|owner| {
+                                owner
+                                    .as_ref()
+                                    .and_then(|o| o.agent.as_ref())
+                                    .is_some_and(|current| Arc::ptr_eq(current, &lease))
+                            });
+                            if current {
+                                if let Err(error) = Self::release(&manager).await {
+                                    manager.emit(super::events::Event::InputError(error));
+                                }
+                            }
+                        }
+                    }
+                    return;
+                }
+                drop(lease);
+                tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+            }
+        });
+        Ok(lease)
+    }
+
+    pub async fn release_agent(
+        manager: Arc<Manager>,
+        control: &Arc<lomi_control_core::android::AndroidControl>,
+    ) -> Result<(), String> {
+        control.revoke_input();
+        let _permit = manager
+            .input
+            .gate
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|_| "Android input ended")?;
+        let current = manager
+            .input
+            .owner
+            .lock()
+            .map_err(|_| "Android input failed")?
+            .as_ref()
+            .and_then(|o| o.agent.as_ref())
+            .is_some_and(|lease| lease.belongs_to(control));
+        if current {
+            Self::release(&manager).await?;
+        }
+        Ok(())
+    }
+
+    pub async fn send_agent(
+        manager: Arc<Manager>,
+        control: Arc<lomi_control_core::android::AndroidControl>,
+        lease: Arc<lomi_control_core::android_input::InputLease>,
+        sequence: u64,
+        event: Event,
+        guard: super::runtime::DispatchGuard,
+    ) -> Result<Reply, String> {
+        guard()?;
+        let _permit = manager
+            .input
+            .gate
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| "Android input is busy")?;
+        lease.check().map_err(|_| "Android input authority ended")?;
+        let current = manager
+            .input
+            .owner
+            .lock()
+            .map_err(|_| "Android input failed")?
+            .as_ref()
+            .and_then(|o| o.agent.as_ref())
+            .is_some_and(|current| Arc::ptr_eq(current, &lease));
+        if !current {
+            return Err("Android input has another owner".into());
+        }
+        let runtime = manager
+            .agent_runtime(&control, &lease.generation)
+            .map_err(|_| "Android generation changed")?;
+        let token = lease.clone();
+        let check: super::runtime::DispatchGuard = Arc::new(move || {
+            guard()?;
+            token
+                .check()
+                .map_err(|_| "Android input authority ended".into())
+        });
+        runtime
+            .input_guarded(
+                lease.generation.clone(),
+                Command::Send {
+                    lease: lease.id.clone(),
+                    sequence,
+                    event,
+                },
+                Some(check),
+            )
+            .await
     }
 }

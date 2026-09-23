@@ -149,6 +149,41 @@ export function terminalPalette() {
 }
 
 export const themeAppliedEvent = "lomi-theme-applied";
+type ThemeLayer = HTMLStyleElement | HTMLLinkElement;
+let controlThemeHolds = 0;
+const requestedMedia = new WeakMap<ThemeLayer, string>();
+function themeMedia(node: ThemeLayer, media: string) {
+  requestedMedia.set(node, media);
+  node.media =
+    controlThemeHolds && node.dataset.themeBuiltin !== "true"
+      ? "not all"
+      : media;
+}
+
+// Package CSS may target ancestors of a dialog, so isolating the dialog's own
+// selectors is insufficient. Suspend those layers for the whole native view
+// while a critical surface is present, including layers committed asynchronously.
+export function protectThemeControls() {
+  if (++controlThemeHolds === 1) {
+    document
+      .querySelectorAll<ThemeLayer>("[data-theme-layer]")
+      .forEach((node) => themeMedia(node, node.media));
+    refreshTerminalAppearance();
+  }
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    if (--controlThemeHolds === 0) {
+      document
+        .querySelectorAll<ThemeLayer>("[data-theme-layer]")
+        .forEach((node) =>
+          themeMedia(node, requestedMedia.get(node) ?? node.media),
+        );
+      refreshTerminalAppearance();
+    }
+  };
+}
 let revision = 0;
 let appliedRevision = 0;
 let terminalOptions: ITerminalOptions | undefined;
@@ -414,6 +449,9 @@ export async function prepareTheme(
     themeAssetUrl(bundle!.id, path, currentRevision);
   const style = document.createElement("style");
   style.dataset.themeLayer = "tokens";
+  style.dataset.themeBuiltin = String(
+    !bundle || bundle.id === "@builtin-deepmono",
+  );
   style.textContent = compileTheme(resolved, asset);
   const links: HTMLLinkElement[] = [];
   const cancelLoads = new Set<() => void>();
@@ -582,19 +620,21 @@ export async function prepareTheme(
         .querySelectorAll<HTMLStyleElement | HTMLLinkElement>(
           "[data-theme-held]",
         )
-        .forEach((node) => (node.media = "not all"));
+        .forEach((node) => themeMedia(node, "not all"));
+      themeMedia(style, "all");
       if (links.length) {
         // Moving a loaded link restarts stylesheet loading in WebKitGTK.
         document.head.insertBefore(style, links[0]);
         for (const link of links) {
           link.dataset.themeLayer = "css";
+          link.dataset.themeBuiltin = style.dataset.themeBuiltin;
           // WebKit may defer @import until a staged sheet's media becomes active.
           // Re-read the final cascade when those imports finish, including in hidden views.
           link.onload = () => {
             if (link.isConnected && link.media === "all")
               refreshTerminalAppearance();
           };
-          link.media = "all";
+          themeMedia(link, "all");
         }
       } else document.head.append(style);
       document.documentElement.dataset.theme = bundle?.id ?? "lomi";
@@ -766,7 +806,7 @@ export function holdThemePreview() {
       .forEach((node) => node.remove());
     for (const node of nodes) {
       delete node.dataset.themeHeld;
-      node.media = "all";
+      themeMedia(node, "all");
     }
     activeResolved = previous.resolved;
     highContrast = previous.highContrast;

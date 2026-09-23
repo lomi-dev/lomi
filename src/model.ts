@@ -57,6 +57,7 @@ export interface TerminalTab {
   layout: Layout;
 }
 export interface CommitTab {
+  agentGit?: true;
   type: "commit";
   id: string;
   title: string;
@@ -65,6 +66,7 @@ export interface CommitTab {
   commit: string;
 }
 export interface DiffTab {
+  agentGit?: true;
   type: "diff";
   id: string;
   title: string;
@@ -89,6 +91,7 @@ export interface FileTab {
   untitled?: true;
   position?: EditorPosition;
   previewView?: FilePreviewView;
+  agentPreview?: true;
 }
 export type FilePreviewView = "editor" | "split" | "preview";
 export interface BrowserTab {
@@ -97,6 +100,7 @@ export interface BrowserTab {
   title: string;
   customTitle?: string;
   url: string;
+  automation?: { generation: string; profileId: string };
 }
 export interface AndroidTab {
   type: "android";
@@ -104,6 +108,7 @@ export interface AndroidTab {
   title: string;
   customTitle?: string;
   deviceId: string | null;
+  startMode?: "manual";
 }
 export const newAndroidTab = (
   deviceId: string | null = null,
@@ -662,6 +667,74 @@ export function moveTab(
     : { ...workspace, tabs };
 }
 
+export function transferTab(
+  session: Session,
+  projectId: string,
+  sourceId: string,
+  targetId: string,
+  tabId: string,
+  beforeId: string | null,
+): Session {
+  const project = session.projects.find((p) => p.id === projectId);
+  const source = project?.workspaces.find((w) => w.id === sourceId);
+  const target = project?.workspaces.find((w) => w.id === targetId);
+  const tab = source?.tabs.find((t) => t.id === tabId);
+  if (
+    !source ||
+    !target ||
+    !tab ||
+    source === target ||
+    target.tabs.some((t) => t.id === tabId) ||
+    (beforeId !== null && !target.tabs.some((t) => t.id === beforeId))
+  )
+    return session;
+  const remaining = source.tabs.filter((t) => t !== tab);
+  const inserted = [...target.tabs];
+  inserted.splice(
+    beforeId === null
+      ? inserted.length
+      : inserted.findIndex((t) => t.id === beforeId),
+    0,
+    tab,
+  );
+  const selected = active(session);
+  // Do not activate a replacement lazy runtime when removing the selected tab.
+  const clearSelection =
+    (selected?.workspace.id === sourceId && selected.tab.id === tabId) ||
+    (target.tabs.length === 0 &&
+      project!.activeWorkspaceId === targetId &&
+      session.activeProjectId === projectId);
+  return {
+    ...session,
+    activeProjectId: clearSelection ? null : session.activeProjectId,
+    projects: session.projects.map((p) =>
+      p.id !== projectId
+        ? p
+        : {
+            ...p,
+            workspaces: p.workspaces.map((w) =>
+              w === source
+                ? {
+                    ...w,
+                    tabs: remaining,
+                    activeTabId:
+                      w.activeTabId === tabId
+                        ? (remaining[0]?.id ?? "")
+                        : w.activeTabId,
+                  }
+                : w === target
+                  ? {
+                      ...w,
+                      tabs: inserted,
+                      activeTabId: w.tabs.length ? w.activeTabId : tab.id,
+                    }
+                  : w,
+            ),
+          },
+    ),
+  };
+}
+
 export function canMergeTabs(
   source: Tab,
   target: Tab,
@@ -1063,6 +1136,7 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
       root: node.untitled === true ? "" : string(node.root, cwd),
       relative: node.untitled === true ? "" : string(node.relative, ""),
       ...(node.untitled === true ? { untitled: true as const } : {}),
+      ...(node.agentPreview === true ? { agentPreview: true as const } : {}),
       ...(previewView === "editor" ||
       previewView === "split" ||
       previewView === "preview"
@@ -1080,15 +1154,32 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
         : {}),
     };
   };
-  const browser = (node: Record<string, unknown>): BrowserTab => ({
-    type: "browser",
-    id: id(node.id),
-    title: string(node.title, "Browser"),
-    ...(string(node.customTitle, "")
-      ? { customTitle: node.customTitle as string }
-      : {}),
-    url: restoreBrowserUrl(node.url),
-  });
+  const browser = (node: Record<string, unknown>): BrowserTab => {
+    let automation: BrowserTab["automation"];
+    if (node.automation !== undefined) {
+      const value = record(node.automation);
+      if (
+        typeof value.generation !== "string" ||
+        !/^[a-f0-9]{32}$/.test(value.generation) ||
+        typeof value.profileId !== "string" ||
+        !/^[a-f0-9]{32}$/.test(value.profileId)
+      )
+        throw new Error(
+          "Invalid isolated browser descriptor. The session was preserved.",
+        );
+      automation = { generation: value.generation, profileId: value.profileId };
+    }
+    return {
+      type: "browser",
+      id: id(node.id),
+      title: string(node.title, "Browser"),
+      ...(string(node.customTitle, "")
+        ? { customTitle: node.customTitle as string }
+        : {}),
+      url: restoreBrowserUrl(node.url),
+      ...(automation ? { automation } : {}),
+    };
+  };
   const chat = (node: Record<string, unknown>): ChatTab => {
     if (
       typeof node.conversationId !== "string" ||
@@ -1108,6 +1199,10 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
     };
   };
   const android = (node: Record<string, unknown>): AndroidTab => {
+    if (node.startMode !== undefined && node.startMode !== "manual")
+      throw new Error(
+        "Invalid saved Android start mode. The session was preserved.",
+      );
     if (
       node.deviceId !== null &&
       (typeof node.deviceId !== "string" ||
@@ -1123,6 +1218,7 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
       id: id(node.id),
       title: string(node.title, "Android"),
       deviceId: node.deviceId,
+      ...(node.startMode === "manual" ? { startMode: "manual" as const } : {}),
       ...(typeof node.customTitle === "string"
         ? { customTitle: node.customTitle }
         : {}),
@@ -1214,6 +1310,7 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
                   : {}),
                 root: string(tab.root, path),
                 commit: string(tab.commit, ""),
+                ...(tab.agentGit === true ? { agentGit: true as const } : {}),
               };
             }
             if (tab.type === "diff") {
@@ -1227,6 +1324,7 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
                 root: string(tab.root, path),
                 relative: string(tab.relative, ""),
                 staged: tab.staged === true,
+                ...(tab.agentGit === true ? { agentGit: true as const } : {}),
               };
             }
             if (tab.type !== undefined && tab.type !== "terminal")

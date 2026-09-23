@@ -679,6 +679,7 @@ function RepositoryControl({
       )}
       {forcePush && (
         <Modal
+          protectTheme
           title="Force Push"
           tone="warning"
           onClose={() => setForcePush(false)}

@@ -4,13 +4,19 @@ export type ReleaseClosePreparation = () => Promise<void>;
 
 let pendingPreparation: string | undefined;
 let preparing = false;
+let agentControlPrepared = false;
 
 async function releasePreparation() {
-  if (!pendingPreparation) return;
-  await api("android_exit", {
-    action: { type: "resume", preparation: pendingPreparation },
-  });
-  pendingPreparation = undefined;
+  if (pendingPreparation) {
+    await api("android_exit", {
+      action: { type: "resume", preparation: pendingPreparation },
+    });
+    pendingPreparation = undefined;
+  }
+  if (agentControlPrepared) {
+    await api("agent_control_closing", { closing: false });
+    agentControlPrepared = false;
+  }
 }
 
 /** Shared by window closure, updater installation and plugin restart. */
@@ -32,6 +38,8 @@ export async function prepareApplicationClose(
       // A failed release stays available for an explicit retry; it cannot silently
       // strand the native start/mutation gate while the application remains open.
       await releasePreparation();
+      await api("agent_control_closing", { closing: true });
+      agentControlPrepared = true;
       const token = await api<string>("android_exit", {
         action: { type: "begin" },
       });

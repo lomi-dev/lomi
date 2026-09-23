@@ -68,21 +68,45 @@ pub struct Launch {
     pub adb_port: u16,
 }
 
+pub type DispatchGuard = Arc<dyn Fn() -> Result<(), String> + Send + Sync>;
+
+pub fn check_guard(guard: &Option<DispatchGuard>) -> Result<(), String> {
+    if let Some(check) = guard {
+        check()?;
+    }
+    Ok(())
+}
+
 type Reply = oneshot::Sender<Result<Status, String>>;
 enum Message {
-    Start(Reply),
+    Start(Reply, Option<DispatchGuard>),
     Stop {
+        guard: Option<(String, DispatchGuard)>,
         force: bool,
         reply: Reply,
     },
     Connection(oneshot::Sender<Result<Arc<Connection>, String>>),
+    ObservationGuest {
+        generation: String,
+        guard: DispatchGuard,
+        reply: oneshot::Sender<Result<adb::Guest, String>>,
+    },
     Log(oneshot::Sender<String>),
     Input {
+        guard: Option<DispatchGuard>,
         generation: String,
         command: super::input::Command,
         reply: oneshot::Sender<Result<super::input::Reply, String>>,
     },
+    LaunchApp {
+        generation: String,
+        package: String,
+        activity: Option<String>,
+        guard: DispatchGuard,
+        reply: oneshot::Sender<Result<String, String>>,
+    },
     InstallApk {
+        guard: Option<DispatchGuard>,
         generation: String,
         file: fs::File,
         reply: oneshot::Sender<Result<(), String>>,
@@ -178,10 +202,19 @@ impl DeviceRuntime {
         self.queued_starts.load(Ordering::Acquire) != 0 || self.status.borrow().process_alive
     }
 
+    #[cfg(test)]
     pub fn request_start(&self) -> Result<oneshot::Receiver<Result<Status, String>>, String> {
+        self.request_start_guarded(None)
+    }
+
+    pub fn request_start_guarded(
+        &self,
+        guard: Option<DispatchGuard>,
+    ) -> Result<oneshot::Receiver<Result<Status, String>>, String> {
+        check_guard(&guard)?;
         let (send, receive) = oneshot::channel();
         self.queued_starts.fetch_add(1, Ordering::AcqRel);
-        if self.messages.try_send(Message::Start(send)).is_err() {
+        if self.messages.try_send(Message::Start(send, guard)).is_err() {
             self.queued_starts.fetch_sub(1, Ordering::AcqRel);
             return Err(
                 "Android runtime is busy or unavailable. Retry after its current operation.".into(),
@@ -194,10 +227,31 @@ impl DeviceRuntime {
         self.cancel.store(true, Ordering::Release);
         let (send, receive) = oneshot::channel();
         self.messages
-            .send(Message::Stop { force, reply: send })
+            .send(Message::Stop {
+                guard: None,
+                force,
+                reply: send,
+            })
             .await
             .map_err(|_| "Android runtime ended")?;
         receive.await.map_err(|_| "Android stop response ended")?
+    }
+
+    pub async fn stop_guarded(
+        &self,
+        generation: String,
+        guard: DispatchGuard,
+    ) -> Result<Status, String> {
+        guard()?;
+        let (reply, result) = oneshot::channel();
+        self.messages
+            .try_send(Message::Stop {
+                guard: Some((generation, guard)),
+                force: false,
+                reply,
+            })
+            .map_err(|_| "Android runtime is busy or unavailable")?;
+        result.await.map_err(|_| "Android stop response ended")?
     }
 
     pub async fn connection(&self) -> Result<Arc<Connection>, String> {
@@ -216,9 +270,37 @@ impl DeviceRuntime {
         generation: String,
         command: super::input::Command,
     ) -> Result<super::input::Reply, String> {
+        self.input_guarded(generation, command, None).await
+    }
+
+    pub async fn observation_guest(
+        &self,
+        generation: String,
+        guard: DispatchGuard,
+    ) -> Result<adb::Guest, String> {
+        guard()?;
+        let (reply, result) = oneshot::channel();
+        self.messages
+            .try_send(Message::ObservationGuest {
+                generation,
+                guard,
+                reply,
+            })
+            .map_err(|_| "Android observation queue is busy")?;
+        result.await.map_err(|_| "Android observation ended")?
+    }
+
+    pub async fn input_guarded(
+        &self,
+        generation: String,
+        command: super::input::Command,
+        guard: Option<DispatchGuard>,
+    ) -> Result<super::input::Reply, String> {
+        check_guard(&guard)?;
         let (reply, result) = oneshot::channel();
         self.messages
             .try_send(Message::Input {
+                guard,
                 generation,
                 command,
                 reply,
@@ -227,10 +309,43 @@ impl DeviceRuntime {
         result.await.map_err(|_| "Android input response ended")?
     }
 
+    pub async fn launch_app(
+        &self,
+        generation: String,
+        package: String,
+        activity: Option<String>,
+        guard: DispatchGuard,
+    ) -> Result<String, String> {
+        guard()?;
+        let (reply, result) = oneshot::channel();
+        self.messages
+            .try_send(Message::LaunchApp {
+                generation,
+                package,
+                activity,
+                guard,
+                reply,
+            })
+            .map_err(|_| "Android control queue is busy")?;
+        result.await.map_err(|_| "Android launch response ended")?
+    }
+
     pub async fn install_apk(&self, generation: String, file: fs::File) -> Result<(), String> {
+        self.install_apk_guarded(generation, file, None).await
+    }
+    pub async fn install_apk_guarded(
+        &self,
+        generation: String,
+        file: fs::File,
+        guard: Option<DispatchGuard>,
+    ) -> Result<(), String> {
+        if let Some(guard) = &guard {
+            guard()?;
+        }
         let (reply, result) = oneshot::channel();
         self.messages
             .try_send(Message::InstallApk {
+                guard,
                 generation,
                 file,
                 reply,
@@ -314,7 +429,7 @@ fn default_adb_port() -> u16 {
     5037
 }
 
-#[cfg(feature = "android-probe")]
+#[cfg(any(feature = "android-probe", feature = "mcp-probe"))]
 pub(super) fn fixture_guest(root: &Path, device: &str) -> Result<adb::Guest, String> {
     if !storage::valid_id(device) {
         return Err("Invalid fixture device".into());
@@ -793,7 +908,12 @@ impl Actor {
         }
     }
 
-    fn start(&mut self) {
+    fn start(&mut self, guard: Option<DispatchGuard>) {
+        if let Err(error) = check_guard(&guard) {
+            let replies = std::mem::take(&mut self.starters);
+            self.resolve(replies, Some(error));
+            return;
+        }
         match Process::spawn(&self.plan) {
             Ok(process) => {
                 self.status.send_modify(|status| {
@@ -838,6 +958,7 @@ impl Actor {
                 self.operation = Some(tokio::spawn(async move {
                     Operation::Ready(
                         ready(Boot {
+                            guard,
                             plan,
                             pid,
                             port,
@@ -936,7 +1057,7 @@ impl Actor {
         let replies = std::mem::take(&mut self.stoppers);
         self.resolve(replies, None);
         if expected && !self.starters.is_empty() {
-            self.start();
+            self.start(None);
         } else {
             let replies = std::mem::take(&mut self.starters);
             self.resolve(replies, error);
@@ -971,8 +1092,20 @@ impl Actor {
                 Message::Log(reply) => {
                     let _ = reply.send(self.process.as_ref().map(Process::log).unwrap_or_default());
                 }
-                Message::Start(reply) => {
+                Message::Start(reply, guard) => {
                     let phase = self.status.borrow().phase;
+                    let checked = check_guard(&guard).and_then(|_| {
+                        if guard.is_some() && phase == Phase::Stopping {
+                            Err("Android is stopping; wait before starting it".into())
+                        } else {
+                            Ok(())
+                        }
+                    });
+                    if let Err(error) = checked {
+                        self.queued_starts.fetch_sub(1, Ordering::AcqRel);
+                        let _ = reply.send(Err(error));
+                        continue;
+                    }
                     match phase {
                         Phase::Running => {
                             let _ = reply.send(Ok(self.status.borrow().clone()));
@@ -989,13 +1122,30 @@ impl Actor {
                             }
                             self.starters.push(reply);
                             if matches!(phase, Phase::Stopped | Phase::Failed) {
-                                self.start();
+                                self.start(guard);
                             }
                         }
                     }
                     self.queued_starts.fetch_sub(1, Ordering::AcqRel);
                 }
-                Message::Stop { force, reply } => {
+                Message::Stop {
+                    force,
+                    reply,
+                    guard,
+                } => {
+                    if let Some((generation, check)) = guard {
+                        let checked = check().and_then(|_| {
+                            if self.status.borrow().generation.as_deref() != Some(&generation) {
+                                Err("This Android stop belongs to an old generation".into())
+                            } else {
+                                Ok(())
+                            }
+                        });
+                        if let Err(error) = checked {
+                            let _ = reply.send(Err(error));
+                            continue;
+                        }
+                    }
                     if self.process.is_none() {
                         self.publish(Phase::Stopped, None);
                         let _ = reply.send(Ok(self.status.borrow().clone()));
@@ -1020,11 +1170,35 @@ impl Actor {
                         .ok_or("Android is not running. Start or reconnect the phone.".into());
                     let _ = reply.send(result);
                 }
+                Message::ObservationGuest {
+                    generation,
+                    guard,
+                    reply,
+                } => {
+                    let result = guard().and_then(|_| {
+                        self.process
+                            .as_ref()
+                            .filter(|process| {
+                                process.generation == generation
+                                    && self.status.borrow().phase == Phase::Running
+                            })
+                            .map(|process| process.guest.clone())
+                            .ok_or_else(|| {
+                                "Android observation belongs to a stopped or old generation".into()
+                            })
+                    });
+                    let _ = reply.send(result);
+                }
                 Message::Input {
+                    guard,
                     generation,
                     command,
                     reply,
                 } => {
+                    if let Err(error) = check_guard(&guard) {
+                        let _ = reply.send(Err(error));
+                        continue;
+                    }
                     let status = self.status.borrow().clone();
                     let result = if let Some(process) = &mut self.process {
                         if process.generation == generation && status.phase == Phase::Running {
@@ -1033,7 +1207,7 @@ impl Actor {
                             {
                                 process
                                     .input
-                                    .apply(command, connection, &process.guest, display)
+                                    .apply(command, connection, &process.guest, display, guard)
                                     .await
                             } else {
                                 Err("Android input is not ready. Reconnect the phone.".into())
@@ -1046,7 +1220,37 @@ impl Actor {
                     };
                     let _ = reply.send(result);
                 }
+                Message::LaunchApp {
+                    generation,
+                    package,
+                    activity,
+                    guard,
+                    reply,
+                } => {
+                    let result = if let Some(process) = &self.process {
+                        if process.generation == generation
+                            && self.status.borrow().phase == Phase::Running
+                            && !self.cancel.load(Ordering::Acquire)
+                            && guard().is_ok()
+                        {
+                            let guest = process.guest.clone();
+                            let cancel = self.cancel.clone();
+                            tokio::task::spawn_blocking(move || {
+                                guest.launch_app(&package, activity.as_deref(), cancel, guard)
+                            })
+                            .await
+                            .map_err(|e| e.to_string())
+                            .and_then(|r| r)
+                        } else {
+                            Err("Android launch authority ended".into())
+                        }
+                    } else {
+                        Err("Android is stopped".into())
+                    };
+                    let _ = reply.send(result);
+                }
                 Message::InstallApk {
+                    guard,
                     generation,
                     mut file,
                     reply,
@@ -1056,11 +1260,15 @@ impl Actor {
                         if process.generation == generation
                             && status.phase == Phase::Running
                             && !self.cancel.load(Ordering::Acquire)
+                            && guard.as_ref().is_none_or(|g| g().is_ok())
                         {
                             let guest = process.guest.clone();
                             let cancel = self.cancel.clone();
-                            tokio::task::spawn_blocking(move || {
-                                guest.install_apk(&mut file, &cancel)
+                            tokio::task::spawn_blocking(move || match guard {
+                                Some(guard) => {
+                                    guest.install_apk_guarded(&mut file, &cancel, Some(guard))
+                                }
+                                None => guest.install_apk(&mut file, &cancel),
                             })
                             .await
                             .map_err(|e| e.to_string())
@@ -1131,6 +1339,7 @@ impl Actor {
 }
 
 struct Boot {
+    guard: Option<DispatchGuard>,
     plan: Launch,
     pid: u32,
     port: u16,
@@ -1144,6 +1353,7 @@ struct Boot {
 
 async fn ready(boot: Boot) -> Result<(Arc<Connection>, (u32, u32)), String> {
     let Boot {
+        guard,
         plan,
         pid,
         port,
@@ -1156,6 +1366,7 @@ async fn ready(boot: Boot) -> Result<(Arc<Connection>, (u32, u32)), String> {
     } = boot;
     let deadline = Instant::now() + BOOT_TIMEOUT;
     let checkpoint = || -> Result<(), String> {
+        check_guard(&guard)?;
         if cancel.load(Ordering::Acquire) {
             return Err("Android start was cancelled".into());
         }
@@ -1237,6 +1448,58 @@ async fn ready(boot: Boot) -> Result<(Arc<Connection>, (u32, u32)), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn actor_rechecks_queued_start_and_stop_authority_before_process_effects() {
+        let root = tempfile::tempdir().unwrap();
+        let directory = Arc::new(Mutex::new(
+            storage::Directory::acquire(root.path().into()).unwrap(),
+        ));
+        fs::create_dir_all(root.path().join("sdk/emulator")).unwrap();
+        fs::create_dir_all(root.path().join("avd/sb_fixture.avd")).unwrap();
+        let emulator = root.path().join("sdk/emulator/emulator");
+        fs::write(&emulator, "unused").unwrap();
+        let runtime = DeviceRuntime::spawn(
+            Launch {
+                root: root.path().into(),
+                emulator,
+                discovery: root.path().join("discovery"),
+                device_id: "00000000-0000-0000-0000-000000000001".into(),
+                avd_name: "sb_fixture".into(),
+                gpu: "host".into(),
+                memory: 2048,
+                cores: 2,
+                adb_port: 15047,
+            },
+            directory,
+        )
+        .unwrap();
+        let active = Arc::new(AtomicBool::new(true));
+        let flag = active.clone();
+        let guard: DispatchGuard = Arc::new(move || {
+            if flag.load(Ordering::SeqCst) {
+                Ok(())
+            } else {
+                Err("revoked fixture dispatch".into())
+            }
+        });
+        let queued = runtime.request_start_guarded(Some(guard.clone())).unwrap();
+        active.store(false, Ordering::SeqCst);
+        assert!(queued
+            .await
+            .unwrap()
+            .unwrap_err()
+            .contains("revoked fixture"));
+        assert!(!runtime.status().process_alive);
+        assert_eq!(runtime.status().phase, Phase::Stopped);
+        assert_eq!(runtime.queued_starts.load(Ordering::Acquire), 0);
+        active.store(true, Ordering::SeqCst);
+        let stop = runtime
+            .stop_guarded("00000000-0000-0000-0000-000000000002".into(), guard)
+            .await;
+        assert!(stop.unwrap_err().contains("old generation"));
+        assert_eq!(runtime.status().phase, Phase::Stopped);
+    }
 
     #[tokio::test]
     async fn recovery_never_signals_a_live_process_outside_the_owned_emulator_tree() {

@@ -29,7 +29,7 @@ fn settings_window(window: &Window) -> Result<(), String> {
     }
 }
 
-fn backend(window: &Window, state: &Android) -> Result<Arc<AndroidManager>, String> {
+pub(super) fn backend(window: &Window, state: &Android) -> Result<Arc<AndroidManager>, String> {
     read_window(window)?;
     let root = window
         .app_handle()
@@ -37,7 +37,7 @@ fn backend(window: &Window, state: &Android) -> Result<Arc<AndroidManager>, Stri
         .app_local_data_dir()
         .map_err(|e| e.to_string())?
         .join("android");
-    #[cfg(feature = "android-probe")]
+    #[cfg(any(feature = "android-probe", feature = "mcp-probe"))]
     let root = super::fixture::directory()?.unwrap_or(root);
     let manager = state.get(root)?;
     let app = window.app_handle().clone();
@@ -530,7 +530,12 @@ pub async fn android_input(
     {
         return Err("Focus the Lomi window before controlling Android.".into());
     }
-    super::input::Router::submit(backend(&window, &state)?, device_id, generation, input).await
+    let manager = backend(&window, &state)?;
+    #[cfg(unix)]
+    if matches!(input, super::input::Request::Send { .. }) {
+        manager.revoke_agent(&device_id);
+    }
+    super::input::Router::submit(manager, device_id, generation, input).await
 }
 
 #[tauri::command]
@@ -721,5 +726,410 @@ pub async fn android_exit(
             state.resume(&preparation)?;
             Ok(None)
         }
+    }
+}
+
+#[tauri::command]
+pub async fn agent_android_runtime(
+    window: Window,
+    operation_id: String,
+    nonce: String,
+) -> Result<(), String> {
+    crate::files::main_window(&window)?;
+    #[cfg(unix)]
+    {
+        let app = window.app_handle().clone();
+        let broker = app.state::<crate::agent_control::Control>().required()?;
+        tauri::async_runtime::spawn(async move {
+            use lomi_control_protocol::{android::AndroidRuntimeResult, ErrorCode};
+            let result = async {
+                let b = broker.clone();
+                let op = operation_id.clone();
+                let n = nonce.clone();
+                let request = tauri::async_runtime::spawn_blocking(move || {
+                    b.authorize_android_runtime(&op, &n)
+                })
+                .await
+                .map_err(|_| ErrorCode::AppUnavailable)??;
+                let control = request.control;
+                let permit = request.permit;
+                control.check()?;
+                permit.check()?;
+                let manager = backend(&window, &app.state::<Android>())
+                    .map_err(|_| ErrorCode::StorageUnavailable)?;
+                let active_control = control.clone();
+                let active_permit = permit.clone();
+                let guard: super::runtime::DispatchGuard = Arc::new(move || {
+                    active_control
+                        .check()
+                        .and_then(|_| active_permit.check())
+                        .map_err(|_| "Android control was revoked or expired".into())
+                });
+                let status = if let Some(generation) = &request.stop_generation {
+                    manager
+                        .agent_runtime(&control, generation)?
+                        .stop_guarded(generation.clone(), guard)
+                        .await
+                        .map_err(|_| ErrorCode::OutcomeUnknown)?
+                } else {
+                    host::require_qualification().map_err(|_| ErrorCode::HostUnqualified)?;
+                    manager.claim_agent(control.clone())?;
+                    let status = match manager.start_guarded(&control.device, Some(guard)).await {
+                        Ok(status) => status,
+                        Err(_) => {
+                            // A failed boot retains its owned process for an explicit Stop.
+                            if control.check().is_ok() {
+                                if let Ok(statuses) = manager.statuses() {
+                                    if let Some(generation) = statuses
+                                        .iter()
+                                        .find(|s| s.device_id == control.device && s.process_alive)
+                                        .and_then(|s| s.generation.as_deref())
+                                    {
+                                        let _ = control.bind(generation);
+                                    }
+                                }
+                            }
+                            return Err(ErrorCode::OutcomeUnknown);
+                        }
+                    };
+                    if status.phase != super::runtime::Phase::Running
+                        || !status.process_alive
+                        || status.display.is_none()
+                    {
+                        return Err(ErrorCode::OutcomeUnknown);
+                    }
+                    let generation = status
+                        .generation
+                        .as_deref()
+                        .ok_or(ErrorCode::OutcomeUnknown)?;
+                    control.bind(generation)?;
+                    status
+                };
+                control.check()?;
+                permit.check()?;
+                let generation = status.generation.ok_or(ErrorCode::OutcomeUnknown)?;
+                if request.stop_generation.is_some()
+                    && (status.phase != super::runtime::Phase::Stopped || status.process_alive)
+                {
+                    return Err(ErrorCode::OutcomeUnknown);
+                }
+                Ok(AndroidRuntimeResult {
+                    workspace_id: request.workspace,
+                    device_id: control.device.clone(),
+                    generation,
+                    ready: request.stop_generation.is_none(),
+                    stopped: request.stop_generation.is_some(),
+                })
+            }
+            .await;
+            tauri::async_runtime::spawn_blocking(move || {
+                broker.finish_android_runtime(&operation_id, &nonce, result)
+            })
+            .await
+            .map_err(|_| "Android receipt task failed".to_string())?
+            .map_err(|_| "Android receipt is no longer available".to_string())
+        })
+        .await
+        .map_err(|_| "Android operation task failed".to_string())?
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (operation_id, nonce);
+        Err("Android agent control is not qualified on this host".into())
+    }
+}
+
+#[tauri::command]
+pub async fn agent_android_input(
+    window: Window,
+    operation_id: String,
+    nonce: String,
+) -> Result<(), String> {
+    crate::files::main_window(&window)?;
+    #[cfg(unix)]
+    {
+        let app = window.app_handle().clone();
+        let broker = app.state::<crate::agent_control::Control>().required()?;
+        tauri::async_runtime::spawn(async move {
+            use lomi_control_core::broker::AndroidInputDispatchAction;
+            use lomi_control_protocol::{android::*, control::OperationResult, ErrorCode};
+            let mut cleanup = None;
+            let result = async {
+                let (b, op, n) = (broker.clone(), operation_id.clone(), nonce.clone());
+                let request = tauri::async_runtime::spawn_blocking(move || {
+                    b.authorize_android_input(&op, &n)
+                })
+                .await
+                .map_err(|_| ErrorCode::AppUnavailable)??;
+                let manager = backend(&window, &app.state::<Android>())
+                    .map_err(|_| ErrorCode::StorageUnavailable)?;
+                cleanup = Some((manager.clone(), request.control.clone()));
+                let control = request.control.clone();
+                let permit = request.permit.clone();
+                let guard: super::runtime::DispatchGuard = Arc::new(move || {
+                    control
+                        .check()
+                        .and_then(|_| permit.check())
+                        .map_err(|_| "Android control was revoked or expired".into())
+                });
+                let visibility: super::runtime::DispatchGuard = Arc::new(move || {
+                    if window.is_focused().unwrap_or(false)
+                        && window.is_visible().unwrap_or(false)
+                        && !window.is_minimized().unwrap_or(true)
+                    {
+                        Ok(())
+                    } else {
+                        Err("Focus the visible Lomi window before controlling Android".into())
+                    }
+                });
+                let output = match request.action {
+                    AndroidInputDispatchAction::Claim => {
+                        let lease = super::input::Router::claim_agent(
+                            manager,
+                            request.control.clone(),
+                            request.panel,
+                            request.generation.clone(),
+                            guard,
+                            visibility,
+                        )
+                        .await
+                        .map_err(|_error| {
+                            #[cfg(feature = "mcp-probe")]
+                            eprintln!("Android native input claim qualification: {_error}");
+                            ErrorCode::OutcomeUnknown
+                        })?;
+                        OperationResult::AndroidControl(AndroidControlResult {
+                            workspace_id: request.workspace,
+                            device_id: request.control.device.clone(),
+                            generation: request.generation,
+                            controlled: true,
+                            lease_id: Some(lease.id.clone()),
+                        })
+                    }
+                    AndroidInputDispatchAction::Release => {
+                        super::input::Router::release_agent(manager, &request.control)
+                            .await
+                            .map_err(|_| ErrorCode::OutcomeUnknown)?;
+                        OperationResult::AndroidControl(AndroidControlResult {
+                            workspace_id: request.workspace,
+                            device_id: request.control.device.clone(),
+                            generation: request.generation,
+                            controlled: false,
+                            lease_id: None,
+                        })
+                    }
+                    AndroidInputDispatchAction::Send {
+                        lease,
+                        sequence,
+                        event,
+                    } => {
+                        use super::input::{Event, TextAction, TouchPhase};
+                        let event = match event {
+                            AndroidInputEvent::Rotate { quarter_turns } => Event::Rotate {
+                                quarter_turns: u32::from(quarter_turns),
+                            },
+                            AndroidInputEvent::Text { text } => Event::Text {
+                                action: TextAction::Commit,
+                                text,
+                            },
+                            AndroidInputEvent::Key { key, down } => Event::Key { key, down },
+                            AndroidInputEvent::Navigation { key } => Event::Navigation {
+                                key: match key {
+                                    AndroidNavigation::Back => "GoBack",
+                                    AndroidNavigation::Home => "GoHome",
+                                    AndroidNavigation::Overview => "AppSwitch",
+                                    AndroidNavigation::Power => "Power",
+                                }
+                                .into(),
+                            },
+                            AndroidInputEvent::Touch {
+                                identifier,
+                                x,
+                                y,
+                                phase,
+                                ..
+                            } => Event::Touch {
+                                identifier: i32::from(identifier),
+                                x: x as i32,
+                                y: y as i32,
+                                phase: match phase {
+                                    AndroidTouchPhase::Down => TouchPhase::Down,
+                                    AndroidTouchPhase::Move => TouchPhase::Move,
+                                    AndroidTouchPhase::Up => TouchPhase::Up,
+                                },
+                            },
+                        };
+                        let checked: super::runtime::DispatchGuard = Arc::new(move || {
+                            guard()?;
+                            visibility()
+                        });
+                        let reply = super::input::Router::send_agent(
+                            manager,
+                            request.control.clone(),
+                            lease.clone(),
+                            sequence,
+                            event,
+                            checked,
+                        )
+                        .await
+                        .map_err(|_| ErrorCode::OutcomeUnknown)?;
+                        lease.check()?;
+                        if reply.sequence != sequence || reply.lease.as_deref() != Some(&lease.id) {
+                            return Err(ErrorCode::OutcomeUnknown);
+                        }
+                        OperationResult::AndroidInput(AndroidInputResult {
+                            workspace_id: request.workspace,
+                            device_id: request.control.device.clone(),
+                            generation: request.generation,
+                            input_sequence: sequence.to_string(),
+                        })
+                    }
+                };
+                request.control.check()?;
+                request.permit.check()?;
+                Ok(output)
+            }
+            .await;
+            let failed = result.is_err();
+            let recorded = tauri::async_runtime::spawn_blocking(move || {
+                broker.finish_android_input(&operation_id, &nonce, result)
+            })
+            .await
+            .map_err(|_| "Android input receipt task failed".to_string())?
+            .map_err(|_| "Android input receipt is no longer available".to_string());
+            if failed || recorded.is_err() {
+                if let Some((manager, control)) = cleanup {
+                    let _ = super::input::Router::release_agent(manager, &control).await;
+                }
+            }
+            recorded
+        })
+        .await
+        .map_err(|_| "Android input operation task failed".to_string())?
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (operation_id, nonce);
+        Err("Android agent input is not qualified on this host".into())
+    }
+}
+
+#[tauri::command]
+pub fn android_agent_input_blur(
+    window: Window,
+    device_id: String,
+    lease_id: String,
+) -> Result<(), String> {
+    crate::files::main_window(&window)?;
+    #[cfg(unix)]
+    if let Some(manager) = window.state::<Android>().loaded() {
+        if let Some(lease) = manager
+            .agent_control(&device_id)
+            .and_then(|control| control.input())
+        {
+            if lease.id == lease_id {
+                // Invalidate before waiting for the native input queue. The
+                // active lease watcher releases only this exact owner.
+                lease.revoke();
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = (device_id, lease_id);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn android_take_control(window: Window, device_id: String) -> Result<(), String> {
+    crate::files::main_window(&window)?;
+    #[cfg(unix)]
+    {
+        let manager = backend(&window, &window.state::<Android>())?;
+        if let Some(control) = manager.agent_control(&device_id) {
+            control.revoke();
+            tauri::async_runtime::spawn(async move {
+                super::input::Router::release_agent(manager, &control).await
+            })
+            .await
+            .map_err(|_| "Android input release failed")??;
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = device_id;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn agent_android_launch(
+    window: Window,
+    operation_id: String,
+    nonce: String,
+) -> Result<(), String> {
+    crate::files::main_window(&window)?;
+    #[cfg(unix)]
+    {
+        let app = window.app_handle().clone();
+        let broker = app.state::<crate::agent_control::Control>().required()?;
+        tauri::async_runtime::spawn(async move {
+            use lomi_control_protocol::{android::AndroidLaunchResult, ErrorCode};
+            let result = async {
+                let b = broker.clone();
+                let op = operation_id.clone();
+                let n = nonce.clone();
+                let request = tauri::async_runtime::spawn_blocking(move || {
+                    b.authorize_android_launch(&op, &n)
+                })
+                .await
+                .map_err(|_| ErrorCode::AppUnavailable)??;
+                request.permit.check()?;
+                request
+                    .control
+                    .check_generation(&request.input.generation)?;
+                let manager = backend(&window, &app.state::<Android>())
+                    .map_err(|_| ErrorCode::StorageUnavailable)?;
+                let runtime = manager.agent_runtime(&request.control, &request.input.generation)?;
+                let generation = request.input.generation.clone();
+                let guard: super::runtime::DispatchGuard = Arc::new(move || {
+                    request
+                        .permit
+                        .check()
+                        .and_then(|_| request.control.check_generation(&generation))
+                        .map_err(|_| "Android launch authority ended".into())
+                });
+                let input = request.input;
+                let activity = runtime
+                    .launch_app(
+                        input.generation.clone(),
+                        input.package_name.clone(),
+                        input.activity,
+                        guard.clone(),
+                    )
+                    .await
+                    .map_err(|_| ErrorCode::OutcomeUnknown)?;
+                guard().map_err(|_| ErrorCode::OutcomeUnknown)?;
+                Ok(AndroidLaunchResult {
+                    workspace_id: input.workspace_id,
+                    device_id: input.device_id,
+                    generation: input.generation,
+                    package_name: input.package_name,
+                    activity,
+                    intent_delivered: true,
+                })
+            }
+            .await;
+            tauri::async_runtime::spawn_blocking(move || {
+                broker.finish_android_launch(&operation_id, &nonce, result)
+            })
+            .await
+            .map_err(|_| "Android launch receipt task failed".to_string())?
+            .map_err(|_| "Android launch receipt unavailable".to_string())
+        })
+        .await
+        .map_err(|_| "Android launch task failed".to_string())?
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (operation_id, nonce);
+        Err("Agent control is unavailable".into())
     }
 }

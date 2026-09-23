@@ -1054,6 +1054,7 @@ export default function ChatSettingsPage() {
       )}
       {recovering && (
         <Modal
+          protectTheme
           className="chat-dialog"
           title="Recover Chat AI settings?"
           tone="warning"
@@ -1088,6 +1089,7 @@ export default function ChatSettingsPage() {
       )}
       {removingKey && data && (
         <Modal
+          protectTheme
           className="chat-dialog"
           title="Remove API key?"
           tone="warning"
@@ -1122,6 +1124,7 @@ export default function ChatSettingsPage() {
       )}
       {deleting && data && (
         <Modal
+          protectTheme
           className="chat-dialog"
           title="Remove provider?"
           tone="danger"

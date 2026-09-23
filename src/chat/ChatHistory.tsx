@@ -432,6 +432,7 @@ export default function ChatHistory({
       )}
       {deleting && (
         <Modal
+          protectTheme
           title="Delete conversation?"
           tone="danger"
           className="chat-dialog"

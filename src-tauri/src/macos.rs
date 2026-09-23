@@ -28,6 +28,20 @@ pub fn menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
                 true,
                 &[
                     &PredefinedMenuItem::about(app, None, None)?,
+                    &MenuItem::with_id(
+                        app,
+                        "open-agent-control",
+                        "Agent Control…",
+                        true,
+                        None::<&str>,
+                    )?,
+                    &MenuItem::with_id(
+                        app,
+                        "stop-agent-control",
+                        "Stop Agent Control",
+                        true,
+                        None::<&str>,
+                    )?,
                     &PredefinedMenuItem::separator(app)?,
                     &PredefinedMenuItem::services(app, None)?,
                     &PredefinedMenuItem::separator(app)?,
@@ -72,6 +86,24 @@ pub fn menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 }
 
 pub fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
+    if event.id().as_ref() == "open-agent-control" {
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            if let Err(error) =
+                crate::settings_window::request_checked(&app, Some("agent-control".into()), || {
+                    Ok(())
+                })
+                .await
+            {
+                eprintln!("Cannot open Agent Control: {error}");
+            }
+        });
+        return;
+    }
+    if event.id().as_ref() == "stop-agent-control" {
+        crate::agent_control::revoke(app);
+        return;
+    }
     if event.id().as_ref() == "quit" {
         app.exit(0);
         return;

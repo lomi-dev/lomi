@@ -144,8 +144,9 @@ function LiveTerminal({
   const fallbackTitle = pane.cwd || profile.name;
   const displayTitle = title || (canMove || revealTitle ? fallbackTitle : "");
   const headingVisible =
-    (preferences.alwaysShowTitles || revealTitle) &&
-    !!(displayTitle || activity || maximized);
+    snapshot.agentControlled ||
+    ((preferences.alwaysShowTitles || revealTitle) &&
+      !!(displayTitle || activity || maximized));
   return (
     <section
       className={`terminal-pane${active ? " is-active" : ""}${overview ? " is-overview" : ""}`}
@@ -240,6 +241,16 @@ function LiveTerminal({
               >
                 {displayTitle}
               </span>
+            )}
+            {snapshot.agentControlled && (
+              <button
+                type="button"
+                className="terminal-control"
+                title="Agent input is enabled. Take control without sending a key or stopping the shell."
+                onClick={() => void runtime.takeControl()}
+              >
+                Agent input · Take control
+              </button>
             )}
             {activity && (
               <span

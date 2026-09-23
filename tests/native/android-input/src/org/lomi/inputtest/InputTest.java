@@ -7,6 +7,7 @@ import android.graphics.Color;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.EditText;
+import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -14,6 +15,7 @@ import android.widget.TextView;
 public final class InputTest extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        android.util.Log.i("LomiInputTest", "MCP fixture started: Zażółć 🙂");
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(0, 100, 0, 0);
@@ -24,6 +26,18 @@ public final class InputTest extends Activity {
         editor.setSingleLine(false);
         editor.setContentDescription("lomi-test-editor");
         layout.addView(editor, new LinearLayout.LayoutParams(-1, 300));
+        TextView submitted = new TextView(this);
+        submitted.setContentDescription("lomi-test-result");
+        Button submit = new Button(this);
+        submit.setText("Submit Unicode form");
+        submit.setContentDescription("lomi-test-submit");
+        submit.setOnClickListener(view -> {
+            String value = editor.getText().toString();
+            submitted.setText("Submitted: " + value);
+            android.util.Log.i("LomiInputTest", "MCP form submitted: " + value);
+        });
+        layout.addView(submit, new LinearLayout.LayoutParams(-1, -2));
+        layout.addView(submitted, new LinearLayout.LayoutParams(-1, -2));
         View target = new View(this) {
             private boolean on;
             @Override protected void onDraw(Canvas canvas) {

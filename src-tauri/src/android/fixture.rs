@@ -1,6 +1,7 @@
 //! Isolated production-path native test configuration; excluded from normal builds.
 use std::path::PathBuf;
 
+#[cfg(feature = "android-probe")]
 pub fn preset_dialog<R: tauri::Runtime>(
     dialog: tauri_plugin_dialog::FileDialogBuilder<R>,
     screenshot: bool,
@@ -23,6 +24,7 @@ pub fn preset_dialog<R: tauri::Runtime>(
         .set_file_name(if screenshot { "" } else { name }))
 }
 
+#[cfg(any(feature = "android-probe", feature = "mcp-probe"))]
 pub fn guest(root: &std::path::Path, device: &str) -> Result<super::adb::Guest, String> {
     super::runtime::fixture_guest(root, device)
 }

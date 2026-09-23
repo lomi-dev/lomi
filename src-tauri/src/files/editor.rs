@@ -90,8 +90,74 @@ fn revision(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
+#[cfg(unix)]
+fn open_resolved_file(path: &Path) -> Result<fs::File, EditorError> {
+    use std::{
+        ffi::CString,
+        os::{
+            fd::{AsRawFd, FromRawFd},
+            unix::ffi::OsStrExt,
+        },
+        path::Component,
+    };
+    if !path.is_absolute() || path.components().count() > 128 {
+        return Err(EditorError::new(
+            "conflict",
+            "The resolved file path is unavailable.",
+        ));
+    }
+    // Resolve has already checked containment and intentionally followed any
+    // user-selected aliases. Reopen that canonical result without following a
+    // replacement link at any component, including the final file.
+    let mut current = fs::File::open("/").map_err(EditorError::io)?;
+    let mut components = path.components().peekable();
+    while let Some(component) = components.next() {
+        let name = match component {
+            Component::RootDir => continue,
+            Component::Normal(name) => name,
+            _ => {
+                return Err(EditorError::new(
+                    "conflict",
+                    "The resolved file path changed.",
+                ))
+            }
+        };
+        let name = CString::new(name.as_bytes()).map_err(EditorError::io)?;
+        let flags = libc::O_RDONLY
+            | libc::O_NOFOLLOW
+            | libc::O_CLOEXEC
+            | libc::O_NONBLOCK
+            | if components.peek().is_some() {
+                libc::O_DIRECTORY
+            } else {
+                0
+            };
+        let fd = unsafe { libc::openat(current.as_raw_fd(), name.as_ptr(), flags) };
+        if fd < 0 {
+            return Err(EditorError::io(std::io::Error::last_os_error()));
+        }
+        current = unsafe { fs::File::from_raw_fd(fd) };
+    }
+    Ok(current)
+}
+#[cfg(not(unix))]
+fn open_resolved_file(path: &Path) -> Result<fs::File, EditorError> {
+    fs::File::open(path).map_err(EditorError::io)
+}
+#[cfg(unix)]
+fn same_file_version(a: &fs::Metadata, b: &fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    a.is_file()
+        && b.is_file()
+        && a.dev() == b.dev()
+        && a.ino() == b.ino()
+        && a.len() == b.len()
+        && a.nlink() == b.nlink()
+        && (a.mtime(), a.mtime_nsec(), a.ctime(), a.ctime_nsec())
+            == (b.mtime(), b.mtime_nsec(), b.ctime(), b.ctime_nsec())
+}
 fn read_bytes(path: &Path) -> Result<(Vec<u8>, fs::Metadata), EditorError> {
-    let file = fs::File::open(path).map_err(EditorError::io)?;
+    let mut file = open_resolved_file(path)?;
     let metadata = file.metadata().map_err(EditorError::io)?;
     if !metadata.is_file() {
         return Err(EditorError::new(
@@ -106,7 +172,8 @@ fn read_bytes(path: &Path) -> Result<(Vec<u8>, fs::Metadata), EditorError> {
         ));
     }
     let mut bytes = Vec::new();
-    file.take(FILE_LIMIT + 1)
+    (&mut file)
+        .take(FILE_LIMIT + 1)
         .read_to_end(&mut bytes)
         .map_err(EditorError::io)?;
     if bytes.len() as u64 > FILE_LIMIT {
@@ -114,6 +181,19 @@ fn read_bytes(path: &Path) -> Result<(Vec<u8>, fs::Metadata), EditorError> {
             "tooLarge",
             "This file exceeds the 16 MiB editor limit.",
         ));
+    }
+    #[cfg(unix)]
+    {
+        let after = file.metadata().map_err(EditorError::io)?;
+        let named = open_resolved_file(path)?
+            .metadata()
+            .map_err(EditorError::io)?;
+        if !same_file_version(&metadata, &after) || !same_file_version(&metadata, &named) {
+            return Err(EditorError::new(
+                "conflict",
+                "The file changed while reading. Try again.",
+            ));
+        }
     }
     Ok((bytes, metadata))
 }
@@ -173,7 +253,7 @@ pub(super) fn decode(bytes: &[u8]) -> Result<(String, Encoding), EditorError> {
     Ok((text, encoding))
 }
 
-fn encode(text: &str, encoding: Encoding) -> Result<Vec<u8>, EditorError> {
+pub(super) fn encode(text: &str, encoding: Encoding) -> Result<Vec<u8>, EditorError> {
     let mut bytes = match encoding {
         Encoding::Utf8 => Vec::new(),
         Encoding::Utf8Bom => vec![0xef, 0xbb, 0xbf],
@@ -253,39 +333,59 @@ fn write(request: &SaveFile) -> Result<String, EditorError> {
     }
     let (_, encoding) = decode(&original)?;
     let bytes = encode(&request.content, encoding)?;
-    let mut temporary = tempfile::Builder::new()
-        .prefix(".lomi-")
-        .tempfile_in(
-            path.parent()
-                .ok_or_else(|| EditorError::new("io", "The file has no parent directory."))?,
-        )
-        .map_err(EditorError::io)?;
-    temporary.write_all(&bytes).map_err(EditorError::io)?;
     #[cfg(unix)]
     {
-        use std::os::unix::fs::MetadataExt;
-        let created = temporary.as_file().metadata().map_err(EditorError::io)?;
-        if created.uid() != metadata.uid() || created.gid() != metadata.gid() {
-            std::os::unix::fs::chown(temporary.path(), Some(metadata.uid()), Some(metadata.gid()))
+        use lomi_control_core::atomic_file::{replace, ReplaceError};
+        use lomi_control_protocol::ErrorCode;
+        replace(&path, &request.revision, &bytes, || Ok(())).map_err(|error| match error {
+            ReplaceError::Before(ErrorCode::RevisionConflict | ErrorCode::TargetNotFound) =>
+                EditorError::new("conflict", "The file changed while saving. Your changes are still in the editor."),
+            ReplaceError::Before(ErrorCode::ScopeDenied) =>
+                EditorError::new("readOnly", "This file cannot be safely replaced. Your changes are still in the editor."),
+            ReplaceError::Uncertain => EditorError::new("uncertain", "The file was replaced, but durable completion could not be confirmed. Check the disk version before saving again."),
+            ReplaceError::Before(_) => EditorError::new("io", "The file could not be saved. Your changes are still in the editor."),
+        })
+    }
+    #[cfg(not(unix))]
+    {
+        let mut temporary = tempfile::Builder::new()
+            .prefix(".lomi-")
+            .tempfile_in(
+                path.parent()
+                    .ok_or_else(|| EditorError::new("io", "The file has no parent directory."))?,
+            )
+            .map_err(EditorError::io)?;
+        temporary.write_all(&bytes).map_err(EditorError::io)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            let created = temporary.as_file().metadata().map_err(EditorError::io)?;
+            if created.uid() != metadata.uid() || created.gid() != metadata.gid() {
+                std::os::unix::fs::chown(
+                    temporary.path(),
+                    Some(metadata.uid()),
+                    Some(metadata.gid()),
+                )
                 .map_err(EditorError::io)?;
+            }
         }
+        temporary
+            .as_file()
+            .set_permissions(metadata.permissions())
+            .map_err(EditorError::io)?;
+        temporary.as_file().sync_all().map_err(EditorError::io)?;
+        // Revalidate after preparing the replacement, including changes made by another process.
+        let (current_path, _) = resolve(&request.root, &request.relative)?;
+        let (current, _) = read_bytes(&current_path)?;
+        if current_path != path || revision(&current) != request.revision {
+            return Err(EditorError::new(
+                "conflict",
+                "The file changed while saving. Your changes are still in the editor.",
+            ));
+        }
+        temporary.persist(&path).map_err(EditorError::io)?;
+        Ok(revision(&bytes))
     }
-    temporary
-        .as_file()
-        .set_permissions(metadata.permissions())
-        .map_err(EditorError::io)?;
-    temporary.as_file().sync_all().map_err(EditorError::io)?;
-    // Revalidate after preparing the replacement, including changes made by another process.
-    let (current_path, _) = resolve(&request.root, &request.relative)?;
-    let (current, _) = read_bytes(&current_path)?;
-    if current_path != path || revision(&current) != request.revision {
-        return Err(EditorError::new(
-            "conflict",
-            "The file changed while saving. Your changes are still in the editor.",
-        ));
-    }
-    temporary.persist(&path).map_err(EditorError::io)?;
-    Ok(revision(&bytes))
 }
 
 fn write_new(
@@ -521,6 +621,37 @@ pub async fn watch_editor_files(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn canonical_editor_reads_refuse_replacement_links_and_keep_explicit_ui_aliases() {
+        use std::os::unix::fs::symlink;
+        let folder = tempfile::tempdir().unwrap();
+        let other = tempfile::tempdir().unwrap();
+        let root = folder.path().canonicalize().unwrap();
+        let outside = other.path().canonicalize().unwrap();
+        fs::write(root.join("a.txt"), "approved").unwrap();
+        fs::write(outside.join("a.txt"), "outside-private").unwrap();
+        let resolved = root.join("a.txt");
+        assert_eq!(read_bytes(&resolved).unwrap().0, b"approved");
+        fs::remove_file(&resolved).unwrap();
+        symlink(outside.join("a.txt"), &resolved).unwrap();
+        assert!(read_bytes(&resolved).is_err());
+        fs::remove_file(&resolved).unwrap();
+        fs::create_dir(root.join("sub")).unwrap();
+        fs::write(root.join("sub/a.txt"), "approved").unwrap();
+        let resolved = root.join("sub/a.txt");
+        fs::rename(root.join("sub"), root.join("old-sub")).unwrap();
+        symlink(&outside, root.join("sub")).unwrap();
+        assert!(read_bytes(&resolved).is_err());
+        // The ordinary user editor still allows intentional aliases and secrets;
+        // MCP separately checks the actual source path against its file policy.
+        fs::write(root.join(".env"), "USER_SELECTED=private").unwrap();
+        symlink(root.join(".env"), root.join("alias.txt")).unwrap();
+        let selected = read(root.to_str().unwrap(), "alias.txt", None).unwrap();
+        assert_eq!(selected.path, root.join(".env").to_string_lossy());
+        assert_eq!(selected.content.as_deref(), Some("USER_SELECTED=private"));
+    }
 
     #[test]
     fn saves_new_documents_and_protects_open_files_and_failed_writes() {

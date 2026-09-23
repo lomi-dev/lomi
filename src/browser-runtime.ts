@@ -6,16 +6,21 @@ import type { BrowserTab, Session } from "./model";
 
 export interface BrowserPage {
   id: string;
+  revision?: string;
   url: string;
   title: string;
   loading: boolean;
   error: string;
   download: string;
+  browserGeneration?: string | null;
+  profileId?: string | null;
+  navigationId?: string | null;
+  agentControlled?: boolean;
 }
 type Signal = "focus" | "address" | "close" | "find";
 type Action =
   | { type: "navigate"; url: string }
-  | { type: "back" | "forward" | "reload" | "stop" | "focus" }
+  | { type: "back" | "forward" | "reload" | "stop" | "focus" | "takeControl" }
   | { type: "find"; text: string; backwards: boolean };
 
 let retained = new Map<string, BrowserTab>();
@@ -25,6 +30,41 @@ const mounts = new Map<
 >();
 const pages = new Map<string, BrowserPage>();
 const live = new Set<string>();
+const agentStarts = new Map<string, { operationId: string; nonce: string }>();
+const hiddenAgentStarts = new Set<string>();
+export function stageAgentBrowser(
+  id: string,
+  ticket: { operationId: string; nonce: string },
+  visible = true,
+) {
+  agentStarts.set(id, ticket);
+  if (!visible) hiddenAgentStarts.add(id);
+}
+export function clearAgentBrowser(id: string) {
+  agentStarts.delete(id);
+  hiddenAgentStarts.delete(id);
+}
+export function hasLiveAgentBrowser(id: string, generation: string) {
+  return live.has(id) && pages.get(id)?.browserGeneration === generation;
+}
+export async function waitForAgentBrowser(
+  id: string,
+  generation: string,
+): Promise<BrowserPage> {
+  const deadline = performance.now() + 15_000;
+  while (performance.now() < deadline) {
+    await synchronize();
+    const page = pages.get(id);
+    if (
+      live.has(id) &&
+      page?.browserGeneration === generation &&
+      page.navigationId
+    )
+      return page;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error("Browser panel could not render.");
+}
 const listeners = new Set<() => void>();
 let onChange: (
   id: string,
@@ -125,6 +165,14 @@ export function subscribeBrowsers(listener: () => void) {
 }
 
 function receive(page: BrowserPage) {
+  const previous = pages.get(page.id);
+  // A delayed sync response can arrive after a newer native event.
+  if (
+    page.revision &&
+    previous?.revision &&
+    BigInt(page.revision) < BigInt(previous.revision)
+  )
+    return;
   const tab = retained.get(page.id);
   if (!tab || JSON.stringify(pages.get(page.id)) === JSON.stringify(page))
     return;
@@ -146,7 +194,22 @@ function setup() {
   ]));
 }
 
+let hiddenSyncQueued = false;
 function schedule() {
+  // A main WKWebView may suspend animation frames while native children remain
+  // visible. Domain changes must still hide those children and app overlays.
+  if (document.hidden) {
+    if (!hiddenSyncQueued) {
+      hiddenSyncQueued = true;
+      queueMicrotask(() => {
+        hiddenSyncQueued = false;
+        void synchronize().catch((error) =>
+          onError(`Browser: ${errorMessage(error)}`),
+        );
+      });
+    }
+    return;
+  }
   if (!frame)
     frame = requestAnimationFrame(() => {
       frame = 0;
@@ -193,6 +256,10 @@ function synchronize(): Promise<void> {
                   {
                     id,
                     url: tab.url,
+                    ...(tab.automation ? { automation: tab.automation } : {}),
+                    ...(agentStarts.has(id)
+                      ? { agentTicket: agentStarts.get(id) }
+                      : {}),
                     bounds: {
                       x: x * zoom,
                       y: y * zoom,
@@ -203,10 +270,29 @@ function synchronize(): Promise<void> {
                 ]
               : [];
           });
+      const hiddenSlots = [...hiddenAgentStarts].flatMap((id) => {
+        const tab = retained.get(id);
+        const ticket = agentStarts.get(id);
+        return tab?.automation && ticket && !live.has(id)
+          ? [
+              {
+                id,
+                url: tab.url,
+                automation: tab.automation,
+                agentTicket: ticket,
+                hidden: true,
+                bounds: { x: 0, y: 0, width: 800, height: 600 },
+              },
+            ]
+          : [];
+      });
       if (retained.size || pages.size) {
         const result = await api<BrowserPage[]>("sync_browsers", {
           retained: [...retained.keys()],
-          slots,
+          slots: [
+            ...slots.filter((s) => !hiddenAgentStarts.has(s.id)),
+            ...hiddenSlots,
+          ],
         });
         live.clear();
         for (const page of result) {

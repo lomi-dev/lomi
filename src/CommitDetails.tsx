@@ -1,3 +1,4 @@
+import { agentCommit, agentDiff, readAgentGit, useAgentGit } from "./agent-git";
 import { DisclosureSummary } from "./ui";
 import ResourceIcon from "./ResourceIcon";
 import { useEffect, useMemo, useState } from "react";
@@ -10,16 +11,21 @@ import { useGitFileActions } from "./GitFileActions";
 export default function CommitDetails({
   root,
   commitId,
+  agentPanelId,
+  agentRestricted = false,
   onOpenFile,
   onOpenCommit,
   onError,
 }: {
   root: string;
   commitId: string;
+  agentPanelId?: string;
+  agentRestricted?: boolean;
   onOpenFile: (path: string) => void;
   onOpenCommit: (commit: GitCommitSummary) => void;
   onError: (message: string) => void;
 }) {
+  const agentSource = useAgentGit(agentPanelId);
   const [details, setDetails] = useState<GitCommitDetails>();
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
@@ -41,7 +47,13 @@ export default function CommitDetails({
     let current = true;
     setDetails(undefined);
     setError("");
-    void api<GitCommitDetails>("git_commit_details", { root, id: commitId })
+    const load = agentRestricted
+      ? (agentSource && revision === 0
+          ? Promise.resolve(agentSource.body)
+          : readAgentGit(agentSource)
+        ).then(agentCommit)
+      : api<GitCommitDetails>("git_commit_details", { root, id: commitId });
+    void load
       .then((details) => {
         if (!current) return;
         setDetails(details);
@@ -53,7 +65,7 @@ export default function CommitDetails({
     return () => {
       current = false;
     };
-  }, [root, commitId, revision]);
+  }, [root, commitId, revision, agentRestricted, agentSource]);
   const selectedFile = details?.files.find(
     (file) => file.path === selectedPath,
   );
@@ -61,12 +73,15 @@ export default function CommitDetails({
     if (!selectedFile) return;
     let current = true;
     setDiff(undefined);
-    void api<GitCommitDiff>("git_commit_diff", {
-      root,
-      id: commitId,
-      path: selectedFile.path,
-      originalPath: selectedFile.originalPath,
-    })
+    const load = agentRestricted
+      ? readAgentGit(agentSource, selectedFile.path).then(agentDiff)
+      : api<GitCommitDiff>("git_commit_diff", {
+          root,
+          id: commitId,
+          path: selectedFile.path,
+          originalPath: selectedFile.originalPath,
+        });
+    void load
       .then((result) => {
         if (current) setDiff({ path: selectedFile.path, result });
       })
@@ -77,7 +92,14 @@ export default function CommitDetails({
     return () => {
       current = false;
     };
-  }, [root, commitId, selectedFile, diffRevision]);
+  }, [
+    root,
+    commitId,
+    selectedFile,
+    diffRevision,
+    agentRestricted,
+    agentSource,
+  ]);
   if (error)
     return (
       <div className="commit-view-message" role="alert">
@@ -150,14 +172,26 @@ export default function CommitDetails({
           <pre>{details.message}</pre>
         </details>
       </header>
+      {!!details.omittedEntries && (
+        <p className="commit-diff-notice" role="status">
+          {details.omittedEntries} secret or unsupported file entries omitted.
+        </p>
+      )}
+      {details.statisticsUnavailable && (
+        <p className="commit-diff-notice">
+          Line statistics are unavailable for this view.
+        </p>
+      )}
       <div className="commit-files-heading">
         <span>
           {files.length} {files.length === 1 ? "changed file" : "changed files"}
         </span>
-        <span className="commit-file-stats">
-          <span className="diff-additions">+{additions}</span>
-          <span className="diff-deletions">−{deletions}</span>
-        </span>
+        {!details.statisticsUnavailable && (
+          <span className="commit-file-stats">
+            <span className="diff-additions">+{additions}</span>
+            <span className="diff-deletions">−{deletions}</span>
+          </span>
+        )}
         <span className="commit-comparison">
           {details.parents.length
             ? `Compared with ${details.parents.length > 1 ? "first parent " : "parent "}${details.parents[0].slice(0, 7)}`
@@ -166,7 +200,9 @@ export default function CommitDetails({
       </div>
       {!files.length ? (
         <div className="commit-view-message">
-          This commit has no file changes.
+          {details.omittedEntries
+            ? "No permitted file changes are available."
+            : "This commit has no file changes."}
         </div>
       ) : (
         <div className="commit-changes">
@@ -193,7 +229,8 @@ export default function CommitDetails({
                 </span>
                 <span className="commit-file-path">{file.path}</span>
                 <span className="commit-file-stats">
-                  {file.additions === null ? (
+                  {details.statisticsUnavailable ? null : file.additions ===
+                    null ? (
                     "Binary"
                   ) : (
                     <>

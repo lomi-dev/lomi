@@ -429,6 +429,7 @@ export default function PluginsPage() {
       </div>
       {trust && (
         <Modal
+          protectTheme
           title={`Enable ${trust.manifest?.name ?? trust.id}?`}
           onClose={() => {
             if (!busy) setTrust(null);
@@ -477,6 +478,7 @@ export default function PluginsPage() {
       )}
       {fallback && (
         <Modal
+          protectTheme
           title="Replace the active theme?"
           onClose={() => {
             if (!busy) setFallback(null);

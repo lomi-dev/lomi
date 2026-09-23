@@ -56,6 +56,8 @@ export interface GitCommitFile {
   deletions: number | null;
 }
 export interface GitCommitDetails {
+  statisticsUnavailable?: boolean;
+  omittedEntries?: number;
   commit: GitCommitSummary;
   authorEmail: string;
   committerName: string;

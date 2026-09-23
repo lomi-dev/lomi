@@ -74,6 +74,7 @@ fn show(window: &Window) -> Result<(), String> {
     }
     window.unminimize().map_err(|error| error.to_string())?;
     window.show().map_err(|error| error.to_string())?;
+    let _ = window.emit("settings-visibility", true);
     window.set_focus().map_err(|error| error.to_string())
 }
 
@@ -95,11 +96,22 @@ pub async fn open_settings(
                 | "about"
                 | "chat-ai"
                 | "android"
+                | "agent-control"
         )
     }) {
         return Err("Unknown settings page.".into());
     }
-    prepare(&app).await?;
+    request_checked(&app, page, || Ok(())).await
+}
+
+pub(crate) async fn request_checked(
+    app: &tauri::AppHandle,
+    page: Option<String>,
+    check: impl Fn() -> Result<(), String>,
+) -> Result<(), String> {
+    check()?;
+    prepare(app).await?;
+    check()?;
     let state = app.state::<SettingsWindow>();
     let ready = {
         let mut lifecycle = state.lifecycle.lock().map_err(|error| error.to_string())?;
@@ -123,6 +135,7 @@ pub fn on_window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
     }
     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
         if window.hide().is_ok() {
+            let _ = window.emit("settings-visibility", false);
             api.prevent_close();
             if let Ok(mut lifecycle) = window.state::<SettingsWindow>().lifecycle.lock() {
                 lifecycle.requested = false;

@@ -1802,3 +1802,333 @@ for (const appearance of ["light", "dark"] as const)
       page.getByRole("button", { name: "Cancel download" }),
     ).toHaveCount(0);
   });
+
+test("manual Android panel stays stopped through restore until human Start", async ({
+  page,
+}) => {
+  const project = newProject("/project", "local:bash");
+  const phone = {
+    ...newAndroidTab("12345678-1234-4567-8123-123456789abc"),
+    startMode: "manual" as const,
+  };
+  project.workspaces[0].tabs = [phone];
+  project.workspaces[0].activeTabId = phone.id;
+  const session = {
+    ...newSession(),
+    projects: [project],
+    activeProjectId: project.id,
+  };
+  await mockDesktop(page, false);
+  await mockAndroid(page, true);
+  await page.addInitScript(
+    (session) => localStorage.setItem("test-session", JSON.stringify(session)),
+    session,
+  );
+  await page.goto("/");
+  await expect(
+    page.getByText("Android is stopped. Its apps and data are kept."),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() => (window as any).__androidTest.startRequests),
+  ).toBe(0);
+  await page.reload();
+  await expect(
+    page.getByText("Android is stopped. Its apps and data are kept."),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() => (window as any).__androidTest.startRequests),
+  ).toBe(0);
+  await page.screenshot({ path: "test-results/android-manual-open.png" });
+  await page.getByRole("button", { name: "Start", exact: true }).click();
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__androidTest.starts))
+    .toBe(1);
+  await expect(page.locator(".android-screen")).toBeVisible();
+});
+
+test("Android shows active agent input and returns control through its native action", async ({
+  page,
+}) => {
+  await mockDesktop(page, false);
+  await mockAndroid(page, true);
+  await page.goto("/");
+  await openAndroid(page);
+  await expect(page.locator(".android-screen")).toBeVisible();
+  await page.evaluate(() => {
+    const w = window as any;
+    return w.__nativeTest.emitEvent("android-changed", {
+      kind: "inputControl",
+      value: {
+        deviceId: w.__androidTest.deviceId,
+        generation: w.__androidTest.generation,
+        controlled: true,
+      },
+    });
+  });
+  const take = page.getByRole("button", {
+    name: "Agent input · Take control",
+    exact: true,
+  });
+  await expect(take).toBeVisible();
+  await page.screenshot({ path: "test-results/android-agent-input.png" });
+  await take.click();
+  await expect(take).toBeHidden();
+  expect(
+    await page.evaluate(() => (window as any).__androidTest.takeControls),
+  ).toBe(1);
+  expect(await page.evaluate(() => (window as any).__androidTest.stops)).toBe(
+    0,
+  );
+});
+
+test("a visible native phone renders when document RAF is suspended and stops frames when minimized", async ({
+  page,
+}) => {
+  await mockDesktop(page, false);
+  await mockAndroid(page, true);
+  await page.goto("/");
+  await page.evaluate(() => {
+    const w = window as any;
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "hidden",
+    });
+    w.__savedRaf = window.requestAnimationFrame;
+    window.requestAnimationFrame = () => 0;
+  });
+  await openAndroid(page);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__nativeTest.calls.filter(
+            (call: any) => call.command === "android_ack_frame",
+          ).length,
+      ),
+    )
+    .toBeGreaterThan(0);
+  await expect(page.locator(".android-screen")).toBeVisible();
+  await page.evaluate(() => {
+    const w = window as any;
+    const invoke = w.__TAURI_INTERNALS__.invoke;
+    w.__TAURI_INTERNALS__.invoke = (command: string, args: any) =>
+      command === "plugin:window|is_minimized"
+        ? Promise.resolve(true)
+        : invoke(command, args);
+    document.dispatchEvent(new Event("visibilitychange"));
+    window.requestAnimationFrame = w.__savedRaf;
+  });
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__androidTest.live.size))
+    .toBe(0);
+  await expect(page.locator(".android-screen")).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__androidTest.stops)).toBe(
+    0,
+  );
+});
+
+test("Android preserves the agent lease while a resized stream waits for its first frame", async ({
+  page,
+}) => {
+  await mockDesktop(page, false);
+  await mockAndroid(page, true);
+  await page.goto("/");
+  await openAndroid(page);
+  const ready = () =>
+    page.evaluate(async () => {
+      const runtime = await import("/src/android/runtime.ts");
+      const id =
+        document.querySelector<HTMLElement>(".android-pane")?.dataset
+          .androidPaneId;
+      return (
+        !!id &&
+        runtime.agentInputReady(id, (window as any).__androidTest.generation)
+      );
+    });
+  await expect.poll(ready).toBe(true);
+  const calls = await page.evaluate(async () => {
+    const w = window as any;
+    await w.__nativeTest.emitEvent("android-changed", {
+      kind: "inputControl",
+      value: {
+        deviceId: w.__androidTest.deviceId,
+        generation: w.__androidTest.generation,
+        controlled: true,
+        viewId:
+          document.querySelector<HTMLElement>(".android-pane")!.dataset
+            .androidPaneId,
+        leaseId: "resize-lease-fixture",
+      },
+    });
+    w.__androidTest.holdScreen = true;
+    return w.__nativeTest.calls.filter(
+      (call: any) => call.command === "android_subscribe_frames",
+    ).length;
+  });
+  await page.setViewportSize({ width: 900, height: 720 });
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__nativeTest.calls.filter(
+            (call: any) => call.command === "android_subscribe_frames",
+          ).length,
+      ),
+    )
+    .toBeGreaterThan(calls);
+  expect(await ready()).toBe(false);
+  expect(
+    await page.evaluate(() =>
+      (window as any).__nativeTest.calls.filter(
+        (call: any) => call.command === "android_agent_input_blur",
+      ),
+    ),
+  ).toEqual([]);
+  await page.evaluate(() => {
+    const state = (window as any).__androidTest;
+    state.holdScreen = false;
+    state.connectScreen();
+  });
+  await expect.poll(ready).toBe(true);
+  await expect(
+    page.getByRole("button", {
+      name: "Agent input · Take control",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.evaluate(() => {
+    const dialog = document.createElement("dialog");
+    document.body.append(dialog);
+    dialog.showModal();
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (window as any).__nativeTest.calls
+          .filter((call: any) => call.command === "android_agent_input_blur")
+          .map((call: any) => call.args.leaseId),
+      ),
+    )
+    .toEqual(["resize-lease-fixture"]);
+});
+
+for (const interruption of ["dialog", "field", "hidden panel"] as const)
+  test(`Android agent input releases its exact lease on ${interruption}`, async ({
+    page,
+  }) => {
+    await mockDesktop(page, false);
+    await mockAndroid(page, true);
+    await page.goto("/");
+    await openAndroid(page);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (window as any).__nativeTest.calls.filter(
+              (call: any) => call.command === "android_ack_frame",
+            ).length,
+        ),
+      )
+      .toBeGreaterThan(0);
+    await page.evaluate(() => {
+      const w = window as any;
+      return w.__nativeTest.emitEvent("android-changed", {
+        kind: "inputControl",
+        value: {
+          deviceId: w.__androidTest.deviceId,
+          generation: w.__androidTest.generation,
+          controlled: true,
+          viewId:
+            document.querySelector<HTMLElement>(".android-pane")!.dataset
+              .androidPaneId,
+          leaseId: "input-lease-fixture",
+        },
+      });
+    });
+    await expect(
+      page.getByRole("button", {
+        name: "Agent input · Take control",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await page.evaluate(() => {
+      const w = window as any;
+      return w.__nativeTest.emitEvent("android-changed", {
+        kind: "inputControl",
+        value: {
+          deviceId: w.__androidTest.deviceId,
+          generation: w.__androidTest.generation,
+          controlled: true,
+          viewId:
+            document.querySelector<HTMLElement>(".android-pane")!.dataset
+              .androidPaneId,
+          leaseId: "input-lease-fixture",
+        },
+      });
+    });
+    expect(
+      await page.evaluate(() =>
+        (window as any).__nativeTest.calls.filter(
+          (call: any) => call.command === "android_agent_input_blur",
+        ),
+      ),
+    ).toEqual([]);
+    if (interruption === "hidden panel")
+      await page.getByRole("tab", { name: "Terminal", exact: true }).click();
+    else
+      await page.evaluate((kind) => {
+        if (kind === "dialog") {
+          const dialog = document.createElement("dialog");
+          document.body.append(dialog);
+          dialog.showModal();
+        } else {
+          const field = document.createElement("input");
+          document.body.append(field);
+          field.focus();
+        }
+      }, interruption);
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          (window as any).__nativeTest.calls
+            .filter((call: any) => call.command === "android_agent_input_blur")
+            .map((call: any) => call.args.leaseId),
+        ),
+      )
+      .toEqual(["input-lease-fixture"]);
+    expect(await page.evaluate(() => (window as any).__androidTest.stops)).toBe(
+      0,
+    );
+  });
+
+test("Android keeps a hidden document without native focus idle on screen lock", async ({
+  page,
+}) => {
+  await mockDesktop(page, false);
+  await mockAndroid(page, true);
+  await page.goto("/");
+  await openAndroid(page);
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__androidTest.live.size))
+    .toBe(1);
+  await page.evaluate(() => {
+    const w = window as any;
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "hidden",
+    });
+    const invoke = w.__TAURI_INTERNALS__.invoke;
+    w.__TAURI_INTERNALS__.invoke = (command: string, args: any) =>
+      command === "plugin:window|is_focused"
+        ? Promise.resolve(false)
+        : invoke(command, args);
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__androidTest.live.size))
+    .toBe(0);
+  await expect(page.locator(".android-screen")).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__androidTest.stops)).toBe(
+    0,
+  );
+});

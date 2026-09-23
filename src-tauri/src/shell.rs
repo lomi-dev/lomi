@@ -1,4 +1,7 @@
 use portable_pty::CommandBuilder;
+#[cfg(all(test, target_os = "macos"))]
+#[path = "../../tests/native/mcp-terminal-support.rs"]
+mod mcp_qualification;
 use serde::Serialize;
 use std::{
     env,

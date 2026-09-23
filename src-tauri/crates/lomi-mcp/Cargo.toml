@@ -1,0 +1,19 @@
+[package]
+name = "lomi-mcp"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+lomi-control-protocol = { path = "../lomi-control-protocol" }
+lomi-control-core = { path = "../lomi-control-core" }
+rmcp = { version = "=3.4.0", default-features = false, features = ["server", "transport-io"] }
+schemars = "=1.2.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["io-std", "macros", "rt-multi-thread", "time"] }
+
+[[example]]
+name = "protocol-probe"
+path = "../../../tests/mcp/protocol-probe.rs"

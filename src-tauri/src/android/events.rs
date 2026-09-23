@@ -7,5 +7,6 @@ pub enum Event {
     Status(Status),
     Stream(super::frames::Status),
     InputError(String),
+    InputControl(super::input::AgentInputState),
     Metadata,
 }

@@ -399,6 +399,7 @@ export function useExplorerActions(props: Props) {
   const rename = prompt?.kind === "rename" ? naming : undefined;
   const dialog = prompt && deleting && (
     <Modal
+      protectTheme
       tone="danger"
       title={title}
       onClose={() => {

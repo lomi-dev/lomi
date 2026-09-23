@@ -19,6 +19,321 @@ async function replaceText(page: Page, content: string) {
   await page.keyboard.insertText(content);
 }
 
+test("agent buffer reads keep unsaved text, revision conflicts and undo in the shared editor", async ({
+  page,
+}) => {
+  await mockDesktop(page);
+  await page.goto("/");
+  await openReadme(page);
+  const snapshot = () =>
+    page.evaluate(async () => {
+      const path = "/src/editor-runtime.ts";
+      const runtime = await import(path);
+      const doc = runtime
+        .documents()
+        .find((d: any) => d.location.relative === "README.md");
+      return doc.readAgentBuffer({
+        workspaceId: "fixture",
+        panelId: "file",
+        relativePath: "README.md",
+      });
+    });
+  const initial = await snapshot();
+  await replaceText(page, "Unsaved Zażółć 🙂\n");
+  const dirty = await snapshot();
+  expect(dirty.text.source).toBe("buffer");
+  expect(dirty.text.content).toBe("Unsaved Zażółć 🙂\n");
+  expect(dirty.text.dirty).toBe(true);
+  expect(dirty.text.documentId).toBe(initial.text.documentId);
+  expect(dirty.text.bufferRevision).not.toBe(initial.text.bufferRevision);
+  expect(dirty.text.diskRevision).toBe(initial.text.diskRevision);
+  const conflict = await page.evaluate(async (revision) => {
+    const path = "/src/editor-runtime.ts";
+    const doc = (await import(path))
+      .documents()
+      .find((d: any) => d.location.relative === "README.md");
+    try {
+      doc.readAgentBuffer({ expectedBufferRevision: revision });
+      return "accepted";
+    } catch (e) {
+      return (e as Error).message;
+    }
+  }, initial.text.bufferRevision);
+  expect(conflict).toBe("REVISION_CONFLICT");
+  await page.screenshot({ path: "test-results/agent-editor-read.png" });
+  await page.evaluate(async () => {
+    const path = "/src/editor-runtime.ts";
+    (await import(path))
+      .documents()
+      .find((d: any) => d.location.relative === "README.md")
+      .command("undo");
+  });
+  const restored = await snapshot();
+  expect(restored.text.content).toBe(initial.text.content);
+  expect(restored.text.dirty).toBe(false);
+  expect(restored.text.bufferRevision).not.toBe(dirty.text.bufferRevision);
+  const edited = await page.evaluate(async () => {
+    const path = "/src/editor-runtime.ts";
+    const doc = (await import(path))
+      .documents()
+      .find((d: any) => d.location.relative === "README.md");
+    const before = doc.readAgentBuffer({
+      workspaceId: "fixture",
+      panelId: "file",
+      relativePath: "README.md",
+    });
+    const input = {
+      ...before.text,
+      expectedBufferRevision: before.text.bufferRevision,
+      expectedDiskRevision: before.text.diskRevision,
+      edits: [
+        { fromUtf16: 0, toUtf16: 0, insert: "Agent🙂\n" },
+        {
+          fromUtf16: doc.state.doc.length,
+          toUtf16: doc.state.doc.length,
+          insert: "tail\n",
+        },
+      ],
+    };
+    const applied = doc.applyAgentEdits(input, before.sourcePath);
+    const after = doc.readAgentBuffer({
+      workspaceId: "fixture",
+      panelId: "file",
+      relativePath: "README.md",
+    });
+    let rejected = false;
+    try {
+      doc.applyAgentEdits(
+        {
+          ...input,
+          expectedBufferRevision: after.text.bufferRevision,
+          edits: [
+            { fromUtf16: 0, toUtf16: 1, insert: "Z" },
+            { fromUtf16: 6, toUtf16: 7, insert: "broken" },
+          ],
+        },
+        before.sourcePath,
+      );
+    } catch {
+      rejected = true;
+    }
+    const unchanged = doc.readAgentBuffer({
+      workspaceId: "fixture",
+      panelId: "file",
+      relativePath: "README.md",
+    });
+    doc.command("undo");
+    return {
+      before,
+      applied,
+      after,
+      rejected,
+      unchanged,
+      undone: doc.readAgentBuffer({
+        workspaceId: "fixture",
+        panelId: "file",
+        relativePath: "README.md",
+      }),
+    };
+  });
+  expect(edited.applied.editCount).toBe(2);
+  expect(edited.after.text.content).toBe(
+    `Agent🙂\n${initial.text.content}tail\n`,
+  );
+  expect(edited.rejected).toBe(true);
+  expect(edited.unchanged.text).toEqual(edited.after.text);
+  expect(edited.undone.text.content).toBe(initial.text.content);
+  expect(edited.undone.text.dirty).toBe(false);
+});
+
+test("agent save captures one buffer revision and preserves later user edits and undo", async ({
+  page,
+}) => {
+  await mockDesktop(page);
+  await page.goto("/");
+  await openReadme(page);
+  await replaceText(page, "Saved Zażółć 🙂\n");
+  const before = await page.evaluate(async () => {
+    const runtimePath = "/src/editor-runtime.ts";
+    const runtime = await import(runtimePath);
+    const doc = runtime
+      .documents()
+      .find((d: any) => d.location.relative === "README.md");
+    const before = doc.readAgentBuffer({
+      workspaceId: "fixture",
+      panelId: "file",
+      relativePath: "README.md",
+    });
+    const w = window as any;
+    const invoke = w.__TAURI_INTERNALS__.invoke;
+    w.__agentSaveCalls = [];
+    w.__TAURI_INTERNALS__.invoke = (command: string, args: any) => {
+      if (command !== "agent_control_editor_save_file")
+        return invoke(command, args);
+      w.__agentSaveCalls.push(args);
+      return new Promise((resolve) => {
+        w.__finishAgentSave = () => {
+          w.__nativeTest.editorFiles["/project/README.md"] = {
+            content: args.body.content,
+            revision: "a".repeat(64),
+            encoding: "utf8",
+            readOnly: false,
+          };
+          resolve({
+            workspaceId: "fixture",
+            panelId: "file",
+            relativePath: "README.md",
+            documentId: args.body.documentId,
+            savedBufferRevision: args.body.bufferRevision,
+            previousDiskRevision: args.body.diskRevision,
+            diskRevision: "a".repeat(64),
+            byteLength: new TextEncoder().encode(args.body.content).length,
+          });
+        };
+      });
+    };
+    w.__saveInput = {
+      ...before.text,
+      expectedBufferRevision: before.text.bufferRevision,
+      expectedDiskRevision: before.text.diskRevision,
+    };
+    w.__agentSavePromise = doc.saveAgent(
+      w.__saveInput,
+      before.sourcePath,
+      "operation",
+      "nonce",
+    );
+    return before;
+  });
+  await replaceText(page, "New user text after save started\n");
+  const saved = await page.evaluate(async () => {
+    const w = window as any;
+    w.__finishAgentSave();
+    const result = await w.__agentSavePromise;
+    const runtimePath = "/src/editor-runtime.ts";
+    const runtime = await import(runtimePath);
+    const doc = runtime
+      .documents()
+      .find((d: any) => d.location.relative === "README.md");
+    const target = {
+      workspaceId: "fixture",
+      panelId: "file",
+      relativePath: "README.md",
+    };
+    const later = doc.readAgentBuffer(target);
+    let stale = "accepted";
+    try {
+      await doc.saveAgent(w.__saveInput, later.sourcePath, "stale", "nonce");
+    } catch (error) {
+      stale = (error as Error).message;
+    }
+    doc.command("undo");
+    const undone = doc.readAgentBuffer(target);
+    return {
+      result,
+      later,
+      stale,
+      undone,
+      calls: w.__agentSaveCalls,
+      disk: w.__nativeTest.editorFiles["/project/README.md"],
+    };
+  });
+  expect(saved.result.savedBufferRevision).toBe(before.text.bufferRevision);
+  expect(saved.later.text.content).toBe("New user text after save started\n");
+  expect(saved.later.text.dirty).toBe(true);
+  expect(saved.later.text.diskRevision).toBe("a".repeat(64));
+  expect(saved.disk.content).toBe("Saved Zażółć 🙂\n");
+  expect(saved.calls).toHaveLength(1);
+  expect(saved.stale).toBe("REVISION_CONFLICT");
+  expect(saved.undone.text.content).toBe(before.text.content);
+  expect(saved.undone.text.dirty).toBe(false);
+});
+
+test("staged native editor text avoids a mount read and preserves a dirty shared document", async ({
+  page,
+}) => {
+  await mockDesktop(page);
+  await page.goto("/");
+  await page.evaluate(async () => {
+    const path = "/src/editor-service.ts";
+    const service = await import(path);
+    const desktop = window as any;
+    desktop.__nativeTest.editorFiles["/project/README.md"] = {
+      content: "Prepared native bytes\r\n",
+      revision: "prepared",
+      encoding: "utf8",
+      readOnly: false,
+    };
+    desktop.__stagedReadRequests = [];
+    const invoke = desktop.__TAURI_INTERNALS__.invoke;
+    desktop.__TAURI_INTERNALS__.invoke = (command: string, args: any) => {
+      if (command === "read_editor_file")
+        desktop.__stagedReadRequests.push(args);
+      return invoke(command, args);
+    };
+    (window as any).__clearEditorStage = await service.stageEditorRead(
+      {
+        type: "file",
+        id: "staged",
+        root: "/project",
+        relative: "README.md",
+        title: "README.md",
+      },
+      {
+        path: "/project/README.md",
+        relative: "README.md",
+        content: "Prepared native bytes\r\n",
+        revision: "prepared",
+        encoding: "utf8",
+        readOnly: false,
+      },
+    );
+  });
+  await openReadme(page);
+  await expect(page.locator(".cm-content")).toContainText(
+    "Prepared native bytes",
+  );
+  await replaceText(page, "Dirty shared buffer");
+  const result = await page.evaluate(async () => {
+    (window as any).__clearEditorStage();
+    const path = "/src/editor-service.ts";
+    const service = await import(path);
+    const tab = {
+      type: "file",
+      id: "staged",
+      root: "/project",
+      relative: "README.md",
+      title: "README.md",
+    };
+    const previous = service.loadedEditor(tab);
+    const clear = await service.stageEditorRead(tab, {
+      path: "/project/README.md",
+      relative: "README.md",
+      content: "New disk text",
+      revision: "new-disk",
+      encoding: "utf8",
+      readOnly: false,
+    });
+    try {
+      const doc = await service.openEditorDocument(tab);
+      return {
+        same: doc === previous,
+        content: doc.state.doc.toString(),
+        dirty: doc.dirty,
+      };
+    } finally {
+      clear();
+    }
+  });
+  const reads = await page.evaluate(() => (window as any).__stagedReadRequests);
+  expect(reads.every((r: any) => r.knownRevision === "prepared")).toBe(true);
+  expect(result).toEqual({
+    same: true,
+    content: "Dirty shared buffer",
+    dirty: true,
+  });
+});
+
 async function diskChange(
   page: Page,
   content: string,

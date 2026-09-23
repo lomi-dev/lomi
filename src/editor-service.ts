@@ -1,8 +1,9 @@
 import { fileTabs, updateFilePosition } from "./model";
 import type { FileTab, Session } from "./model";
-import type { EditorDocument } from "./editor-runtime";
+import type { DiskFile, EditorDocument } from "./editor-runtime";
 import { defaultEditorPreferences } from "./editor-preferences";
 import type { EditorPreferences } from "./editor-preferences";
+import { retainAgentPreviews } from "./agent-preview";
 
 let preferences = defaultEditorPreferences;
 export const editorPreferences = () => preferences;
@@ -54,12 +55,11 @@ function notify() {
 
 export function retainEditorTabs(session: Session | undefined) {
   tabs = session ? fileTabs(session) : [];
+  retainAgentPreviews(tabs);
   runtime?.retainDocuments(tabs);
 }
 
-export async function openEditorDocument(
-  tab: FileTab,
-): Promise<EditorDocument> {
+async function editorRuntime() {
   if (!loading)
     loading = import("./editor-runtime")
       .then((module) => {
@@ -72,11 +72,25 @@ export async function openEditorDocument(
         loading = undefined;
         throw error;
       });
-  return (await loading).openDocument(tab);
+  return await loading;
+}
+
+export async function openEditorDocument(
+  tab: FileTab,
+): Promise<EditorDocument> {
+  return (await editorRuntime()).openDocument(tab);
+}
+export async function stageEditorRead(tab: FileTab, file: DiskFile) {
+  return (await editorRuntime()).stageDocumentRead(tab, file);
 }
 
 export function loadedEditor(tab: FileTab): EditorDocument | undefined {
   return runtime?.findDocument(tab);
+}
+
+export function assertCleanEditorPaths(paths: ReadonlySet<string>) {
+  for (const document of runtime?.documents() ?? [])
+    document.assertCleanDiskChange(paths);
 }
 
 export async function pauseEditorFileOperations() {
@@ -87,8 +101,16 @@ export async function pauseEditorFileOperations() {
   return () => documents.forEach((document) => document.resumeFileOperations());
 }
 
-export function relocateEditorFiles(previous: Session, next: Session) {
-  runtime?.relocateDocuments(fileTabs(previous), fileTabs(next));
+export function relocateEditorFiles(
+  previous: Session,
+  next: Session,
+  canonicalChange?: { oldPath: string | null; newPath: string | null },
+) {
+  runtime?.relocateDocuments(
+    fileTabs(previous),
+    fileTabs(next),
+    canonicalChange,
+  );
 }
 
 export function closingEditorDocuments(

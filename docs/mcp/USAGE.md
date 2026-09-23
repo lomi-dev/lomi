@@ -1,0 +1,189 @@
+# Local MCP development preview
+
+This is an implementation preview, not the completed v1 release. The current
+native evidence is from macOS on Apple Silicon. See [implementation status](IMPLEMENTATION-STATUS.md)
+for unfinished work and [qualification](QUALIFICATION.md) for the exact tests,
+versions and limitations. A working connection does not qualify every tool or
+another operating system.
+
+The user narrowed this delivery on 2026-09-23: further theme/plugin MCP work,
+application lifecycle tools and distribution/installers are excluded. Completed
+modules are delivered as ordinary commits on origin/main, without tags or releases.
+
+## Run and pair
+
+From the application repository, install the pinned dependencies as described in
+the main [README](../../README.md). Build the matching helper before starting the
+desktop application:
+
+```sh
+cargo build --manifest-path src-tauri/Cargo.toml --locked -p lomi-mcp
+pnpm tauri dev
+```
+
+1. Open the project in Lomi, then open **Settings → Agent control**.
+2. Select **Enable for this Lomi session**.
+3. Copy **MCP JSON configuration for this running instance** into the local MCP
+   client's supported configuration interface. The generated command points to
+   `lomi-mcp` next to the application executable. Its arguments identify this
+   instance and its public broker identity. The JSON itself grants no access.
+4. Start the client's MCP connection. Call `lomi_status` and match its
+   `pairingRequestId` with the pending request displayed in Lomi.
+5. Select the intended workspace and explicitly check any additional existing
+   workspaces from the same project. Enable the required permissions and choose
+   **Approve session**. The client name is only a label; match the request ID.
+6. Call `lomi_workspace_list`, then `lomi_connect` with the approved workspace's
+   ID. Keep the returned retry epoch for mutations on that connection.
+
+Access ends when the connection is revoked, Lomi restarts, or the workspace view
+is re-registered. Use fresh generated configuration after restarting Lomi or
+disabling control. Do not reuse an endpoint from an old diagnostic run.
+
+The pairing form selects one existing project and its explicitly checked
+workspaces. Workspace creation, when authorized, adds the newly created workspace
+to that connection's grant. A project folder does not grant access to every existing
+workspace. Project closure requires a separate permission and access to all of its
+current workspaces; a new unapproved workspace blocks closure.
+
+## Add another project
+
+Enable **Allow requesting access to new project folders** when pairing. A
+`lomi_project_open` request identifies an approved anchor workspace, an absolute
+folder, a new workspace name and the usual revision/retry fields. Review its
+**Project folder request** in Settings: it shows the canonical folder, inherited
+permissions, exact operation/request and expiry. Approval opens one blank editor
+and adds access only to that new project/workspace; it starts no shell.
+
+A connection can contain up to sixteen approved project roots. After opening,
+use the returned new workspace ID for its resources. When retrieving an operation
+by retry key, provide the project ID of its original anchor if the connection has
+more than one approved project. Lookup by operation ID remains unambiguous.
+
+## Work with results and permissions
+
+Use explicit workspace/panel IDs and the generations returned by the tools.
+Mutation inputs also bind the expected revision and a request key. Poll
+`lomi_operation_get` until the operation has settled; receiving an operation ID
+does not mean that the requested effect occurred.
+
+Retry the same request with the same epoch, key and exact arguments to retrieve
+its existing operation. A changed payload needs a fresh request only after its
+earlier effects have been understood. An `outcome_unknown` result must not be
+treated as permission to repeat the action. Cancellation does not undo a save,
+Git operation, process start or other effect already performed.
+
+Terminal execution runs with the host user's permissions. A project directory
+is its starting directory, not an OS sandbox. Terminal control requires its own
+permission and a current lease; human takeover revokes the lease. Transferring
+an owned running terminal preserves the process and its operation history.
+
+Browser permissions select allowed origins and separate read, input and
+composite screenshot access. Browser pages cannot invoke the trusted main or
+Settings commands. The native browser is not a Playwright-managed Chromium
+instance, and an origin allowlist is not a network sandbox.
+
+Android permissions select a managed device and separate runtime, input,
+observation, screenshot and installation access. Opening its panel does not
+start it. Input requires the visible selected panel in a focused Lomi window.
+SDK setup and licenses remain separate from pairing permissions.
+
+Dirty editor closures use the existing Save/Discard/Cancel dialog. Saving during
+a workspace-close request keeps the workspace open and reports partial effects;
+read the new state before requesting closure again. New text entered while a
+native close is pending remains protected. Closing never deletes the project
+directory. Protected origin terminals and busy or human-controlled resources
+can prevent closing their workspace.
+
+Git mutations require their concrete Lomi approval dialog, in addition to the
+granted scopes. The dialog identifies the intended operation and the relevant
+paths, revisions or remote/ref. Permission to read Git metadata does not grant
+permission to execute repository hooks or helpers.
+
+## Stop and recover
+
+Use **Stop agent control** in Settings to revoke sessions and reject pending
+requests. The native Lomi menu also offers stopping access if the workspace view
+is unresponsive. Revocation does not assert that already running commands have
+exited; inspect their actual terminal or device state before taking further
+action. Disabling agent control also requires new configuration for a later
+connection.
+
+For an interrupted Trash operation, use **Settings → Agent control → Show
+recovery folder**. An operation's `entry` folder contains retained data and its
+`plan.json` records the original destination. A `completed.json` record means
+publication to system Trash completed. Restore to an unused name so newer work
+is not overwritten. Keep recovery records until their contents are reconciled.
+
+| Result                                        | Next step                                                                                      |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `PAIRING_REQUIRED`                            | Match and approve the pending request in Settings.                                             |
+| `SCOPE_DENIED`                                | Inspect the granted permissions; do not work around them through another resource.             |
+| `TARGET_NOT_FOUND`                            | Refresh the authorized workspace/panel list; the ID may be closed, moved or outside the grant. |
+| `STALE_GENERATION`                            | Inspect the current resource generation before any new mutation.                               |
+| `REVISION_CONFLICT`                           | Inspect the operation's effect state, then refresh the relevant domain or buffer revision.     |
+| `CONTROL_REVOKED`                             | Re-establish explicitly approved control if still wanted.                                      |
+| `HOST_UNQUALIFIED` / `UNSUPPORTED_CAPABILITY` | Consult the qualification matrix; another successful tool does not qualify this path.          |
+| `outcome_unknown`                             | Preserve the receipt and inspect actual resources. Do not automatically replay the effect.     |
+
+## Local verification
+
+`pnpm test:mcp` exercises the actual helper wire contracts. `pnpm test:mcp:control`
+runs the opt-in isolated native fixture on its supported host and records its
+artifact directory. That fixture is not part of a release build. Its result and
+cleanup records must both be reviewed. Android is only included when its
+explicit isolated fixture has been configured; a default native pass does not
+constitute a new Android qualification.
+
+Client routing and functional/safety/performance tests remain in the selected
+scope. Installer distribution, packaged upgrades and release publication are
+excluded from this delivery. Use the local development commands above.
+
+## Open a Settings section
+
+Select **Allow opening Settings sections** when approving the connection. Call
+`lomi_settings_open` with an approved live `workspaceId`, a page from its schema,
+the current workspace-list `expectedRevision`, and your retry epoch/key. Poll
+`lomi_operation_get`; `settings_opened.requested=true` confirms that the native
+window accepted the request. Opening may focus Settings and does not change a
+preference. The permission does not grant preference/history/credential reads or
+writes. Repeat the exact arguments only to retrieve the existing receipt; use a
+new request key for an intentional subsequent opening.
+
+## Read application preferences
+
+Approve **Allow reading nonsecret application preferences** independently from
+opening Settings. `lomi_settings_read` accepts an approved live `workspaceId` and
+`section`: `editor`, `terminal`, `keybinds` or `themes`. Values describe the current
+main-window providers. Editor values are global defaults; terminal appearance
+values are overrides; theme results omit CSS and paths. No credentials or chat
+history are included. The grant covers these application-wide preferences.
+
+For shortcuts, use `limit` (1–200), then `offset=nextOffset` and
+`expectedRevision=revision` for the next page. A conflict requires a fresh first
+page. `readiness=recovery_required` means the UI retained its last working values
+after a settings error; the read does not repair the stored file. The revision is
+a runtime snapshot identity and must not be treated as a stored-file write token.
+
+## Request an editor preference change
+
+Approve **Allow reading nonsecret application preferences** and **Allow requesting
+application preference changes** when pairing. Read the `editor` section with
+`lomi_settings_read`, then call `lomi_settings_update` with that snapshot's
+`expectedSettingsRevision`, the current workspace domain `expectedRevision`, and
+the connection's `retryEpoch` plus a fresh `requestKey`.
+
+The current closed patches are `{"type":"editor_tab_size","value":8}` (1–16)
+and `{"type":"editor_insert_spaces","value":false}`. They change application
+editor defaults across projects. Buffer-specific indentation overrides remain.
+Settings displays exact before/after values for **Apply change** or **Reject
+change**. Each request expires after two minutes. Poll `lomi_operation_get` for
+completion; a pending request does not hold the main workbench command queue.
+
+A concurrent stored preference change fails without overwriting it. Invalid
+preferences remain preserved for the existing human recovery controls. After a
+conflict, read the new snapshot and use a new request key. Retrying the original
+request returns its original receipt, including unknown outcomes. It never writes
+again. This permission does not include credentials, approval policy or shell
+profile code. Shortcut and theme writes are still being implemented. Terminal field writes have passed native qualification on macOS ARM64.
+
+Terminal preference requests use `{"type":"terminal_field","field":"appearance.fontSize","value":18}` with the `terminal` snapshot revision. The field enum is closed and includes appearance, colors, behavior and the existing data-only choices. `value` is required; explicit `null` restores theme inheritance for appearance leaves, for example `appearance.colors.red`. Other terminal fields do not accept null. Existing native ranges, color and string validators apply. A lower `behavior.scrollback` can trim older displayed lines, which the approval explains. Selecting the fixed Windows shell preference does not execute or edit a shell profile.

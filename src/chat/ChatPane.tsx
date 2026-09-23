@@ -678,6 +678,7 @@ export default function ChatPane({
       </div>
       {discarding && (
         <Modal
+          protectTheme
           className="chat-dialog"
           title="Discard unsaved chat data?"
           tone="warning"
@@ -720,6 +721,7 @@ export default function ChatPane({
       )}
       {recovering && (
         <Modal
+          protectTheme
           className="chat-dialog"
           title="Recover chat history?"
           tone="warning"
@@ -782,6 +784,7 @@ export default function ChatPane({
       )}
       {sensitive && (
         <Modal
+          protectTheme
           className="chat-dialog"
           title="Attach sensitive file?"
           tone="warning"

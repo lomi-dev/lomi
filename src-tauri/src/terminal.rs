@@ -16,6 +16,11 @@ use tauri::{
     State, Window,
 };
 
+#[cfg(unix)]
+use lomi_control_core::{terminal::TerminalControl, terminal_io};
+#[cfg(unix)]
+use std::{os::fd::BorrowedFd, time::Duration};
+
 const HIGH_WATER: usize = 128 * 1024;
 
 pub mod clipboard;
@@ -24,6 +29,12 @@ pub mod clipboard;
 struct Flow {
     pending: usize,
     closed: bool,
+    #[cfg(unix)]
+    control: Option<Arc<Mutex<TerminalControl>>>,
+    #[cfg(unix)]
+    sequence: u64,
+    #[cfg(unix)]
+    nonblocking: bool,
 }
 
 struct Session {
@@ -37,6 +48,85 @@ struct Session {
 }
 
 impl Session {
+    #[cfg(unix)]
+    fn control(&self) -> Option<Arc<Mutex<TerminalControl>>> {
+        self.flow.lock().ok().and_then(|f| f.control.clone())
+    }
+    #[cfg(unix)]
+    fn nonblocking(&self) -> bool {
+        self.flow.lock().map(|f| f.nonblocking).unwrap_or(true)
+    }
+
+    #[cfg(unix)]
+    fn control_fd(&self) -> Result<BorrowedFd<'_>, String> {
+        let fd = self
+            .master
+            .lock()
+            .map_err(|e| e.to_string())?
+            .as_raw_fd()
+            .ok_or("Terminal closed.")?;
+        // Session owns this immutable master for the whole borrow. Do not hold
+        // its resize/context mutex while polling the duplicated descriptor.
+        Ok(unsafe { BorrowedFd::borrow_raw(fd) })
+    }
+
+    #[cfg(unix)]
+    fn protected_origin(&self, peers: &[u32]) -> bool {
+        #[cfg(target_os = "macos")]
+        {
+            let Some(shell_pid) = self.pid else {
+                return true;
+            };
+            if self
+                .foreground_program()
+                .is_some_and(|p| matches!(p.as_str(), "codex" | "claude" | "agy" | "cursor-agent"))
+            {
+                return true;
+            }
+            for &peer in peers {
+                let mut pid = peer;
+                let mut resolved = false;
+                for _ in 0..128 {
+                    if pid == shell_pid {
+                        return true;
+                    }
+                    if pid <= 1 {
+                        resolved = true;
+                        break;
+                    }
+                    let mut info = std::mem::MaybeUninit::<libc::proc_bsdinfo>::zeroed();
+                    let size = std::mem::size_of::<libc::proc_bsdinfo>() as i32;
+                    let count = unsafe {
+                        libc::proc_pidinfo(
+                            pid as i32,
+                            libc::PROC_PIDTBSDINFO,
+                            0,
+                            info.as_mut_ptr().cast(),
+                            size,
+                        )
+                    };
+                    if count != size {
+                        return true;
+                    }
+                    let info = unsafe { info.assume_init() };
+                    if info.pbi_pid != pid || info.pbi_ppid == pid {
+                        return true;
+                    }
+                    pid = info.pbi_ppid;
+                }
+                if !resolved {
+                    return true;
+                }
+            }
+            peers.is_empty()
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = peers;
+            true
+        }
+    }
+
     fn has_foreground_process(&self) -> bool {
         #[cfg(unix)]
         if let Ok(master) = self.master.lock() {
@@ -107,6 +197,12 @@ impl Session {
     }
 
     fn stop(&self) {
+        #[cfg(unix)]
+        if let Some(control) = self.control() {
+            if let Ok(mut control) = control.lock() {
+                control.revoke();
+            }
+        }
         if let Ok(mut flow) = self.flow.lock() {
             flow.closed = true;
         }
@@ -139,6 +235,15 @@ pub struct StartRequest {
     cwd: String,
     cols: u16,
     rows: u16,
+    #[serde(default)]
+    agent_ticket: Option<AgentTicket>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AgentTicket {
+    operation_id: String,
+    nonce: String,
 }
 
 #[derive(Serialize)]
@@ -214,7 +319,7 @@ impl Terminals {
             .ok_or_else(|| "The terminal session is no longer running.".into())
     }
 
-    #[cfg(feature = "native-smoke")]
+    #[cfg(any(feature = "native-smoke", feature = "mcp-probe"))]
     pub fn smoke_sessions(&self) -> serde_json::Value {
         serde_json::json!(self
             .sessions
@@ -249,6 +354,12 @@ impl Terminals {
     pub fn acknowledge(&self, id: &str, bytes: usize) {
         if let Ok(session) = self.get(id) {
             if let Ok(mut flow) = session.flow.lock() {
+                #[cfg(unix)]
+                if let Some(control) = &flow.control {
+                    if let Ok(mut control) = control.lock() {
+                        control.acknowledge(bytes);
+                    }
+                }
                 flow.pending = flow.pending.saturating_sub(bytes);
             }
             session.ready.notify_one();
@@ -261,6 +372,23 @@ impl Terminals {
         request: StartRequest,
         output: Channel<Response>,
         exited: Channel<Exit>,
+    ) -> Result<Started, String> {
+        self.start_control(
+            shells,
+            request,
+            output,
+            exited,
+            #[cfg(unix)]
+            None,
+        )
+    }
+    fn start_control(
+        &self,
+        shells: &Shells,
+        request: StartRequest,
+        output: Channel<Response>,
+        exited: Channel<Exit>,
+        #[cfg(unix)] control: Option<Arc<Mutex<TerminalControl>>>,
     ) -> Result<Started, String> {
         if request.id.is_empty() || request.id.len() > 128 {
             return Err("Invalid terminal identifier.".into());
@@ -275,6 +403,16 @@ impl Terminals {
         let pair = native_pty_system()
             .openpty(size(request.cols, request.rows)?)
             .map_err(|error| error.to_string())?;
+        #[cfg(unix)]
+        if control.is_some() {
+            let fd = pair
+                .master
+                .as_raw_fd()
+                .ok_or("This PTY cannot be controlled.")?;
+            // The master remains owned by Session until its reader has exited.
+            terminal_io::make_nonblocking(unsafe { BorrowedFd::borrow_raw(fd) })
+                .map_err(|e| e.to_string())?;
+        }
         let mut reader = pair
             .master
             .try_clone_reader()
@@ -283,6 +421,16 @@ impl Terminals {
             .master
             .take_writer()
             .map_err(|error| error.to_string())?;
+        #[cfg(unix)]
+        if let Some(control) = &control {
+            if !control
+                .lock()
+                .map_err(|_| "Control unavailable")?
+                .authorized()
+            {
+                return Err("Control revoked before terminal start".into());
+            }
+        }
         let mut child = pair
             .slave
             .spawn_command(command)
@@ -294,7 +442,13 @@ impl Terminals {
             master: Mutex::new(pair.master),
             writer: Mutex::new(Some(writer)),
             killer: Mutex::new(child.clone_killer()),
-            flow: Mutex::new(Flow::default()),
+            flow: Mutex::new(Flow {
+                #[cfg(unix)]
+                nonblocking: control.is_some(),
+                #[cfg(unix)]
+                control,
+                ..Flow::default()
+            }),
             ready: Condvar::new(),
         });
         {
@@ -326,15 +480,40 @@ impl Terminals {
                 }
                 drop(flow);
                 let length = match reader.read(&mut buffer) {
+                    #[cfg(unix)]
+                    Err(error)
+                        if error.kind() == std::io::ErrorKind::WouldBlock
+                            && session.nonblocking() =>
+                    {
+                        let Ok(fd) = session.control_fd() else {
+                            break;
+                        };
+                        if terminal_io::wait_readable(fd).is_err() {
+                            break;
+                        }
+                        continue;
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
                     Ok(0) | Err(_) => break,
                     Ok(length) => length,
                 };
-                // Bound bytes in flight; acknowledge only after xterm has parsed them.
-                session
-                    .flow
-                    .lock()
-                    .unwrap_or_else(|error| error.into_inner())
-                    .pending += length;
+                {
+                    let mut flow = session
+                        .flow
+                        .lock()
+                        .unwrap_or_else(|error| error.into_inner());
+                    #[cfg(unix)]
+                    {
+                        flow.sequence = flow.sequence.saturating_add(1);
+                        if let Some(control) = &flow.control {
+                            if let Ok(mut control) = control.lock() {
+                                control.observe_sequence(&buffer[..length], flow.sequence);
+                            }
+                        }
+                    }
+                    // This lock binds observer attachment to the same producer boundary.
+                    flow.pending += length;
+                }
                 if output
                     .send(Response::new(buffer[..length].to_vec()))
                     .is_err()
@@ -345,6 +524,12 @@ impl Terminals {
             }
             drop(reader);
             let code = child.wait().ok().map(|status| status.exit_code());
+            #[cfg(unix)]
+            if let Some(control) = session.control() {
+                if let Ok(mut control) = control.lock() {
+                    control.exit(code);
+                }
+            }
             if let Some(sessions) = sessions.upgrade() {
                 if let Ok(mut sessions) = sessions.lock() {
                     if sessions
@@ -365,13 +550,291 @@ impl Terminals {
         })
     }
 
+    #[cfg(unix)]
+    pub(crate) fn agent_attach(
+        &self,
+        generation: &str,
+        control: &Arc<Mutex<TerminalControl>>,
+        profile: &lomi_control_protocol::control::TerminalProfile,
+        peers: &[u32],
+    ) -> Result<(), lomi_control_protocol::ErrorCode> {
+        use lomi_control_protocol::ErrorCode;
+        let session = self
+            .get(generation)
+            .map_err(|_| ErrorCode::StaleGeneration)?;
+        let writer = session
+            .writer
+            .try_lock()
+            .map_err(|_| ErrorCode::TargetBusy)?;
+        if writer.is_none() {
+            return Err(ErrorCode::StaleGeneration);
+        }
+        if session.profile.id != profile.id
+            || lomi_control_core::broker::certificate_hash(
+                &serde_json::to_vec(&session.profile).map_err(|_| ErrorCode::HostUnqualified)?,
+            ) != profile.revision
+        {
+            return Err(ErrorCode::HostUnqualified);
+        }
+        if session.protected_origin(peers) {
+            return Err(ErrorCode::ProtectedOriginTerminal);
+        }
+        let mut flow = session.flow.try_lock().map_err(|_| ErrorCode::TargetBusy)?;
+        if flow.closed {
+            return Err(ErrorCode::StaleGeneration);
+        }
+        if flow.pending != 0 {
+            return Err(ErrorCode::TargetBusy);
+        }
+        let mut observer = control.try_lock().map_err(|_| ErrorCode::TargetBusy)?;
+        if !observer.authorized() {
+            return Err(ErrorCode::ControlRevoked);
+        }
+        // Only attach at an acknowledged producer boundary. No second PTY reader.
+        terminal_io::make_nonblocking(
+            session
+                .control_fd()
+                .map_err(|_| ErrorCode::HostUnqualified)?,
+        )
+        .map_err(|_| ErrorCode::HostUnqualified)?;
+        flow.nonblocking = true;
+        observer.set_sequence_base(flow.sequence);
+        if let Some(previous) = &flow.control {
+            if let Ok(mut previous) = previous.try_lock() {
+                previous.detach();
+            } else {
+                return Err(ErrorCode::TargetBusy);
+            }
+        }
+        flow.control = Some(control.clone());
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    pub(crate) fn agent_close(
+        &self,
+        generation: &str,
+        control: &Arc<Mutex<TerminalControl>>,
+        peers: &[u32],
+        commit: bool,
+    ) -> Result<(), lomi_control_protocol::ErrorCode> {
+        use lomi_control_protocol::ErrorCode;
+        #[cfg(target_os = "macos")]
+        {
+            let mut sessions = self
+                .sessions
+                .try_lock()
+                .map_err(|_| ErrorCode::TargetBusy)?;
+            let Some(session) = sessions.get(generation).cloned() else {
+                let observation = control.try_lock().map_err(|_| ErrorCode::TargetBusy)?;
+                return if observation.exited && !observation.human_owned && observation.authorized()
+                {
+                    Ok(())
+                } else {
+                    Err(ErrorCode::StaleGeneration)
+                };
+            };
+            if session.control().is_none_or(|c| !Arc::ptr_eq(&c, control)) {
+                return Err(ErrorCode::StaleGeneration);
+            }
+            let mut writer = session
+                .writer
+                .try_lock()
+                .map_err(|_| ErrorCode::TargetBusy)?;
+            let mut observation = control.try_lock().map_err(|_| ErrorCode::TargetBusy)?;
+            if observation.human_owned || !observation.authorized() {
+                return Err(ErrorCode::ControlRevoked);
+            }
+            if session.protected_origin(peers) {
+                return Err(ErrorCode::ProtectedOriginTerminal);
+            }
+            if observation.prompt() != lomi_control_core::terminal::Prompt::Ready
+                || session.has_foreground_process()
+            {
+                return Err(ErrorCode::TargetBusy);
+            }
+            let pid = session.pid.ok_or(ErrorCode::TargetBusy)?;
+            let mut child: libc::pid_t = 0;
+            let child_count = unsafe {
+                libc::proc_listchildpids(
+                    pid as libc::pid_t,
+                    (&mut child as *mut libc::pid_t).cast(),
+                    std::mem::size_of_val(&child) as i32,
+                )
+            };
+            if child_count != 0 {
+                return Err(ErrorCode::TargetBusy);
+            }
+            if !commit {
+                return Ok(());
+            }
+            let mut killer = session
+                .killer
+                .try_lock()
+                .map_err(|_| ErrorCode::TargetBusy)?;
+            if !observation.authorized() {
+                return Err(ErrorCode::ControlRevoked);
+            }
+            let mut flow = session.flow.try_lock().map_err(|_| ErrorCode::TargetBusy)?;
+            observation.revoke();
+            killer.kill().map_err(|_| ErrorCode::OutcomeUnknown)?;
+            flow.closed = true;
+            session.ready.notify_all();
+            writer.take();
+            sessions.remove(generation);
+            Ok(())
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = (generation, control, peers, commit);
+            Err(ErrorCode::HostUnqualified)
+        }
+    }
+
+    #[cfg(unix)]
+    pub(crate) fn agent_run(
+        &self,
+        request: lomi_control_core::broker::TerminalDispatchRequest,
+    ) -> Result<(), lomi_control_core::terminal_io::WriteFailure> {
+        use lomi_control_protocol::ErrorCode;
+        let failure = |code| terminal_io::WriteFailure { code, written: 0 };
+        let session = self
+            .get(&request.generation)
+            .map_err(|_| failure(ErrorCode::StaleGeneration))?;
+        if session
+            .control()
+            .is_none_or(|c| !Arc::ptr_eq(&c, &request.control))
+        {
+            return Err(failure(ErrorCode::StaleGeneration));
+        }
+        let writer = session
+            .writer
+            .lock()
+            .map_err(|_| failure(ErrorCode::AppUnavailable))?;
+        if writer.is_none() {
+            return Err(failure(ErrorCode::StaleGeneration));
+        }
+        let permitted = || {
+            let peers = (request.permit)().ok_or(ErrorCode::ControlRevoked)?;
+            if session.protected_origin(&peers) {
+                return Err(ErrorCode::ProtectedOriginTerminal);
+            }
+            Ok(())
+        };
+        permitted().map_err(failure)?;
+        let bytes = {
+            let mut control = request
+                .control
+                .lock()
+                .map_err(|_| failure(ErrorCode::AppUnavailable))?;
+            if let Some(target) = &request.interrupt {
+                control.prepare_interrupt(&request.lease, target)
+            } else {
+                control.prepare_run(
+                    &request.lease,
+                    &request.operation,
+                    &request.command,
+                    session.has_foreground_process(),
+                )
+            }
+        }
+        .map_err(failure)?;
+        let fd = session
+            .control_fd()
+            .map_err(|_| failure(ErrorCode::StaleGeneration))?;
+        terminal_io::write(fd, &bytes, Duration::from_secs(2), || permitted().is_ok()).map(|_| ())
+    }
+
+    #[cfg(unix)]
+    pub(crate) fn agent_input(
+        &self,
+        request: lomi_control_core::broker::TerminalInputRequest,
+    ) -> Result<lomi_control_core::terminal::InputReceipt, lomi_control_protocol::ErrorCode> {
+        use lomi_control_core::terminal::InputReceipt;
+        use lomi_control_protocol::ErrorCode;
+        let session = self
+            .get(&request.generation)
+            .map_err(|_| ErrorCode::StaleGeneration)?;
+        if session
+            .control()
+            .is_none_or(|c| !Arc::ptr_eq(&c, &request.control))
+        {
+            return Err(ErrorCode::StaleGeneration);
+        }
+        let writer = session
+            .writer
+            .lock()
+            .map_err(|_| ErrorCode::AppUnavailable)?;
+        if writer.is_none() {
+            return Err(ErrorCode::StaleGeneration);
+        }
+        let permitted = || {
+            let peers = (request.permit)().ok_or(ErrorCode::ControlRevoked)?;
+            if session.protected_origin(&peers) {
+                return Err(ErrorCode::ProtectedOriginTerminal);
+            }
+            Ok(())
+        };
+        permitted()?;
+        if let Some(ack) = request
+            .control
+            .lock()
+            .map_err(|_| ErrorCode::AppUnavailable)?
+            .prepare_input(&request.lease, request.sequence, &request.payload)?
+        {
+            return Ok(ack);
+        }
+        let result = terminal_io::write(
+            session
+                .control_fd()
+                .map_err(|_| ErrorCode::StaleGeneration)?,
+            &request.payload,
+            Duration::from_secs(2),
+            || permitted().is_ok(),
+        );
+        request
+            .control
+            .lock()
+            .map_err(|_| ErrorCode::AppUnavailable)?
+            .finish_input(request.sequence, result.is_ok());
+        Ok(if result.is_ok() {
+            InputReceipt::Dispatched
+        } else {
+            InputReceipt::OutcomeUnknown
+        })
+    }
+
     fn write(&self, id: &str, data: &str) -> Result<(), String> {
         if data.len() > 256 * 1024 {
             return Err("A terminal input chunk exceeds 256 KiB.".into());
         }
         let session = self.get(id)?;
+        #[cfg(unix)]
+        if let Some(control) = session.control() {
+            control.lock().map_err(|e| e.to_string())?.manual_input();
+        }
         let mut writer = session.writer.lock().map_err(|error| error.to_string())?;
         let writer = writer.as_mut().ok_or("The terminal has been closed.")?;
+        #[cfg(unix)]
+        if let Some(control) = session.control() {
+            control.lock().map_err(|e| e.to_string())?.manual_input();
+        }
+        #[cfg(unix)]
+        if session.nonblocking() {
+            return terminal_io::write(
+                session.control_fd()?,
+                data.as_bytes(),
+                Duration::from_secs(2),
+                || true,
+            )
+            .map(|_| ())
+            .map_err(|e| {
+                format!(
+                    "Terminal input stopped after {} bytes: {:?}",
+                    e.written, e.code
+                )
+            });
+        }
         writer
             .write_all(data.as_bytes())
             .and_then(|_| writer.flush())
@@ -462,6 +925,7 @@ pub async fn busy_terminals(
 #[tauri::command]
 pub async fn start_terminal(
     window: Window,
+    control: State<'_, crate::agent_control::Control>,
     state: State<'_, Terminals>,
     shells: State<'_, Shells>,
     request: StartRequest,
@@ -471,9 +935,43 @@ pub async fn start_terminal(
     main_window(&window)?;
     let state = state.inner().clone();
     let shells = shells.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || state.start(&shells, request, output, exited))
-        .await
-        .map_err(|error| error.to_string())?
+    #[cfg(unix)]
+    let broker = control.current()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(unix)]
+        {
+            if let Some(ticket) = &request.agent_ticket {
+                let broker = broker.ok_or("Agent control is unavailable.")?;
+                let profile = crate::agent_control::qualified_profile(&shells)
+                    .ok_or("This shell is not qualified for agent control.")?;
+                let operation = ticket.operation_id.clone();
+                let nonce = ticket.nonce.clone();
+                let generation = request.id.clone();
+                let cwd = request.cwd.clone();
+                if request.profile_id != profile.id {
+                    return Err("Shell profile changed.".into());
+                }
+                return broker.start_terminal(
+                    &operation,
+                    &nonce,
+                    &generation,
+                    &profile,
+                    &cwd,
+                    |monitor| state.start_control(&shells, request, output, exited, Some(monitor)),
+                );
+            }
+            if broker.is_some_and(|broker| broker.reserved_terminal(&request.id)) {
+                return Err("Agent terminal requires its native start ticket.".into());
+            }
+        }
+        #[cfg(not(unix))]
+        if request.agent_ticket.is_some() {
+            return Err("Agent terminals are not supported on this host.".into());
+        }
+        state.start(&shells, request, output, exited)
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -586,6 +1084,31 @@ pub struct TerminalContext {
     cwd: Option<String>,
     foreground_program: Option<String>,
     title_cli: Option<crate::cli_titles::TitleProcess>,
+    agent_controlled: bool,
+}
+
+#[tauri::command]
+pub async fn take_terminal_control(
+    window: Window,
+    state: State<'_, Terminals>,
+    id: String,
+) -> Result<(), String> {
+    main_window(&window)?;
+    let session = state.get(&id)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(unix)]
+        if let Some(control) = session.control() {
+            control
+                .lock()
+                .map_err(|_| "Terminal control unavailable")?
+                .manual_input();
+        }
+        #[cfg(not(unix))]
+        let _ = session;
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -602,6 +1125,13 @@ pub fn terminal_contexts(
         }
         #[allow(unused_mut)]
         let mut context = TerminalContext::default();
+        #[cfg(unix)]
+        {
+            context.agent_controlled = session
+                .control()
+                .and_then(|c| c.lock().ok().map(|c| c.lease().is_some()))
+                .unwrap_or(false);
+        }
         #[cfg(target_os = "linux")]
         if let Some(pid) = session.pid {
             context.cwd = std::fs::read_link(format!("/proc/{pid}/cwd"))
@@ -684,6 +1214,7 @@ mod tests {
                     cwd: directory.path().to_string_lossy().into_owned(),
                     cols: 80,
                     rows: 24,
+                    agent_ticket: None,
                 },
                 output,
                 exited,
@@ -708,6 +1239,27 @@ mod tests {
                 thread::sleep(Duration::from_millis(10));
             }
             assert_eq!(session.foreground_program().as_deref(), Some("sleep"));
+            #[cfg(target_os = "macos")]
+            {
+                let child_pid = session
+                    .master
+                    .lock()
+                    .unwrap()
+                    .process_group_leader()
+                    .unwrap() as u32;
+                assert!(
+                    session.protected_origin(&[child_pid]),
+                    "A peer descended from the PTY must be protected"
+                );
+                assert!(
+                    !session.protected_origin(&[std::process::id()]),
+                    "The external application is not a descendant of its PTY"
+                );
+                assert!(
+                    session.protected_origin(&[i32::MAX as u32]),
+                    "Unresolved process identity fails closed"
+                );
+            }
             assert_eq!(manager.busy(&["test".into()]).unwrap(), ["test"]);
             assert!(manager.busy(&["other".into()]).unwrap().is_empty());
             manager.write("test", "\u{3}").unwrap();

@@ -1,4 +1,14 @@
 mod adb;
+#[cfg(unix)]
+pub(crate) mod agent;
+#[cfg(unix)]
+pub(crate) mod agent_apk;
+#[cfg(unix)]
+pub(crate) mod agent_capture;
+#[cfg(unix)]
+pub(crate) mod agent_install;
+#[cfg(unix)]
+mod apk_manifest;
 mod artifact;
 mod auth;
 mod avd;
@@ -11,9 +21,11 @@ mod disk;
 mod download;
 mod environment;
 mod events;
-#[cfg(feature = "android-probe")]
+#[cfg(any(feature = "android-probe", feature = "mcp-probe"))]
 pub(crate) mod fixture;
 mod frames;
+#[cfg(unix)]
+mod hierarchy;
 mod host;
 mod input;
 mod installation;
@@ -31,3 +43,7 @@ mod repository;
 mod rpc;
 mod runtime;
 mod storage;
+
+#[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
+#[path = "../../../tests/native/mcp-android-support.rs"]
+mod mcp_qualification;
