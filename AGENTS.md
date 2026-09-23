@@ -356,7 +356,9 @@ or acronym.
   Persist manual Light/Dark overrides separately from the selected theme.
   Explicit theme appearances take precedence; adaptive themes inherit the
   chosen mode. Keep native windows transparent so CSS paints the background
-  once. The app icon source is `public/app-icon.svg`.
+  once. The app icon source is `public/Lomi.icon`; run `pnpm icon:generate` on
+  macOS with Xcode 26+ after editing it. Commit the generated desktop icons and
+  `public/app-icon.png`. See `docs/app-icons.md` for appearance and packaging checks.
 - User-selected themes may override the default appearance through versioned
   `theme.jsonc` files, scoped local assets, JSON styles, and optional CSS.
   `src/theme/format.ts`, `src/theme/runtime.ts`, and `src/ThemeProvider.tsx` own theme

@@ -1,5 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -18,37 +25,86 @@ const outputDirectory = path.join(
   "macos-icon",
 );
 const fallbackIcon = path.join(projectRoot, "src-tauri", "icons", "icon.icns");
-
-mkdirSync(outputDirectory, { recursive: true });
-execFileSync(
-  "xcrun",
-  [
-    "actool",
-    iconSource,
-    "--compile",
-    outputDirectory,
-    "--app-icon",
-    "Lomi",
-    "--output-partial-info-plist",
-    path.join(outputDirectory, "icon-info.plist"),
-    "--platform",
-    "macosx",
-    "--minimum-deployment-target",
-    "10.13",
-    "--target-device",
-    "mac",
-    "--output-format",
-    "human-readable-text",
-    "--errors",
-    "--warnings",
-  ],
-  { stdio: "inherit" },
+const config = JSON.parse(
+  readFileSync(
+    path.join(projectRoot, "src-tauri", "tauri.macos.conf.json"),
+    "utf8",
+  ),
 );
 
-const compiledIcon = readFileSync(path.join(outputDirectory, "Lomi.icns"));
-if (
-  !existsSync(fallbackIcon) ||
-  !readFileSync(fallbackIcon).equals(compiledIcon)
-) {
-  writeFileSync(fallbackIcon, compiledIcon);
+function writeIfChanged(destination, contents) {
+  if (!existsSync(destination) || !readFileSync(destination).equals(contents)) {
+    writeFileSync(destination, contents);
+  }
+}
+
+mkdirSync(outputDirectory, { recursive: true });
+// Compile in isolation so a failed build cannot reuse an older asset catalog.
+const stagingDirectory = mkdtempSync(path.join(outputDirectory, "compile-"));
+try {
+  execFileSync(
+    "xcrun",
+    [
+      "actool",
+      iconSource,
+      "--compile",
+      stagingDirectory,
+      "--app-icon",
+      "Lomi",
+      "--output-partial-info-plist",
+      path.join(stagingDirectory, "icon-info.plist"),
+      "--platform",
+      "macosx",
+      "--minimum-deployment-target",
+      config.bundle?.macOS?.minimumSystemVersion ?? "10.13",
+      "--target-device",
+      "mac",
+      "--output-format",
+      "human-readable-text",
+      "--errors",
+      "--warnings",
+    ],
+    { stdio: "inherit" },
+  );
+
+  const catalog = JSON.parse(
+    execFileSync(
+      "xcrun",
+      ["assetutil", "--info", path.join(stagingDirectory, "Assets.car")],
+      {
+        encoding: "utf8",
+      },
+    ),
+  );
+  for (const appearance of [
+    "NSAppearanceNameAqua",
+    "NSAppearanceNameDarkAqua",
+    "ISAppearanceTintable",
+  ]) {
+    if (
+      !catalog.some(
+        (asset) =>
+          asset.Name === "Lomi" &&
+          asset.AssetType === "IconImageStack" &&
+          asset.Appearance === appearance,
+      )
+    ) {
+      throw new Error(
+        `Compiled Lomi icon is missing its layered ${appearance} appearance.`,
+      );
+    }
+  }
+  for (const name of ["Assets.car", "Lomi.icns", "icon-info.plist"]) {
+    writeIfChanged(
+      path.join(outputDirectory, name),
+      readFileSync(path.join(stagingDirectory, name)),
+    );
+  }
+  writeIfChanged(
+    fallbackIcon,
+    readFileSync(path.join(stagingDirectory, "Lomi.icns")),
+  );
+  console.log("macOS icon: default, dark, and clear/tinted layers compiled.");
+} finally {
+  rmSync(stagingDirectory, { recursive: true, force: true });
 }

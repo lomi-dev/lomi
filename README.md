@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="public/app-icon.svg" width="88" height="88" alt="Lomi icon" />
+  <img src="public/app-icon.png" width="88" height="88" alt="Lomi icon" />
   <h1>Lomi</h1>
   <p><strong>Your terminal, code, and browser in one desktop workspace.</strong></p>
   <p>A local development environment for Linux, macOS, and Windows.</p>

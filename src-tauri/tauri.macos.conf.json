@@ -9,6 +9,7 @@
       ]
     },
     "beforeDevCommand": "pnpm ai:prepare && pnpm icon:macos && pnpm dev",
+    "beforeBuildCommand": "pnpm icon:macos && pnpm ai:prepare && pnpm build",
     "beforeBundleCommand": "pnpm icon:macos"
   },
   "app": {

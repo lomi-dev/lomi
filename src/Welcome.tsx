@@ -13,7 +13,7 @@ export default function Welcome({
     <main className="terminal-stage welcome" aria-label="No project open">
       <div className="welcome-content">
         <header className="welcome-heading">
-          <img src="/app-icon.svg" width="44" height="44" alt="" />
+          <img src="/app-icon.png" width="44" height="44" alt="" />
           <div>
             <h1>Welcome to Lomi</h1>
             <p>A place for your files, terminal, and next idea.</p>
