@@ -4,6 +4,29 @@ use lomi_control_protocol::{control::*, EmptyInput, ErrorCode};
 use std::{sync::Arc, time::Duration};
 
 #[tokio::test]
+async fn native_ui_thread_can_revoke_without_entering_the_tokio_runtime() {
+    let temp = tempfile::tempdir().unwrap();
+    let broker = Broker::start(&temp.path().join("control")).unwrap();
+    broker.publish(projection(&broker, temp.path())).unwrap();
+    let client = approved(&broker, &["a"]).await;
+    broker.wait_for_cleanup().await;
+    let native = broker.clone();
+    let revoked = std::thread::spawn(move || native.revoke()).join();
+    assert!(
+        revoked.is_ok(),
+        "Native UI revocation panicked without an ambient Tokio runtime"
+    );
+    tokio::time::timeout(Duration::from_secs(2), broker.wait_for_cleanup())
+        .await
+        .unwrap();
+    assert!(!matches!(
+        client.call(Request::Workspaces(ListInput::default())).await,
+        Ok(Reply::Ok { .. })
+    ));
+    broker.shutdown().await;
+}
+
+#[tokio::test]
 async fn shortcut_source_requires_claim_revision_and_unconsumed_plan() {
     use lomi_control_core::broker::SettingsPlan;
     use serde_json::json;

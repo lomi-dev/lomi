@@ -261,6 +261,7 @@ struct State {
 
 pub struct Broker {
     pub endpoint: Endpoint,
+    cleanup_runtime: tokio::runtime::Handle,
     identity: Identity,
     authorization: Arc<AtomicU64>,
     cleanup_running: AtomicBool,
@@ -350,6 +351,7 @@ fn error(code: ErrorCode) -> Reply {
 impl Broker {
     pub fn start(root: &Path) -> io::Result<Arc<Self>> {
         use std::os::unix::fs::PermissionsExt;
+        let cleanup_runtime = tokio::runtime::Handle::try_current().map_err(|_| failure())?;
         let store = receipts::Store::open(root, now()).map_err(|_| failure())?;
         let runtime = tempfile::Builder::new()
             .prefix("lomi-control-")
@@ -363,6 +365,7 @@ impl Broker {
         let (stop, _) = watch::channel(false);
         let (revoked, _) = watch::channel(0);
         let broker = Arc::new(Self {
+            cleanup_runtime,
             endpoint: Endpoint {
                 instance_id,
                 endpoint,
@@ -544,7 +547,9 @@ impl Broker {
         }
         tasks.retain(|task| !task.is_finished());
         let broker = self.clone();
-        tasks.push(tokio::task::spawn_blocking(move || loop {
+        // Native menu and synchronous IPC callbacks have no ambient Tokio
+        // context. Revocation uses the runtime that owns this broker's workers.
+        tasks.push(self.cleanup_runtime.spawn_blocking(move || loop {
             let requested = broker.cleanup_revision.load(Ordering::SeqCst);
             let settled = if let Ok(mut state) = broker.state.lock() {
                 if state.policy_revision != broker.authorization.load(Ordering::SeqCst) {
