@@ -243,23 +243,23 @@ impl Broker {
             .get(&claim.pairing)
             .filter(|s| s.alive.load(Ordering::SeqCst))
             .ok_or_else(failure)?;
-        let valid =
-            claim.deadline > Instant::now()
-                && session.grant.scopes.contains("terminal.execute")
-                && session.grant.workspace(&claim.workspace).is_some()
-                && state
-                    .projection
-                    .workspaces
-                    .iter()
-                    .any(|w| w.id == claim.workspace && session.grant.permits(w))
-                && state.projection.panels.iter().any(|p| {
-                    p.id == claim.panel
-                        && p.workspace_id == claim.workspace
-                        && p.terminal_session_id.as_ref() == Some(&claim.generation)
-                })
-                && state.projection.terminal_profile.as_ref().is_some_and(|p| {
-                    p.id == claim.profile.id && p.revision == claim.profile.revision
-                });
+        let valid = claim.deadline > Instant::now()
+            && session.grant.scopes.contains("terminal.execute")
+            && session.grant.workspace(&claim.workspace).is_some()
+            && state
+                .projection
+                .workspaces
+                .iter()
+                .any(|w| w.id == claim.workspace && session.grant.permits(w))
+            && state.projection.panels.iter().any(|p| {
+                p.id == claim.panel
+                    && p.workspace_id == claim.workspace
+                    && p.terminal_session_id.as_ref() == Some(&claim.generation)
+            })
+            && state
+                .projection
+                .qualified_terminal(&claim.profile.id)
+                .is_some_and(|p| p.id == claim.profile.id && p.revision == claim.profile.revision);
         let mut store = self.store.lock().map_err(|_| failure())?;
         let current = store
             .get(&claim.pairing, &claim.project, operation)

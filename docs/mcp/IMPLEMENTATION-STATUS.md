@@ -36,11 +36,36 @@ installer publication or private client-configuration writes.
 | P5.4  | VERIFIED_SLICES | Settings open/read/editor/terminal/shortcut writes verified; further themes/plugins EXCLUDED_BY_USER      |
 | P5.5  | QUALIFIED       | Android setup, device management and protected recovery                                                   |
 | P5.6  | QUALIFIED       | Seven Chat AI tools and selected layout integration; all final checks passed                              |
-| P5.7  | IN_PROGRESS     | Advanced browser/PTY; application lifecycle tools EXCLUDED_BY_USER                                        |
-| P6    | TODO            | Functional/safety/performance and client-routing tests; distribution/installers/releases EXCLUDED_BY_USER |
+| P5.7  | QUALIFIED       | Advanced browser/PTY; application lifecycle tools EXCLUDED_BY_USER                                        |
+| P6    | IN_PROGRESS     | Functional/safety/performance and client-routing tests; distribution/installers/releases EXCLUDED_BY_USER |
 | P7    | NOT_SELECTED    | No optional extension selected by this request                                                            |
 
 ## Current work
+
+Browser upload was committed and pushed to origin/main as
+`da9a26e849a682432a8ac945840c115ccb18c5dd`; remote SHA verified.
+Terminal qualification is complete for the selected macOS ARM64 host:
+**uw9501 Bash PASS** and **Gn0P6D Zsh PASS**, 13 checks each, catalog 74,
+normal host/wrapper exit 0 and private app-data removal. Settings selects a
+single Bash/Zsh profile per connection, pinned through native start/attachment.
+The native fixture confirms real Node REPL, Vim, exact Unicode file content,
+rendered alternate-screen text, binary output, a 2 MiB flood with bounded gaps,
+xterm ACKs, quiet commands, exit status, targeted interrupt, input/run retries,
+EOF uncertainty, manual takeover and Settings-approved reclaim.
+
+Two reproduced product defects were fixed: missing preexec on macOS Bash 3.2,
+and prompt redraw restoring readiness over a partial line. Bash preserves
+user prompt hooks and DEBUG traps; a conflicting debugger/trap omits automatic
+readiness. Both explicit input and existing-PTY attachment now require a fresh
+completion boundary before automatic run. Partial text remains protected after
+resize and reclaim. Native Settings and Vim screenshots were visually inspected.
+
+Core 62, broker 68, native shell/PTY 9, helper wire 8, WebKit approval 1,
+TypeScript, SDK/AI checks, frontend build and production workspace all-target
+check passed. All-target MCP and final native-probe Clippy passed with warnings
+denied after the screenshot timing correction. No native fixture remains
+running. Full MCP remains incomplete: continue P6 system-wide acceptance,
+fault/recovery, performance, dependency review and actual client routing.
 
 Android management was committed and pushed to origin/main as
 `464ed18da59e5786c3b348e38783d9cc7feec732`; remote SHA verified.

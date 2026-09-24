@@ -1,6 +1,8 @@
 //! Native enrollment/stdio qualification. Compiled only with mcp-probe.
 #[path = "mcp-browser-upload-support.rs"]
 mod browser_upload_probe;
+#[path = "mcp-terminal-control-support.rs"]
+mod terminal_probe;
 use crate::mcp_browser_probe::{evaluate, screenshot, wait_for};
 use serde_json::{json, Value};
 use std::{
@@ -2997,6 +2999,10 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
     {
         chat_probe::prepare(app, &main, &settings, &workspace, directory).await?;
     }
+    if let Ok(shell) = std::env::var("LOMI_MCP_TERMINAL_ONLY") {
+        evaluate(&settings, &format!("(()=>{{const s=[...document.querySelectorAll('.agent-control-request label')].find(e=>e.textContent.includes('Approved terminal shell')).querySelector('select');s.value={};s.dispatchEvent(new Event('change',{{bubbles:true}}));s.scrollIntoView({{block:'center'}});return true;}})()",json!(format!("local:{shell}")))).await?;
+        screenshot(&settings, directory.join("terminal-permission.png")).await?;
+    }
     click(&settings, "Approve session").await?;
     let mut listed = Value::Null;
     for _ in 0..50 {
@@ -3060,6 +3066,21 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
         .await?;
     if connected["structuredContent"]["status"] != "ok" {
         return Err("Cannot select approved workspace".into());
+    }
+    if std::env::var_os("LOMI_MCP_TERMINAL_ONLY").is_some() {
+        terminal_probe::qualify(
+            app,
+            &mut wire,
+            &main,
+            &workspace,
+            &connected["structuredContent"]["data"]["retryEpoch"],
+            directory,
+        )
+        .await?;
+        child.kill().await.map_err(|e| e.to_string())?;
+        return Ok(
+            json!({"profile":"terminal-only","catalogCount":catalog["result"]["tools"].as_array().map(Vec::len)}),
+        );
     }
     if std::env::var_os("LOMI_MCP_BROWSER_UPLOAD_ONLY").is_some() {
         browser_upload_probe::qualify(

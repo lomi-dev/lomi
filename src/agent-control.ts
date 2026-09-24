@@ -100,6 +100,7 @@ export interface ControlState {
     };
     uiReady: boolean;
     terminalProfile: { id: string; revision: string } | null;
+    terminalProfiles?: { id: string; revision: string }[];
     workspaces: ControlWorkspace[];
     pending: {
       id: string;
@@ -180,6 +181,7 @@ export interface ControlState {
       projectIds: string[];
       workspaceIds: string[];
       scopes: string[];
+      terminalProfile?: { id: string; revision: string } | null;
       browserOrigins: string[];
       androidDeviceIds: string[];
       androidPackages: string[];

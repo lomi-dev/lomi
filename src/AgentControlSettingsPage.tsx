@@ -715,6 +715,10 @@ export default function AgentControlSettingsPage() {
                 key={request.id}
                 request={request}
                 workspaces={broker.workspaces}
+                terminalProfiles={
+                  broker.terminalProfiles ??
+                  (broker.terminalProfile ? [broker.terminalProfile] : [])
+                }
                 busy={busy}
                 run={run}
               />
@@ -742,6 +746,10 @@ export default function AgentControlSettingsPage() {
                 </p>
                 <p className="settings-help">
                   Granted: {session.scopes.join(", ")}
+                  {session.scopes.includes("terminal.execute") &&
+                    session.terminalProfile && (
+                      <> · Shell: {session.terminalProfile.id}</>
+                    )}
                   {session.chatConversations?.length > 0 && (
                     <>
                       {" "}
@@ -776,11 +784,13 @@ export default function AgentControlSettingsPage() {
 function Pairing({
   request,
   workspaces,
+  terminalProfiles,
   busy,
   run,
 }: {
   request: NonNullable<ControlState["broker"]>["pending"][number];
   workspaces: ControlWorkspace[];
+  terminalProfiles: { id: string; revision: string }[];
   busy: boolean;
   run: (action: () => Promise<unknown>, message?: string) => Promise<void>;
 }) {
@@ -799,6 +809,9 @@ function Pairing({
   const [openSettings, setOpenSettings] = useState(false);
   const [writeWorkspace, setWriteWorkspace] = useState(false);
   const [executeTerminal, setExecuteTerminal] = useState(false);
+  const [terminalProfileId, setTerminalProfileId] = useState(
+    terminalProfiles[0]?.id ?? "",
+  );
   const [closeWorkspaces, setCloseWorkspaces] = useState(false);
   const [closeProjects, setCloseProjects] = useState(false);
   const [openProjects, setOpenProjects] = useState(false);
@@ -1080,14 +1093,35 @@ function Pairing({
         <input
           type="checkbox"
           checked={executeTerminal}
-          disabled={busy}
+          disabled={busy || !terminalProfiles.length}
           onChange={(event) => setExecuteTerminal(event.target.checked)}
         />{" "}
-        Allow Zsh terminal creation, command execution and output reads
+        Allow terminal creation, command execution and output reads
       </label>
+      {executeTerminal && (
+        <label>
+          Approved terminal shell
+          <select
+            value={terminalProfileId}
+            disabled={busy}
+            onChange={(event) => setTerminalProfileId(event.target.value)}
+          >
+            {terminalProfiles.map((profile) => (
+              <option key={profile.id} value={profile.id}>
+                {profile.id === "local:zsh"
+                  ? "Zsh (/bin/zsh)"
+                  : profile.id === "local:bash"
+                    ? "Bash (/bin/bash)"
+                    : profile.id}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <p className="settings-help">
         Shell commands run with your user account permissions. The project
-        folder is a starting directory, not a sandbox.
+        folder is a starting directory, not a sandbox. Only the selected shell
+        profile is approved. Its normal user configuration still applies.
       </p>
       <label>
         <input
@@ -1773,6 +1807,8 @@ function Pairing({
           disabled={
             busy ||
             !valid ||
+            (executeTerminal &&
+              !terminalProfiles.some((p) => p.id === terminalProfileId)) ||
             (readChat && chatConversations.length === 0 && !createChat) ||
             (readAndroid &&
               !setupAndroid &&
@@ -1941,6 +1977,7 @@ function Pairing({
                         : []),
                     ]),
                   ],
+                  ...(executeTerminal ? { terminalProfileId } : {}),
                   androidDevices:
                     readAndroid && androidDevice ? [androidDevice] : [],
                   chatConversations: readChat ? chatConversations : [],

@@ -7,6 +7,8 @@ mod android_setup_tests;
 mod artifact_files_tests;
 #[path = "support/browser_download.rs"]
 mod browser_download_tests;
+#[path = "support/terminal_profiles.rs"]
+mod terminal_profile_tests;
 use lomi_control_core::{broker::Broker, client::Client};
 use lomi_control_protocol::{control::*, EmptyInput, ErrorCode};
 use std::{sync::Arc, time::Duration};
@@ -2635,6 +2637,26 @@ async fn approved_chat(
     packages: &[&str],
     conversations: &[&str],
 ) -> Client {
+    approved_profile(
+        broker,
+        workspaces,
+        scopes,
+        devices,
+        packages,
+        conversations,
+        None,
+    )
+    .await
+}
+async fn approved_profile(
+    broker: &Arc<Broker>,
+    workspaces: &[&str],
+    scopes: &[&str],
+    devices: &[&str],
+    packages: &[&str],
+    conversations: &[&str],
+    profile: Option<&str>,
+) -> Client {
     let endpoint = broker.endpoint.clone();
     let (tx, rx) = tokio::sync::oneshot::channel();
     let task = tokio::spawn(async move {
@@ -2658,7 +2680,7 @@ async fn approved_chat(
         "No authenticated connection before approval"
     );
     broker
-        .approve_chat_access(
+        .approve_terminal_profile(
             &id,
             &workspaces.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
             &scopes.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
@@ -2669,6 +2691,7 @@ async fn approved_chat(
                 .iter()
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
+            profile,
         )
         .unwrap();
     task.await.unwrap().unwrap()

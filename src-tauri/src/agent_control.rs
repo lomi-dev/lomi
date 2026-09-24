@@ -624,6 +624,7 @@ pub async fn agent_control_approve(
     android_devices: Option<Vec<String>>,
     android_packages: Option<Vec<String>>,
     chat_conversations: Option<Vec<String>>,
+    terminal_profile_id: Option<String>,
 ) -> Result<(), String> {
     settings(&window)?;
     #[cfg(unix)]
@@ -673,7 +674,7 @@ pub async fn agent_control_approve(
                     ));
                 }
             }
-            broker.approve_chat_access(
+            broker.approve_terminal_profile(
                 &request_id,
                 &workspace_ids,
                 &scopes,
@@ -681,6 +682,7 @@ pub async fn agent_control_approve(
                 &devices,
                 &android_packages.unwrap_or_default(),
                 &conversations,
+                terminal_profile_id.as_deref(),
             )
         })
         .await
@@ -698,6 +700,7 @@ pub async fn agent_control_approve(
             android_devices,
             android_packages,
             chat_conversations,
+            terminal_profile_id,
         );
         Err(unavailable())
     }
@@ -854,7 +857,8 @@ pub async fn agent_control_ui_publish(
     #[cfg(unix)]
     {
         let broker = state.required()?;
-        projection.terminal_profile = qualified_profile(&shells);
+        projection.terminal_profiles = qualified_profiles(&shells);
+        projection.terminal_profile = qualified_profile(&shells, "local:zsh");
         tauri::async_runtime::spawn_blocking(move || {
             let epoch = projection.ui_epoch.clone();
             if projection.workspaces.len() > 500 {
@@ -951,13 +955,27 @@ pub async fn agent_control_ui_ack(
 }
 
 #[cfg(unix)]
+pub(crate) fn qualified_profiles(
+    shells: &crate::terminal::Shells,
+) -> Vec<lomi_control_protocol::control::TerminalProfile> {
+    ["local:zsh", "local:bash"]
+        .into_iter()
+        .filter_map(|id| qualified_profile(shells, id))
+        .collect()
+}
+#[cfg(unix)]
 pub(crate) fn qualified_profile(
     shells: &crate::terminal::Shells,
+    id: &str,
 ) -> Option<lomi_control_protocol::control::TerminalProfile> {
-    let profile = shells
-        .profiles
-        .iter()
-        .find(|p| p.kind == "zsh" && p.program == "/bin/zsh" && p.distro.is_none())?;
+    let profile = shells.profiles.iter().find(|p| {
+        p.id == id
+            && p.distro.is_none()
+            && matches!(
+                (p.kind.as_str(), p.program.as_str()),
+                ("zsh", "/bin/zsh") | ("bash", "/bin/bash")
+            )
+    })?;
     Some(lomi_control_protocol::control::TerminalProfile {
         id: profile.id.clone(),
         revision: lomi_control_core::broker::certificate_hash(&serde_json::to_vec(profile).ok()?),

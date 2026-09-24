@@ -45,6 +45,25 @@ to that connection's grant. A project folder does not grant access to every exis
 workspace. Project closure requires a separate permission and access to all of its
 current workspaces; a new unapproved workspace blocks closure.
 
+## Choose a terminal shell
+
+Enable **Allow terminal creation, command execution and output reads**, then
+select **Approved terminal shell**: the discovered system Bash or Zsh. Each
+connection receives exactly one profile and its current revision.
+`lomi_terminal_create` defaults to that profile; an explicit `profileId` must
+match it. Changing that profile's definition invalidates the old approval. Reconnect
+and approve the new profile to change shells.
+
+Shell initialization still uses your normal configuration and account access.
+The project working directory is not a filesystem or network sandbox. Automatic
+`lomi_terminal_run` requires a confirmed idle prompt. On macOS Bash 3.2, an
+existing DEBUG trap or debugger configuration is preserved; Lomi then refuses
+automatic run readiness because it cannot safely install its preexec hook.
+Explicit input remains subject to the terminal lease and ordered input sequence.
+Human input revokes the lease. A prompt redraw after resizing cannot make
+partially entered input eligible for automatic execution. Silence and shell EOF
+without a completion marker do not imply a successful command.
+
 ## Import and export file artifacts
 
 Pair with **Allow reading project files** and **Allow importing project files as

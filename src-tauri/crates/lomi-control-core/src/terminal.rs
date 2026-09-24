@@ -69,6 +69,7 @@ pub struct TerminalControl {
     connection_alive: Option<Arc<AtomicBool>>,
     observing: bool,
     prompt: Prompt,
+    input_pending: bool,
     bracketed: bool,
     parser: Parser,
     output: VecDeque<u8>,
@@ -109,6 +110,7 @@ impl TerminalControl {
             connection_alive: None,
             observing: true,
             prompt: Prompt::Unknown,
+            input_pending: false,
             bracketed: false,
             parser: Parser::Text,
             output: VecDeque::with_capacity(RING_BYTES),
@@ -297,6 +299,7 @@ impl TerminalControl {
             receipt: InputReceipt::Pending,
         });
         // Arbitrary input invalidates automatic run readiness until a fresh prompt.
+        self.input_pending = true;
         self.prompt = Prompt::Unknown;
         Ok(None)
     }
@@ -337,7 +340,9 @@ impl TerminalControl {
                 }
             }
             Some("B") => {
-                if self.lease.is_some() {
+                // Readline redraws PS1, including B, after a terminal resize.
+                // That redraw cannot certify that partially entered input is gone.
+                if self.lease.is_some() && !self.input_pending {
                     self.prompt = Prompt::Ready;
                 }
             }
@@ -352,6 +357,7 @@ impl TerminalControl {
                 }
             }
             Some("D") => {
+                self.input_pending = false;
                 if let Some(command) = self
                     .commands
                     .back_mut()
@@ -371,6 +377,10 @@ impl TerminalControl {
     pub fn set_sequence_base(&mut self, sequence: u64) {
         self.stream_sequence = sequence;
         self.parsed_sequence = sequence;
+        // Attaching to an existing PTY cannot observe previously typed text.
+        // Require a new command boundary, not just a resize-induced PS1 redraw.
+        self.input_pending = true;
+        self.prompt = Prompt::Unknown;
     }
     pub fn observe(&mut self, bytes: &[u8]) {
         self.observe_sequence(bytes, self.stream_sequence.saturating_add(1));
@@ -642,6 +652,40 @@ mod tests {
             "safe"
         );
     }
+    #[test]
+    fn prompt_redraw_cannot_approve_partially_entered_input() {
+        let mut monitor = TerminalControl::new("fixture".into(), "generation".into()).unwrap();
+        let lease = monitor.lease().unwrap().to_string();
+        monitor.observe(b"\x1b]133;A\x07\x1b]133;B\x07");
+        monitor.prepare_input(&lease, 1, b"printf partial").unwrap();
+        monitor.finish_input(1, true);
+        monitor.observe(b"\x1b]133;A\x07\x1b]133;B\x07");
+        assert_eq!(
+            monitor.prepare_run(&lease, "unsafe", "echo WRONG", false),
+            Err(ErrorCode::PromptStateUnknown)
+        );
+        monitor.observe(b"\x1b]133;D;130\x07\x1b]133;A\x07\x1b]133;B\x07");
+        assert!(monitor
+            .prepare_run(&lease, "safe", "echo OK", false)
+            .is_ok());
+    }
+
+    #[test]
+    fn attachment_requires_a_fresh_prompt_not_an_existing_line_redraw() {
+        let mut monitor = TerminalControl::new("fixture".into(), "generation".into()).unwrap();
+        let lease = monitor.lease().unwrap().to_string();
+        monitor.set_sequence_base(42);
+        monitor.observe(b"\x1b]133;A\x07\x1b]133;B\x07");
+        assert_eq!(
+            monitor.prepare_run(&lease, "unsafe", "echo WRONG", false),
+            Err(ErrorCode::PromptStateUnknown)
+        );
+        monitor.observe(b"\x1b]133;D;130\x07\x1b]133;A\x07\x1b]133;B\x07");
+        assert!(monitor
+            .prepare_run(&lease, "safe", "echo OK", false)
+            .is_ok());
+    }
+
     #[test]
     fn manual_takeover_cannot_be_undone_by_osc_or_duplicate_input() {
         let mut monitor = TerminalControl::new("fixture".into(), "generation".into()).unwrap();

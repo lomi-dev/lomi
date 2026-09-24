@@ -46,14 +46,13 @@ impl Broker {
         else {
             return error(ErrorCode::TargetNotFound);
         };
-        let Some(profile) = state.projection.terminal_profile.clone() else {
+        let Some(profile) = session.grant.terminal_profile.clone() else {
             return error(ErrorCode::HostUnqualified);
         };
-        if session
-            .grant
-            .terminal_profile
-            .as_ref()
-            .is_none_or(|p| p.id != profile.id || p.revision != profile.revision)
+        if state
+            .projection
+            .qualified_terminal(&profile.id)
+            .is_none_or(|p| p.revision != profile.revision)
         {
             return error(ErrorCode::ScopeDenied);
         }
@@ -178,9 +177,8 @@ impl Broker {
                 .is_none_or(|p| p.id != profile.id || p.revision != profile.revision)
             || state
                 .projection
-                .terminal_profile
-                .as_ref()
-                .is_none_or(|p| p.id != profile.id || p.revision != profile.revision)
+                .qualified_terminal(&profile.id)
+                .is_none_or(|p| p.revision != profile.revision)
             || state.terminals.contains_key(generation)
             || !Self::action_scopes(&work.command.action)
                 .iter()

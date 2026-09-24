@@ -942,7 +942,7 @@ pub async fn start_terminal(
         {
             if let Some(ticket) = &request.agent_ticket {
                 let broker = broker.ok_or("Agent control is unavailable.")?;
-                let profile = crate::agent_control::qualified_profile(&shells)
+                let profile = crate::agent_control::qualified_profile(&shells, &request.profile_id)
                     .ok_or("This shell is not qualified for agent control.")?;
                 let operation = ticket.operation_id.clone();
                 let nonce = ticket.nonce.clone();

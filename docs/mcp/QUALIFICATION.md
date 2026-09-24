@@ -2,6 +2,59 @@
 
 Host: macOS 27.0 (26A428), Apple M3 ARM64. Baseline HEAD and local changes: IMPLEMENTATION-STATUS.md.
 
+## Approved Bash and Zsh terminals (2026-09-24)
+
+Native **uw9501 Bash PASS** and **Gn0P6D Zsh PASS**, 13 checks per shell,
+catalog 74. Real stdio MCP, Settings pairing, native PTY and retained xterm were
+used with private shell configuration. Host versions: Bash 3.2.57, Zsh 5.9,
+Vim 9.1 and Node 22.22.3. Normal host/wrapper exit 0 and isolated app-data removal
+passed in both runs. Evidence: `/tmp/lomi-mcp-terminal-{bash,zsh}-render-final.log`
+and `lomi-mcp-control-{uw9501,Gn0P6D}/terminals.json`, `cleanup.json`.
+
+The selected profile is pinned per connection; another profile is denied and
+changes to its native revision prevent dispatch. Native cases cover Unicode,
+once-only command and input retries, nonzero exits, quiet running commands,
+targeted interrupt/retry, partial input across resize, real Node REPL and Vim
+with exact saved Unicode bytes, alternate screen, NUL/invalid UTF-8 raw output,
+a 2 MiB flood with no concurrent MCP reads, bounded output gaps and xterm ACK
+catch-up, background jobs, EOF without a completion marker, manual takeover,
+and Settings-approved reclaim with a new lease. Reclaim does not authorize a
+partially entered line after resize; an explicit Ctrl+C restores a fresh prompt.
+
+Two product defects were reproduced and fixed: macOS Bash lacks PS0, so the
+existing integration never observed command start; and PS1 redraw after resize
+could incorrectly restore automatic readiness over partial input. The guarded
+DEBUG hook preserves user hooks/status; an existing DEBUG trap/debugger disables
+automatic readiness on old Bash. The native observer now waits for a completion
+boundary after explicit input or attachment. Before-fix failures are recorded
+in `/tmp/lomi-mcp-{bash-before,terminal-redraw-before,terminal-resize-before}.log`.
+Nine raw shell tests passed including the corrected resize case and existing
+prompt-width/CLI wrapper regressions. Core 62 + broker 68 and wire 8 passed; the
+two opt-in crash-child/full-disk entries retain separate qualification.
+
+Earlier fixture corrections: 3MN4cg expected a top-level error instead of the
+durable no-effect refusal; jNpBCh passed native 12 but the wrapper selected its
+old close-stress branch; gUe9Qp then passed both native and wrapper 12. 0Cp17r
+and G5X7Nh passed the added resize checks; B0AZ92 and ps3gHv passed the reclaim
+case. ibhd0M additionally verified the parsed Unicode screen. Final screenshots
+wait for xterm's scheduled frame, and the resize fixture restores the actual
+view dimensions. Settings and final Vim screenshots were visually inspected.
+All these runs cleaned up normally. Other hosts and P6 remain separate work.
+
+Final checks: all-target MCP and native-probe Clippy passed with warnings denied;
+production workspace/all-target check, TypeScript, SDK/AI checks, frontend build,
+WebKit pairing test, formatting and diff checks passed. Logs use the
+`/tmp/lomi-mcp-terminal-*` prefix, including `core-final3`, `shell-final`,
+`wire-final`, `ui2`, `workspace-check`, `frontend-build`, `clippy-final` and
+`probe-clippy-last`.
+
+Repeat the isolated native qualification with either shell:
+
+```sh
+LOMI_MCP_TERMINAL_ONLY=bash pnpm test:mcp:control
+LOMI_MCP_TERMINAL_ONLY=zsh pnpm test:mcp:control
+```
+
 ## Approved native browser upload (2026-09-24)
 
 **vuDLZZ PASS**,12 checks, catalog74, macOS ARM64. Real helper, broker,

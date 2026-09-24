@@ -25,6 +25,36 @@ fn until(monitor: &Arc<Mutex<TerminalControl>>, predicate: impl Fn(&TerminalCont
 #[test]
 #[ignore = "Native macOS PTY qualification; creates and cleans its own Zsh process"]
 fn zsh_prompt_completion_unicode_server_and_manual_takeover() {
+    qualify_shell("zsh", "", true);
+}
+
+#[test]
+#[ignore = "Native macOS PTY qualification; creates and cleans its own Bash process"]
+fn bash_prompt_completion_unicode_server_and_manual_takeover() {
+    qualify_shell("bash", "", true);
+}
+
+#[test]
+#[ignore = "Native macOS PTY qualification; private Bash prompt hooks"]
+fn bash_preserves_prompt_command_and_exit_status() {
+    qualify_shell(
+        "bash",
+        "PROMPT_COMMAND='printf \"%s\\n\" \"$?\" > prompt-status # user hook'\n",
+        true,
+    );
+}
+
+#[test]
+#[ignore = "Native macOS PTY qualification; private Bash DEBUG trap"]
+fn bash_keeps_existing_debug_trap_without_claiming_readiness() {
+    qualify_shell(
+        "bash",
+        "trap 'printf \"%s\\n\" \"$BASH_COMMAND\" >> debug-calls' DEBUG\n",
+        false,
+    );
+}
+
+fn qualify_shell(kind: &str, startup: &str, integrated: bool) {
     let directory = tempfile::tempdir().unwrap();
     let config = directory.path().join("config");
     std::fs::create_dir(&config).unwrap();
@@ -33,19 +63,27 @@ fn zsh_prompt_completion_unicode_server_and_manual_takeover() {
         "PROMPT='fixture> '\nHISTFILE=/dev/null\n",
     )
     .unwrap();
+    std::fs::write(
+        config.join(".bashrc"),
+        format!("PS1='fixture> '\nHISTFILE=/dev/null\n{startup}"),
+    )
+    .unwrap();
     let integration = directory.path().join("integration");
     shell::prepare(&integration).unwrap();
     let profile = Profile {
-        id: "fixture:zsh".into(),
-        name: "Zsh fixture".into(),
-        kind: "zsh".into(),
-        program: "/bin/zsh".into(),
+        id: format!("fixture:{kind}"),
+        name: format!("{kind} fixture"),
+        kind: kind.into(),
+        program: format!("/bin/{kind}"),
         distro: None,
         home: config.to_string_lossy().into_owned(),
     };
     let (mut command, _) =
         shell::build(&profile, &directory.path().to_string_lossy(), &integration).unwrap();
     command.env("LOMI_ZDOTDIR", &config);
+    command.env("HOME", &config);
+    command.env("INPUTRC", "/dev/null");
+    command.env_remove("PROMPT_COMMAND");
     command.env_remove("HISTFILE");
     let pair = portable_pty::native_pty_system()
         .openpty(portable_pty::PtySize {
@@ -87,10 +125,37 @@ fn zsh_prompt_completion_unicode_server_and_manual_takeover() {
     });
     // Reap the private process even if an assertion fails.
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        until(&monitor, |m| m.prompt() == Prompt::Ready);
         let lease = monitor.lock().unwrap().lease().unwrap().to_string();
         let send =
             |bytes: &[u8]| terminal_io::write(fd, bytes, Duration::from_secs(2), || true).unwrap();
+        if !integrated {
+            until(&monitor, |m| {
+                m.read(None, 65536).unwrap().text.contains("fixture> ")
+            });
+            assert_eq!(monitor.lock().unwrap().prompt(), Prompt::Unknown);
+            assert_eq!(
+                monitor
+                    .lock()
+                    .unwrap()
+                    .prepare_run(&lease, "unsafe", "echo WRONG", false),
+                Err(ErrorCode::PromptStateUnknown)
+            );
+            send(b"printf '%s%s\\n' USER_OWNED _DEBUG\r");
+            until(&monitor, |m| {
+                m.read(None, 65536)
+                    .unwrap()
+                    .text
+                    .contains("USER_OWNED_DEBUG\r\n")
+            });
+            assert!(
+                std::fs::read_to_string(directory.path().join("debug-calls"))
+                    .unwrap()
+                    .contains("USER_OWNED")
+            );
+            assert_eq!(monitor.lock().unwrap().prompt(), Prompt::Unknown);
+            return;
+        }
+        until(&monitor, |m| m.prompt() == Prompt::Ready);
         let run = |operation: &str, text: &str| {
             let busy = pair
                 .master
@@ -134,6 +199,31 @@ fn zsh_prompt_completion_unicode_server_and_manual_takeover() {
                 .exit_code,
             Some(1)
         );
+        if startup.contains("prompt-status") {
+            assert_eq!(
+                std::fs::read_to_string(directory.path().join("prompt-status")).unwrap(),
+                "1\n"
+            );
+        }
+        run(
+            "repl",
+            "read -r fixture_input; printf 'REPL:%s\\n' \"$fixture_input\"",
+        );
+        until(&monitor, |m| {
+            m.command("repl").is_some_and(|c| c.started_observed)
+        });
+        assert!(!monitor.lock().unwrap().command("repl").unwrap().completed);
+        send("Zażółć 🙂\r".as_bytes());
+        until(&monitor, |m| {
+            m.command("repl").is_some_and(|c| c.completed) && m.prompt() == Prompt::Ready
+        });
+        assert!(monitor
+            .lock()
+            .unwrap()
+            .read(None, 65536)
+            .unwrap()
+            .text
+            .contains("REPL:Zażółć 🙂"));
         let packet = b"printf x >> input-once\r";
         assert_eq!(
             monitor
@@ -158,6 +248,33 @@ fn zsh_prompt_completion_unicode_server_and_manual_takeover() {
             std::fs::read(directory.path().join("input-once")).unwrap(),
             b"x"
         );
+        let partial = b"printf partial >> must-not-execute";
+        monitor
+            .lock()
+            .unwrap()
+            .prepare_input(&lease, 2, partial)
+            .unwrap();
+        send(partial);
+        monitor.lock().unwrap().finish_input(2, true);
+        for cols in [40, 100] {
+            pair.master
+                .resize(portable_pty::PtySize {
+                    rows: 24,
+                    cols,
+                    pixel_width: 0,
+                    pixel_height: 0,
+                })
+                .unwrap();
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        assert_eq!(
+            monitor.lock().unwrap().prompt(),
+            Prompt::Unknown,
+            "Resizing must not authorize automatic run over partial input"
+        );
+        send(&[3]);
+        until(&monitor, |m| m.prompt() == Prompt::Ready);
+        assert!(!directory.path().join("must-not-execute").exists());
         run("server", "sleep 30");
         until(&monitor, |m| {
             m.command("server").is_some_and(|c| c.started_observed)
@@ -175,7 +292,12 @@ fn zsh_prompt_completion_unicode_server_and_manual_takeover() {
                 .unwrap_err(),
             ErrorCode::TargetBusy
         );
-        send(&[3]);
+        let interrupt = monitor
+            .lock()
+            .unwrap()
+            .prepare_interrupt(&lease, "server")
+            .unwrap();
+        send(&interrupt);
         until(&monitor, |m| {
             m.command("server").is_some_and(|c| c.completed) && m.prompt() == Prompt::Ready
         });

@@ -365,6 +365,17 @@ pub fn build(
     command.env("TERM", "xterm-256color");
     command.env("COLORTERM", "truecolor");
     command.env("TERM_PROGRAM", "Lomi");
+    #[cfg(all(feature = "mcp-probe", target_os = "macos"))]
+    if env::var_os("LOMI_MCP_TERMINAL_ONLY").is_some() {
+        let directory = env::var_os("LOMI_MCP_CONTROL_PROBE_DIRECTORY")
+            .ok_or("Terminal probe directory is missing")?;
+        let config = PathBuf::from(directory).join("shell-home");
+        command.env("HOME", &config);
+        command.env("INPUTRC", "/dev/null");
+        command.env("HISTFILE", "/dev/null");
+        command.env("NODE_REPL_HISTORY", "/dev/null");
+        command.env_remove("PROMPT_COMMAND");
+    }
     match profile.kind.as_str() {
         "bash" => {
             command.args(["--rcfile", &join("bash.sh"), "-i"]);
@@ -375,6 +386,12 @@ pub fn build(
                 env::var("ZDOTDIR").unwrap_or_else(|_| profile.home.clone()),
             );
             command.env("ZDOTDIR", join("zsh"));
+            #[cfg(all(feature = "mcp-probe", target_os = "macos"))]
+            if env::var_os("LOMI_MCP_TERMINAL_ONLY").is_some() {
+                let directory = env::var_os("LOMI_MCP_CONTROL_PROBE_DIRECTORY")
+                    .ok_or("Terminal probe directory is missing")?;
+                command.env("LOMI_ZDOTDIR", PathBuf::from(directory).join("shell-home"));
+            }
             if cfg!(target_os = "macos") && profile.distro.is_none() {
                 command.arg("-l");
             }

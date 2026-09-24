@@ -163,6 +163,7 @@ pub struct SessionView {
     pub project_ids: Vec<String>,
     pub workspace_ids: Vec<String>,
     pub scopes: Vec<String>,
+    pub terminal_profile: Option<TerminalProfile>,
     pub browser_origins: Vec<String>,
     pub android_device_ids: Vec<String>,
     pub android_packages: Vec<String>,
@@ -175,6 +176,7 @@ pub struct Overview {
     pub ui_ready: bool,
     pub workspaces: Vec<Workspace>,
     pub terminal_profile: Option<TerminalProfile>,
+    pub terminal_profiles: Vec<TerminalProfile>,
     pub pending: Vec<PendingView>,
     pub pending_controls: Vec<PendingControlView>,
     pub pending_project_opens: Vec<PendingProjectOpenView>,
@@ -836,6 +838,7 @@ impl Broker {
                 && !state.projection.ui_epoch.is_empty(),
             workspaces: state.projection.workspaces.clone(),
             terminal_profile: state.projection.terminal_profile.clone(),
+            terminal_profiles: state.projection.terminal_profiles.clone(),
             pending_project_opens: Self::pending_project_opens(&state, authorized),
             pending_settings_updates: Self::pending_settings_updates(&state, authorized),
             pending_browser_uploads: Self::pending_browser_uploads(&state, authorized),
@@ -941,6 +944,29 @@ impl Broker {
         android_devices: &[String],
         android_packages: &[String],
         chat_conversations: &[String],
+    ) -> io::Result<()> {
+        self.approve_terminal_profile(
+            id,
+            workspace_ids,
+            scopes,
+            browser_origins,
+            android_devices,
+            android_packages,
+            chat_conversations,
+            None,
+        )
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub fn approve_terminal_profile(
+        &self,
+        id: &str,
+        workspace_ids: &[String],
+        scopes: &[String],
+        browser_origins: &[String],
+        android_devices: &[String],
+        android_packages: &[String],
+        chat_conversations: &[String],
+        terminal_profile_id: Option<&str>,
     ) -> io::Result<()> {
         if chat_conversations.len() > 64
             || chat_conversations.iter().any(|id| !valid_chat_id(id))
@@ -1152,11 +1178,25 @@ impl Broker {
         if workspace_ids.is_empty() || workspace_ids.len() > 500 {
             return Err(failure());
         }
+        let terminal_profile = if let Some(profile) = terminal_profile_id {
+            if !scopes.iter().any(|scope| scope == "terminal.execute") {
+                return Err(failure());
+            }
+            Some(
+                state
+                    .projection
+                    .qualified_terminal(profile)
+                    .cloned()
+                    .ok_or_else(failure)?,
+            )
+        } else {
+            state.projection.terminal_profile.clone()
+        };
         let mut grant = Grant {
             projects: HashMap::new(),
             scopes: scopes.iter().cloned().collect(),
             policy_revision: state.policy_revision,
-            terminal_profile: state.projection.terminal_profile.clone(),
+            terminal_profile,
             browser_origins: origins,
             android_devices: android_devices.iter().cloned().collect(),
             android_packages: android_packages.iter().cloned().collect(),
@@ -1320,6 +1360,7 @@ impl Broker {
                             alive,
                             peer_pid,
                             view: SessionView {
+                                terminal_profile: grant.terminal_profile.clone(),
                                 id: session_id.clone(),
                                 client_label: session_label,
                                 project_ids: grant.projects.keys().cloned().collect(),

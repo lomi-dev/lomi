@@ -45,7 +45,22 @@ pub struct Projection {
     #[serde(default)]
     pub terminal_profile: Option<TerminalProfile>,
     #[serde(default)]
+    pub terminal_profiles: Vec<TerminalProfile>,
+    #[serde(default)]
     pub focused_panel_id: Option<String>,
+}
+impl Projection {
+    pub fn qualified_terminal(&self, id: &str) -> Option<&TerminalProfile> {
+        if self.terminal_profiles.is_empty() {
+            self.terminal_profile
+                .as_ref()
+                .filter(|profile| profile.id == id)
+        } else {
+            self.terminal_profiles
+                .iter()
+                .find(|profile| profile.id == id)
+        }
+    }
 }
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

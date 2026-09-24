@@ -35,6 +35,24 @@ const identifier = `dev.lomi.mcp-control-${Date.now()}`;
 const appData = join(homedir(), "Library/Application Support", identifier);
 const folder = join(directory, "project");
 await mkdir(folder);
+if (process.env.LOMI_MCP_TERMINAL_ONLY) {
+  if (!["bash", "zsh"].includes(process.env.LOMI_MCP_TERMINAL_ONLY))
+    throw Error("Choose bash or zsh for terminal qualification.");
+  const shellHome = join(directory, "shell-home");
+  await mkdir(shellHome);
+  await writeFile(
+    join(shellHome, ".bashrc"),
+    "PS1='fixture> '\nHISTFILE=/dev/null\n",
+  );
+  await writeFile(
+    join(shellHome, ".zshrc"),
+    "PROMPT='fixture> '\nHISTFILE=/dev/null\n",
+  );
+  await writeFile(
+    join(directory, "terminal-fixture.json"),
+    JSON.stringify({ node: process.execPath }),
+  );
+}
 await writeFile(
   join(folder, "mcp-read-fixture.txt"),
   "Disk Zażółć 🙂\r\nsecond line\r\n",
@@ -100,6 +118,7 @@ const downloads = downloadFixture(
 );
 const uploads = uploadFixture();
 const closeStressServer =
+  process.env.LOMI_MCP_TERMINAL_ONLY ||
   process.env.LOMI_MCP_BROWSER_UPLOAD_ONLY ||
   process.env.LOMI_MCP_BROWSER_DOWNLOAD_ONLY ||
   process.env.LOMI_MCP_ARTIFACT_FILES_ONLY ||
@@ -271,7 +290,21 @@ try {
     }
   }
   if (!result) throw Error("Native control probe timed out");
-  if (result.stage === "passed" && process.env.LOMI_MCP_BROWSER_UPLOAD_ONLY) {
+  if (result.stage === "passed" && process.env.LOMI_MCP_TERMINAL_ONLY) {
+    const proof = JSON.parse(
+      await readFile(join(directory, "terminals.json"), "utf8"),
+    );
+    if (
+      result.data?.profile !== "terminal-only" ||
+      result.data?.catalogCount !== 74 ||
+      proof.shell !== process.env.LOMI_MCP_TERMINAL_ONLY ||
+      proof.checks?.length !== 13
+    )
+      throw Error("Terminal qualification returned incomplete evidence");
+  } else if (
+    result.stage === "passed" &&
+    process.env.LOMI_MCP_BROWSER_UPLOAD_ONLY
+  ) {
     const proof = JSON.parse(
       await readFile(join(directory, "browser-uploads.json"), "utf8"),
     );
