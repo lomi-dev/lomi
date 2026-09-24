@@ -57,7 +57,7 @@ const privateField = (el) =>
   );
 const text = (el) => {
   let value = "";
-  const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  const walk = el.ownerDocument.createTreeWalker(el, NodeFilter.SHOW_TEXT);
   for (
     let n = walk.nextNode();
     n && value.length < 512 && budget();
@@ -81,6 +81,7 @@ if (q.action === "snapshot") {
     navigation: q.navigationId,
     snapshot: q.snapshotId,
     refs: new Map(),
+    frames: new Map(),
     created: performance.now(),
   };
   globalThis.__lomiAgentDomV1 = state;
@@ -100,12 +101,13 @@ if (q.action === "snapshot") {
       height: innerHeight,
       deviceScaleFactor: devicePixelRatio,
     },
+    frames: [],
     elements: [],
     truncated: false,
     omittedFrames: 0,
     limitations: [
-      "Top-level semantic DOM only; not a complete accessibility tree.",
-      "All child frames and form values are omitted.",
+      "Semantic DOM of the main document and up to 15 same-origin HTTP(S) frames, depth at most 4; not a complete accessibility tree.",
+      "Cross-origin, opaque, hidden, unsupported and over-budget frames and all form values are omitted.",
       "References expire after 60 seconds or the next snapshot.",
     ],
   };
@@ -113,100 +115,157 @@ if (q.action === "snapshot") {
     new TextEncoder().encode(JSON.stringify(value)).length;
   if (bytes(result) + 256 > q.maxBytes) return fail("RESOURCE_EXHAUSTED");
   let used = bytes(result);
-  const walker = document.createTreeWalker(
-    document.documentElement,
-    NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
-  );
-  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-    if (!budget() || result.elements.length >= q.maxNodes) {
-      result.truncated = true;
-      break;
-    }
-    const el = n.nodeType === Node.ELEMENT_NODE ? n : n.parentElement;
-    if (
-      !el ||
-      (el.closest("script,style,noscript,template,textarea,select,option") &&
-        !["TEXTAREA", "SELECT"].includes(el.tagName))
-    )
-      continue;
-    if (el.tagName === "IFRAME" || el.tagName === "FRAME") {
-      result.omittedFrames++;
-      continue;
-    }
-    if (!visible(el)) continue;
-    const editableRoot = el.closest("[contenteditable]");
-    if (editableRoot && (editableRoot !== el || n.nodeType === Node.TEXT_NODE))
-      continue;
-    let role = "",
-      name = "";
-    if (n.nodeType === Node.TEXT_NODE) {
-      if (el.closest("button,a,label,h1,h2,h3,h4,h5,h6,input,textarea,select"))
-        continue;
-      name = n.data.slice(0, 512).replace(/\s+/g, " ").trim();
-      if (!name) continue;
-      role = "text";
-    } else {
-      const tag = el.tagName;
-      role =
-        el.getAttribute("role")?.slice(0, 64) ||
-        {
-          BUTTON: "button",
-          A: "link",
-          INPUT:
-            {
-              checkbox: "checkbox",
-              radio: "radio",
-              range: "slider",
-              button: "button",
-              submit: "button",
-              reset: "button",
-            }[el.type] || "textbox",
-          TEXTAREA: "textbox",
-          SELECT: "combobox",
-          LABEL: "label",
-        }[tag] ||
-        (/^H[1-6]$/.test(tag)
-          ? "heading"
-          : el.isContentEditable
-            ? "textbox"
-            : "");
-      if (!role || (tag === "INPUT" && el.type === "hidden")) continue;
-      name = el.getAttribute("aria-label")?.slice(0, 512) || "";
-      if (!name && el.labels?.length) name = text(el.labels[0]);
-      if (
-        !name &&
-        !el.isContentEditable &&
-        !["INPUT", "TEXTAREA", "SELECT"].includes(tag)
-      )
-        name = text(el);
-    }
-    const ref = "e" + (result.elements.length + 1);
-    const editable =
-      !el.disabled &&
-      !el.readOnly &&
-      (["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) ||
-        el.isContentEditable);
-    const item = {
-      elementRef: ref,
-      role,
-      name,
-      enabled: !el.disabled && el.getAttribute("aria-disabled") !== "true",
-      editable,
-      checked: ["checkbox", "radio"].includes(el.type) ? el.checked : null,
-      valueLength:
-        !privateField(el) && ["INPUT", "TEXTAREA"].includes(el.tagName)
-          ? el.value.length
-          : null,
+  const visit = (doc, frameId, parent, host, depth) => {
+    const win = doc.defaultView;
+    const url = win.location.href;
+    const context = { doc, win, url, frameId, parent, host };
+    const viewportRef = frameId === "main" ? "viewport" : frameId + "-viewport";
+    const frame = {
+      frameId,
+      parentFrameId: parent?.frameId ?? null,
+      origin: win.location.origin,
+      url,
+      viewportRef,
+      viewport: {
+        width: win.innerWidth,
+        height: win.innerHeight,
+        deviceScaleFactor: win.devicePixelRatio,
+      },
     };
-    const size = bytes(item) + 1;
+    const size = bytes(frame) + 1;
     if (used + size + 128 > q.maxBytes) {
       result.truncated = true;
-      break;
+      return false;
     }
     used += size;
-    state.refs.set(ref, n);
-    result.elements.push(item);
-  }
+    result.frames.push(frame);
+    state.frames.set(viewportRef, context);
+    const walker = doc.createTreeWalker(
+      doc.documentElement,
+      NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
+    );
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (!budget() || result.elements.length >= q.maxNodes) {
+        result.truncated = true;
+        break;
+      }
+      const el = n.nodeType === Node.ELEMENT_NODE ? n : n.parentElement;
+      if (
+        !el ||
+        (el.closest("script,style,noscript,template,textarea,select,option") &&
+          !["TEXTAREA", "SELECT"].includes(el.tagName))
+      )
+        continue;
+      if (el.tagName === "IFRAME" || el.tagName === "FRAME") {
+        let included = false;
+        try {
+          const child = el.contentDocument;
+          const childWindow = child?.defaultView;
+          if (
+            visible(el) &&
+            child?.documentElement &&
+            childWindow.location.origin === q.origin &&
+            /^https?:$/.test(childWindow.location.protocol) &&
+            result.frames.length < 16 &&
+            depth < 4
+          ) {
+            included = visit(
+              child,
+              "f" + result.frames.length,
+              context,
+              el,
+              depth + 1,
+            );
+          }
+        } catch {
+          /* Opaque and cross-origin documents are never inspected. */
+        }
+        if (!included) result.omittedFrames++;
+        continue;
+      }
+      if (!visible(el)) continue;
+      const editableRoot = el.closest("[contenteditable]");
+      if (
+        editableRoot &&
+        (editableRoot !== el || n.nodeType === Node.TEXT_NODE)
+      )
+        continue;
+      let role = "",
+        name = "";
+      if (n.nodeType === Node.TEXT_NODE) {
+        if (
+          el.closest("button,a,label,h1,h2,h3,h4,h5,h6,input,textarea,select")
+        )
+          continue;
+        name = n.data.slice(0, 512).replace(/\s+/g, " ").trim();
+        if (!name) continue;
+        role = "text";
+      } else {
+        const tag = el.tagName;
+        role =
+          el.getAttribute("role")?.slice(0, 64) ||
+          {
+            BUTTON: "button",
+            A: "link",
+            INPUT:
+              {
+                checkbox: "checkbox",
+                radio: "radio",
+                range: "slider",
+                button: "button",
+                submit: "button",
+                reset: "button",
+              }[el.type] || "textbox",
+            TEXTAREA: "textbox",
+            SELECT: "combobox",
+            LABEL: "label",
+          }[tag] ||
+          (/^H[1-6]$/.test(tag)
+            ? "heading"
+            : el.isContentEditable
+              ? "textbox"
+              : "");
+        if (!role || (tag === "INPUT" && el.type === "hidden")) continue;
+        name = el.getAttribute("aria-label")?.slice(0, 512) || "";
+        if (!name && el.labels?.length) name = text(el.labels[0]);
+        if (
+          !name &&
+          !el.isContentEditable &&
+          !["INPUT", "TEXTAREA", "SELECT"].includes(tag)
+        )
+          name = text(el);
+      }
+      const ref = frameId + "-e" + (result.elements.length + 1);
+      const editable =
+        !el.disabled &&
+        !el.readOnly &&
+        (["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) ||
+          el.isContentEditable);
+      const item = {
+        elementRef: ref,
+        frameId,
+        role,
+        name,
+        enabled: !el.disabled && el.getAttribute("aria-disabled") !== "true",
+        editable,
+        checked: ["checkbox", "radio"].includes(el.type) ? el.checked : null,
+        valueLength:
+          !privateField(el) && ["INPUT", "TEXTAREA"].includes(el.tagName)
+            ? el.value.length
+            : null,
+      };
+      const size = bytes(item) + 1;
+      if (used + size + 128 > q.maxBytes) {
+        result.truncated = true;
+        break;
+      }
+      used += size;
+      state.refs.set(ref, { node: n, context });
+      result.elements.push(item);
+    }
+    return true;
+  };
+  visit(document, "main", null, null, 0);
   if (bytes(result) > q.maxBytes) return fail("RESOURCE_EXHAUSTED");
   return JSON.stringify(result);
 }
@@ -221,11 +280,73 @@ if (q.action === "interact") {
     state.navigation === q.navigationId &&
     performance.now() - state.created <= 60000;
   if (!current()) return fail("STALE_SNAPSHOT");
+  const reference = state.refs.get(q.elementRef);
+  const context =
+    q.interaction.type === "scroll"
+      ? state.frames.get(q.elementRef)
+      : reference?.context;
+  const frameCurrent = (frame) => {
+    try {
+      for (let f = frame; f; f = f.parent) {
+        if (
+          f.win.document !== f.doc ||
+          f.win.location.href !== f.url ||
+          f.win.location.origin !== q.origin ||
+          (f.host &&
+            (!f.host.isConnected ||
+              f.host.contentDocument !== f.doc ||
+              f.host.ownerDocument !== f.parent.doc))
+        )
+          return false;
+      }
+      return !!frame;
+    } catch {
+      return false;
+    }
+  };
+  if (!frameCurrent(context)) return fail("STALE_SNAPSHOT");
+  const { doc, win } = context;
+  const hitPoint = (el, d, w) => {
+    if (!visible(el)) return false;
+    const r = el.getBoundingClientRect();
+    const left = Math.max(0, r.left),
+      top = Math.max(0, r.top);
+    const right = Math.min(w.innerWidth, r.right),
+      bottom = Math.min(w.innerHeight, r.bottom);
+    if (left >= right || top >= bottom) return false;
+    const point = { x: (left + right) / 2, y: (top + bottom) / 2 };
+    const hit = d.elementFromPoint(point.x, point.y);
+    return hit === el || el.contains(hit) ? point : null;
+  };
+  const ancestorsVisible = (point) => {
+    for (let f = context; f?.host; f = f.parent) {
+      if (!visible(f.host)) return false;
+      // Coordinate projection is qualified for axis-aligned, untransformed frames.
+      for (let p = f.host, depth = 0; p; p = p.parentElement) {
+        if (++depth > 64 || getComputedStyle(p).transform !== "none")
+          return false;
+      }
+      const r = f.host.getBoundingClientRect();
+      if (!f.host.offsetWidth || !f.host.offsetHeight) return false;
+      point = {
+        x:
+          r.left +
+          ((f.host.clientLeft + point.x) * r.width) / f.host.offsetWidth,
+        y:
+          r.top +
+          ((f.host.clientTop + point.y) * r.height) / f.host.offsetHeight,
+      };
+      if (f.parent.doc.elementFromPoint(point.x, point.y) !== f.host)
+        return false;
+    }
+    return true;
+  };
+  const stillCurrent = () => current() && frameCurrent(context);
   if (q.interaction.type === "scroll") {
-    if (document.activeElement?.matches("iframe,frame"))
-      return fail("SCOPE_DENIED");
+    if (!ancestorsVisible({ x: win.innerWidth / 2, y: win.innerHeight / 2 }))
+      return fail("PANEL_NOT_RENDERABLE");
+    if (doc.activeElement?.matches("iframe,frame")) return fail("SCOPE_DENIED");
     if (
-      q.elementRef !== "viewport" ||
       !Number.isFinite(q.interaction.deltaX) ||
       !Number.isFinite(q.interaction.deltaY) ||
       Math.abs(q.interaction.deltaX) > 10000 ||
@@ -233,11 +354,12 @@ if (q.action === "interact") {
     )
       return fail("RESOURCE_EXHAUSTED");
     effectMayHaveStarted = true;
-    window.scrollBy({
+    win.scrollBy({
       left: q.interaction.deltaX,
       top: q.interaction.deltaY,
       behavior: "instant",
     });
+    if (!stillCurrent()) return fail("OUTCOME_UNKNOWN");
     return JSON.stringify({
       workspaceId: q.workspaceId,
       panelId: q.panelId,
@@ -249,17 +371,16 @@ if (q.action === "interact") {
       inputMode: "synthetic_dom",
       valueLength: null,
       defaultAction: null,
-      scrollPosition: { x: scrollX, y: scrollY },
+      scrollPosition: { x: win.scrollX, y: win.scrollY },
     });
   }
-  const node = state.refs.get(q.elementRef);
+  const el = reference.node;
   if (
-    !(node instanceof HTMLElement) ||
-    !node.isConnected ||
-    node.ownerDocument !== document
+    !(el instanceof win.HTMLElement) ||
+    !el.isConnected ||
+    el.ownerDocument !== doc
   )
     return fail("STALE_SNAPSHOT");
-  const el = node;
   if (
     el.disabled ||
     (el.readOnly && q.interaction.type === "fill") ||
@@ -269,23 +390,13 @@ if (q.action === "interact") {
   if (el.matches("input[type=file], input[type=hidden], a[download]"))
     return fail("UNSUPPORTED_CAPABILITY");
   const actionable = () => {
-    if (!visible(el)) return false;
-    const r = el.getBoundingClientRect();
-    const left = Math.max(0, r.left),
-      top = Math.max(0, r.top);
-    const right = Math.min(innerWidth, r.right),
-      bottom = Math.min(innerHeight, r.bottom);
-    if (left >= right || top >= bottom) return false;
-    const hit = document.elementFromPoint(
-      (left + right) / 2,
-      (top + bottom) / 2,
-    );
-    return hit === el || el.contains(hit);
+    const point = hitPoint(el, doc, win);
+    return stillCurrent() && point && ancestorsVisible(point);
   };
   if (!actionable()) return fail("PANEL_NOT_RENDERABLE");
   let length = null;
   if (q.interaction.type === "key") {
-    if (document.activeElement !== el || el.getRootNode() !== document)
+    if (doc.activeElement !== el || el.getRootNode() !== doc)
       return fail("TARGET_BUSY");
     if (
       ![
@@ -302,18 +413,20 @@ if (q.action === "interact") {
       ].includes(q.interaction.key)
     )
       return fail("UNSUPPORTED_CAPABILITY");
+    for (let f = context; f?.host; f = f.parent)
+      if (f.parent.doc.activeElement !== f.host) return fail("TARGET_BUSY");
     effectMayHaveStarted = true;
     el.dispatchEvent(
-      new KeyboardEvent("keydown", {
+      new win.KeyboardEvent("keydown", {
         key: q.interaction.key,
         code: q.interaction.key,
         bubbles: true,
         cancelable: true,
       }),
     );
-    if (!expired() && el.isConnected && el.ownerDocument === document)
+    if (stillCurrent() && el.isConnected && el.ownerDocument === doc)
       el.dispatchEvent(
-        new KeyboardEvent("keyup", {
+        new win.KeyboardEvent("keyup", {
           key: q.interaction.key,
           code: q.interaction.key,
           bubbles: true,
@@ -323,7 +436,7 @@ if (q.action === "interact") {
   } else if (q.interaction.type === "click") {
     effectMayHaveStarted = true;
     el.focus({ preventScroll: true });
-    if (!current() || !el.isConnected || !actionable())
+    if (!stillCurrent() || !el.isConnected || !actionable())
       return fail("STALE_SNAPSHOT");
     el.click();
   } else if (q.interaction.type === "fill") {
@@ -333,9 +446,9 @@ if (q.action === "interact") {
       new TextEncoder().encode(value).length > 16384
     )
       return fail("RESOURCE_EXHAUSTED");
-    const input = el instanceof HTMLInputElement;
-    const textarea = el instanceof HTMLTextAreaElement;
-    const select = el instanceof HTMLSelectElement;
+    const input = el instanceof win.HTMLInputElement;
+    const textarea = el instanceof win.HTMLTextAreaElement;
+    const select = el instanceof win.HTMLSelectElement;
     if (
       (input &&
         ![
@@ -359,31 +472,32 @@ if (q.action === "interact") {
       return fail("UNSUPPORTED_CAPABILITY");
     effectMayHaveStarted = true;
     el.focus({ preventScroll: true });
-    if (!current() || !el.isConnected || !actionable())
+    if (!stillCurrent() || !el.isConnected || !actionable())
       return fail("STALE_SNAPSHOT");
-    if (document.activeElement !== el) return fail("TARGET_BUSY");
+    if (doc.activeElement !== el) return fail("TARGET_BUSY");
     if (input || textarea || select) {
       const prototype = input
-        ? HTMLInputElement.prototype
+        ? win.HTMLInputElement.prototype
         : textarea
-          ? HTMLTextAreaElement.prototype
-          : HTMLSelectElement.prototype;
+          ? win.HTMLTextAreaElement.prototype
+          : win.HTMLSelectElement.prototype;
       Object.getOwnPropertyDescriptor(prototype, "value").set.call(el, value);
     } else {
       el.textContent = value;
     }
     el.dispatchEvent(
-      new InputEvent("input", {
+      new win.InputEvent("input", {
         bubbles: true,
         inputType: "insertText",
         data: select ? null : value,
       }),
     );
     if (expired()) return fail("OUTCOME_UNKNOWN");
-    el.dispatchEvent(new Event("change", { bubbles: true }));
+    el.dispatchEvent(new win.Event("change", { bubbles: true }));
     await Promise.resolve();
     const retained = input || textarea || select ? el.value : el.textContent;
-    if (!el.isConnected || retained !== value) return fail("OUTCOME_UNKNOWN");
+    if (!stillCurrent() || !el.isConnected || retained !== value)
+      return fail("OUTCOME_UNKNOWN");
     length = retained.length;
   } else return fail("UNSUPPORTED_CAPABILITY");
   return JSON.stringify({

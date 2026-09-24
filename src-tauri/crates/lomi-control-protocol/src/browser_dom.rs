@@ -21,6 +21,16 @@ fn default_bytes() -> u32 {
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowserFrame {
+    pub frame_id: String,
+    pub parent_frame_id: Option<String>,
+    pub origin: String,
+    pub url: String,
+    pub viewport_ref: String,
+    pub viewport: BrowserViewport,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BrowserSnapshot {
     pub workspace_id: String,
     pub panel_id: String,
@@ -33,6 +43,7 @@ pub struct BrowserSnapshot {
     pub url: String,
     pub captured_at: String,
     pub viewport: BrowserViewport,
+    pub frames: Vec<BrowserFrame>,
     pub elements: Vec<BrowserElement>,
     pub truncated: bool,
     pub omitted_frames: u16,
@@ -48,6 +59,7 @@ pub struct BrowserViewport {
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BrowserElement {
+    pub frame_id: String,
     pub element_ref: String,
     pub role: String,
     pub name: String,
@@ -193,11 +205,16 @@ pub struct BrowserScrollInput {
     pub browser_generation: String,
     pub navigation_id: String,
     pub snapshot_id: String,
+    #[serde(default = "default_viewport_ref")]
+    pub viewport_ref: String,
     pub lease_id: String,
     pub retry_epoch: String,
     pub request_key: String,
     pub delta_x: f64,
     pub delta_y: f64,
+}
+fn default_viewport_ref() -> String {
+    "viewport".into()
 }
 impl BrowserScrollInput {
     pub fn split(self) -> (BrowserClickInput, BrowserInteraction) {
@@ -208,7 +225,7 @@ impl BrowserScrollInput {
                 browser_generation: self.browser_generation,
                 navigation_id: self.navigation_id,
                 snapshot_id: self.snapshot_id,
-                element_ref: "viewport".into(),
+                element_ref: self.viewport_ref,
                 lease_id: self.lease_id,
                 retry_epoch: self.retry_epoch,
                 request_key: self.request_key,
@@ -268,4 +285,18 @@ pub struct BrowserWaitResult {
     pub matched: bool,
     pub elapsed_ms: u32,
     pub snapshot: BrowserSnapshot,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn frame_scroll_preserves_main_viewport_compatibility() {
+        let mut input = serde_json::json!({"workspaceId":"w","panelId":"p","browserGeneration":"g","navigationId":"n","snapshotId":"s","leaseId":"l","retryEpoch":"r","requestKey":"k","deltaX":0,"deltaY":10});
+        let old: BrowserScrollInput = serde_json::from_value(input.clone()).unwrap();
+        assert_eq!(old.split().0.element_ref, "viewport");
+        input["viewportRef"] = "f1-viewport".into();
+        let frame: BrowserScrollInput = serde_json::from_value(input).unwrap();
+        assert_eq!(frame.split().0.element_ref, "f1-viewport");
+    }
 }

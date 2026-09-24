@@ -1,5 +1,30 @@
 # MCP requirements traceability
 
+## P5.7 same-origin browser frame contract (2026-09-24)
+
+The existing snapshot tool returns a `frames` array (main first), each with
+`frameId`, `parentFrameId`, exact HTTP(S) `origin`/`url`, `viewportRef` and CSS
+viewport. Each element includes its frameId. All observations share the existing
+maxNodes/maxBytes and traversal budget; at most16 frames, depth4 below main.
+Only frames whose actual origin equals the authorized main origin are traversed.
+Cross-origin, opaque/srcdoc, hidden and unsupported frames are counted as omitted;
+form values remain excluded. This is semantic DOM, not complete accessibility.
+
+Click/fill/key resolve only references retained in the isolated WKContentWorld.
+Before dispatch they recheck the exact document, URL, connected host and every
+ancestor frame, then hit-test the target point through the ancestor viewports.
+Transformed ancestors are unqualified for input. Key additionally verifies the
+focus chain. Scroll takes `viewportRef`, default `viewport` for compatibility;
+its exact frame must remain current, renderable and free of child-frame focus.
+Native ownership, generation, lease, current navigation, scopes, modal exclusion,
+once-only receipts, cancellation and takeover rules are unchanged. Synthetically
+dispatched DOM events remain explicitly `inputMode: synthetic_dom`.
+
+Native KjoDju13 and WebKit4 passed on macOS ARM64; no new log or transfer
+capabilities are implied. Primary API references are [WKContentWorld](https://developer.apple.com/documentation/webkit/wkcontentworld)
+and [iframe contentDocument](https://developer.mozilla.org/en-US/docs/Web/API/HTMLIFrameElement/contentDocument);
+the actual installed-engine tests determine support.
+
 Current scope override (user instruction, 2026-09-23): further theme/plugin MCP
 work, application close/restart/update MCP tools, and distribution/installers/
 releases are EXCLUDED_BY_USER. Earlier rows and notes retain their historical

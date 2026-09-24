@@ -12,6 +12,8 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 mod android_layout_probe;
 #[path = "mcp-android-setup-support.rs"]
 mod android_setup_probe;
+#[path = "mcp-browser-frames-support.rs"]
+mod browser_frames_probe;
 #[path = "mcp-chat-support.rs"]
 mod chat_probe;
 #[path = "mcp-settings-support.rs"]
@@ -3029,6 +3031,22 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
         .await?;
     if connected["structuredContent"]["status"] != "ok" {
         return Err("Cannot select approved workspace".into());
+    }
+    if std::env::var_os("LOMI_MCP_BROWSER_FRAMES_ONLY").is_some() {
+        browser_frames_probe::qualify(
+            app,
+            &mut wire,
+            &main,
+            &workspace,
+            &connected["structuredContent"]["data"]["retryEpoch"],
+            directory,
+            &browser_fixture,
+        )
+        .await?;
+        child.kill().await.map_err(|e| e.to_string())?;
+        return Ok(
+            json!({"profile":"browser-frames-only","catalogCount":catalog["result"]["tools"].as_array().map(Vec::len)}),
+        );
     }
     if std::env::var_os("LOMI_MCP_ANDROID_LAYOUT_ONLY").is_some() {
         android_layout_probe::qualify(

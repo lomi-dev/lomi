@@ -305,3 +305,18 @@ again. This permission does not include credentials, approval policy or shell
 profile code. Shortcut and theme writes are still being implemented. Terminal field writes have passed native qualification on macOS ARM64.
 
 Terminal preference requests use `{"type":"terminal_field","field":"appearance.fontSize","value":18}` with the `terminal` snapshot revision. The field enum is closed and includes appearance, colors, behavior and the existing data-only choices. `value` is required; explicit `null` restores theme inheritance for appearance leaves, for example `appearance.colors.red`. Other terminal fields do not accept null. Existing native ranges, color and string validators apply. A lower `behavior.scrollback` can trim older displayed lines, which the approval explains. Selecting the fixed Windows shell preference does not execute or edit a shell profile.
+
+## Interact with a same-origin browser frame
+
+On the qualified macOS ARM64 engine, `lomi_browser_snapshot` includes `frames`
+with origin, URL and viewportRef, and each element identifies its frameId.
+Use an element's exact snapshot-scoped reference with click/fill/key. To scroll a
+frame, pass its viewportRef to `lomi_browser_scroll`; omitting it still scrolls
+the main viewport. A fresh snapshot is required after child navigation or replacement.
+
+The adapter traverses at most16 same-origin HTTP(S) frames, with at most4 nested
+levels and the same total node/byte budget. Cross-origin, opaque, srcdoc, hidden
+and over-budget frames are omitted. Input also requires a visible target through
+all ancestor frames; transformed ancestors are currently refused. DOM events are
+synthetic, and key events do not promise native default actions. Frame access
+does not extend origins or bypass screenshot composite permission.

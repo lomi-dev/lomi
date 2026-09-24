@@ -104,6 +104,7 @@ impl Broker {
             || result.navigation_id != navigation
             || result.frame_id != "main"
             || result.snapshot_kind != "dom"
+            || !valid_frames(&result)
             || !control.permits(&result.url)
             || result.elements.len() > input.max_nodes as usize
             || serde_json::to_vec(&result).map_or(true, |v| v.len() > input.max_bytes as usize)
@@ -369,5 +370,97 @@ impl Broker {
             }
             std::thread::sleep(remaining.min(Duration::from_millis(100)));
         }
+    }
+}
+
+// Frames are output metadata, never a caller-selected origin or script target.
+fn valid_frames(snapshot: &BrowserSnapshot) -> bool {
+    use lomi_control_protocol::browser::address;
+    let Ok(root) = address(&snapshot.url) else {
+        return false;
+    };
+    if root.origin().ascii_serialization() != snapshot.origin
+        || snapshot.frames.is_empty()
+        || snapshot.frames.len() > 16
+    {
+        return false;
+    }
+    let mut frames = HashSet::new();
+    let mut refs = HashSet::new();
+    for (index, frame) in snapshot.frames.iter().enumerate() {
+        if !valid_id(&frame.frame_id)
+            || !valid_id(&frame.viewport_ref)
+            || !refs.insert(&frame.viewport_ref)
+            || frame.origin != snapshot.origin
+            || address(&frame.url).map_or(true, |url| url.origin() != root.origin())
+            || !frame.viewport.width.is_finite()
+            || frame.viewport.width < 0.
+            || !frame.viewport.height.is_finite()
+            || frame.viewport.height < 0.
+            || !frame.viewport.device_scale_factor.is_finite()
+            || frame.viewport.device_scale_factor <= 0.
+            || if index == 0 {
+                frame.frame_id != "main"
+                    || frame.parent_frame_id.is_some()
+                    || frame.url != snapshot.url
+                    || frame.viewport_ref != "viewport"
+            } else {
+                frame
+                    .parent_frame_id
+                    .as_ref()
+                    .is_none_or(|parent| !frames.contains(parent))
+            }
+            || !frames.insert(&frame.frame_id)
+        {
+            return false;
+        }
+    }
+    snapshot.elements.iter().all(|element| {
+        frames.contains(&element.frame_id)
+            && valid_id(&element.element_ref)
+            && refs.insert(&element.element_ref)
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn snapshot() -> BrowserSnapshot {
+        serde_json::from_value(json!({
+            "workspaceId":"workspace","panelId":"panel","browserGeneration":"generation",
+            "navigationId":"nav","snapshotId":"snapshot","snapshotKind":"dom",
+            "frameId":"main","origin":"https://example.test","url":"https://example.test/",
+            "capturedAt":"fixture","viewport":{"width":800.,"height":600.,"deviceScaleFactor":2.},
+            "frames":[
+                {"frameId":"main","parentFrameId":null,"origin":"https://example.test","url":"https://example.test/","viewportRef":"viewport","viewport":{"width":800.,"height":600.,"deviceScaleFactor":2.}},
+                {"frameId":"f1","parentFrameId":"main","origin":"https://example.test","url":"https://example.test/child","viewportRef":"f1-viewport","viewport":{"width":600.,"height":400.,"deviceScaleFactor":2.}}
+            ],
+            "elements":[{"frameId":"f1","elementRef":"f1-e1","role":"button","name":"Save","enabled":true,"editable":false,"checked":null,"valueLength":null}],
+            "truncated":false,"omittedFrames":0,"limitations":[]
+        })).unwrap()
+    }
+    #[test]
+    fn frame_projection_rejects_foreign_origins_and_ambiguous_refs() {
+        let value = snapshot();
+        assert!(valid_frames(&value));
+        let mut forged = value.clone();
+        forged.frames[1].url = "https://foreign.test/child".into();
+        assert!(!valid_frames(&forged));
+        forged.frames[1].origin = "https://foreign.test".into();
+        assert!(!valid_frames(&forged));
+        let mut forged = value.clone();
+        forged.elements[0].frame_id = "foreign".into();
+        assert!(!valid_frames(&forged));
+        forged.elements[0].frame_id = "f1".into();
+        forged.elements[0].element_ref = "viewport".into();
+        assert!(!valid_frames(&forged));
+        let mut forged = value.clone();
+        forged.frames[1].parent_frame_id = Some("missing".into());
+        assert!(!valid_frames(&forged));
+        let mut forged = value;
+        forged.frames[1].frame_id = "main".into();
+        assert!(!valid_frames(&forged));
     }
 }

@@ -2,6 +2,28 @@
 
 Host: macOS 27.0 (26A428), Apple M3 ARM64. Baseline HEAD and local changes: IMPLEMENTATION-STATUS.md.
 
+## Same-origin native browser frames (2026-09-24)
+
+**KjoDju PASS**,13 checks, catalog71, macOS ARM64. The actual stdio helper,
+broker and private WKContentWorld observed main/child/nested documents, filled
+Unicode, dispatched keys only to the current focused frame, clicked exactly once
+across retry, and scrolled only the requested child viewport. Replacing/removing
+a frame invalidated its old references. A parent overlay blocked input at the
+actual projected target point. Opaque/srcdoc/hidden contents and private field
+values remained omitted. Page-world constructor/global replacement did not change
+the isolated dispatcher. Native browser close and isolated app-data removal passed;
+host/wrapper exit0. Evidence: `/tmp/lomi-mcp-browser-frames-native3.log` and
+`lomi-mcp-control-KjoDju/browser-frames.json`. The nested-frame screenshot from the
+same rendering path in Uy20vL was inspected.
+
+Four WebKit adapter tests additionally cover real cross-origin navigation,
+frame/node/byte/depth budgets and transformed ancestor refusal. Core59 + broker64,
+TypeScript, wire5, all-target MCP Clippy and the final scroll compatibility unit
+passed. MCP-probe and final all-target MCP Clippy passed with warnings denied. Native Uy20vL failed at the initially
+missing viewportRef DTO field; Cjx0vi failed the fixture's final close because its
+request omitted browserGeneration. Their cleanup passed, but neither is a full
+qualification pass. No advanced log/transfer or P6 completion is implied.
+
 ## Android layout native qualification (2026-09-24)
 
 Native **ErnuOt PASS** (`/tmp/lomi-mcp-android-layout-native3.log`), catalog71,

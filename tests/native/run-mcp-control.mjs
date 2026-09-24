@@ -10,6 +10,7 @@ import { tmpdir, homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
+import { browserFramePage } from "../mcp/browser-frame-pages.mjs";
 import { newSession, newProject } from "../../src/model.ts";
 
 if (process.platform !== "darwin" || process.arch !== "arm64")
@@ -93,6 +94,7 @@ await new Promise((resolve) => portReservation.listen(0, "127.0.0.1", resolve));
 const serverPort = portReservation.address().port;
 await new Promise((resolve) => portReservation.close(resolve));
 const closeStressServer =
+  process.env.LOMI_MCP_BROWSER_FRAMES_ONLY ||
   process.env.LOMI_MCP_ANDROID_LAYOUT_ONLY ||
   process.env.LOMI_MCP_ANDROID_SETUP_ONLY ||
   process.env.LOMI_MCP_CHAT_SEND_ONLY ||
@@ -110,7 +112,9 @@ const closeStressServer =
   process.env.LOMI_MCP_PROJECT_CLOSE_ONLY
     ? createServer((_request, response) =>
         response.end(
-          "<!doctype html><title>Close fixture</title><p>Owned page</p>",
+          process.env.LOMI_MCP_BROWSER_FRAMES_ONLY
+            ? browserFramePage(_request.url ?? "/frames")
+            : "<!doctype html><title>Close fixture</title><p>Owned page</p>",
         ),
       )
     : null;
@@ -252,7 +256,21 @@ try {
     }
   }
   if (!result) throw Error("Native control probe timed out");
-  if (result.stage === "passed" && process.env.LOMI_MCP_ANDROID_LAYOUT_ONLY) {
+  if (result.stage === "passed" && process.env.LOMI_MCP_BROWSER_FRAMES_ONLY) {
+    const proof = JSON.parse(
+      await readFile(join(directory, "browser-frames.json"), "utf8"),
+    );
+    if (
+      deniedRequests !== 0 ||
+      result.data?.profile !== "browser-frames-only" ||
+      proof.checks?.length !== 13 ||
+      proof.closed?.structuredContent?.data?.state !== "succeeded"
+    )
+      throw Error("Browser frame qualification returned incomplete evidence");
+  } else if (
+    result.stage === "passed" &&
+    process.env.LOMI_MCP_ANDROID_LAYOUT_ONLY
+  ) {
     const proof = JSON.parse(
       await readFile(join(directory, "android-layout.json"), "utf8"),
     );

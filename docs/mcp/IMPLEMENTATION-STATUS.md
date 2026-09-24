@@ -71,8 +71,28 @@ bMi7lr and K0tPJi failed fixture assertions (percentage zoom and map-shaped
 terminal contexts), were corrected, and each cleaned up normally. Their partial
 results are not counted as passing runs.
 
-Android layout is ready for its milestone commit/push. Next: advanced
-browser/terminal and P6. Full MCP is incomplete.
+Android layout was committed and pushed to origin/main as
+`b7f014874f098a05d85b356acf3679a1f96b9eca`; local and remote SHA verified.
+
+Browser same-origin frame support is natively qualified on macOS ARM64:
+**KjoDju PASS**, catalog71,13 checks, normal host/wrapper exit0 and private
+app-data removal (`/tmp/lomi-mcp-browser-frames-native3.log`). Nested Unicode
+fill/key/click, exact retry, child replacement, detachment, parent occlusion and
+frame scroll passed through the actual stdio helper and WKContentWorld. Page-world
+constructor/global replacement cannot alter the isolated frame dispatcher.
+Snapshots bind bounded frame identities/origins/viewports and element references.
+Scroll accepts optional viewportRef (default remains the main viewport).
+Cross-origin, opaque/srcdoc, hidden and over-budget frames are explicitly omitted;
+transformed ancestor input is refused. WebKit4, core59 + broker64, TypeScript,
+wire5 and all-target MCP Clippy passed. Final protocol compatibility test1 passed;
+MCP-probe and final all-target MCP Clippy passed with warnings denied. The nested-frame screenshot was inspected.
+Uy20vL exposed the missing scroll DTO field; Cjx0vi then passed interactions but
+failed fixture cleanup because its close request lacked browserGeneration. Both
+were corrected and both exited0 with private app data removed; neither is counted
+as a passing run. No native app remains running.
+
+Frame milestone validation is complete. Next: expanded logs, scoped browser transfers,
+artifact export, terminal qualification and P6. Full MCP is incomplete.
 
 Chat AI milestone was committed and pushed to origin/main as
 `57b05cb46f8ed1896f2b26c3665826a401a96073`; remote SHA verified and the
