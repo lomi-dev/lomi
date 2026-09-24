@@ -173,6 +173,65 @@ test("settings route supports named connections without reading a secret", async
   await expect(page.getByLabel(/Replacement API key/)).toHaveValue("");
 });
 
+test("a docked chat can start a new response after stopping a long stream", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await mockDesktop(page, false);
+  await mockChats(page);
+  await page.goto("/");
+  await openChat(page);
+  await page.evaluate(async () => {
+    const chat = (window as any).__chatTest;
+    chat.hold = true;
+    chat.maxChunks = 1;
+    chat.response = "Zażółć 日本語 👩🏽‍💻\n".repeat(10000);
+  });
+  const input = page.getByRole("textbox", { name: "Message", exact: true });
+  await input.fill("Long response");
+  await input.press("Enter");
+  await expect(page.locator(".chat-message-assistant")).toContainText("日本語");
+  await input.fill("Next response");
+  await page.getByRole("tab", { name: "Terminal", exact: true }).click();
+  const source = (await page
+    .getByRole("tab", { name: "Long response", exact: true })
+    .boundingBox())!;
+  const target = (await page.locator(".terminal-layout").boundingBox())!;
+  await page.mouse.move(
+    source.x + source.width / 2,
+    source.y + source.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    target.x + target.width - 15,
+    target.y + target.height / 2,
+    { steps: 10 },
+  );
+  await page.mouse.up();
+  await expect(input).toHaveValue("Next response");
+  await page.getByRole("button", { name: "Stop", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Send", exact: true }),
+  ).toBeVisible();
+  await page.evaluate(() => {
+    (window as any).__chatTest.response = "Replacement response ";
+  });
+  await input.press("Enter");
+  await expect(
+    page.getByRole("button", { name: "Stop", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".chat-message-assistant").last()).toContainText(
+    "Replacement response",
+  );
+  await page.getByRole("button", { name: "Stop", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Send", exact: true }),
+  ).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__chatTest.starts)).toBe(2);
+  expect(errors).toEqual([]);
+});
+
 test("chat resync reconstructs SDK blocks without sending again or duplicating text", async ({
   page,
 }) => {

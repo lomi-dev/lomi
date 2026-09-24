@@ -1,8 +1,9 @@
-import { useChat } from "@ai-sdk/react";
 import {
+  memo,
   useEffect,
   useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -32,6 +33,7 @@ import {
 } from "../icons";
 import { replaceChat } from "./chat-service";
 import { getChat, main } from "./chat-runtime";
+import { chatMessageView } from "./chat-messages";
 import type { ChatRuntime } from "./chat-runtime";
 import type { Attachment, Config } from "./types";
 import ChatHistory from "./ChatHistory";
@@ -53,10 +55,8 @@ export default function ChatPane({
 }) {
   const runtime = getChat(tab.conversationId);
   const state = useSyncExternalStore(runtime.subscribe, runtime.getSnapshot);
-  const { messages } = useChat({
-    chat: runtime.chat,
-    experimental_throttle: 50,
-  });
+  const view = useMemo(() => chatMessageView(runtime.chat), [runtime]);
+  const messages = useSyncExternalStore(view.subscribe, view.getSnapshot);
   const root = useRef<HTMLElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const disclaimerId = useId();
@@ -833,7 +833,7 @@ export default function ChatPane({
     </section>
   );
 }
-function Markdown({
+const Markdown = memo(function Markdown({
   text,
   onError,
 }: {
@@ -883,7 +883,7 @@ function Markdown({
       {text}
     </ReactMarkdown>
   );
-}
+});
 function AttachmentChip({
   id,
   runtime,

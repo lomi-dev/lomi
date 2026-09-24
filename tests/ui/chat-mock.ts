@@ -40,6 +40,7 @@ export async function mockChats(page: Page) {
       localStorage.setItem("chat-conversations", JSON.stringify(conversations));
     desktop.__chatTest = {
       hold: false,
+      maxChunks: Number.POSITIVE_INFINITY,
       slowAck: false,
       failClose: false,
       failDraft: false,
@@ -249,7 +250,7 @@ export async function mockChats(page: Page) {
           });
           let count = 0;
           request.timer = window.setInterval(() => {
-            if (request.done) return;
+            if (request.done || count >= desktop.__chatTest.maxChunks) return;
             const delta = desktop.__chatTest.response;
             assistant.parts[0].text += delta;
             request.channel.onmessage({
