@@ -6,6 +6,13 @@ use std::{collections::HashSet, sync::Arc};
 /// possible variants and their transitively reachable definitions.
 pub fn for_tool(tool: &str) -> Arc<Map<String, Value>> {
     let kinds: &[&str] = match tool {
+        "lomi_chat_send" => &["operation"],
+        "lomi_chat_stop" => &["operation"],
+        "lomi_chat_draft" => &["operation"],
+        "lomi_chat_open" => &["operation"],
+        "lomi_chat_list" => &["chat_list"],
+        "lomi_chat_read" => &["chat_read"],
+        "lomi_chat_export" => &["chat_export"],
         "lomi_settings_read" => &["settings_snapshot"],
         "lomi_git_diff" => &["git_diff"],
         "lomi_git_history" => &["git_history"],
@@ -80,6 +87,10 @@ pub fn for_tool(tool: &str) -> Arc<Map<String, Value>> {
     if kinds.contains(&"operation") {
         let results: Option<&[&str]> = match tool {
             "lomi_operation_get" | "lomi_operation_cancel" => None,
+            "lomi_chat_send" => Some(&["chat_sent"]),
+            "lomi_chat_stop" => Some(&["chat_stopped"]),
+            "lomi_chat_draft" => Some(&["chat_draft_updated"]),
+            "lomi_chat_open" => Some(&["chat_opened"]),
             "lomi_settings_open" => Some(&["settings_opened"]),
             "lomi_settings_update" => Some(&["settings_updated"]),
             "lomi_project_open" => Some(&["project_opened"]),

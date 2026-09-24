@@ -5410,6 +5410,25 @@ html[data-hide-explorer-arrows="true"] .tree-entry > .lucide:first-child {
   flex: none;
   margin: 3px 0 0;
 }
+.agent-chat-permission > label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-block: 10px;
+  line-height: 1.5;
+}
+.agent-chat-permission > label > input {
+  flex: none;
+  margin: 3px 0 0;
+}
+.agent-chat-permission > label > span {
+  min-width: 0;
+}
+.agent-chat-permission code {
+  display: block;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
 .agent-control-request select,
 .agent-control-request textarea {
   display: block;
@@ -5489,22 +5508,49 @@ html[data-hide-explorer-arrows="true"] .tree-entry > .lucide:first-child {
   font-family: var(--font-family-mono);
   margin-bottom: var(--space-12);
 }
-.agent-git-approval .modal-surface {
+.agent-git-approval .modal-surface,
+.agent-chat-approval .modal-surface {
   display: flex;
   flex-direction: column;
   max-height: calc(100vh - 70px);
 }
-.agent-git-approval .dialog-form {
+.agent-git-approval .dialog-form,
+.agent-chat-approval .dialog-form {
   display: flex;
   flex-direction: column;
   min-height: 0;
 }
 .agent-git-approval header,
-.agent-git-approval .dialog-actions {
+.agent-git-approval .dialog-actions,
+.agent-chat-approval header,
+.agent-chat-approval .dialog-actions {
   flex-shrink: 0;
 }
 .agent-git-details {
   min-height: 0;
   overflow-y: auto;
   overflow-wrap: anywhere;
+}
+
+.agent-chat-send-details {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px 16px;
+}
+.agent-chat-send-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.agent-chat-approval textarea {
+  width: 100%;
+  resize: vertical;
+  font-family: var(--font-family-mono);
+}
+.agent-chat-approval li {
+  overflow-wrap: anywhere;
+}
+
+.agent-chat-approval .dialog-form {
+  overflow-y: auto;
+  gap: var(--space-12);
 }

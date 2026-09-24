@@ -25,6 +25,7 @@ export function useCloseGuard() {
       fileIds?: ReadonlySet<string>,
       terminalIds?: readonly string[],
       decision?: EditorCloseDecision,
+      deferChats = false,
     ) => {
       if (checking.current) return false;
       checking.current = true;
@@ -51,7 +52,7 @@ export function useCloseGuard() {
           if (!approved) return false;
         }
         if (!(await editor.confirm(fileIds, decision))) return false;
-        await closeChatViews(fileIds);
+        if (!deferChats) await closeChatViews(fileIds);
         return true;
       } catch (error) {
         setChatError(errorMessage(error));

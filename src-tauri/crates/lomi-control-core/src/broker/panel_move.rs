@@ -4,6 +4,24 @@ use super::*;
 pub(super) fn identities(state: &State, workspace: &str) -> Vec<PanelMoveIdentity> {
     projection_identities(&state.projection, workspace)
 }
+pub(super) fn chat_bindings(
+    projection: &Projection,
+    workspace: &str,
+    destination: Option<&str>,
+) -> Vec<(String, String)> {
+    let mut bindings: Vec<_> = projection
+        .panels
+        .iter()
+        .filter(|p| p.workspace_id == workspace || destination == Some(p.workspace_id.as_str()))
+        .filter_map(|p| {
+            p.chat_conversation_id
+                .as_ref()
+                .map(|id| (p.id.clone(), id.clone()))
+        })
+        .collect();
+    bindings.sort();
+    bindings
+}
 pub(super) fn projection_identities(
     projection: &Projection,
     workspace: &str,
@@ -47,6 +65,14 @@ impl Broker {
         command: &PanelMoveCommand,
     ) -> Result<(), ErrorCode> {
         if identities(state, &command.workspace_id) != command.panels
+            || chat_bindings(
+                &state.projection,
+                &command.workspace_id,
+                command
+                    .destination
+                    .as_ref()
+                    .map(|d| d.workspace_id.as_str()),
+            ) != command.chat_bindings
             || tab_order(state, &command.workspace_id) != command.tab_order
             || state.projection.focused_panel_id != command.focused_panel_id
         {
@@ -140,6 +166,17 @@ impl Broker {
         command: &PanelMoveCommand,
         result: &PanelMoved,
     ) -> bool {
+        if chat_bindings(
+            &state.projection,
+            &command.workspace_id,
+            command
+                .destination
+                .as_ref()
+                .map(|d| d.workspace_id.as_str()),
+        ) != command.chat_bindings
+        {
+            return false;
+        }
         if matches!(command.movement, PanelMove::TransferTab { .. }) {
             return Self::panel_transfer_completed(&state.projection, command, result);
         }
@@ -269,6 +306,11 @@ impl Broker {
             None
         };
         let command = PanelMoveCommand {
+            chat_bindings: chat_bindings(
+                &state.projection,
+                &input.workspace_id,
+                destination.as_ref().map(|d| d.workspace_id.as_str()),
+            ),
             workspace_id: input.workspace_id.clone(),
             movement: input.movement,
             panels: identities(&state, &input.workspace_id),

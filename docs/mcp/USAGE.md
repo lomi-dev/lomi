@@ -138,6 +138,60 @@ Client routing and functional/safety/performance tests remain in the selected
 scope. Installer distribution, packaged upgrades and release publication are
 excluded from this delivery. Use the local development commands above.
 
+## Control selected Chat AI conversations
+
+In **Settings → Agent control**, enable history access and select the exact
+conversations to share. A project grant does not share its history. Opening,
+creating, changing drafts, sending, stopping and exporting have separate
+permissions. Native qualification uses a local test provider; no paid provider
+was used to validate these tools.
+
+| Tool               | Behavior                                                                            |
+| ------------------ | ----------------------------------------------------------------------------------- |
+| `lomi_chat_list`   | List metadata for selected conversations in the approved project.                   |
+| `lomi_chat_open`   | Reuse an existing view or create a conversation with `target.type=new`.             |
+| `lomi_chat_read`   | Read saved draft/message text and the exact active or last request identity.        |
+| `lomi_chat_draft`  | Save draft text locally using the current draft, conversation and domain revisions. |
+| `lomi_chat_send`   | Request sending the saved draft through its configured connection and model.        |
+| `lomi_chat_stop`   | Stop one exact request ID and wait for its native saved terminal state.             |
+| `lomi_chat_export` | Read a Markdown or JSON text export in revision-bound pages.                        |
+
+Open an explicitly shared conversation, then read its draft. For sending, pass
+`includeSendTarget=true` to the read call; this additionally requires send
+permission. Use the returned connection/model and content revisions plus the
+current domain revision. Every send displays an expiring approval in Lomi with
+the actual draft, context, system instructions, attachments, model and possible
+provider charges. The tool cannot change the configured provider. Approval is
+always a human action in Lomi.
+
+Mutation receipts use the normal retry epoch/key. A send receipt reserves its
+request/message IDs before contacting the provider. `draftRevision=null` means
+the request is only reserved; poll the operation to learn whether it was accepted.
+After uncertain completion, keep the same retry key. Stream reconnection never
+sends the message again. To stop, pass the exact `requestId` from the receipt or
+history read. Retrying an old stop cannot stop a newer response.
+
+Opening a chat already in a split layout selects that existing pane. All revealed
+siblings need the appropriate permissions and ready runtimes. Docking, moving,
+reordering and transferring a chat within an approved project preserve its live
+response and draft. Closing a shared view preserves the response when another
+view remains. Closing its last panel, workspace or project additionally requires
+`chat.stop` for every affected selected conversation. Existing editor/process
+guards run first, then drafts are saved and native responses are stopped and
+checkpointed before removing views. Save failures retain the views; a failed
+save attempt reports an uncertain effect, so keep the same retry key. No
+replacement response can start until the close operation settles. These actions preserve
+saved history and never delete a conversation.
+
+Reads and exports contain persisted text, not unsaved typing or every live stream
+chunk. They omit credentials, system instructions, provider metadata, reasoning
+and attachment bytes. Export also omits attachment names, and explicitly reports
+omitted content. It includes all saved message variants and the saved draft, with
+limits of 512 messages and 4 MiB. For later pages, pass the initial `revision` as
+`expectedRevision`, then concatenate `content` in order. The revision is the
+SHA-256 of the complete UTF-8 export. Choose an output file through your client;
+the export tool itself writes no file.
+
 ## Open a Settings section
 
 Select **Allow opening Settings sections** when approving the connection. Call

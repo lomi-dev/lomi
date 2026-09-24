@@ -13,7 +13,9 @@ fn main() {
     prepare
         .arg("../scripts/prepare-ai-runtime.mjs")
         .env("TARGET", &target);
-    if std::env::var_os("CARGO_FEATURE_CHAT_PROBE").is_some() {
+    if std::env::var_os("CARGO_FEATURE_CHAT_PROBE").is_some()
+        || std::env::var_os("CARGO_FEATURE_MCP_PROBE").is_some()
+    {
         prepare.arg("--fixture");
     }
     assert!(

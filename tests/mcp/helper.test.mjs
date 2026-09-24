@@ -77,7 +77,7 @@ for (const version of ["2025-11-25", "2026-07-28"]) {
         assert.equal(result.cacheScope, "private");
       }
       const catalog = (await call("tools/list", {})).result.tools;
-      assert.equal(catalog.length, 61);
+      assert.equal(catalog.length, 68);
       assert.ok(
         JSON.stringify(catalog).length < 700_000,
         "Tool-specific output schemas must stay within the catalog budget",
@@ -540,6 +540,50 @@ for (const version of ["2025-11-25", "2026-07-28"]) {
             lomi_android_list: { workspaceId: "foreign" },
             lomi_workspace_create: workspaceMutation,
             lomi_workspace_update: workspaceMutation,
+            lomi_chat_export: {
+              workspaceId: "workspace",
+              conversationId: "selected",
+              format: "json",
+            },
+            lomi_chat_stop: {
+              workspaceId: "workspace",
+              conversationId: "selected",
+              requestId: "native-request",
+              ...retry,
+            },
+            lomi_chat_send: {
+              workspaceId: "workspace",
+              panelId: "panel",
+              conversationId: "selected",
+              connectionId: "fixture",
+              model: "fixture",
+              expectedRevision: "1",
+              expectedDraftRevision: "0",
+              expectedConversationRevision: "0",
+              ...retry,
+            },
+            lomi_chat_draft: {
+              workspaceId: "workspace",
+              panelId: "panel",
+              conversationId: "selected",
+              text: "Draft",
+              expectedRevision: "1",
+              expectedDraftRevision: "0",
+              expectedConversationRevision: "0",
+              ...retry,
+            },
+            lomi_chat_open: {
+              workspaceId: "workspace",
+              target: { type: "new" },
+              expectedRevision: "1",
+              ...retry,
+            },
+            lomi_chat_list: { workspaceId: "workspace" },
+            lomi_chat_read: {
+              workspaceId: "workspace",
+              conversationId: "selected",
+              part: { type: "draft" },
+            },
             lomi_settings_read: { workspaceId: "workspace", section: "editor" },
             lomi_settings_update: {
               workspaceId: "workspace",
@@ -775,6 +819,10 @@ for (const version of ["2025-11-25", "2026-07-28"]) {
         assert.equal(
           tool.annotations.readOnlyHint,
           ![
+            "lomi_chat_stop",
+            "lomi_chat_send",
+            "lomi_chat_draft",
+            "lomi_chat_open",
             "lomi_git_mutate",
             "lomi_git_open",
             "lomi_files_mutate",

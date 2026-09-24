@@ -1,6 +1,6 @@
 # MCP implementation status
 
-Updated: 2026-09-23. Scope: PROMPT.md in the sibling lomi-mpc-docs directory,
+Updated: 2026-09-24. Scope: PROMPT.md in the sibling lomi-mpc-docs directory,
 as narrowed explicitly by the user on 2026-09-23. The current delivery excludes
 further theme/plugin MCP work, application close/restart/update MCP tools, and
 distribution/installers/releases. Completed work remains recorded below; its
@@ -23,34 +23,164 @@ installer publication or private client-configuration writes.
 
 ## Milestones
 
-| Stage     | State           | Acceptance                                                                                                |
-| --------- | --------------- | --------------------------------------------------------------------------------------------------------- |
-| P0        | IN_PROGRESS     | SDK/client, native browser, PTY, Android and authentication probes                                        |
-| P1        | IN_PROGRESS     | Authenticated broker, grants, receipts, UI bridge, revoke                                                 |
-| P2        | IN_PROGRESS     | Workspace, PTY, basic browser end-to-end                                                                  |
-| P3        | IN_PROGRESS     | Native browser actions, observations and artifacts                                                        |
-| P4        | IN_PROGRESS     | Managed Android end-to-end                                                                                |
-| P5.1      | IN_PROGRESS     | Scoped disk reads and editor/file adapters                                                                |
-| P5.2      | IN_PROGRESS     | Git reads/views and all seven bounded mutations; qualification active                                     |
-| P5.3      | IN_PROGRESS     | Project open/moves/initial workspace and project close verified; Android/chat/plugin descendants pending  |
-| P5.4      | VERIFIED_SLICES | Settings open/read/editor/terminal/shortcut writes verified; further themes/plugins EXCLUDED_BY_USER      |
-| P5.5–P5.7 | TODO            | Android management, Chat AI and advanced browser/PTY; application lifecycle tools EXCLUDED_BY_USER        |
-| P6        | TODO            | Functional/safety/performance and client-routing tests; distribution/installers/releases EXCLUDED_BY_USER |
-| P7        | NOT_SELECTED    | No optional extension selected by this request                                                            |
+| Stage | State           | Acceptance                                                                                                |
+| ----- | --------------- | --------------------------------------------------------------------------------------------------------- |
+| P0    | IN_PROGRESS     | SDK/client, native browser, PTY, Android and authentication probes                                        |
+| P1    | IN_PROGRESS     | Authenticated broker, grants, receipts, UI bridge, revoke                                                 |
+| P2    | IN_PROGRESS     | Workspace, PTY, basic browser end-to-end                                                                  |
+| P3    | IN_PROGRESS     | Native browser actions, observations and artifacts                                                        |
+| P4    | IN_PROGRESS     | Managed Android end-to-end                                                                                |
+| P5.1  | IN_PROGRESS     | Scoped disk reads and editor/file adapters                                                                |
+| P5.2  | IN_PROGRESS     | Git reads/views and all seven bounded mutations; qualification active                                     |
+| P5.3  | IN_PROGRESS     | Project open/moves and Chat closure verified; Android descendants pending; plugins excluded               |
+| P5.4  | VERIFIED_SLICES | Settings open/read/editor/terminal/shortcut writes verified; further themes/plugins EXCLUDED_BY_USER      |
+| P5.5  | TODO            | Android management                                                                                        |
+| P5.6  | QUALIFIED       | Seven Chat AI tools and selected layout integration; all final checks passed                              |
+| P5.7  | TODO            | Advanced browser/PTY; application lifecycle tools EXCLUDED_BY_USER                                        |
+| P6    | TODO            | Functional/safety/performance and client-routing tests; distribution/installers/releases EXCLUDED_BY_USER |
+| P7    | NOT_SELECTED    | No optional extension selected by this request                                                            |
 
 ## Current work
+
+Streaming renderer repair was committed and pushed to origin/main as
+`12af2935eed70f12563c98b03091b71df37119f8`; remote SHA verified. A trailing
+message-view task and memoized unchanged Markdown prevent per-token rendering
+from starving native acknowledgements. New model3, WebKit Chat UI9 and
+TypeScript PASS. Native **gVdzJU PASS**, 47 checks, catalog68, two local fixture
+generations, normal exit and isolated app-data cleanup. The mixed-layout
+screenshot was inspected. This includes Chat docking, pane movement, tab reorder,
+open/focus of an existing mixed view and round-trip workspace transfer without
+replacing the SDK or PTY. Earlier native attempts DcRj84/68CDUU exposed fixture
+snapshot/result-size problems; Ed6xlT/bvy4Sf/SIBYbP exposed rendering starvation.
+Their results were not counted as passing. Bounded browser tests also corrected
+an unintended unlimited long-text producer; WebKit and Chromium then passed.
+Speculative listener changes and temporary native renderer diagnostics were removed.
+
+Chat AI is implemented and natively qualified: all seven tools and selected
+standalone/mixed layout integration, including panel/workspace/project closure.
+Native **iyLq7U PASS**, 54 checks, catalog68, five local fixture generations;
+normal host/wrapper exit and isolated app-data cleanup. Existing editor guards
+precede draft flush and native stop; last-view detection preserves shared
+conversations. A native admission barrier lasts until the broker settles the
+layout operation, preventing a replacement response during close. Native
+checkpoints precede PTY/browser cleanup; failed saves preserve views. A failed
+flush has an uncertain effect receipt, and exact retry never repeats cancellation.
+The preceding qVY6Fd closing screenshot was inspected. Full broker59, native
+Chat34, frontend model179 + AI17, TypeScript, production workspace check,
+WebKit UI14, Clippy with warnings denied, helper wire5 and frontend build PASS.
+This milestone includes all selected Chat work; Android management is next.
+
+### Earlier increment records
+
+These records describe intermediate states; the qualified Chat result above
+supersedes their incomplete-layout and uncommitted-module notes.
+
+Broker revocation repair was committed and pushed to origin/main as
+`73bb60f622575c3bf100b42c0fac52f15ea78259`; the remote SHA was verified. Only
+that repair and its regression test were staged. A detached worktree based on
+the previous commit tested the exact staged bytes: broker50 PASS. The temporary
+worktree was removed after verifying its contents against the new commit.
+Chat work remains uncommitted.
+
+Chat open/create is now implemented (catalog64): separate chat.open/create
+scopes, exact existing-history grants, native SQLite creation, creator-only read
+access, durable retry and native one-use preparation. Internal panel projection
+binds each chat view to its conversation ID. The bridge reuses a standalone
+view and retained SDK runtime; mixed-layout reveal remains explicitly refused
+until sibling lifecycle qualification. Core open1, model2, TypeScript and wire5
+PASS. Initial probe compilation needed an explicit fixture Vec<Value> type;
+that is corrected. Native **ygmgFM PASS**, 17 checks, catalog64, native and
+wrapper exit0, private app-data removed. Native create/reuse/retry preserves the
+retained SDK and human draft. Screenshot inspected; probe Clippy PASS.
+
+Chat draft is implemented (catalog65): separate chat.draft permission, exact open
+panel/conversation binding, 32 KiB text, conversation/draft/domain revisions,
+native draft CAS and durable one-use operation results. The retained runtime
+rejects unsaved/recovery text and preserves human typing during native ACK delay,
+then saves it against the new draft revision. UI4, TypeScript, native-store3 and
+core draft1 PASS. Full broker54 and wire5 PASS. Native **dtcU69 PASS**,
+23 checks, catalog65, host/native/wrapper exit0 and private app-data removed.
+CswH2K/IlFJDY exposed an ineffective fixture interception of immutable Tauri
+invoke; the retained-runtime commit callback now delays the real native ACK.
+No production change was needed for that fixture issue. Settings screenshot
+inspected. Probe Clippy PASS after boxing the draft receipt result (wire JSON
+unchanged); targeted broker1 and wire5 repeated PASS.
+
+Send is implemented through native context preparation, broker, exact UI approval,
+retained runtime and helper. Native **3w7ndI PASS**, 31 checks, catalog66, one
+local fixture generation, exit0 and private app-data removed. This includes
+read/open/draft regressions, decline, native context mutation after preview,
+reserved identity, exact replay, retained hidden SDK streaming, next human draft
+and ordinary native cancellation. BNLJwM was an AwaitingUser polling race in the
+fixture, corrected by awaiting dialog dismissal. Approval screenshot inspected;
+stream screenshot showed the other active tab, so no visual stream evidence is
+claimed from it. UI regression14, broker55, native chat30 and TypeScript PASS.
+Later core regressions fixed lost approval settlement and pre-dispatch admission
+failure while preserving reserved IDs; targeted Chat6 PASS after those fixes.
+
+Stop is implemented (catalog67 at its native run). Native **4aNBY2 PASS**, 35
+checks and two local fixture generations; native/wrapper exit0 and private
+app-data removed. Exact request identity, unknown stop refusal, terminal
+checkpoint and old stop replay preserving a replacement generation passed.
+The actual sending tab was revealed and its live stream/next-draft screenshot
+inspected. Native units2, core Chat6, wire5, permission UI1, production workspace
+check and TypeScript PASS. The tool does not depend on a renderer ACK or visible
+panel and never registers an unknown cancellation.
+
+Export is implemented (catalog68): chat.read/export, text-only
+Markdown/JSON pages of all saved variants and persisted draft, no native file
+writes. System instructions, provider metadata, reasoning/non-text parts and
+attachment bytes/names are omitted. Limits: 512 messages, 4 MiB raw/document,
+8192 UTF-16 units/48 KiB per response, two producers/5 s deadline. Revision is
+SHA-256 of the whole UTF-8 document; subsequent pages bind it and reject changes
+or split scalars. Native export1, core Chat7, wire5, permission UI1 and TypeScript
+PASS. Native **BxwjjV PASS**: 41 checks, catalog68, two fixture requests,
+23 JSON export pages reconstructing five messages and a draft with the exact
+SHA-256, text-only privacy filtering, Markdown, unchanged DB and stale/split-page
+rejection. Host/native/wrapper exit0 and private app-data removed. Full native chat units33 PASS, including the 513-message export refusal.
+Full broker57 PASS. Probe Clippy PASS after boxing ChatStopped (unchanged JSON)
+and boxing the internal stop admission error. Final wire5 PASS. No native
+process is running. Mixed-layout integration remains unfinished;
+the full Chat milestone is uncommitted.
+
+Chat AI reads are now wired through Settings-selected exact conversation grants,
+protocol DTOs, broker authorization, native SQLite and the helper (catalog63).
+No provider call or history initialization occurs through MCP reads. Settings
+alone may initialize the history picker after the user explicitly opts in.
+Persisted draft/message pages use UTF-16 scalar boundaries and revision hashes;
+read results omit system prompts, credentials, provider metadata, reasoning and
+attachment bytes. The broker rechecks project membership and permission after
+native work. Unit/native store2 and real UDS2 tests PASS; production check and
+TypeScript PASS. UI2 PASS after updating the existing Android assertion for the
+new empty conversation field; the picker screenshot was inspected. Native attempts 63tTnf/ymrFrr found transient Settings picker lock contention;
+the picker now waits at most 500 ms, while MCP reads still fail promptly when
+busy. xHWbvi passed history assertions but crashed during synchronous native
+revocation: cleanup used ambient Tokio spawn_blocking on the UI thread. A
+regression test reproduced the panic. Cleanup now uses the broker's captured
+runtime handle; the full broker suite52 PASS. Native **jMNDbu PASS**:
+11 history/authorization/revocation assertions, catalog63, native and wrapper
+exit0, host exited and private app-data removed. Screenshot inspected; a later
+CSS adjustment gives each conversation its own readable row, with UI1 PASS and
+screenshot inspected. Probe Clippy PASS. The cleanup fix was separately tested and pushed as recorded above. At that
+read qualification, open/draft/send/stop/export remained unimplemented, so the Chat milestone is incomplete and has not been pushed.
+
+First milestone was committed and pushed to origin/main as
+`d9b970ea2963bc2e77a46d258a61e83331d0ccf2`; remote SHA was verified and the tree
+was clean. No tags/releases were created. Current work: Chat AI control, starting
+with bounded persisted history reads and explicit conversation grants. Full Chat
+AI is still incomplete; do not expose unimplemented mutation tools or mark the
+module complete after read-only support.
 
 Current full-domain native regression: **RQy5Jv PASS**
 (/tmp/lomi-mcp-theme-protection-full-native.log), 61 tools, native/wrapper exit 0,
 host exited and isolated app-data removed. Android NOT_CONFIGURED. This includes
 the close-autosave fix below and the new explicit critical-dialog protection.
-Source is unfrozen for formatting and the first user-authorized milestone push.
+This is the previous committed baseline, before the current Chat increment.
 Frontend model174 + AI runtime17, frontend build and TypeScript PASS. Production
 and mcp-probe Clippy (without app test targets) PASS. Workspace Rust tests PASS:
 341 passed, 20 intentionally ignored native/crash/full-disk fixtures. Frontend
 formatting and workspace Rust formatting PASS. MCP wire/process tests5 PASS
-(/tmp/lomi-mcp-milestone-wire.log). First milestone is ready for origin/main;
-the next selected module is Chat AI control.
+(/tmp/lomi-mcp-milestone-wire.log). First milestone was pushed to origin/main; the current selected module is Chat AI control.
 Remaining app-test Clippy baseline findings
 are documented in QUALIFICATION.md; no all-target app Clippy pass is claimed.
 

@@ -93,6 +93,10 @@ await new Promise((resolve) => portReservation.listen(0, "127.0.0.1", resolve));
 const serverPort = portReservation.address().port;
 await new Promise((resolve) => portReservation.close(resolve));
 const closeStressServer =
+  process.env.LOMI_MCP_CHAT_SEND_ONLY ||
+  process.env.LOMI_MCP_CHAT_DRAFT_ONLY ||
+  process.env.LOMI_MCP_CHAT_OPEN_ONLY ||
+  process.env.LOMI_MCP_CHAT_READ_ONLY ||
   process.env.LOMI_MCP_SETTINGS_THEMES_ONLY ||
   process.env.LOMI_MCP_SETTINGS_KEYBINDS_ONLY ||
   process.env.LOMI_MCP_SETTINGS_TERMINAL_ONLY ||
@@ -244,6 +248,39 @@ try {
   }
   if (!result) throw Error("Native control probe timed out");
   if (
+    result.stage === "passed" &&
+    (process.env.LOMI_MCP_CHAT_READ_ONLY ||
+      process.env.LOMI_MCP_CHAT_OPEN_ONLY ||
+      process.env.LOMI_MCP_CHAT_DRAFT_ONLY ||
+      process.env.LOMI_MCP_CHAT_SEND_ONLY)
+  ) {
+    const proof = JSON.parse(
+      await readFile(join(directory, "chat-read.json"), "utf8"),
+    );
+    if (
+      deniedRequests !== 0 ||
+      result.data?.profile !==
+        (process.env.LOMI_MCP_CHAT_SEND_ONLY
+          ? "chat-send-only"
+          : process.env.LOMI_MCP_CHAT_DRAFT_ONLY
+            ? "chat-draft-only"
+            : process.env.LOMI_MCP_CHAT_OPEN_ONLY
+              ? "chat-open-only"
+              : "chat-read-only") ||
+      result.data?.catalogCount !== 68 ||
+      proof.checks?.length !==
+        (process.env.LOMI_MCP_CHAT_SEND_ONLY
+          ? 54
+          : process.env.LOMI_MCP_CHAT_DRAFT_ONLY
+            ? 23
+            : process.env.LOMI_MCP_CHAT_OPEN_ONLY
+              ? 17
+              : 11) ||
+      !proof.readOnly ||
+      !proof.revoked
+    )
+      throw Error("Chat history fixture returned incomplete evidence");
+  } else if (
     result.stage === "passed" &&
     (process.env.LOMI_MCP_SETTINGS_TERMINAL_ONLY ||
       process.env.LOMI_MCP_SETTINGS_KEYBINDS_ONLY ||

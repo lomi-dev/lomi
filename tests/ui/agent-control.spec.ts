@@ -389,6 +389,7 @@ test("Android metadata approval requires a selected device and grants only read 
       browserOrigins: [],
       androidDevices: ["device-one"],
       androidPackages: [],
+      chatConversations: [],
     });
   await page
     .getByLabel("Allow starting and stopping this Android device")

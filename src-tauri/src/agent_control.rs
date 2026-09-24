@@ -400,6 +400,17 @@ pub async fn agent_control_enable(
                         },
                     ))
                     .map_err(|_| unavailable())?;
+                let close_chat_app = app.clone();
+                broker
+                    .set_chat_close_dispatch(Arc::new(move |project, conversations, permit| {
+                        crate::chat::agent_close::close(
+                            &close_chat_app,
+                            project,
+                            conversations,
+                            permit,
+                        )
+                    }))
+                    .map_err(|_| unavailable())?;
                 let terminals = app.state::<crate::terminal::Terminals>().inner().clone();
                 broker
                     .set_terminal_attach_dispatch(Arc::new(
@@ -500,6 +511,48 @@ pub async fn agent_control_enable(
                             .map_err(std::io::Error::other)
                     }))
                     .map_err(|_| unavailable())?;
+                let chat_list_app = app.clone();
+                let chat_export_app = app.clone();
+                broker
+                    .set_chat_export_dispatch(Arc::new(move |project, input, check| {
+                        crate::chat::agent_export::export(&chat_export_app, project, input, check)
+                    }))
+                    .map_err(|_| unavailable())?;
+                broker
+                    .set_chat_list_dispatch(Arc::new(move |project, ids, check| {
+                        crate::chat::agent::list(&chat_list_app, project, ids, check)
+                    }))
+                    .map_err(|_| unavailable())?;
+                let chat_send_app = app.clone();
+                broker
+                    .set_chat_send_prepare_dispatch(Arc::new(move |project, command, check| {
+                        crate::chat::agent_send::prepare(&chat_send_app, project, command, check)
+                    }))
+                    .map_err(|_| unavailable())?;
+                let chat_draft_app = app.clone();
+                let chat_stop_app = app.clone();
+                broker
+                    .set_chat_stop_dispatch(Arc::new(move |project, input, check| {
+                        crate::chat::agent_stop::stop(&chat_stop_app, project, input, check)
+                    }))
+                    .map_err(|_| unavailable())?;
+                broker
+                    .set_chat_draft_dispatch(Arc::new(move |project, input, check| {
+                        crate::chat::agent::draft(&chat_draft_app, project, input, check)
+                    }))
+                    .map_err(|_| "Could not initialize Chat AI draft control.")?;
+                let chat_open_app = app.clone();
+                broker
+                    .set_chat_open_dispatch(Arc::new(move |project, command, check| {
+                        crate::chat::agent::open(&chat_open_app, project, command, check)
+                    }))
+                    .map_err(|_| unavailable())?;
+                let chat_read_app = app.clone();
+                broker
+                    .set_chat_read_dispatch(Arc::new(move |project, input, check| {
+                        crate::chat::agent::read(&chat_read_app, project, input, check)
+                    }))
+                    .map_err(|_| unavailable())?;
                 let editor_app = app.clone();
                 broker
                     .set_editor_read_dispatch(Arc::new(move |request| {
@@ -556,6 +609,7 @@ pub async fn agent_control_approve(
     browser_origins: Option<Vec<String>>,
     android_devices: Option<Vec<String>>,
     android_packages: Option<Vec<String>>,
+    chat_conversations: Option<Vec<String>>,
 ) -> Result<(), String> {
     settings(&window)?;
     #[cfg(unix)]
@@ -577,13 +631,42 @@ pub async fn agent_control_approve(
                     ));
                 }
             }
-            broker.approve_android_apps(
+            let conversations = chat_conversations.unwrap_or_default();
+            if conversations.len() > 64
+                || conversations
+                    .iter()
+                    .any(|id| !lomi_control_protocol::chat::valid_chat_id(id))
+            {
+                return Err(std::io::Error::other("Select at most 64 conversations."));
+            }
+            if !conversations.is_empty() {
+                let overview = broker.overview()?;
+                let projects: std::collections::HashSet<_> = overview
+                    .workspaces
+                    .iter()
+                    .filter(|w| workspace_ids.contains(&w.id))
+                    .map(|w| &w.project_id)
+                    .collect();
+                let mut found = std::collections::HashSet::new();
+                for project in projects {
+                    let items = crate::chat::agent::list(&app, project, &conversations, &|| Ok(()))
+                        .map_err(|_| std::io::Error::other("Chat history is unavailable."))?;
+                    found.extend(items.into_iter().map(|c| c.conversation_id));
+                }
+                if conversations.iter().any(|id| !found.contains(id)) {
+                    return Err(std::io::Error::other(
+                        "A selected conversation is no longer available in these projects.",
+                    ));
+                }
+            }
+            broker.approve_chat_access(
                 &request_id,
                 &workspace_ids,
                 &scopes,
                 &browser_origins.unwrap_or_default(),
                 &devices,
                 &android_packages.unwrap_or_default(),
+                &conversations,
             )
         })
         .await
@@ -600,7 +683,44 @@ pub async fn agent_control_approve(
             browser_origins,
             android_devices,
             android_packages,
+            chat_conversations,
         );
+        Err(unavailable())
+    }
+}
+#[tauri::command]
+pub async fn agent_control_chat_catalog(
+    window: Window,
+    project_id: String,
+    after_id: Option<String>,
+) -> Result<serde_json::Value, String> {
+    settings(&window)?;
+    #[cfg(unix)]
+    {
+        if !lomi_control_protocol::control::valid_id(&project_id)
+            || after_id
+                .as_ref()
+                .is_some_and(|id| !lomi_control_protocol::chat::valid_chat_id(id))
+        {
+            return Err(unavailable());
+        }
+        let app = window.app_handle().clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            crate::chat::agent::catalog(&app, &project_id, after_id.as_deref()).map_err(|code| {
+                if code == lomi_control_protocol::ErrorCode::TargetBusy {
+                    "Chat history is busy. Try loading the conversations again."
+                } else {
+                    "Chat history is unavailable. Open Chat AI or resolve its storage error first."
+                }
+                .to_string()
+            })
+        })
+        .await
+        .map_err(|_| unavailable())?
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (project_id, after_id);
         Err(unavailable())
     }
 }
@@ -1020,6 +1140,168 @@ pub async fn agent_control_editor_save_file(
     #[cfg(not(unix))]
     {
         let _ = (state, operation_id, nonce, body);
+        Err(ErrorCode::HostUnqualified)
+    }
+}
+
+#[tauri::command]
+pub async fn agent_control_chat_send_prepare(
+    window: Window,
+    state: State<'_, Control>,
+    operation_id: String,
+    nonce: String,
+) -> Result<lomi_control_protocol::chat::ChatSendPlan, lomi_control_protocol::ErrorCode> {
+    use lomi_control_protocol::ErrorCode;
+    crate::files::main_window(&window).map_err(|_| ErrorCode::ScopeDenied)?;
+    #[cfg(unix)]
+    {
+        let broker = state.required().map_err(|_| ErrorCode::ControlRevoked)?;
+        tauri::async_runtime::spawn_blocking(move || {
+            broker.prepare_chat_send(&operation_id, &nonce)
+        })
+        .await
+        .map_err(|_| ErrorCode::OutcomeUnknown)?
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (state, operation_id, nonce);
+        Err(ErrorCode::HostUnqualified)
+    }
+}
+
+#[tauri::command]
+pub fn agent_control_chat_send_pending(
+    window: Window,
+    state: State<'_, Control>,
+    operation_id: String,
+    nonce: String,
+    plan_hash: String,
+) -> Result<bool, lomi_control_protocol::ErrorCode> {
+    use lomi_control_protocol::ErrorCode;
+    crate::files::main_window(&window).map_err(|_| ErrorCode::ScopeDenied)?;
+    #[cfg(unix)]
+    {
+        Ok(state
+            .required()
+            .map_err(|_| ErrorCode::ControlRevoked)?
+            .chat_send_pending(&operation_id, &nonce, &plan_hash))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (state, operation_id, nonce, plan_hash);
+        Err(ErrorCode::HostUnqualified)
+    }
+}
+
+#[tauri::command]
+pub async fn agent_control_chat_send_decide(
+    window: Window,
+    state: State<'_, Control>,
+    operation_id: String,
+    nonce: String,
+    plan_hash: String,
+    approved: bool,
+) -> Result<(), lomi_control_protocol::ErrorCode> {
+    use lomi_control_protocol::ErrorCode;
+    crate::files::main_window(&window).map_err(|_| ErrorCode::ScopeDenied)?;
+    #[cfg(unix)]
+    {
+        let broker = state.required().map_err(|_| ErrorCode::ControlRevoked)?;
+        tauri::async_runtime::spawn_blocking(move || {
+            broker.decide_chat_send(&operation_id, &nonce, &plan_hash, approved)
+        })
+        .await
+        .map_err(|_| ErrorCode::OutcomeUnknown)?
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (state, operation_id, nonce, plan_hash, approved);
+        Err(ErrorCode::HostUnqualified)
+    }
+}
+
+#[tauri::command]
+pub async fn agent_control_chat_send(
+    window: Window,
+    state: State<'_, Control>,
+    operation_id: String,
+    nonce: String,
+    plan_hash: String,
+    channel: tauri::ipc::Channel<serde_json::Value>,
+) -> Result<serde_json::Value, lomi_control_protocol::ErrorCode> {
+    use lomi_control_protocol::ErrorCode;
+    crate::files::main_window(&window).map_err(|_| ErrorCode::ScopeDenied)?;
+    #[cfg(unix)]
+    {
+        let broker = state.required().map_err(|_| ErrorCode::ControlRevoked)?;
+        let app = window.app_handle().clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let reply = crate::chat::agent_send::commit(
+                &app,
+                &broker,
+                &operation_id,
+                &nonce,
+                &plan_hash,
+                channel,
+            )?;
+            serde_json::to_value(reply).map_err(|_| ErrorCode::OutcomeUnknown)
+        })
+        .await
+        .map_err(|_| ErrorCode::OutcomeUnknown)?
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (state, operation_id, nonce, plan_hash, channel);
+        Err(ErrorCode::HostUnqualified)
+    }
+}
+
+#[tauri::command]
+pub async fn agent_control_chat_draft(
+    window: Window,
+    state: State<'_, Control>,
+    operation_id: String,
+    nonce: String,
+) -> Result<lomi_control_protocol::chat::ChatDraftUpdated, lomi_control_protocol::ErrorCode> {
+    use lomi_control_protocol::ErrorCode;
+    crate::files::main_window(&window).map_err(|_| ErrorCode::ScopeDenied)?;
+    #[cfg(unix)]
+    {
+        let broker = state.required().map_err(|_| ErrorCode::ControlRevoked)?;
+        tauri::async_runtime::spawn_blocking(move || {
+            broker.commit_chat_draft(&operation_id, &nonce)
+        })
+        .await
+        .map_err(|_| ErrorCode::OutcomeUnknown)?
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (state, operation_id, nonce);
+        Err(ErrorCode::HostUnqualified)
+    }
+}
+
+#[tauri::command]
+pub async fn agent_control_chat_open(
+    window: Window,
+    state: State<'_, Control>,
+    operation_id: String,
+    nonce: String,
+) -> Result<lomi_control_protocol::chat::ChatSummary, lomi_control_protocol::ErrorCode> {
+    use lomi_control_protocol::ErrorCode;
+    crate::files::main_window(&window).map_err(|_| ErrorCode::ScopeDenied)?;
+    #[cfg(unix)]
+    {
+        let broker = state.required().map_err(|_| ErrorCode::ControlRevoked)?;
+        tauri::async_runtime::spawn_blocking(move || {
+            broker.prepare_chat_open(&operation_id, &nonce)
+        })
+        .await
+        .map_err(|_| ErrorCode::OutcomeUnknown)?
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (state, operation_id, nonce);
         Err(ErrorCode::HostUnqualified)
     }
 }

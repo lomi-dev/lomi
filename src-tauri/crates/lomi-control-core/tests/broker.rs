@@ -3,6 +3,1302 @@ use lomi_control_core::{broker::Broker, client::Client};
 use lomi_control_protocol::{control::*, EmptyInput, ErrorCode};
 use std::{sync::Arc, time::Duration};
 
+fn chat_summary(id: &str) -> ChatSummary {
+    ChatSummary {
+        conversation_id: id.into(),
+        title: format!("Chat {id}"),
+        conversation_revision: "1".into(),
+        latest_message_id: Some("message".into()),
+        updated_at_millis: "1234".into(),
+    }
+}
+
+#[tokio::test]
+async fn chat_close_preserves_other_views_and_releases_its_barrier_only_after_layout_ack() {
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Mutex,
+    };
+    let root = tempfile::tempdir().unwrap();
+    let broker = Broker::start(&root.path().join("control")).unwrap();
+    let mut p = projection(&broker, root.path());
+    p.panels = ["a", "b"]
+        .into_iter()
+        .map(|workspace| Panel {
+            id: format!("chat-{workspace}"),
+            tab_id: format!("chat-{workspace}"),
+            workspace_id: workspace.into(),
+            kind: "chat".into(),
+            title: "Chat".into(),
+            terminal_session_id: None,
+            browser_generation: None,
+            android_device_id: None,
+            chat_conversation_id: Some("selected".into()),
+        })
+        .collect();
+    for w in &mut p.workspaces {
+        w.active_panel_id = p
+            .panels
+            .iter()
+            .find(|panel| panel.workspace_id == w.id)
+            .map(|panel| panel.id.clone());
+    }
+    p.focused_panel_id = Some("chat-a".into());
+    broker.publish(p.clone()).unwrap();
+    let (send, mut commands) = tokio::sync::mpsc::unbounded_channel();
+    broker
+        .set_ui_dispatch(Arc::new(move |command| {
+            send.send(command).map_err(std::io::Error::other)
+        }))
+        .unwrap();
+    let commits = Arc::new(AtomicUsize::new(0));
+    let retained = Arc::new(Mutex::new(None));
+    let (count, lease) = (commits.clone(), retained.clone());
+    broker
+        .set_chat_close_dispatch(Arc::new(move |_, ids, permit| {
+            assert_eq!(ids, &["selected"]);
+            if let Some(permit) = permit {
+                permit.check()?;
+                count.fetch_add(1, Ordering::SeqCst);
+                *lease.lock().unwrap() = Some(permit);
+            }
+            Ok(())
+        }))
+        .unwrap();
+    let base_scopes = ["workspace.read", "panel.close", "panel.create", "chat.read"];
+    let viewer = approved_chat(&broker, &["a", "b"], &base_scopes, &[], &[], &["selected"]).await;
+    let mut scopes = base_scopes.to_vec();
+    scopes.push("chat.stop");
+    let stopper = approved_chat(&broker, &["a", "b"], &scopes, &[], &[], &["selected"]).await;
+    for (index, workspace) in ["a", "b"].into_iter().enumerate() {
+        let client = if index == 0 { &viewer } else { &stopper };
+        let Reply::Ok {
+            data: Data::Connected { retry_epoch, .. },
+            ..
+        } = client
+            .call(Request::Connect(ConnectInput {
+                workspace_id: workspace.into(),
+            }))
+            .await
+            .unwrap()
+        else {
+            panic!()
+        };
+        let input = PanelMutationInput {
+            workspace_id: workspace.into(),
+            panel_id: format!("chat-{workspace}"),
+            terminal_session_id: None,
+            browser_generation: None,
+            expected_revision: p.revision.clone(),
+            retry_epoch,
+            request_key: format!("close-{workspace}"),
+        };
+        if index == 0 {
+            let mut uncertain = input.clone();
+            uncertain.request_key = "close-after-uncertain-draft-save".into();
+            client
+                .call(Request::ClosePanel(uncertain.clone()))
+                .await
+                .unwrap();
+            let command = commands.recv().await.unwrap();
+            broker
+                .claim_ui(&p.ui_epoch, &command.operation_id, &command.nonce)
+                .unwrap();
+            broker
+                .acknowledge_ui(UiAck {
+                    ui_epoch: p.ui_epoch.clone(),
+                    operation_id: command.operation_id,
+                    nonce: command.nonce,
+                    result: OperationResult::Failure {
+                        code: ErrorCode::OutcomeUnknown,
+                    },
+                })
+                .unwrap();
+            assert!(
+                matches!(client.call(Request::ClosePanel(uncertain)).await.unwrap(),
+                Reply::Ok { data: Data::Operation { state, effect_state, .. }, .. }
+                    if state == "outcome_unknown" && effect_state == "unknown")
+            );
+            assert!(commands.try_recv().is_err());
+            assert_eq!(commits.load(Ordering::SeqCst), 0);
+        }
+        if index == 1 {
+            let Reply::Ok {
+                data: Data::Connected { retry_epoch, .. },
+                ..
+            } = viewer
+                .call(Request::Connect(ConnectInput {
+                    workspace_id: workspace.into(),
+                }))
+                .await
+                .unwrap()
+            else {
+                panic!()
+            };
+            let mut denied_input = input.clone();
+            denied_input.retry_epoch = retry_epoch;
+            let denied = viewer
+                .call(Request::ClosePanel(denied_input))
+                .await
+                .unwrap();
+            assert!(matches!(
+                denied,
+                Reply::Error {
+                    code: ErrorCode::ScopeDenied,
+                    ..
+                }
+            ));
+        }
+        assert!(matches!(
+            client.call(Request::ClosePanel(input)).await.unwrap(),
+            Reply::Ok { .. }
+        ));
+        let command = commands.recv().await.unwrap();
+        broker
+            .claim_ui(&p.ui_epoch, &command.operation_id, &command.nonce)
+            .unwrap();
+        broker
+            .commit_panel_close(&command.operation_id, &command.nonce, &p.ui_epoch)
+            .unwrap();
+        assert_eq!(commits.load(Ordering::SeqCst), index);
+        if index == 1 {
+            retained.lock().unwrap().as_ref().unwrap().check().unwrap();
+        }
+        p.panels.retain(|panel| panel.workspace_id != workspace);
+        p.workspaces[index].active_panel_id = None;
+        p.focused_panel_id = None;
+        p.revision = (index + 2).to_string();
+        broker.publish(p.clone()).unwrap();
+        broker
+            .acknowledge_ui(UiAck {
+                ui_epoch: p.ui_epoch.clone(),
+                operation_id: command.operation_id,
+                nonce: command.nonce,
+                result: OperationResult::Panel {
+                    workspace_id: workspace.into(),
+                    panel_id: format!("chat-{workspace}"),
+                    focused: false,
+                    closed: true,
+                },
+            })
+            .unwrap();
+    }
+    assert_eq!(
+        retained.lock().unwrap().as_ref().unwrap().check(),
+        Err(ErrorCode::ControlRevoked)
+    );
+    drop(viewer);
+    drop(stopper);
+    broker.shutdown().await;
+}
+
+#[tokio::test]
+async fn chat_layout_checks_revealed_siblings_and_preserves_private_bindings() {
+    let root = tempfile::tempdir().unwrap();
+    let broker = Broker::start(&root.path().join("control")).unwrap();
+    let mut p = projection(&broker, root.path());
+    p.panels = [
+        ("selected-pane", "mixed", "selected"),
+        ("private-pane", "mixed", "private"),
+    ]
+    .into_iter()
+    .map(|(id, tab, conversation)| Panel {
+        id: id.into(),
+        tab_id: tab.into(),
+        workspace_id: "a".into(),
+        kind: "chat".into(),
+        title: "Chat AI".into(),
+        terminal_session_id: None,
+        browser_generation: None,
+        android_device_id: None,
+        chat_conversation_id: Some(conversation.into()),
+    })
+    .collect();
+    p.workspaces[0].active_panel_id = Some("selected-pane".into());
+    p.focused_panel_id = Some("selected-pane".into());
+    broker.publish(p.clone()).unwrap();
+    let (send, mut commands) = tokio::sync::mpsc::unbounded_channel();
+    broker
+        .set_ui_dispatch(Arc::new(move |command| {
+            send.send(command).map_err(std::io::Error::other)
+        }))
+        .unwrap();
+    let scopes = [
+        "workspace.read",
+        "workspace.write",
+        "panel.move",
+        "panel.focus",
+        "panel.create",
+        "chat.read",
+        "chat.open",
+    ];
+    let client = approved_chat(&broker, &["a", "b"], &scopes, &[], &[], &["selected"]).await;
+    let Reply::Ok {
+        data: Data::Connected { retry_epoch, .. },
+        ..
+    } = client
+        .call(Request::Connect(ConnectInput {
+            workspace_id: "a".into(),
+        }))
+        .await
+        .unwrap()
+    else {
+        panic!()
+    };
+    let mut focus = PanelMutationInput {
+        workspace_id: "a".into(),
+        panel_id: "selected-pane".into(),
+        terminal_session_id: None,
+        browser_generation: None,
+        expected_revision: "1".into(),
+        retry_epoch: retry_epoch.clone(),
+        request_key: "focus-private-sibling".into(),
+    };
+    let mut open = ChatOpenInput {
+        workspace_id: "a".into(),
+        target: ChatOpenTarget::Existing {
+            conversation_id: "selected".into(),
+        },
+        expected_revision: "1".into(),
+        retry_epoch: retry_epoch.clone(),
+        request_key: "open-private-sibling".into(),
+    };
+    for request in [
+        Request::FocusPanel(focus.clone()),
+        Request::ChatOpen(open.clone()),
+    ] {
+        assert!(matches!(
+            client.call(request).await.unwrap(),
+            Reply::Error {
+                code: ErrorCode::ScopeDenied,
+                ..
+            }
+        ));
+    }
+    assert!(
+        commands.try_recv().is_err(),
+        "No reveal of an unshared sibling"
+    );
+    p.panels[1].tab_id = "private-tab".into();
+    p.revision = "2".into();
+    broker.publish(p.clone()).unwrap();
+    focus.expected_revision = "2".into();
+    focus.request_key = "focus-selected".into();
+    assert!(matches!(
+        client.call(Request::FocusPanel(focus)).await.unwrap(),
+        Reply::Ok { .. }
+    ));
+    let command = commands.recv().await.unwrap();
+    broker
+        .claim_ui(&p.ui_epoch, &command.operation_id, &command.nonce)
+        .unwrap();
+    broker
+        .acknowledge_ui(UiAck {
+            ui_epoch: p.ui_epoch.clone(),
+            operation_id: command.operation_id,
+            nonce: command.nonce,
+            result: OperationResult::Panel {
+                workspace_id: "a".into(),
+                panel_id: "selected-pane".into(),
+                focused: true,
+                closed: false,
+            },
+        })
+        .unwrap();
+    broker
+        .set_chat_open_dispatch(Arc::new(|_, command, check| {
+            check()?;
+            Ok(chat_summary(&command.conversation_id))
+        }))
+        .unwrap();
+    open.expected_revision = "2".into();
+    open.request_key = "open-selected".into();
+    client.call(Request::ChatOpen(open)).await.unwrap();
+    let command = commands.recv().await.unwrap();
+    let UiAction::OpenChat(chat) = &command.action else {
+        panic!()
+    };
+    assert_eq!(
+        chat.panel_id, "selected-pane",
+        "Mixed reveal keeps the existing panel"
+    );
+    broker
+        .claim_ui(&p.ui_epoch, &command.operation_id, &command.nonce)
+        .unwrap();
+    broker
+        .prepare_chat_open(&command.operation_id, &command.nonce)
+        .unwrap();
+    broker
+        .acknowledge_ui(UiAck {
+            ui_epoch: p.ui_epoch.clone(),
+            operation_id: command.operation_id,
+            nonce: command.nonce,
+            result: OperationResult::ChatOpened(ChatOpened {
+                workspace_id: "a".into(),
+                panel_id: "selected-pane".into(),
+                conversation_id: "selected".into(),
+                created: false,
+            }),
+        })
+        .unwrap();
+    let movement = PanelMoveInput {
+        workspace_id: "a".into(),
+        movement: PanelMove::TransferTab {
+            tab_id: "mixed".into(),
+            target_workspace_id: "b".into(),
+            before_tab_id: None,
+        },
+        expected_revision: "2".into(),
+        retry_epoch,
+        request_key: "transfer-chat".into(),
+    };
+    assert!(matches!(
+        client
+            .call(Request::MovePanel(movement.clone()))
+            .await
+            .unwrap(),
+        Reply::Ok { .. }
+    ));
+    let command = commands.recv().await.unwrap();
+    broker
+        .claim_ui(&p.ui_epoch, &command.operation_id, &command.nonce)
+        .unwrap();
+    let UiAction::MovePanel(change) = &command.action else {
+        panic!()
+    };
+    assert_eq!(change.chat_bindings.len(), 2);
+    let json = serde_json::to_string(change).unwrap();
+    assert!(!json.contains("chatBindings") && !json.contains("chatConversationId"));
+    let mut destination = change.destination.clone().unwrap();
+    destination.tab_order.push("mixed".into());
+    destination.panels = change
+        .panels
+        .iter()
+        .filter(|v| v.tab_id == "mixed")
+        .cloned()
+        .collect();
+    let result = OperationResult::PanelMoved(Box::new(PanelMoved {
+        workspace_id: "a".into(),
+        movement: movement.movement,
+        panels: change
+            .panels
+            .iter()
+            .filter(|v| v.tab_id != "mixed")
+            .cloned()
+            .collect(),
+        destination: Some(destination),
+    }));
+    p.panels[0].workspace_id = "b".into();
+    p.panels[0].chat_conversation_id = Some("private".into());
+    p.workspaces[0].active_panel_id = None;
+    p.focused_panel_id = None;
+    p.revision = "3".into();
+    broker.publish(p.clone()).unwrap();
+    let ack = UiAck {
+        ui_epoch: p.ui_epoch.clone(),
+        operation_id: command.operation_id,
+        nonce: command.nonce,
+        result,
+    };
+    assert!(
+        broker.acknowledge_ui(ack.clone()).is_err(),
+        "Layout success cannot substitute another conversation"
+    );
+    p.panels[0].chat_conversation_id = Some("selected".into());
+    p.revision = "4".into();
+    broker.publish(p).unwrap();
+    assert!(
+        broker.acknowledge_ui(ack).is_err(),
+        "A later correction cannot retroactively authorize the mismatched transfer"
+    );
+    drop(client);
+    broker.shutdown().await;
+}
+
+#[tokio::test]
+async fn chat_export_scopes_and_pages_never_disclose_unrequested_or_revoked_data() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let root = tempfile::tempdir().unwrap();
+    let broker = Broker::start(&root.path().join("control")).unwrap();
+    broker.publish(projection(&broker, root.path())).unwrap();
+    let reader = approved_chat(
+        &broker,
+        &["a"],
+        &["workspace.read", "chat.read"],
+        &[],
+        &[],
+        &["selected"],
+    )
+    .await;
+    let exporter = approved_chat(
+        &broker,
+        &["a"],
+        &["workspace.read", "chat.read", "chat.export"],
+        &[],
+        &[],
+        &["selected"],
+    )
+    .await;
+    let count = Arc::new(AtomicUsize::new(0));
+    let calls = count.clone();
+    let mode = Arc::new(AtomicUsize::new(0));
+    let fixture = mode.clone();
+    let weak = Arc::downgrade(&broker);
+    broker
+        .set_chat_export_dispatch(Arc::new(move |project, input, check| {
+            check()?;
+            calls.fetch_add(1, Ordering::SeqCst);
+            assert_eq!(project, "p");
+            let mut value = ChatExport {
+                workspace_id: input.workspace_id.clone(),
+                conversation_id: input.conversation_id.clone(),
+                format: input.format.clone(),
+                revision: "a".repeat(64),
+                total_bytes: 6,
+                message_count: 1,
+                content: "A🙂B".into(),
+                start_utf16: input.start_utf16,
+                total_utf16: 4,
+                next_utf16: None,
+                attachments_omitted: true,
+                non_text_parts_omitted: true,
+            };
+            match fixture.load(Ordering::SeqCst) {
+                1 => value.conversation_id = "private".into(),
+                2 => value.next_utf16 = Some(2),
+                3 => value.message_count = 513,
+                4 => weak.upgrade().unwrap().revoke(),
+                _ => (),
+            }
+            Ok(value)
+        }))
+        .unwrap();
+    let input = ChatExportInput {
+        workspace_id: "a".into(),
+        conversation_id: "selected".into(),
+        format: ChatExportFormat::Json,
+        start_utf16: 0,
+        max_chars: 8192,
+        expected_revision: None,
+    };
+    assert!(matches!(
+        reader
+            .call(Request::ChatExport(input.clone()))
+            .await
+            .unwrap(),
+        Reply::Error {
+            code: ErrorCode::ScopeDenied,
+            ..
+        }
+    ));
+    let mut private = input.clone();
+    private.conversation_id = "private".into();
+    assert!(matches!(
+        exporter.call(Request::ChatExport(private)).await.unwrap(),
+        Reply::Error {
+            code: ErrorCode::ScopeDenied,
+            ..
+        }
+    ));
+    assert_eq!(count.load(Ordering::SeqCst), 0);
+    assert!(
+        matches!(exporter.call(Request::ChatExport(input.clone())).await.unwrap(), Reply::Ok { data: Data::ChatExport(value), .. } if value.content == "A🙂B")
+    );
+    let mut stale = input.clone();
+    stale.expected_revision = Some("b".repeat(64));
+    assert!(matches!(
+        exporter.call(Request::ChatExport(stale)).await.unwrap(),
+        Reply::Error {
+            code: ErrorCode::RevisionConflict,
+            ..
+        }
+    ));
+    for invalid in 1..=3 {
+        mode.store(invalid, Ordering::SeqCst);
+        assert!(matches!(
+            exporter
+                .call(Request::ChatExport(input.clone()))
+                .await
+                .unwrap(),
+            Reply::Error {
+                code: ErrorCode::OutcomeUnknown,
+                ..
+            }
+        ));
+    }
+    mode.store(4, Ordering::SeqCst);
+    assert!(!matches!(
+        exporter.call(Request::ChatExport(input)).await,
+        Ok(Reply::Ok { .. })
+    ));
+    broker.shutdown().await;
+}
+
+#[tokio::test]
+async fn chat_stop_requires_its_own_scope_and_replays_only_the_exact_native_request() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let root = tempfile::tempdir().unwrap();
+    let broker = Broker::start(&root.path().join("control")).unwrap();
+    broker.publish(projection(&broker, root.path())).unwrap();
+    let client = approved_chat(
+        &broker,
+        &["a"],
+        &["workspace.read", "chat.read", "chat.stop"],
+        &[],
+        &[],
+        &["selected"],
+    )
+    .await;
+    let reader = approved_chat(
+        &broker,
+        &["a"],
+        &["workspace.read", "chat.read"],
+        &[],
+        &[],
+        &["selected"],
+    )
+    .await;
+    let Reply::Ok {
+        data: Data::Connected { retry_epoch, .. },
+        ..
+    } = client
+        .call(Request::Connect(ConnectInput {
+            workspace_id: "a".into(),
+        }))
+        .await
+        .unwrap()
+    else {
+        panic!()
+    };
+    let calls = Arc::new(AtomicUsize::new(0));
+    let hits = calls.clone();
+    broker
+        .set_chat_stop_dispatch(Arc::new(move |project, input, check| {
+            check()?;
+            assert_eq!(project, "p");
+            hits.fetch_add(1, Ordering::SeqCst);
+            if input.request_id == "missing" {
+                return Err(ErrorCode::TargetNotFound);
+            }
+            Ok(ChatStopped {
+                workspace_id: input.workspace_id.clone(),
+                conversation_id: input.conversation_id.clone(),
+                request: ChatRequest {
+                    request_id: if input.request_id == "forged" {
+                        "foreign".into()
+                    } else {
+                        input.request_id.clone()
+                    },
+                    assistant_id: "assistant".into(),
+                    status: "cancelled".into(),
+                },
+                already_finished: false,
+            })
+        }))
+        .unwrap();
+    let input = ChatStopInput {
+        workspace_id: "a".into(),
+        conversation_id: "selected".into(),
+        request_id: "first".into(),
+        retry_epoch,
+        request_key: "stop-first".into(),
+    };
+    assert!(matches!(
+        reader.call(Request::ChatStop(input.clone())).await.unwrap(),
+        Reply::Error {
+            code: ErrorCode::ScopeDenied,
+            ..
+        }
+    ));
+    let mut private = input.clone();
+    private.conversation_id = "private".into();
+    assert!(matches!(
+        client.call(Request::ChatStop(private)).await.unwrap(),
+        Reply::Error {
+            code: ErrorCode::ScopeDenied,
+            ..
+        }
+    ));
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    let first = client.call(Request::ChatStop(input.clone())).await.unwrap();
+    assert!(
+        matches!(&first, Reply::Ok { data: Data::Operation { state, result: Some(OperationResult::ChatStopped(s)), .. }, .. } if state == "succeeded" && s.request.request_id == "first")
+    );
+    let mut replacement = input.clone();
+    replacement.request_id = "second".into();
+    assert!(matches!(
+        client
+            .call(Request::ChatStop(replacement.clone()))
+            .await
+            .unwrap(),
+        Reply::Error {
+            code: ErrorCode::IdempotencyConflict,
+            ..
+        }
+    ));
+    replacement.request_key = "stop-second".into();
+    assert!(matches!(
+        client.call(Request::ChatStop(replacement)).await.unwrap(),
+        Reply::Ok { .. }
+    ));
+    assert_eq!(
+        serde_json::to_value(first).unwrap(),
+        serde_json::to_value(client.call(Request::ChatStop(input.clone())).await.unwrap()).unwrap()
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+    for (id, expected_state, expected_effect) in [
+        ("missing", "failed", "none"),
+        ("forged", "outcome_unknown", "unknown"),
+    ] {
+        let mut next = input.clone();
+        next.request_id = id.into();
+        next.request_key = id.into();
+        let result = client.call(Request::ChatStop(next.clone())).await.unwrap();
+        assert!(
+            matches!(&result, Reply::Ok { data: Data::Operation { state, effect_state, .. }, .. } if state == expected_state && effect_state == expected_effect)
+        );
+        assert_eq!(
+            serde_json::to_value(result).unwrap(),
+            serde_json::to_value(client.call(Request::ChatStop(next)).await.unwrap()).unwrap()
+        );
+    }
+    assert_eq!(calls.load(Ordering::SeqCst), 4);
+    broker.shutdown().await;
+}
+
+#[tokio::test]
+async fn chat_send_reserves_identity_before_exact_approval_and_never_dispatches_twice() {
+    let temp = tempfile::tempdir().unwrap();
+    let broker = Broker::start(&temp.path().join("control")).unwrap();
+    let mut p = projection(&broker, temp.path());
+    p.panels.push(Panel {
+        id: "chat-panel".into(),
+        tab_id: "chat-panel".into(),
+        workspace_id: "a".into(),
+        kind: "chat".into(),
+        title: "Chat".into(),
+        terminal_session_id: None,
+        browser_generation: None,
+        android_device_id: None,
+        chat_conversation_id: Some("selected".into()),
+    });
+    broker.publish(p.clone()).unwrap();
+    let client = approved_chat(
+        &broker,
+        &["a"],
+        &["workspace.read", "chat.read", "chat.send"],
+        &[],
+        &[],
+        &["selected"],
+    )
+    .await;
+    let reader = approved_chat(
+        &broker,
+        &["a"],
+        &["workspace.read", "chat.read"],
+        &[],
+        &[],
+        &["selected"],
+    )
+    .await;
+    let Reply::Ok {
+        data: Data::Connected { retry_epoch, .. },
+        ..
+    } = client
+        .call(Request::Connect(ConnectInput {
+            workspace_id: "a".into(),
+        }))
+        .await
+        .unwrap()
+    else {
+        panic!()
+    };
+    let input = ChatSendInput {
+        workspace_id: "a".into(),
+        panel_id: "chat-panel".into(),
+        conversation_id: "selected".into(),
+        connection_id: "connection".into(),
+        model: "fixture".into(),
+        expected_draft_revision: "0".into(),
+        expected_conversation_revision: "1".into(),
+        expected_revision: "1".into(),
+        retry_epoch,
+        request_key: "send".into(),
+    };
+    assert!(matches!(
+        reader.call(Request::ChatSend(input.clone())).await.unwrap(),
+        Reply::Error {
+            code: ErrorCode::ScopeDenied,
+            ..
+        }
+    ));
+    broker
+        .set_chat_send_prepare_dispatch(Arc::new(|project, command, check| {
+            check()?;
+            assert_eq!(project, "p");
+            Ok(ChatSendPlan {
+                plan_hash: "a".repeat(64),
+                conversation_title: "Approved chat".into(),
+                connection_id: command.input.connection_id.clone(),
+                connection_name: "Fixture".into(),
+                provider: "openai".into(),
+                model: command.input.model.clone(),
+                max_output_tokens: 4096,
+                temperature: None,
+                draft_text: "Saved message".into(),
+                system: "Native-only instructions".into(),
+                message_count: 1,
+                context_bytes: 64,
+                attachments: vec![],
+            })
+        }))
+        .unwrap();
+    let (tx, mut commands) = tokio::sync::mpsc::unbounded_channel();
+    broker
+        .set_ui_dispatch(Arc::new(move |c| tx.send(c).map_err(std::io::Error::other)))
+        .unwrap();
+    let mut stale_domain = input.clone();
+    stale_domain.expected_revision = "0".into();
+    stale_domain.request_key = "stale-before-claim".into();
+    let stale_reply = client
+        .call(Request::ChatSend(stale_domain.clone()))
+        .await
+        .unwrap();
+    assert!(
+        matches!(&stale_reply, Reply::Ok { data: Data::Operation { state, effect_state, result: Some(OperationResult::ChatSent(s)), .. }, .. } if state == "failed" && effect_state == "none" && s.rejection == Some(ErrorCode::RevisionConflict))
+    );
+    assert_eq!(
+        serde_json::to_value(&stale_reply).unwrap(),
+        serde_json::to_value(client.call(Request::ChatSend(stale_domain)).await.unwrap()).unwrap()
+    );
+    assert!(commands.try_recv().is_err());
+    for mode in ["declined", "stale", "accepted"] {
+        let mut request = input.clone();
+        request.request_key = mode.into();
+        let reply = client
+            .call(Request::ChatSend(request.clone()))
+            .await
+            .unwrap();
+        let Reply::Ok {
+            data:
+                Data::Operation {
+                    result: Some(OperationResult::ChatSent(reserved)),
+                    ..
+                },
+            ..
+        } = reply
+        else {
+            panic!("No durable send identity")
+        };
+        assert!(reserved.draft_revision.is_none() && reserved.rejection.is_none());
+        assert_ne!(reserved.request_id, reserved.assistant_id);
+        assert_ne!(reserved.request_id, reserved.user_id);
+        let command = commands.recv().await.unwrap();
+        let UiAction::SendChat(send) = &command.action else {
+            panic!()
+        };
+        assert_eq!(send.request_id, reserved.request_id);
+        assert!(broker
+            .prepare_chat_send(&command.operation_id, &command.nonce)
+            .is_err());
+        broker
+            .claim_ui(&p.ui_epoch, &command.operation_id, &command.nonce)
+            .unwrap();
+        let plan = broker
+            .prepare_chat_send(&command.operation_id, &command.nonce)
+            .unwrap();
+        assert!(broker.chat_send_pending(&command.operation_id, &command.nonce, &plan.plan_hash));
+        assert!(broker
+            .authorize_chat_send(&command.operation_id, &command.nonce, &plan.plan_hash)
+            .is_err());
+        assert!(broker
+            .decide_chat_send(&command.operation_id, &command.nonce, &"b".repeat(64), true)
+            .is_err());
+        broker
+            .decide_chat_send(
+                &command.operation_id,
+                &command.nonce,
+                &plan.plan_hash,
+                mode != "declined",
+            )
+            .unwrap();
+        assert!(!broker.chat_send_pending(&command.operation_id, &command.nonce, &plan.plan_hash));
+        if mode != "declined" {
+            let authorized = broker
+                .authorize_chat_send(&command.operation_id, &command.nonce, &plan.plan_hash)
+                .unwrap();
+            assert_eq!(authorized.command.request_id, reserved.request_id);
+            assert!(broker
+                .authorize_chat_send(&command.operation_id, &command.nonce, &plan.plan_hash)
+                .is_err());
+            let result = if mode == "stale" {
+                broker
+                    .reject_chat_send(
+                        &command.operation_id,
+                        &command.nonce,
+                        ErrorCode::RevisionConflict,
+                    )
+                    .unwrap();
+                OperationResult::Failure {
+                    code: ErrorCode::RevisionConflict,
+                }
+            } else {
+                let mut accepted = *reserved;
+                accepted.draft_revision = Some("1".into());
+                broker
+                    .record_chat_send(&command.operation_id, &command.nonce, accepted.clone())
+                    .unwrap();
+                assert!(broker
+                    .record_chat_send(&command.operation_id, &command.nonce, accepted.clone())
+                    .is_err());
+                let mut forged = accepted.clone();
+                forged.assistant_id = "foreign".into();
+                assert!(broker
+                    .acknowledge_ui(UiAck {
+                        operation_id: command.operation_id.clone(),
+                        nonce: command.nonce.clone(),
+                        ui_epoch: p.ui_epoch.clone(),
+                        result: OperationResult::ChatSent(Box::new(forged))
+                    })
+                    .is_err());
+                OperationResult::ChatSent(Box::new(accepted))
+            };
+            broker
+                .acknowledge_ui(UiAck {
+                    operation_id: command.operation_id,
+                    nonce: command.nonce,
+                    ui_epoch: p.ui_epoch.clone(),
+                    result,
+                })
+                .unwrap();
+        }
+        let repeated = client.call(Request::ChatSend(request)).await.unwrap();
+        match (mode, repeated) {
+            (
+                "declined",
+                Reply::Ok {
+                    data:
+                        Data::Operation {
+                            state,
+                            effect_state,
+                            result: Some(OperationResult::ChatSent(result)),
+                            ..
+                        },
+                    ..
+                },
+            ) => {
+                assert_eq!(state, "cancelled");
+                assert_eq!(effect_state, "none");
+                assert_eq!(result.rejection, Some(ErrorCode::ScopeDenied));
+            }
+            (
+                "stale",
+                Reply::Ok {
+                    data:
+                        Data::Operation {
+                            state,
+                            effect_state,
+                            result: Some(OperationResult::ChatSent(result)),
+                            ..
+                        },
+                    ..
+                },
+            ) => {
+                assert_eq!(state, "failed");
+                assert_eq!(effect_state, "none");
+                assert_eq!(result.rejection, Some(ErrorCode::RevisionConflict));
+            }
+            (
+                "accepted",
+                Reply::Ok {
+                    data:
+                        Data::Operation {
+                            state,
+                            effect_state,
+                            result: Some(OperationResult::ChatSent(result)),
+                            ..
+                        },
+                    ..
+                },
+            ) => {
+                assert_eq!(state, "succeeded");
+                assert_eq!(effect_state, "complete");
+                assert_eq!(result.draft_revision.as_deref(), Some("1"));
+            }
+            _ => panic!("Unexpected durable send result"),
+        }
+        assert!(commands.try_recv().is_err());
+    }
+    let mut pending = input.clone();
+    pending.request_key = "revoked-before-approval".into();
+    assert!(matches!(
+        client.call(Request::ChatSend(pending)).await.unwrap(),
+        Reply::Ok { .. }
+    ));
+    let pending = commands.recv().await.unwrap();
+    broker
+        .claim_ui(&p.ui_epoch, &pending.operation_id, &pending.nonce)
+        .unwrap();
+    let pending_plan = broker
+        .prepare_chat_send(&pending.operation_id, &pending.nonce)
+        .unwrap();
+    broker.revoke();
+    assert!(!broker.chat_send_pending(
+        &pending.operation_id,
+        &pending.nonce,
+        &pending_plan.plan_hash
+    ));
+    assert!(!matches!(
+        client.call(Request::ChatSend(input)).await,
+        Ok(Reply::Ok { .. })
+    ));
+    broker.shutdown().await;
+    // Inspect before reopening the receipt store: startup recovery must not mask
+    // a failed live transition that stranded an AwaitingUser operation.
+    let database = rusqlite::Connection::open_with_flags(
+        temp.path().join("control/control.sqlite3"),
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .unwrap();
+    let lost: (String, String) = database
+        .query_row(
+            "SELECT state,effect FROM receipts WHERE id=?1",
+            [&pending.operation_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(lost, ("cancelled".into(), "none".into()));
+}
+
+#[tokio::test]
+async fn chat_draft_binds_grant_panel_and_revisions_and_records_each_native_write_once() {
+    use sha2::{Digest, Sha256};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let temp = tempfile::tempdir().unwrap();
+    let broker = Broker::start(&temp.path().join("control")).unwrap();
+    let mut p = projection(&broker, temp.path());
+    p.panels.push(Panel {
+        id: "chat-panel".into(),
+        tab_id: "chat-panel".into(),
+        workspace_id: "a".into(),
+        kind: "chat".into(),
+        title: "Chat".into(),
+        terminal_session_id: None,
+        browser_generation: None,
+        android_device_id: None,
+        chat_conversation_id: Some("selected".into()),
+    });
+    broker.publish(p.clone()).unwrap();
+    let client = approved_chat(
+        &broker,
+        &["a"],
+        &["workspace.read", "chat.read", "chat.draft"],
+        &[],
+        &[],
+        &["selected"],
+    )
+    .await;
+    let reader = approved_chat(
+        &broker,
+        &["a"],
+        &["workspace.read", "chat.read"],
+        &[],
+        &[],
+        &["selected"],
+    )
+    .await;
+    let Reply::Ok {
+        data: Data::Connected { retry_epoch, .. },
+        ..
+    } = client
+        .call(Request::Connect(ConnectInput {
+            workspace_id: "a".into(),
+        }))
+        .await
+        .unwrap()
+    else {
+        panic!()
+    };
+    let input = ChatDraftInput {
+        workspace_id: "a".into(),
+        panel_id: "chat-panel".into(),
+        conversation_id: "selected".into(),
+        text: "Agent 🙂".into(),
+        expected_draft_revision: "0".into(),
+        expected_conversation_revision: "1".into(),
+        expected_revision: "1".into(),
+        retry_epoch,
+        request_key: "draft".into(),
+    };
+    assert!(matches!(
+        reader
+            .call(Request::ChatDraft(input.clone()))
+            .await
+            .unwrap(),
+        Reply::Error {
+            code: ErrorCode::ScopeDenied,
+            ..
+        }
+    ));
+    for (field, code) in [
+        ("conversation", ErrorCode::ScopeDenied),
+        ("panel", ErrorCode::TargetNotFound),
+        ("workspace", ErrorCode::TargetNotFound),
+        ("size", ErrorCode::ResourceExhausted),
+    ] {
+        let mut bad = input.clone();
+        match field {
+            "conversation" => bad.conversation_id = "private".into(),
+            "panel" => bad.panel_id = "foreign".into(),
+            "workspace" => bad.workspace_id = "foreign".into(),
+            _ => bad.text = "x".repeat(32 * 1024 + 1),
+        }
+        assert!(
+            matches!(client.call(Request::ChatDraft(bad)).await.unwrap(), Reply::Error { code: actual, .. } if actual == code)
+        );
+    }
+    let calls = Arc::new(AtomicUsize::new(0));
+    let writes = calls.clone();
+    broker
+        .set_chat_draft_dispatch(Arc::new(move |project, input, check| {
+            check()?;
+            assert_eq!(project, "p");
+            if input.expected_draft_revision == "99" {
+                return Err(ErrorCode::RevisionConflict);
+            }
+            writes.fetch_add(1, Ordering::SeqCst);
+            Ok(ChatDraftUpdated {
+                workspace_id: input.workspace_id.clone(),
+                panel_id: input.panel_id.clone(),
+                conversation_id: input.conversation_id.clone(),
+                draft_revision: "1".into(),
+                conversation_revision: "1".into(),
+                text_sha256: format!("{:x}", Sha256::digest(input.text.as_bytes())),
+                total_utf16: 8,
+            })
+        }))
+        .unwrap();
+    let (tx, mut commands) = tokio::sync::mpsc::unbounded_channel();
+    broker
+        .set_ui_dispatch(Arc::new(move |c| tx.send(c).map_err(std::io::Error::other)))
+        .unwrap();
+    client
+        .call(Request::ChatDraft(input.clone()))
+        .await
+        .unwrap();
+    let command = commands.recv().await.unwrap();
+    assert!(broker
+        .commit_chat_draft(&command.operation_id, &command.nonce)
+        .is_err());
+    broker
+        .claim_ui(&p.ui_epoch, &command.operation_id, &command.nonce)
+        .unwrap();
+    let result = broker
+        .commit_chat_draft(&command.operation_id, &command.nonce)
+        .unwrap();
+    assert!(broker
+        .commit_chat_draft(&command.operation_id, &command.nonce)
+        .is_err());
+    let ack = UiAck {
+        operation_id: command.operation_id.clone(),
+        nonce: command.nonce,
+        ui_epoch: p.ui_epoch.clone(),
+        result: OperationResult::ChatDraftUpdated(Box::new(result.clone())),
+    };
+    let mut forged = ack.clone();
+    if let OperationResult::ChatDraftUpdated(value) = &mut forged.result {
+        value.draft_revision = "99".into();
+    }
+    assert!(broker.acknowledge_ui(forged).is_err());
+    broker.acknowledge_ui(ack).unwrap();
+    assert!(
+        matches!(client.call(Request::ChatDraft(input.clone())).await.unwrap(), Reply::Ok { data: Data::Operation { state, result: Some(OperationResult::ChatDraftUpdated(saved)), .. }, .. } if state == "succeeded" && *saved == result)
+    );
+    assert!(commands.try_recv().is_err());
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    let mut stale = input.clone();
+    stale.expected_draft_revision = "99".into();
+    stale.request_key = "stale-draft".into();
+    client
+        .call(Request::ChatDraft(stale.clone()))
+        .await
+        .unwrap();
+    let command = commands.recv().await.unwrap();
+    broker
+        .claim_ui(&p.ui_epoch, &command.operation_id, &command.nonce)
+        .unwrap();
+    assert_eq!(
+        broker
+            .commit_chat_draft(&command.operation_id, &command.nonce)
+            .unwrap_err(),
+        ErrorCode::RevisionConflict
+    );
+    broker
+        .acknowledge_ui(UiAck {
+            operation_id: command.operation_id,
+            nonce: command.nonce,
+            ui_epoch: p.ui_epoch.clone(),
+            result: OperationResult::Failure {
+                code: ErrorCode::RevisionConflict,
+            },
+        })
+        .unwrap();
+    assert!(
+        matches!(client.call(Request::ChatDraft(stale)).await.unwrap(), Reply::Ok { data: Data::Operation { state, effect_state, .. }, .. } if state == "failed" && effect_state == "none")
+    );
+    let mut revoked = input;
+    revoked.request_key = "revoked-draft".into();
+    client.call(Request::ChatDraft(revoked)).await.unwrap();
+    let command = commands.recv().await.unwrap();
+    broker
+        .claim_ui(&p.ui_epoch, &command.operation_id, &command.nonce)
+        .unwrap();
+    broker.revoke();
+    assert!(broker
+        .commit_chat_draft(&command.operation_id, &command.nonce)
+        .is_err());
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    broker.shutdown().await;
+}
+
+#[tokio::test]
+async fn chat_open_creates_once_grants_only_its_creator_and_requires_the_matching_panel() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let temp = tempfile::tempdir().unwrap();
+    let broker = Broker::start(&temp.path().join("control")).unwrap();
+    let mut p = projection(&broker, temp.path());
+    broker.publish(p.clone()).unwrap();
+    let client = approved_chat(
+        &broker,
+        &["a"],
+        &[
+            "workspace.read",
+            "chat.read",
+            "chat.open",
+            "chat.create",
+            "panel.create",
+            "panel.focus",
+        ],
+        &[],
+        &[],
+        &[],
+    )
+    .await;
+    let other = approved_scopes(&broker, &["a"], &["workspace.read", "chat.read"]).await;
+    let calls = Arc::new(AtomicUsize::new(0));
+    let native = calls.clone();
+    broker
+        .set_chat_open_dispatch(Arc::new(move |project, command, check| {
+            check()?;
+            assert_eq!(project, "p");
+            assert!(command.create);
+            native.fetch_add(1, Ordering::SeqCst);
+            Ok(chat_summary(&command.conversation_id))
+        }))
+        .unwrap();
+    broker
+        .set_chat_list_dispatch(Arc::new(|_, ids, check| {
+            check()?;
+            Ok(ids.iter().map(|id| chat_summary(id)).collect())
+        }))
+        .unwrap();
+    let (tx, mut commands) = tokio::sync::mpsc::unbounded_channel();
+    broker
+        .set_ui_dispatch(Arc::new(move |c| tx.send(c).map_err(std::io::Error::other)))
+        .unwrap();
+    let Reply::Ok {
+        data: Data::Connected { retry_epoch, .. },
+        ..
+    } = client
+        .call(Request::Connect(ConnectInput {
+            workspace_id: "a".into(),
+        }))
+        .await
+        .unwrap()
+    else {
+        panic!()
+    };
+    let input = ChatOpenInput {
+        workspace_id: "a".into(),
+        target: ChatOpenTarget::New,
+        expected_revision: "1".into(),
+        retry_epoch,
+        request_key: "new-chat".into(),
+    };
+    client.call(Request::ChatOpen(input.clone())).await.unwrap();
+    let command = commands.recv().await.unwrap();
+    assert!(broker
+        .prepare_chat_open(&command.operation_id, &command.nonce)
+        .is_err());
+    broker
+        .claim_ui(&p.ui_epoch, &command.operation_id, &command.nonce)
+        .unwrap();
+    let summary = broker
+        .prepare_chat_open(&command.operation_id, &command.nonce)
+        .unwrap();
+    assert!(broker
+        .prepare_chat_open(&command.operation_id, &command.nonce)
+        .is_err());
+    let UiAction::OpenChat(open) = &command.action else {
+        panic!()
+    };
+    let result = OperationResult::ChatOpened(ChatOpened {
+        workspace_id: "a".into(),
+        panel_id: open.panel_id.clone(),
+        conversation_id: summary.conversation_id.clone(),
+        created: true,
+    });
+    let ack = UiAck {
+        operation_id: command.operation_id.clone(),
+        nonce: command.nonce.clone(),
+        ui_epoch: p.ui_epoch.clone(),
+        result,
+    };
+    assert!(
+        broker.acknowledge_ui(ack.clone()).is_err(),
+        "No domain panel was published"
+    );
+    p.panels.push(Panel {
+        id: open.panel_id.clone(),
+        tab_id: open.panel_id.clone(),
+        workspace_id: "a".into(),
+        kind: "chat".into(),
+        title: summary.title,
+        terminal_session_id: None,
+        browser_generation: None,
+        android_device_id: None,
+        chat_conversation_id: Some("wrong-conversation".into()),
+    });
+    p.revision = "2".into();
+    broker.publish(p.clone()).unwrap();
+    assert!(
+        broker.acknowledge_ui(ack.clone()).is_err(),
+        "A different conversation satisfied the acknowledgement"
+    );
+    p.panels[0].chat_conversation_id = Some(summary.conversation_id.clone());
+    p.revision = "3".into();
+    broker.publish(p).unwrap();
+    broker.acknowledge_ui(ack).unwrap();
+    assert!(
+        matches!(client.call(Request::ChatOpen(input)).await.unwrap(),Reply::Ok {data:Data::Operation{state,..},..} if state=="succeeded")
+    );
+    assert!(commands.try_recv().is_err());
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    let list = ChatListInput {
+        workspace_id: "a".into(),
+        offset: 0,
+        limit: 20,
+        expected_revision: None,
+    };
+    assert!(
+        matches!(client.call(Request::ChatList(list.clone())).await.unwrap(),Reply::Ok{data:Data::ChatList(value),..} if value.items[0].conversation_id==summary.conversation_id)
+    );
+    assert!(
+        matches!(other.call(Request::ChatList(list)).await.unwrap(),Reply::Ok{data:Data::ChatList(value),..} if value.total==0)
+    );
+    broker.shutdown().await;
+}
+
 #[tokio::test]
 async fn native_ui_thread_can_revoke_without_entering_the_tokio_runtime() {
     let temp = tempfile::tempdir().unwrap();
@@ -23,6 +1319,261 @@ async fn native_ui_thread_can_revoke_without_entering_the_tokio_runtime() {
         client.call(Request::Workspaces(ListInput::default())).await,
         Ok(Reply::Ok { .. })
     ));
+    broker.shutdown().await;
+}
+
+#[tokio::test]
+async fn chat_list_filters_exact_grants_and_binds_bounded_pages_to_the_snapshot() {
+    use std::sync::atomic::{AtomicU8, Ordering};
+    let temp = tempfile::tempdir().unwrap();
+    let broker = Broker::start(&temp.path().join("control")).unwrap();
+    broker.publish(projection(&broker, temp.path())).unwrap();
+    let reader = approved_chat(
+        &broker,
+        &["a"],
+        &["workspace.read", "chat.read"],
+        &[],
+        &[],
+        &["first", "second"],
+    )
+    .await;
+    let empty = approved_scopes(&broker, &["a"], &["workspace.read", "chat.read"]).await;
+    let denied = approved(&broker, &["a"]).await;
+    let mode = Arc::new(AtomicU8::new(0));
+    let fixture = mode.clone();
+    broker
+        .set_chat_list_dispatch(Arc::new(move |project, ids, check| {
+            check()?;
+            assert_eq!(project, "p");
+            assert_eq!(ids, &["first", "second"]);
+            let mut values = vec![chat_summary("second"), chat_summary("first")];
+            match fixture.load(Ordering::SeqCst) {
+                1 => values[0].conversation_id = "unapproved".into(),
+                2 => values[0].conversation_id = "first".into(),
+                3 => values[0].title = "x".repeat(257),
+                4 => values[0].conversation_revision = "malformed".into(),
+                _ => {}
+            }
+            Ok(values)
+        }))
+        .unwrap();
+    let input = ChatListInput {
+        workspace_id: "a".into(),
+        offset: 0,
+        limit: 1,
+        expected_revision: None,
+    };
+    assert!(matches!(
+        denied.call(Request::ChatList(input.clone())).await.unwrap(),
+        Reply::Error {
+            code: ErrorCode::ScopeDenied,
+            ..
+        }
+    ));
+    assert!(
+        matches!(empty.call(Request::ChatList(input.clone())).await.unwrap(), Reply::Ok{data:Data::ChatList(ref list),..} if list.total==0)
+    );
+    let Reply::Ok {
+        data: Data::ChatList(first),
+        ..
+    } = reader.call(Request::ChatList(input.clone())).await.unwrap()
+    else {
+        panic!()
+    };
+    assert_eq!(first.items[0].conversation_id, "first");
+    assert_eq!(first.next_offset, Some(1));
+    let mut page = input.clone();
+    page.offset = 1;
+    assert!(matches!(
+        reader.call(Request::ChatList(page.clone())).await.unwrap(),
+        Reply::Error {
+            code: ErrorCode::ResourceExhausted,
+            ..
+        }
+    ));
+    page.expected_revision = Some(first.revision);
+    assert!(
+        matches!(reader.call(Request::ChatList(page.clone())).await.unwrap(),Reply::Ok{data:Data::ChatList(ref list),..} if list.items[0].conversation_id=="second" && list.next_offset.is_none())
+    );
+    page.expected_revision = Some("b".repeat(64));
+    assert!(matches!(
+        reader.call(Request::ChatList(page)).await.unwrap(),
+        Reply::Error {
+            code: ErrorCode::RevisionConflict,
+            ..
+        }
+    ));
+    for value in 1..=4 {
+        mode.store(value, Ordering::SeqCst);
+        assert!(
+            matches!(
+                reader.call(Request::ChatList(input.clone())).await.unwrap(),
+                Reply::Error {
+                    code: ErrorCode::OutcomeUnknown,
+                    ..
+                }
+            ),
+            "mode {value}"
+        );
+    }
+    let mut foreign = input;
+    foreign.workspace_id = "foreign".into();
+    assert!(matches!(
+        reader.call(Request::ChatList(foreign)).await.unwrap(),
+        Reply::Error {
+            code: ErrorCode::TargetNotFound,
+            ..
+        }
+    ));
+    broker.shutdown().await;
+}
+
+#[tokio::test]
+async fn chat_reads_require_exact_conversation_access_and_discard_invalid_or_revoked_results() {
+    use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
+    let temp = tempfile::tempdir().unwrap();
+    let broker = Broker::start(&temp.path().join("control")).unwrap();
+    broker.publish(projection(&broker, temp.path())).unwrap();
+    let reader = approved_chat(
+        &broker,
+        &["a"],
+        &["workspace.read", "chat.read"],
+        &[],
+        &[],
+        &["selected"],
+    )
+    .await;
+    let other = approved_chat(
+        &broker,
+        &["a"],
+        &["workspace.read", "chat.read"],
+        &[],
+        &[],
+        &["other"],
+    )
+    .await;
+    let mode = Arc::new(AtomicU8::new(0));
+    let fixture = mode.clone();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let hits = calls.clone();
+    let weak = Arc::downgrade(&broker);
+    broker
+        .set_chat_read_dispatch(Arc::new(move |project, input, check| {
+            check()?;
+            hits.fetch_add(1, Ordering::SeqCst);
+            assert_eq!(project, "p");
+            let mut value = ChatRead {
+                workspace_id: input.workspace_id.clone(),
+                conversation: chat_summary(&input.conversation_id),
+                source: ChatReadSource::PersistedCheckpoint,
+                part: ChatReadPart::Draft,
+                revision: "a".repeat(64),
+                draft_revision: Some("1".into()),
+                parent_message_id: None,
+                role: "user".into(),
+                status: "draft".into(),
+                content: "A🙂B".into(),
+                start_utf16: 0,
+                total_utf16: 4,
+                next_utf16: None,
+                attachments_omitted: false,
+                non_text_parts_omitted: false,
+                send_target: None,
+                request: None,
+            };
+            match fixture.load(Ordering::SeqCst) {
+                1 => value.workspace_id = "foreign".into(),
+                2 => value.conversation.conversation_id = "other".into(),
+                3 => {
+                    value.part = ChatReadPart::Message {
+                        message_id: Some("message".into()),
+                    }
+                }
+                4 => value.next_utf16 = Some(0),
+                5 => value.total_utf16 = 3,
+                6 => value.content = "x".repeat(8193),
+                7 => value.draft_revision = None,
+                8 => {
+                    value.send_target = Some(ChatSendTarget {
+                        connection_id: "private-connection".into(),
+                        model: "private-model".into(),
+                        max_output_tokens: 4096,
+                    })
+                }
+                9 => weak.upgrade().unwrap().revoke(),
+                _ => {}
+            }
+            Ok(value)
+        }))
+        .unwrap();
+    let input = ChatReadInput {
+        workspace_id: "a".into(),
+        conversation_id: "selected".into(),
+        part: ChatReadPart::Draft,
+        start_utf16: 0,
+        max_chars: 8192,
+        expected_revision: None,
+        include_send_target: false,
+    };
+    assert!(matches!(
+        other.call(Request::ChatRead(input.clone())).await.unwrap(),
+        Reply::Error {
+            code: ErrorCode::ScopeDenied,
+            ..
+        }
+    ));
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        0,
+        "A denied ID must not reach the history adapter"
+    );
+    let mut target = input.clone();
+    target.include_send_target = true;
+    assert!(matches!(
+        reader.call(Request::ChatRead(target)).await.unwrap(),
+        Reply::Error {
+            code: ErrorCode::ScopeDenied,
+            ..
+        }
+    ));
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        0,
+        "Send target requires its own scope before native access"
+    );
+    assert!(
+        matches!(reader.call(Request::ChatRead(input.clone())).await.unwrap(),Reply::Ok{data:Data::ChatRead(ref value),..} if value.content=="A🙂B")
+    );
+    let mut stale = input.clone();
+    stale.expected_revision = Some("b".repeat(64));
+    assert!(matches!(
+        reader.call(Request::ChatRead(stale)).await.unwrap(),
+        Reply::Error {
+            code: ErrorCode::RevisionConflict,
+            ..
+        }
+    ));
+    for value in 1..=8 {
+        mode.store(value, Ordering::SeqCst);
+        assert!(
+            matches!(
+                reader.call(Request::ChatRead(input.clone())).await.unwrap(),
+                Reply::Error {
+                    code: ErrorCode::OutcomeUnknown,
+                    ..
+                }
+            ),
+            "mode {value}"
+        );
+    }
+    mode.store(9, Ordering::SeqCst);
+    assert!(
+        !matches!(
+            reader.call(Request::ChatRead(input)).await,
+            Ok(Reply::Ok { .. })
+        ),
+        "Revoked read returned private content"
+    );
     broker.shutdown().await;
 }
 
@@ -1066,6 +2617,16 @@ async fn approved_apps(
     devices: &[&str],
     packages: &[&str],
 ) -> Client {
+    approved_chat(broker, workspaces, scopes, devices, packages, &[]).await
+}
+async fn approved_chat(
+    broker: &Arc<Broker>,
+    workspaces: &[&str],
+    scopes: &[&str],
+    devices: &[&str],
+    packages: &[&str],
+    conversations: &[&str],
+) -> Client {
     let endpoint = broker.endpoint.clone();
     let (tx, rx) = tokio::sync::oneshot::channel();
     let task = tokio::spawn(async move {
@@ -1089,13 +2650,17 @@ async fn approved_apps(
         "No authenticated connection before approval"
     );
     broker
-        .approve_android_apps(
+        .approve_chat_access(
             &id,
             &workspaces.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
             &scopes.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
             &[],
             &devices.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
             &packages.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+            &conversations
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
         )
         .unwrap();
     task.await.unwrap().unwrap()
@@ -1600,6 +3165,7 @@ async fn terminal_spawn_requires_scope_native_ticket_profile_revision_and_live_g
     p.revision = "2".into();
     p.panels.push(Panel {
         android_device_id: None,
+        chat_conversation_id: None,
         browser_generation: None,
         id: panel_id.clone(),
         tab_id: tab_id.clone(),
@@ -1814,6 +3380,7 @@ async fn workspace_creation_grants_only_its_creator_and_events_stay_scoped() {
     });
     p.panels.push(Panel {
         android_device_id: None,
+        chat_conversation_id: None,
         browser_generation: None,
         id: tab_id.clone(),
         tab_id: tab_id.clone(),
@@ -1925,6 +3492,7 @@ async fn terminal_claim_requires_a_current_explicit_decision_and_never_restores_
     });
     p.panels.push(Panel {
         android_device_id: None,
+        chat_conversation_id: None,
         browser_generation: None,
         id: "human-panel".into(),
         tab_id: "human-tab".into(),
@@ -2321,6 +3889,7 @@ async fn browser_start_ticket_binds_the_approved_profile_and_never_persists_its_
     p.revision = "2".into();
     p.panels.push(Panel {
         android_device_id: None,
+        chat_conversation_id: None,
         id: panel_id.clone(),
         tab_id: panel_id.clone(),
         workspace_id: "a".into(),
@@ -2600,6 +4169,7 @@ async fn workspace_selection_preserves_targets_and_rejects_lazy_stale_or_unappro
     let mut p = projection(&broker, root.path());
     p.panels = vec![Panel {
         android_device_id: None,
+        chat_conversation_id: None,
         id: "file-a".into(),
         tab_id: "file-a".into(),
         workspace_id: "a".into(),
@@ -2969,6 +4539,7 @@ async fn android_open_binds_selected_device_receipt_and_actual_projection() {
         terminal_session_id: None,
         browser_generation: None,
         android_device_id: Some(DEVICE.into()),
+        chat_conversation_id: None,
     });
     broker.publish(p.clone()).unwrap();
     broker.acknowledge_ui(ack).unwrap();
@@ -3020,6 +4591,7 @@ async fn android_runtime_requires_native_completion_and_preserves_generation_on_
         kind: "android".into(),
         title: "Phone".into(),
         android_device_id: Some(DEVICE.into()),
+        chat_conversation_id: None,
         terminal_session_id: None,
         browser_generation: None,
     });
@@ -3180,6 +4752,7 @@ async fn android_input_uses_one_native_lease_and_durable_sequence_receipts() {
         kind: "android".into(),
         title: "Phone".into(),
         android_device_id: Some(DEVICE.into()),
+        chat_conversation_id: None,
         terminal_session_id: None,
         browser_generation: None,
     });
@@ -3440,6 +5013,7 @@ async fn android_snapshot_checks_scope_identity_limits_and_revocation() {
         kind: "android".into(),
         title: "Phone".into(),
         android_device_id: Some(DEVICE.into()),
+        chat_conversation_id: None,
         terminal_session_id: None,
         browser_generation: None,
     });
@@ -3944,6 +5518,7 @@ async fn apk_install_requires_exact_copy_native_approval_and_single_dispatch() {
         kind: "android".into(),
         title: "Fixture phone".into(),
         android_device_id: Some(DEVICE.into()),
+        chat_conversation_id: None,
         terminal_session_id: None,
         browser_generation: None,
     });
@@ -4264,6 +5839,7 @@ async fn android_apps_bind_package_generation_launch_receipt_and_log_pages() {
         kind: "android".into(),
         title: "Phone".into(),
         android_device_id: Some(DEVICE.into()),
+        chat_conversation_id: None,
         terminal_session_id: None,
         browser_generation: None,
     });
@@ -5012,6 +6588,7 @@ async fn editor_save_binds_native_bytes_revisions_scope_and_one_use_receipt() {
         terminal_session_id: None,
         browser_generation: None,
         android_device_id: None,
+        chat_conversation_id: None,
     });
     broker.publish(p.clone()).unwrap();
     let (send, mut commands) = tokio::sync::mpsc::unbounded_channel();
@@ -5268,6 +6845,7 @@ async fn editor_open_prepares_once_from_pinned_source_and_requires_domain_ack() 
         terminal_session_id: None,
         browser_generation: None,
         android_device_id: None,
+        chat_conversation_id: None,
     });
     p.revision = "2".into();
     broker.publish(p.clone()).unwrap();
@@ -5321,6 +6899,7 @@ async fn editor_edits_reserve_once_validate_receipts_and_revoke_queued_work() {
         terminal_session_id: None,
         browser_generation: None,
         android_device_id: None,
+        chat_conversation_id: None,
     });
     broker.publish(p.clone()).unwrap();
     let (send, mut commands) = tokio::sync::mpsc::unbounded_channel();
@@ -5486,6 +7065,7 @@ async fn editor_read_binds_buffer_identity_source_and_scope_before_disclosure() 
         terminal_session_id: None,
         browser_generation: None,
         android_device_id: None,
+        chat_conversation_id: None,
     });
     broker.publish(projection).unwrap();
     let reader = approved_scopes(
@@ -6900,6 +8480,7 @@ async fn git_views_prepare_once_require_exact_ack_and_keep_followup_reads_scoped
         terminal_session_id: None,
         browser_generation: None,
         android_device_id: None,
+        chat_conversation_id: None,
     });
     projection.revision = "2".into();
     broker.publish(projection.clone()).unwrap();
@@ -7606,6 +9187,7 @@ async fn panel_moves_bind_both_targets_runtime_identities_scope_and_retry() {
         terminal_session_id: session.map(str::to_owned),
         browser_generation: None,
         android_device_id: None,
+        chat_conversation_id: None,
     })
     .collect();
     p.focused_panel_id = Some("pty".into());
@@ -7868,6 +9450,7 @@ async fn workspace_close_retries_and_receipts_survive_removal_without_extending_
         terminal_session_id: None,
         browser_generation: None,
         android_device_id: None,
+        chat_conversation_id: None,
     }];
     p.workspaces[0].active_panel_id = Some("file".into());
     p.focused_panel_id = Some("file".into());
@@ -8081,6 +9664,7 @@ async fn uncertain_workspace_close_preserves_preparation_after_target_removal_an
         terminal_session_id: None,
         browser_generation: None,
         android_device_id: None,
+        chat_conversation_id: None,
     }];
     broker.publish(p.clone()).unwrap();
     let (send, mut commands) = tokio::sync::mpsc::unbounded_channel();
@@ -8168,6 +9752,7 @@ async fn project_close_requires_every_workspace_and_preserves_retired_receipts()
                 terminal_session_id: None,
                 browser_generation: None,
                 android_device_id: None,
+                chat_conversation_id: None,
             })
             .collect();
         broker.publish(p.clone()).unwrap();
@@ -8247,6 +9832,7 @@ async fn project_close_requires_every_workspace_and_preserves_retired_receipts()
             terminal_session_id: Some("unowned".into()),
             browser_generation: None,
             android_device_id: None,
+            chat_conversation_id: None,
         });
         broker.publish(protected).unwrap();
         input.expected_revision = "2".into();
@@ -8397,6 +9983,7 @@ async fn panel_transfer_migrates_only_live_authorized_publication_and_preserves_
                 terminal_session_id: None,
                 browser_generation: None,
                 android_device_id: None,
+                chat_conversation_id: None,
             })
             .collect();
         broker.publish(p.clone()).unwrap();
@@ -8523,6 +10110,7 @@ async fn panel_transfer_migrates_only_live_authorized_publication_and_preserves_
             terminal_session_id: Some(terminal_session_id.clone()),
             browser_generation: None,
             android_device_id: None,
+            chat_conversation_id: None,
         });
         p.focused_panel_id = Some(panel_id.clone());
         p.workspaces[0].active_panel_id = Some(panel_id.clone());
@@ -8829,6 +10417,7 @@ async fn multiple_project_bindings_keep_roots_receipts_and_transfers_separate() 
             terminal_session_id: None,
             browser_generation: None,
             android_device_id: None,
+            chat_conversation_id: None,
         })
         .collect();
     broker.publish(p.clone()).unwrap();
@@ -9296,6 +10885,7 @@ async fn project_open_requires_exact_settings_approval_and_verified_publication(
                 terminal_session_id: None,
                 browser_generation: None,
                 android_device_id: None,
+                chat_conversation_id: None,
             });
             broker.publish(p.clone()).unwrap();
             assert!(matches!(

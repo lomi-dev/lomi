@@ -2,6 +2,181 @@
 
 Host: macOS 27.0 (26A428), Apple M3 ARM64. Baseline HEAD and local changes: IMPLEMENTATION-STATUS.md.
 
+## Chat AI selected module (2026-09-24)
+
+Native **iyLq7U PASS** (`/tmp/lomi-mcp-chat-close-native2.log`): 68-tool catalog,
+54 checks and five generations using only the local fixture provider. Both host
+and wrapper exited normally and isolated app data was removed. The run covers
+all seven Chat tools, permission/privacy checks, exact send approval, durable
+request identity/replay, stop/checkpoints, paginated text exports, mixed-layout
+focus/docking/movement/transfer, and panel/workspace/project closure. A failed
+draft flush produced an outcome_unknown/unknown receipt and preserved the active
+response; exact retry returned that receipt without cancelling it. Successful
+closure at every level checkpointed the exact request and preserved the next
+draft. Panel/workspace closure retained the unrelated PTY. The preceding qVY6Fd
+run also passed54, and its closing screenshot was inspected.
+
+Full broker59, native Chat34, model179 + AI runtime17, TypeScript, production
+workspace check, WebKit Chat/draft/send UI14, workspace Clippy with warnings
+denied, helper wire5 and production frontend build passed. Native cleanup.json
+confirms hostExited=true, appDataRemoved=true and exitCode=0.
+
+Native gVdzJU (47 checks) also passed before adding close qualification. Earlier
+native Ed6xlT/bvy4Sf/SIBYbP runs reproduced render starvation: the elapsed-time
+leading throttle rendered each token when unchanged history was expensive.
+Commit `12af2935eed70f12563c98b03091b71df37119f8`, pushed to origin/main,
+uses a trailing task for message publication and memoizes unchanged Markdown.
+The parser retains every chunk; final status publishes immediately. Three model
+regressions cover batching, final/error publication and unsubscribe/remount.
+The long-response UI fixture now bounds its producer; it passed in WebKit and
+Chromium. Failed diagnostic runs are not qualification passes.
+
+The following sections retain the evidence and limitations of earlier increments.
+
+## Chat AI send increment (2026-09-24; in progress)
+
+- IMPLEMENTED_UNVERIFIED until native evidence below is recorded. Catalog66
+  connects a native exact-context plan, one-use approval and commit, preallocated
+  durable request/message IDs and the retained Chat SDK. Provider/model target
+  reads require chat.send in addition to the selected conversation's chat.read.
+- Native chat30 PASS (`/tmp/lomi-mcp-chat-send-context-tests.log`), including
+  rejection before credential access and credential rotation invalidating a plan
+  without consuming the draft or dispatching the provider.
+- Full broker55 PASS (`/tmp/lomi-mcp-chat-send-broker-all.log`). Send regression
+  covers denial, stale native preflight, exact approval hash, one-use commit,
+  forged ACK rejection and durable retry. It found and fixed a premature Running
+  transition at UI claim. Read regression now refuses unrequested send metadata
+  and denies explicit metadata requests lacking chat.send before native access.
+- UI3 PASS (`/tmp/lomi-mcp-chat-send-ui.log`): Cancel focus/Escape and exact
+  preview, invalidation after human input, retained SDK and next human draft
+  during delayed native ACK, native refusal restoring the draft without dispatch.
+  The 900×600 approval screenshot was inspected; details and actions scroll into
+  view and all attachment descriptors remain available.
+- TypeScript and mcp-probe cargo check PASS. Native **3w7ndI PASS**, 31 checks,
+  catalog66, one native generation through the local fixture provider; host and
+  wrapper exit0, private app-data removed. BNLJwM was a fixture race: polling
+  treated AwaitingUser as settled before the approval dialog completed. The
+  fixture now waits for dialog dismissal first. Read/open/draft regressions,
+  decline with unchanged draft, native context change rejecting the approved
+  stale plan, retained SDK stream and next human draft, exact send replay and
+  native cancellation checkpoint all passed. Approval screenshot inspected;
+  stream screenshot was of the other active tab, so it is not visual stream
+  evidence. Retained hidden stream assertions did pass. UI regression14 PASS.
+  The lost-approval regression also checks the actual receipt DB before startup
+  recovery; revocation settles an uncommitted send as cancelled/none. A later
+  admission-failure repair preserves reserved IDs while recording rejection,
+  with exact stale-domain replay tested. No paid provider qualification is
+  claimed. Fixture bundle selection requires
+  the debug-only mcp-probe feature and private send profile/environment.
+
+## Chat AI stop increment (2026-09-24; in progress)
+
+- Catalog67. Direct broker-to-native exact-request cancellation requires
+  chat.read/chat.stop and the selected conversation/project. It waits for the
+  native terminal checkpoint; no renderer ACK or visible panel is required.
+  Read returns the last request's ID, assistant ID and status without provider
+  metadata. Completed IDs remain idempotent and cannot target a replacement.
+- Native stop units2 PASS: actual fixture generation, foreign/missing IDs,
+  cancellation checkpoint, old stop versus replacement generation and storage
+  failure retaining RAM with OutcomeUnknown. Core Chat6 PASS, including stop
+  scope, native-output binding, request-key conflict and exact replay. TypeScript
+  and production workspace check PASS. Native **4aNBY2 PASS**, 35 checks,
+  catalog67, two local fixture generations, host/wrapper exit0, private app-data
+  removed. Exact active identity, unknown stop refusal, terminal checkpoint and
+  old stop replay preserving a new human generation passed. This run revealed
+  the sending tab; its actual live stream and next draft screenshot was inspected.
+
+## Chat AI export increment (2026-09-24; in progress)
+
+- Catalog68. Separate chat.export/chat.read with selected conversation/project.
+  Exports Markdown/JSON pages from all saved message variants and the persisted
+  draft. This is text export, not a private-store backup or an attachment export.
+  System instructions, provider metadata, reasoning/non-text parts and attachment
+  bytes/names are omitted. No native destination files are written. Clients can
+  concatenate pages and verify SHA-256 of the full UTF-8 document before saving.
+- Up to 512 messages, 4 MiB raw source/document, 8192 UTF-16 units/48 KiB per
+  response and two shared producers/5 s cooperative deadline. Noninitial pages
+  require the full document revision; changed history and split scalars fail.
+  Oversized input fails without claiming a truncated export is complete.
+- Native export1 PASS (privacy, all variants/draft, exact page reconstruction,
+  unchanged DB, changed revision and Unicode boundaries); the later 513-message
+  refusal assertion subsequently passed in full native chat33. Core Chat7 and TypeScript PASS.
+  Wire5 and permission UI1 PASS. Native **BxwjjV PASS**, 41 checks, catalog68,
+  two local fixture generations and 23 JSON pages with the exact document hash.
+  Five saved messages and a draft, privacy filtering, Markdown, read-only DB,
+  exact grants and stale/split pages passed. Native/wrapper exit0; private data
+  removed. Probe Clippy found Reply size growth: ChatStopped is now boxed with
+  identical JSON; follow-up probe Clippy PASS. Full native chat33, broker57 and
+  wire5 PASS on these bytes. Full Chat still needs mixed-layout integration.
+
+## Chat AI open and draft increments (2026-09-24; in progress)
+
+- Open native **ygmgFM PASS**, `/tmp/lomi-mcp-chat-open-native.log`:17 checks,
+  catalog64, host/native/wrapper exit0 and private app-data removed. Existing
+  view reuse, new native SQLite conversation, creator-only access, durable
+  exact retry, retained SDK and human draft, private-ID denial and zero provider
+  requests. `chat-open.png` was inspected. Core open1/model2/wire5, TypeScript
+  and probe Clippy PASS. Mixed-layout reveal is still explicitly refused.
+- Draft native store3 and broker draft1 PASS in
+  `/tmp/lomi-mcp-chat-draft-native-unit.log` and
+  `/tmp/lomi-mcp-chat-draft-broker.log`. Exact project/panel/conversation,
+  scopes, revision conflict, preclaim/repeated-commit/forged-ACK denial,
+  native result persistence, no-effect rejection and revocation before commit.
+- UI4 PASS, `/tmp/lomi-mcp-chat-draft-ui.log`: opt-in permission/reset,
+  ordinary Android approval regression, unsaved/stale draft refusal and human
+  typing during a delayed native acknowledgement. The latter waits past the
+  normal autosave debounce and verifies the next save uses the new CAS revision.
+  These mock-backed UI checks do not qualify native dispatch.
+- TypeScript PASS after narrowing mixed-panel selection to Chat descriptors.
+  Full broker54 and wire5 PASS (`/tmp/lomi-mcp-chat-draft-broker-all.log`,
+  `/tmp/lomi-mcp-chat-draft-wire.log`), catalog65 below the catalog budget.
+- Native CswH2K/IlFJDY failed the late-ACK fixture condition: attempted assignment
+  to Tauri invoke did not take effect. Diagnostics confirmed the write succeeded
+  normally. The probe now wraps only the retained runtime's commit callback,
+  delaying its real native result without changing production IPC.
+- Native **dtcU69 PASS**, `/tmp/lomi-mcp-chat-draft-native-3.log`:23 checks,
+  catalog65, host/native/wrapper exit0 and private app-data removed. Six draft
+  assertions include persisted CAS, one-write retry, stale/private refusals,
+  human text retained and saved across delayed native acknowledgement, and zero
+  provider requests. Read/open regressions and native revocation pass in the
+  same run. Settings grant screenshot inspected. Probe Clippy initially found enum growth;
+  boxing ChatDraftUpdated leaves wire JSON unchanged. Probe Clippy PASS in
+  `/tmp/lomi-mcp-chat-draft-clippy-2.log`; targeted broker1 and wire5 repeated
+  PASS afterward. This precedes the in-progress send/context changes.
+  Send/stop/export and remaining layout are not implemented yet.
+
+## Chat AI read increment (2026-09-24; in progress)
+
+- Native persisted-history unit2 PASS; exact project/message IDs, Unicode and
+  revision paging, omitted system/credential/reasoning metadata.
+- Real UDS chat2 PASS; exact conversation grants, empty/scope-denied sessions,
+  bounded pages, malformed adapter results and revocation during reads.
+- UI2 PASS (picker and existing Agent Control regression), screenshot inspected.
+  An initial existing Android assertion needed the new empty chatConversations
+  field. No product regression was inferred from that fixture mismatch.
+- Production/probe cargo check, TypeScript and wire/process5 PASS. Catalog63
+  remains below 700 KB. Initial wire fixtures lacked valid arguments for the two
+  new tools; adding their real inputs restored both protocol-version tests.
+- Native63tTnf and ymrFrr FAIL: Settings picker initially observed a busy store;
+  a later direct native catalog read returned all three expected project entries.
+  Settings now waits at most 500 ms and distinguishes busy from storage errors;
+  the native fixture deliberately holds the service mutex for 200 ms.
+- NativexHWbvi passed history assertions but crashed on synchronous UI revoke.
+  The same no-reactor panic was reproduced by a real thread outside Tokio in
+  `/tmp/lomi-mcp-native-thread-revoke-before.log`. Broker cleanup now captures
+  its owning runtime handle. Full broker52 PASS in
+  `/tmp/lomi-mcp-chat-broker-all.log`.
+- Native **jMNDbu PASS**, `/tmp/lomi-mcp-chat-read-native-4.log`: all11 checks,
+  catalog63, native/wrapper exit0 and app-data cleanup confirmed. Explicit
+  Settings selection, project isolation, exact metadata pages, scalar boundaries,
+  conversation/message denial, private-field filtering, read-only SQLite,
+  revision changes and native synchronous revocation. No provider call.
+- Probe Clippy PASS in `/tmp/lomi-mcp-chat-read-clippy.log`. A screenshot review
+  found inline conversation labels; each now occupies a row with its ID below.
+  The revised two-row screenshot was inspected and UI1 PASS. This CSS-only
+  follow-up does not claim a second native qualification. Full Chat remains
+  incomplete; five mutation/export tools and layout integration remain.
+
 ## Executed
 
 - Read-only inventory: versions, Git, manifests, source contracts — completed 2026-09-23.

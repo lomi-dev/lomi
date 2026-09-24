@@ -74,6 +74,15 @@ impl Broker {
         for workspace in &command.workspaces {
             Self::validate_workspace_close(state, owner, workspace)?;
         }
+        Self::closing_chats(
+            state,
+            owner,
+            &command
+                .workspaces
+                .iter()
+                .flat_map(|w| w.panels.iter().map(|p| p.panel_id.clone()))
+                .collect::<Vec<_>>(),
+        )?;
         Ok(())
     }
     pub(super) fn close_project(self: &Arc<Self>, owner: &str, input: ProjectCloseInput) -> Reply {
@@ -262,6 +271,6 @@ impl Broker {
                 .map_err(|_| ErrorCode::StorageUnavailable)?;
         }
         state.work.get_mut(operation).unwrap().native_committed = true;
-        self.commit_close_resources(&state, &panels)
+        self.commit_close_resources(&state, operation, &panels)
     }
 }

@@ -588,6 +588,33 @@ impl Store {
         Ok(())
     }
 
+    /// Replace a reserved send identity once, preserving every target and ID.
+    pub(crate) fn finish_chat_send(
+        &mut self,
+        pairing: &str,
+        project: &str,
+        id: &str,
+        result: &lomi_control_protocol::chat::ChatSent,
+    ) -> Result<()> {
+        if result.draft_revision.is_some() == result.rejection.is_some() {
+            return Err(Error::InvalidInput);
+        }
+        let mut reserved = result.clone();
+        reserved.draft_revision = None;
+        reserved.rejection = None;
+        let expected = serde_json::to_string(&OperationResult::ChatSent(Box::new(reserved)))
+            .map_err(|_| Error::InvalidInput)?;
+        let value = serde_json::to_string(&OperationResult::ChatSent(Box::new(result.clone())))
+            .map_err(|_| Error::InvalidInput)?;
+        if value.len() > MAX_INPUT_BYTES {
+            return Err(Error::ResourceExhausted);
+        }
+        if self.connection.execute("UPDATE receipts SET result=?1 WHERE pairing=?2 AND project=?3 AND id=?4 AND result=?5 AND state IN ('queued','running','awaiting_user','cancelling')", params![value, pairing, project, id, expected])? != 1 {
+            return Err(Error::InvalidTransition);
+        }
+        Ok(())
+    }
+
     /// Advance only an immutable project lifecycle preparation to verified publication.
     /// Other result types keep the one-write rule in record_result.
     pub(crate) fn finish_project_lifecycle(

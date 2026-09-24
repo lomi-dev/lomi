@@ -30,8 +30,10 @@ use tokio::{
     sync::{oneshot, watch, Semaphore},
 };
 mod browsers;
+mod chat_close;
 mod operations;
 pub use browsers::{BrowserNavigationDispatch, BrowserStart};
+pub use chat_close::ChatCloseDispatch;
 pub use operations::NativePermit;
 mod panel_control;
 pub use panel_control::{PendingControlView, TerminalAttachDispatch};
@@ -65,6 +67,15 @@ mod android_input;
 mod android_snapshot;
 pub use android_capture::{AndroidCapture, AndroidCaptureDispatch};
 pub use android_snapshot::AndroidSnapshotDispatch;
+mod chat;
+mod chat_draft;
+mod chat_export;
+mod chat_send;
+mod chat_stop;
+pub use chat_draft::ChatDraftDispatch;
+pub use chat_export::ChatExportDispatch;
+pub use chat_send::{ChatSendAuthorization, ChatSendPrepareDispatch};
+pub use chat_stop::ChatStopDispatch;
 mod panel_move;
 mod panel_transfer;
 mod panels;
@@ -72,6 +83,7 @@ mod project_close;
 mod project_open;
 mod settings;
 mod settings_read;
+pub use chat::{ChatListDispatch, ChatOpenDispatch, ChatReadDispatch};
 mod settings_update;
 mod workspace_close;
 mod workspaces;
@@ -142,6 +154,7 @@ pub struct SessionView {
     pub browser_origins: Vec<String>,
     pub android_device_ids: Vec<String>,
     pub android_packages: Vec<String>,
+    pub chat_conversations: Vec<String>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -179,6 +192,7 @@ pub struct Grant {
     pub browser_profile: Option<String>,
     pub android_devices: HashSet<String>,
     pub android_packages: HashSet<String>,
+    pub chat_conversations: HashSet<String>,
     policy_revision: u64,
     terminal_profile: Option<TerminalProfile>,
 }
@@ -281,6 +295,7 @@ pub struct Broker {
     terminal_input_dispatch: Mutex<Option<TerminalInputDispatch>>,
     terminal_close_dispatch: Mutex<Option<TerminalCloseDispatch>>,
     browser_close_dispatch: Mutex<Option<BrowserCloseDispatch>>,
+    chat_close_dispatch: Mutex<Option<ChatCloseDispatch>>,
     terminal_attach_dispatch: Mutex<Option<TerminalAttachDispatch>>,
     files_read_dispatch: Mutex<Option<FilesReadDispatch>>,
     files_search_dispatch: Mutex<Option<FilesSearchDispatch>>,
@@ -288,6 +303,13 @@ pub struct Broker {
     file_reads: Arc<Semaphore>,
     settings_prepare_dispatch: Mutex<Option<SettingsPrepareDispatch>>,
     settings_read_dispatch: Mutex<Option<SettingsReadDispatch>>,
+    chat_list_dispatch: Mutex<Option<ChatListDispatch>>,
+    chat_read_dispatch: Mutex<Option<ChatReadDispatch>>,
+    chat_open_dispatch: Mutex<Option<ChatOpenDispatch>>,
+    chat_draft_dispatch: Mutex<Option<ChatDraftDispatch>>,
+    chat_stop_dispatch: Mutex<Option<ChatStopDispatch>>,
+    chat_export_dispatch: Mutex<Option<ChatExportDispatch>>,
+    chat_send_prepare_dispatch: Mutex<Option<ChatSendPrepareDispatch>>,
     settings_reads: Mutex<HashMap<String, settings_read::PendingRead>>,
     editor_read_dispatch: Mutex<Option<EditorReadDispatch>>,
     editor_reads: Mutex<HashMap<String, editor::PendingRead>>,
@@ -391,6 +413,7 @@ impl Broker {
             terminal_input_dispatch: Mutex::new(None),
             terminal_close_dispatch: Mutex::new(None),
             browser_close_dispatch: Mutex::new(None),
+            chat_close_dispatch: Mutex::new(None),
             terminal_attach_dispatch: Mutex::new(None),
             files_read_dispatch: Mutex::new(None),
             files_search_dispatch: Mutex::new(None),
@@ -398,6 +421,13 @@ impl Broker {
             file_reads: Arc::new(Semaphore::new(2)),
             settings_prepare_dispatch: Mutex::new(None),
             settings_read_dispatch: Mutex::new(None),
+            chat_list_dispatch: Mutex::new(None),
+            chat_read_dispatch: Mutex::new(None),
+            chat_open_dispatch: Mutex::new(None),
+            chat_draft_dispatch: Mutex::new(None),
+            chat_stop_dispatch: Mutex::new(None),
+            chat_export_dispatch: Mutex::new(None),
+            chat_send_prepare_dispatch: Mutex::new(None),
             settings_reads: Mutex::new(HashMap::new()),
             editor_read_dispatch: Mutex::new(None),
             editor_reads: Mutex::new(HashMap::new()),
@@ -686,6 +716,10 @@ impl Broker {
                 || panel.android_device_id.as_ref().is_some_and(|id| {
                     !lomi_control_protocol::android::valid_device_id(id) || panel.kind != "android"
                 })
+                || panel
+                    .chat_conversation_id
+                    .as_ref()
+                    .is_some_and(|id| !valid_chat_id(id) || panel.kind != "chat")
                 || panel.title.len() > 1024
                 || panel.title.contains('\0')
                 || panel
@@ -853,6 +887,36 @@ impl Broker {
         android_devices: &[String],
         android_packages: &[String],
     ) -> io::Result<()> {
+        self.approve_chat_access(
+            id,
+            workspace_ids,
+            scopes,
+            browser_origins,
+            android_devices,
+            android_packages,
+            &[],
+        )
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub fn approve_chat_access(
+        &self,
+        id: &str,
+        workspace_ids: &[String],
+        scopes: &[String],
+        browser_origins: &[String],
+        android_devices: &[String],
+        android_packages: &[String],
+        chat_conversations: &[String],
+    ) -> io::Result<()> {
+        if chat_conversations.len() > 64
+            || chat_conversations.iter().any(|id| !valid_chat_id(id))
+            || chat_conversations.iter().collect::<HashSet<_>>().len() != chat_conversations.len()
+            || (!chat_conversations.is_empty() && !scopes.iter().any(|s| s == "chat.read"))
+        {
+            return Err(io::Error::other(
+                "Chat history requires at most 64 exact selected conversations.",
+            ));
+        }
         let apps_enabled = scopes
             .iter()
             .any(|s| matches!(s.as_str(), "android.launch" | "android.logs"));
@@ -937,11 +1001,30 @@ impl Broker {
                     .all(|required| scopes.iter().any(|s| s == required)))
             || (scopes.iter().any(|s| s == "settings.write")
                 && !scopes.iter().any(|s| s == "settings.read"))
+            || (scopes.iter().any(|s| s == "chat.open")
+                && !["chat.read", "panel.create", "panel.focus"]
+                    .iter()
+                    .all(|required| scopes.iter().any(|s| s == required)))
+            || (scopes.iter().any(|s| s == "chat.create")
+                && !scopes.iter().any(|s| s == "chat.open"))
+            || (scopes.iter().any(|s| {
+                matches!(
+                    s.as_str(),
+                    "chat.draft" | "chat.send" | "chat.stop" | "chat.export"
+                )
+            }) && !scopes.iter().any(|s| s == "chat.read"))
             || scopes.len() > 64
             || scopes.iter().any(|s| {
                 !matches!(
                     s.as_str(),
-                    "settings.open"
+                    "chat.read"
+                        | "chat.open"
+                        | "chat.create"
+                        | "chat.export"
+                        | "chat.stop"
+                        | "chat.draft"
+                        | "chat.send"
+                        | "settings.open"
                         | "settings.read"
                         | "settings.write"
                         | "files.read"
@@ -1014,6 +1097,7 @@ impl Broker {
             browser_origins: origins,
             android_devices: android_devices.iter().cloned().collect(),
             android_packages: android_packages.iter().cloned().collect(),
+            chat_conversations: chat_conversations.iter().cloned().collect(),
             browser_profile: if browser_enabled {
                 Some(new_id()?)
             } else {
@@ -1180,6 +1264,11 @@ impl Broker {
                                 scopes: grant.scopes.iter().cloned().collect(),
                                 android_device_ids: grant.android_devices.iter().cloned().collect(),
                                 android_packages: grant.android_packages.iter().cloned().collect(),
+                                chat_conversations: grant
+                                    .chat_conversations
+                                    .iter()
+                                    .cloned()
+                                    .collect(),
                                 browser_origins: grant
                                     .browser_origins
                                     .iter()
@@ -1387,6 +1476,13 @@ impl Broker {
             Request::OpenProject(input) => return self.open_project(id, input),
             Request::OpenSettings(input) => return self.open_settings(id, input),
             Request::ReadSettings(input) => return self.read_settings(id, input),
+            Request::ChatList(input) => return self.list_chats(id, input),
+            Request::ChatRead(input) => return self.read_chat(id, input),
+            Request::ChatSend(input) => return self.send_chat(id, input),
+            Request::ChatStop(input) => return self.stop_chat(id, input),
+            Request::ChatExport(input) => return self.export_chat(id, input),
+            Request::ChatDraft(input) => return self.draft_chat(id, input),
+            Request::ChatOpen(input) => return self.open_chat(id, input),
             Request::UpdateSettings(input) => return self.update_settings(id, input),
             Request::CloseProject(input) => return self.close_project(id, input),
             Request::CreateWorkspace(input) => return self.create_workspace(id, input),
@@ -1422,7 +1518,7 @@ impl Broker {
         let ready = !projection.ui_epoch.is_empty() && projection.revision != "0";
         let visible = |w: &&Workspace| session.grant.permits(w);
         match request {
-            Request::Status(_)=>Reply::ok(Data::Status {connection:"connected".into(),pairing_request_id:None,instance_id:Some(self.endpoint.instance_id.clone()),ui_ready:ready,platform:std::env::consts::OS.into(),capabilities:["settings.write","settings.read","settings.open","git.pull","git.discard","git.push","git.network","git.write","git.execute","git.read","files.trash","files.rename","files.create","files.mutate","editor.write","editor.read","android.logs","android.launch","android.install","files.read","artifact.import","android.capture","android.observe","android.interact","android.control","android.read","project.open", "project.close","workspace.close","workspace.read","workspace.write","panel.move","panel.focus","panel.close","panel.create","terminal.execute","terminal.read","browser.navigate","browser.read","browser.interact","browser.capture_composite"].into_iter().map(|name|Capability {name:name.into(),available:true,authorized:session.grant.scopes.contains(name),qualified:cfg!(all(target_os="macos",target_arch="aarch64"))}).collect(),limitations:vec!["Session-only pairing; authorization is shared by the process using this stdio channel".into(),"Shell cwd and browser origins are not OS or network sandboxes".into()]}),
+            Request::Status(_)=>Reply::ok(Data::Status {connection:"connected".into(),pairing_request_id:None,instance_id:Some(self.endpoint.instance_id.clone()),ui_ready:ready,platform:std::env::consts::OS.into(),capabilities:["chat.export","chat.stop","chat.send","chat.draft","chat.read","chat.open","chat.create","settings.write","settings.read","settings.open","git.pull","git.discard","git.push","git.network","git.write","git.execute","git.read","files.trash","files.rename","files.create","files.mutate","editor.write","editor.read","android.logs","android.launch","android.install","files.read","artifact.import","android.capture","android.observe","android.interact","android.control","android.read","project.open", "project.close","workspace.close","workspace.read","workspace.write","panel.move","panel.focus","panel.close","panel.create","terminal.execute","terminal.read","browser.navigate","browser.read","browser.interact","browser.capture_composite"].into_iter().map(|name|Capability {name:name.into(),available:true,authorized:session.grant.scopes.contains(name),qualified:cfg!(all(target_os="macos",target_arch="aarch64"))}).collect(),limitations:vec!["Session-only pairing; authorization is shared by the process using this stdio channel".into(),"Shell cwd and browser origins are not OS or network sandboxes".into()]}),
             Request::Diagnostics(_)=>Reply::ok(Data::Diagnostics {connection:"connected".into(),ui_ready:ready,next_step:if ready{"List workspaces, then connect to an approved workspace"}else{"Wait for the main workspace window"}.into()}),
             Request::Connect(input)=>{
                 if !ready{return error(ErrorCode::UiNotReady);}
@@ -1472,7 +1568,7 @@ impl Broker {
                     _=>error(ErrorCode::StorageUnavailable),
                 }
             }
-            Request::UpdateSettings(_)|Request::ReadSettings(_)|Request::OpenSettings(_)|Request::OpenProject(_)|Request::CloseProject(_)|Request::GitMutate(_)|Request::GitDiff(_)|Request::GitHistory(_)|Request::GitCommit(_)|Request::GitRemotes(_)|Request::GitOpen(_)|Request::GitStatus(_)|Request::FilesMutate(_)|Request::EditorSave(_)|Request::EditorOpen(_)|Request::EditorEdits(_)|Request::EditorRead(_)|Request::FilesSearch(_)|Request::FilesList(_)|Request::FilesRead(_)|Request::AndroidLogcat(_)|Request::AndroidLaunch(_)|Request::AndroidInstall(_)|Request::ImportArtifact(_)|Request::AndroidScreenshot(_)|Request::AndroidSnapshot(_)|Request::AndroidInput(_)|Request::AndroidStart(_)|Request::AndroidStop(_)|Request::AndroidOpen(_)|Request::AndroidList(_)|Request::BrowserLogs(_)|Request::ScreenshotBrowser(_)|Request::ReadArtifact(_)|Request::WaitBrowser(_)|Request::KeyBrowser(_)|Request::ScrollBrowser(_)|Request::ClickBrowser(_)|Request::FillBrowser(_)|Request::SnapshotBrowser(_)|Request::NavigateBrowser(_)|Request::OpenBrowser(_)|Request::RenameWorkspace(_)|Request::CreateWorkspace(_)|Request::CreateTerminal(_)|Request::ReadTerminal(_)|Request::RunTerminal(_)|Request::InterruptTerminal(_)|Request::InputTerminal(_)|Request::Panels(_)|Request::MovePanel(_)|Request::FocusPanel(_)|Request::ControlPanel(_)|Request::ClosePanel(_)|Request::Events(_)|Request::CancelOperation(_)=>unreachable!(),
+            Request::ChatExport(_)|Request::ChatStop(_)|Request::ChatSend(_)|Request::ChatDraft(_)|Request::ChatOpen(_)|Request::ChatList(_)|Request::ChatRead(_)|Request::UpdateSettings(_)|Request::ReadSettings(_)|Request::OpenSettings(_)|Request::OpenProject(_)|Request::CloseProject(_)|Request::GitMutate(_)|Request::GitDiff(_)|Request::GitHistory(_)|Request::GitCommit(_)|Request::GitRemotes(_)|Request::GitOpen(_)|Request::GitStatus(_)|Request::FilesMutate(_)|Request::EditorSave(_)|Request::EditorOpen(_)|Request::EditorEdits(_)|Request::EditorRead(_)|Request::FilesSearch(_)|Request::FilesList(_)|Request::FilesRead(_)|Request::AndroidLogcat(_)|Request::AndroidLaunch(_)|Request::AndroidInstall(_)|Request::ImportArtifact(_)|Request::AndroidScreenshot(_)|Request::AndroidSnapshot(_)|Request::AndroidInput(_)|Request::AndroidStart(_)|Request::AndroidStop(_)|Request::AndroidOpen(_)|Request::AndroidList(_)|Request::BrowserLogs(_)|Request::ScreenshotBrowser(_)|Request::ReadArtifact(_)|Request::WaitBrowser(_)|Request::KeyBrowser(_)|Request::ScrollBrowser(_)|Request::ClickBrowser(_)|Request::FillBrowser(_)|Request::SnapshotBrowser(_)|Request::NavigateBrowser(_)|Request::OpenBrowser(_)|Request::RenameWorkspace(_)|Request::CreateWorkspace(_)|Request::CreateTerminal(_)|Request::ReadTerminal(_)|Request::RunTerminal(_)|Request::InterruptTerminal(_)|Request::InputTerminal(_)|Request::Panels(_)|Request::MovePanel(_)|Request::FocusPanel(_)|Request::ControlPanel(_)|Request::ClosePanel(_)|Request::Events(_)|Request::CancelOperation(_)=>unreachable!(),
         }
     }
 }

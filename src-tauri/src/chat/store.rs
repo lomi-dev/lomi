@@ -141,7 +141,7 @@ pub struct Start {
     pub target_id: Option<String>,
     pub text: String,
 }
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Accepted {
     pub request_id: String,

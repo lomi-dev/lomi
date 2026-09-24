@@ -40,6 +40,7 @@ pub struct Backend {
     pub owner: Owner,
     pub requests: Mutex<HashMap<String, Arc<Request>>>,
     pub changing: Mutex<HashSet<String>>,
+    pub(super) closing: Mutex<HashMap<String, Box<dyn Fn() -> bool + Send + Sync>>>,
     pub cancelled: Mutex<HashSet<String>>,
     process: Mutex<Option<Arc<Process>>>,
     node: PathBuf,
@@ -108,11 +109,20 @@ impl Backend {
         } else {
             bundle
         };
+        #[cfg(feature = "mcp-probe")]
+        let bundle = if std::env::var_os("LOMI_MCP_CONTROL_PROBE_DIRECTORY").is_some()
+            && std::env::var_os("LOMI_MCP_CHAT_SEND_ONLY").is_some()
+        {
+            bundle.with_file_name("fixture.cjs")
+        } else {
+            bundle
+        };
         Ok(Arc::new(Self {
             services: Mutex::new(Services { store, settings }),
             owner,
             requests: Mutex::new(HashMap::new()),
             changing: Mutex::new(HashSet::new()),
+            closing: Mutex::new(HashMap::new()),
             cancelled: Mutex::new(HashSet::new()),
             process: Mutex::new(None),
             node,
@@ -195,6 +205,21 @@ impl Backend {
         Ok(process)
     }
     pub fn start(self: &Arc<Self>, input: Start, channel: Channel<Value>) -> Result<Value, String> {
+        self.start_checked(input, channel, |_, _, _, _| Ok(()), || Ok(()))
+    }
+    pub(super) fn start_checked(
+        self: &Arc<Self>,
+        input: Start,
+        channel: Channel<Value>,
+        preflight: impl FnOnce(
+            &Start,
+            &super::store::Conversation,
+            &super::preferences::Connection,
+            &super::generation::Context,
+        ) -> Result<(), String>,
+        check: impl Fn() -> Result<(), String>,
+    ) -> Result<Value, String> {
+        check()?;
         let mut services = self
             .services
             .lock()
@@ -235,6 +260,16 @@ impl Backend {
             return Ok(serde_json::to_value(accepted).unwrap());
         }
         runtime_supported()?;
+        {
+            let mut closing = self
+                .closing
+                .lock()
+                .map_err(|_| "Chat close state unavailable.")?;
+            closing.retain(|_, active| active());
+            if closing.contains_key(&input.conversation_id) {
+                return Err("This conversation is closing. Retry when the close finishes.".into());
+            }
+        }
         let loaded = store.conversation(&input.conversation_id)?;
         let connection_id = loaded
             .config
@@ -253,7 +288,6 @@ impl Backend {
             .find(|c| c.id == connection_id && c.enabled)
             .ok_or("Choose an enabled AI connection.")?
             .clone();
-        let key = settings.key(&connection_id)?;
         if loaded.config.model.is_empty() {
             return Err("Choose a model before sending.".into());
         }
@@ -268,44 +302,19 @@ impl Backend {
         }
         drop(requests);
         let store = services.store.as_ref().map_err(|e| e.clone())?;
-        let context = store.preview(&input);
-        let payload=context.and_then(|messages|{
-            let mut result=Vec::new();
-            let mut context_bytes = loaded.config.system.len();
-            for (message, attachment_ids) in messages {
-                if message.parts_version!=1{return Err("This message uses an unsupported parts version. Start a new conversation.".into());}
-                let mut parts=Vec::new();
-                for part in message.parts.as_array().ok_or("Invalid stored message.")? {
-                    if part["type"]=="text"{parts.push(json!({"type":"text","text":part["text"]}));}
-                    else if part["type"]!="reasoning"{return Err("This message contains unsupported content. Start a new conversation.".into());}
-                }
-                for id in attachment_ids {
-                    let (attachment,bytes)=attachments::read_object(store,&self.owner.root,&id)?;
-                    if attachment.mime!="text/plain" {
-                        if !capability(&connection.provider, &loaded.config.model, "images") { return Err("Image input is not verified for this model. Choose a supported model or remove the images.".into()); }
-                        parts.push(json!({"type":"file","mediaType":attachment.mime,"filename":attachment.name,"url":format!("data:{};base64,{}",attachment.mime,super::process::encode(&bytes))}));
-                        continue;
-                    }
-                    let text=std::str::from_utf8(&bytes).map_err(|_|"Attachment encoding changed.")?.trim_start_matches('\u{feff}');
-                    parts.push(json!({"type":"text","text":format!("\nAttached file: {}\n{}",attachment.name,text)}));
-                }
-                if parts.len() > 100 || result.len() >= 2000 {return Err("The conversation exceeds supported message limits. Start a new conversation.".into());}
-                let value = json!({"id":message.id,"role":message.role,"parts":parts});
-                context_bytes += serde_json::to_vec(&value).map_err(|_| "Invalid message.")?.len();
-                if context_bytes > 40*1024*1024 { return Err("The conversation exceeds the 40 MiB context limit.".into()); }
-                result.push(value);
-            }
-            Ok(json!({"provider":connection.provider,"apiKey":key,"model":loaded.config.model,"assistantId":input.assistant_id,"messages":result,"system":loaded.config.system,"maxOutputTokens":loaded.config.max_output_tokens}))
-        })?;
-        let mut payload = payload;
-        if let Some(temperature) = loaded.config.temperature {
-            if !capability(&connection.provider, &loaded.config.model, "temperature") {
-                return Err(
-                    "Temperature is not verified for this model. Reset it to the default.".into(),
-                );
-            }
-            payload["temperature"] = json!(temperature);
-        }
+        let context = super::generation::context(
+            store,
+            &self.owner.root,
+            &input,
+            &loaded,
+            &connection,
+            &check,
+        )?;
+        preflight(&input, &loaded, &connection, &context)?;
+        check()?;
+        let key = settings.key(&connection_id)?;
+        let mut payload = context.payload;
+        payload["apiKey"] = json!(key);
         if serde_json::to_vec(&payload)
             .map_err(|_| "Invalid context.")?
             .len()
@@ -349,6 +358,9 @@ impl Backend {
             request.cancelled.store(true, Ordering::Release);
         }
         drop(services);
+        if check().is_err() {
+            request.cancelled.store(true, Ordering::Release);
+        }
         if request.cancelled.load(Ordering::Acquire) {
             self.finish(&input.request_id, &request, "cancelled", &json!({}));
         } else {
@@ -356,6 +368,7 @@ impl Backend {
                 if request.cancelled.load(Ordering::Acquire) {
                     return Err("cancelled".into());
                 }
+                check()?;
                 process.generate(&input.request_id, &payload)?;
                 if request.cancelled.load(Ordering::Acquire) {
                     process.cancel(&input.request_id)?;
@@ -543,23 +556,25 @@ impl Backend {
             return Err("Invalid request ID.".into());
         }
         if let Some(request) = self.requests.lock().unwrap().get(id).cloned() {
-            if request.finalizing.load(Ordering::Acquire)
-                || request.done.0.lock().unwrap().is_some()
-            {
-                return Ok(());
-            }
-            request.cancelled.store(true, Ordering::Release);
-            if let Ok(slot) = self.process.try_lock() {
-                if let Some(process) = slot.as_ref() {
-                    process.cancel(id)?;
-                }
-            }
+            self.cancel_known(id, &request)?;
         } else {
             let mut cancelled = self.cancelled.lock().unwrap();
             if cancelled.len() >= 256 {
                 return Err("Too many pending cancellations.".into());
             }
             cancelled.insert(id.into());
+        }
+        Ok(())
+    }
+    pub(super) fn cancel_known(&self, id: &str, request: &Request) -> Result<(), String> {
+        if request.finalizing.load(Ordering::Acquire) || request.done.0.lock().unwrap().is_some() {
+            return Ok(());
+        }
+        request.cancelled.store(true, Ordering::Release);
+        if let Ok(slot) = self.process.try_lock() {
+            if let Some(process) = slot.as_ref() {
+                process.cancel(id)?;
+            }
         }
         Ok(())
     }
@@ -797,7 +812,7 @@ fn runtime_supported() -> Result<(), String> {
     Ok(())
 }
 
-fn capability(provider: &str, model: &str, name: &str) -> bool {
+pub(super) fn capability(provider: &str, model: &str, name: &str) -> bool {
     let value: Value =
         serde_json::from_str(include_str!("../../../src/chat/model-capabilities.json")).unwrap();
     value["models"]
@@ -849,6 +864,7 @@ mod tests {
             owner,
             requests: Mutex::new(HashMap::new()),
             changing: Mutex::new(HashSet::new()),
+            closing: Mutex::new(HashMap::new()),
             cancelled: Mutex::new(HashSet::new()),
             process: Mutex::new(None),
             node: root.join(format!(
@@ -895,6 +911,256 @@ mod tests {
     }
     fn channel() -> Channel<Value> {
         Channel::new(|_| Ok(()))
+    }
+    #[test]
+    fn closing_conversation_blocks_new_generation_without_consuming_the_draft() {
+        let (_root, backend) = setup();
+        let input = input(&backend, "closing-conversation");
+        let active = Arc::new(AtomicBool::new(true));
+        let lease = active.clone();
+        backend.closing.lock().unwrap().insert(
+            input.conversation_id.clone(),
+            Box::new(move || lease.load(Ordering::Acquire)),
+        );
+        let before = backend
+            .services
+            .lock()
+            .unwrap()
+            .store
+            .as_ref()
+            .unwrap()
+            .connection
+            .total_changes();
+        assert!(backend
+            .start(input.clone(), channel())
+            .unwrap_err()
+            .contains("closing"));
+        assert_eq!(
+            backend
+                .services
+                .lock()
+                .unwrap()
+                .store
+                .as_ref()
+                .unwrap()
+                .connection
+                .total_changes(),
+            before
+        );
+        assert!(backend.requests.lock().unwrap().is_empty());
+        active.store(false, Ordering::Release);
+        backend.start(input.clone(), channel()).unwrap();
+        backend.close(&[input.conversation_id]).unwrap();
+        assert!(backend.closing.lock().unwrap().is_empty());
+        backend.stop();
+    }
+    #[cfg(unix)]
+    #[test]
+    fn agent_stop_checks_exact_identity_and_never_cancels_a_replacement() {
+        use lomi_control_protocol::{chat::ChatStopInput, ErrorCode};
+        let (_root, backend) = setup();
+        let first = input(&backend, "agent-stop");
+        backend.start(first.clone(), channel()).unwrap();
+        let mut stop = ChatStopInput {
+            workspace_id: "w".into(),
+            conversation_id: first.conversation_id.clone(),
+            request_id: first.request_id.clone(),
+            retry_epoch: "epoch".into(),
+            request_key: "stop".into(),
+        };
+        assert_eq!(
+            super::super::agent_stop::stop_backend(&backend, "foreign", &stop, &|| Ok(()))
+                .unwrap_err(),
+            ErrorCode::TargetNotFound
+        );
+        stop.request_id = "unknown".into();
+        assert_eq!(
+            super::super::agent_stop::stop_backend(&backend, "p", &stop, &|| Ok(())).unwrap_err(),
+            ErrorCode::TargetNotFound
+        );
+        assert!(backend.cancelled.lock().unwrap().is_empty());
+        stop.request_id = first.request_id.clone();
+        let stopped =
+            super::super::agent_stop::stop_backend(&backend, "p", &stop, &|| Ok(())).unwrap();
+        assert_eq!(stopped.request.status, "cancelled");
+        assert!(!stopped.already_finished);
+        let next = {
+            let mut services = backend.services.lock().unwrap();
+            let store = services.store.as_mut().unwrap();
+            let draft = store.draft(&first.conversation_id).unwrap();
+            let draft = store
+                .save_draft(&first.conversation_id, "Next", draft.revision)
+                .unwrap();
+            Start {
+                request_id: "replacement-request".into(),
+                user_id: "replacement-user".into(),
+                assistant_id: "replacement-assistant".into(),
+                expected_revision: store.conversation(&first.conversation_id).unwrap().revision,
+                draft_revision: draft.revision,
+                text: "Next".into(),
+                ..first
+            }
+        };
+        backend.start(next.clone(), channel()).unwrap();
+        let replay =
+            super::super::agent_stop::stop_backend(&backend, "p", &stop, &|| Ok(())).unwrap();
+        assert!(replay.already_finished);
+        let live = backend.requests.lock().unwrap()[&next.request_id].clone();
+        assert!(!live.cancelled.load(Ordering::Acquire));
+        assert!(live.done.0.lock().unwrap().is_none());
+        stop.request_id = next.request_id;
+        super::super::agent_stop::stop_backend(&backend, "p", &stop, &|| Ok(())).unwrap();
+        backend.stop();
+    }
+    #[cfg(unix)]
+    #[test]
+    fn agent_stop_does_not_claim_success_after_a_failed_terminal_checkpoint() {
+        use lomi_control_protocol::{chat::ChatStopInput, ErrorCode};
+        let (_root, backend) = setup();
+        let start = input(&backend, "stop-storage-failure");
+        backend.start(start.clone(), channel()).unwrap();
+        backend
+            .services
+            .lock()
+            .unwrap()
+            .store
+            .as_ref()
+            .unwrap()
+            .connection
+            .execute_batch("PRAGMA query_only=ON")
+            .unwrap();
+        let input = ChatStopInput {
+            workspace_id: "w".into(),
+            conversation_id: start.conversation_id,
+            request_id: start.request_id.clone(),
+            retry_epoch: "epoch".into(),
+            request_key: "stop".into(),
+        };
+        assert_eq!(
+            super::super::agent_stop::stop_backend(&backend, "p", &input, &|| Ok(())).unwrap_err(),
+            ErrorCode::OutcomeUnknown
+        );
+        let retained = backend.requests.lock().unwrap()[&start.request_id].clone();
+        assert!(retained.done.0.lock().unwrap().as_ref().unwrap().is_err());
+        let mut services = backend.services.lock().unwrap();
+        let store = services.store.as_mut().unwrap();
+        store
+            .connection
+            .execute_batch("PRAGMA query_only=OFF")
+            .unwrap();
+        drop(services);
+        backend.stop();
+    }
+    #[test]
+    fn rejected_generation_preflight_preserves_draft_and_does_not_read_or_dispatch_a_key() {
+        let (_root, backend) = setup();
+        let input = input(&backend, "preflight");
+        {
+            let mut services = backend.services.lock().unwrap();
+            let settings = services.settings.as_mut().unwrap();
+            settings
+                .clear_key("fixture", settings.data.revision)
+                .unwrap();
+            assert!(settings.key("fixture").is_err());
+        }
+        let error = backend
+            .start_checked(
+                input.clone(),
+                channel(),
+                |sent, conversation, connection, context| {
+                    assert_eq!(sent.request_id, input.request_id);
+                    assert_eq!(conversation.id, "preflight");
+                    assert_eq!(connection.id, "fixture");
+                    assert!(context.payload.get("apiKey").is_none());
+                    assert!(!context.payload.to_string().contains("fixture-only-key"));
+                    assert_eq!(
+                        context.payload["messages"][0]["parts"][0]["text"],
+                        "Unicode 日本語"
+                    );
+                    assert!(context.attachments.is_empty());
+                    Err("approval: changed context".into())
+                },
+                || Ok(()),
+            )
+            .unwrap_err();
+        assert_eq!(error, "approval: changed context");
+        assert!(backend.requests.lock().unwrap().is_empty());
+        assert!(backend.process.lock().unwrap().is_none());
+        let services = backend.services.lock().unwrap();
+        let store = services.store.as_ref().unwrap();
+        assert_eq!(store.draft("preflight").unwrap().revision, 1);
+        assert_eq!(store.draft("preflight").unwrap().text, input.text);
+        assert_eq!(
+            store
+                .connection
+                .query_row("SELECT COUNT(*) FROM requests", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+    }
+    #[cfg(unix)]
+    #[test]
+    fn approved_context_is_invalid_after_credential_rotation_without_consuming_the_draft() {
+        let (_root, backend) = setup();
+        let input = input(&backend, "rotated");
+        let approved = {
+            let services = backend.services.lock().unwrap();
+            let store = services.store.as_ref().unwrap();
+            let conversation = store.conversation("rotated").unwrap();
+            let connection = &services.settings.as_ref().unwrap().data.connections[0];
+            let context = super::super::generation::context(
+                store,
+                &backend.owner.root,
+                &input,
+                &conversation,
+                connection,
+                &|| Ok(()),
+            )
+            .unwrap();
+            super::super::agent_send::fingerprint(&input, &conversation, connection, &context)
+                .unwrap()
+        };
+        {
+            let mut services = backend.services.lock().unwrap();
+            let settings = services.settings.as_mut().unwrap();
+            settings
+                .save(
+                    settings.data.clone(),
+                    settings.data.revision,
+                    Some(("fixture", "rotated-fixture-key")),
+                )
+                .unwrap();
+        }
+        let result = backend.start_checked(
+            input,
+            channel(),
+            |input, conversation, connection, context| {
+                let current =
+                    super::super::agent_send::fingerprint(input, conversation, connection, context)
+                        .unwrap();
+                if current != approved {
+                    return Err("conflict: Approval context changed.".into());
+                }
+                Ok(())
+            },
+            || Ok(()),
+        );
+        assert_eq!(result.unwrap_err(), "conflict: Approval context changed.");
+        assert!(backend.process.lock().unwrap().is_none());
+        assert!(backend.requests.lock().unwrap().is_empty());
+        assert_eq!(
+            backend
+                .services
+                .lock()
+                .unwrap()
+                .store
+                .as_ref()
+                .unwrap()
+                .draft("rotated")
+                .unwrap()
+                .revision,
+            1
+        );
     }
     #[test]
     fn model_preview_uses_private_runtime_without_saving_settings_or_keys() {

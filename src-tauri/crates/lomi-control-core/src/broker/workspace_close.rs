@@ -103,6 +103,9 @@ impl Broker {
         for panel in &command.panels {
             match panel.kind.as_str() {
                 "file" => {}
+                "chat" => {
+                    Self::chat_panel_scope(state, owner, &panel.panel_id, "chat.read")?;
+                }
                 "diff" | "commit" => {
                     if !state
                         .git_panels
@@ -154,6 +157,15 @@ impl Broker {
                 _ => return Err(ErrorCode::UnsupportedCapability),
             }
         }
+        Self::closing_chats(
+            state,
+            owner,
+            &command
+                .panels
+                .iter()
+                .map(|p| p.panel_id.clone())
+                .collect::<Vec<_>>(),
+        )?;
         Ok(())
     }
     pub(super) fn preflight_workspace_close(
@@ -396,13 +408,27 @@ impl Broker {
         }
         // From the first native close, cancellation cannot claim that every resource survived.
         state.work.get_mut(operation).unwrap().native_committed = true;
-        self.commit_close_resources(&state, &command.panels)
+        self.commit_close_resources(&state, operation, &command.panels)
     }
     pub(super) fn commit_close_resources(
         &self,
         state: &State,
+        operation: &str,
         panels: &[PanelMoveIdentity],
     ) -> Result<(), ErrorCode> {
+        let work = state.work.get(operation).ok_or(ErrorCode::ControlRevoked)?;
+        let ids = panels
+            .iter()
+            .map(|p| p.panel_id.clone())
+            .collect::<Vec<_>>();
+        self.close_chats(state, &work.pairing, &work.project, &ids, None)?;
+        self.close_chats(
+            state,
+            &work.pairing,
+            &work.project,
+            &ids,
+            Some(work.native_permit.clone()),
+        )?;
         let peers = state
             .sessions
             .values()

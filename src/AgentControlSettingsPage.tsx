@@ -1,3 +1,4 @@
+import { AgentChatPermission } from "./AgentChatPermission";
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { listen } from "@tauri-apps/api/event";
@@ -718,6 +719,12 @@ export default function AgentControlSettingsPage() {
                 </p>
                 <p className="settings-help">
                   Granted: {session.scopes.join(", ")}
+                  {session.chatConversations?.length > 0 && (
+                    <>
+                      {" "}
+                      · Chat conversations: {session.chatConversations.length}
+                    </>
+                  )}
                   {session.androidPackages?.length > 0 && (
                     <> · Android apps: {session.androidPackages.join(", ")}</>
                   )}
@@ -756,6 +763,14 @@ function Pairing({
 }) {
   const [workspaceId, setWorkspaceId] = useState("");
   const [extraWorkspaceIds, setExtraWorkspaceIds] = useState<string[]>([]);
+  const [readChat, setReadChat] = useState(false);
+  const [sendChat, setSendChat] = useState(false);
+  const [stopChat, setStopChat] = useState(false);
+  const [exportChat, setExportChat] = useState(false);
+  const [draftChat, setDraftChat] = useState(false);
+  const [openChat, setOpenChat] = useState(false);
+  const [createChat, setCreateChat] = useState(false);
+  const [chatConversations, setChatConversations] = useState<string[]>([]);
   const [readSettings, setReadSettings] = useState(false);
   const [writeSettings, setWriteSettings] = useState(false);
   const [openSettings, setOpenSettings] = useState(false);
@@ -847,6 +862,14 @@ function Pairing({
         value={workspaceId}
         onChange={(event) => {
           setWorkspaceId(event.target.value);
+          setReadChat(false);
+          setOpenChat(false);
+          setDraftChat(false);
+          setSendChat(false);
+          setStopChat(false);
+          setExportChat(false);
+          setCreateChat(false);
+          setChatConversations([]);
           setExtraWorkspaceIds([]);
           setCloseProjects(false);
         }}
@@ -896,6 +919,103 @@ function Pairing({
       )}
       <p className="settings-help">
         Allow workspace metadata reads for this connection.
+      </p>
+      <label>
+        <input
+          type="checkbox"
+          checked={readChat}
+          disabled={busy || !selectedProject}
+          onChange={(event) => {
+            setReadChat(event.target.checked);
+            setOpenChat(false);
+            setDraftChat(false);
+            setSendChat(false);
+            setStopChat(false);
+            setExportChat(false);
+            setCreateChat(false);
+            setChatConversations([]);
+          }}
+        />
+        Allow reading selected Chat AI conversations
+      </label>
+      {readChat && selectedProject && (
+        <AgentChatPermission
+          key={selectedProject}
+          projectId={selectedProject}
+          selected={chatConversations}
+          onChange={setChatConversations}
+          disabled={busy}
+        />
+      )}
+
+      <label>
+        <input
+          type="checkbox"
+          checked={openChat}
+          disabled={busy || !readChat}
+          onChange={(event) => {
+            setOpenChat(event.target.checked);
+            if (!event.target.checked) setCreateChat(false);
+          }}
+        />
+        Allow opening selected Chat AI conversations
+      </label>
+      <label>
+        <input
+          type="checkbox"
+          checked={createChat}
+          disabled={busy || !readChat || !openChat}
+          onChange={(event) => setCreateChat(event.target.checked)}
+        />
+        Allow creating Chat AI conversations
+      </label>
+      <label>
+        <input
+          type="checkbox"
+          checked={draftChat}
+          disabled={busy || !readChat}
+          onChange={(event) => setDraftChat(event.target.checked)}
+        />
+        Allow editing selected Chat AI drafts
+      </label>
+      <label>
+        <input
+          type="checkbox"
+          checked={exportChat}
+          disabled={busy || !readChat}
+          onChange={(e) => setExportChat(e.target.checked)}
+        />
+        Allow exporting selected Chat AI text
+      </label>
+      <label>
+        <input
+          type="checkbox"
+          checked={stopChat}
+          disabled={busy || !readChat}
+          onChange={(e) => setStopChat(e.target.checked)}
+        />
+        Allow stopping selected Chat AI responses
+      </label>
+      <label>
+        <input
+          type="checkbox"
+          checked={sendChat}
+          disabled={busy || !readChat}
+          onChange={(event) => setSendChat(event.target.checked)}
+        />
+        Allow sending selected Chat AI messages
+      </label>
+      <p className="settings-help">
+        Each send requires your approval of the connection, model, message,
+        context and possible provider charges.
+      </p>
+      <p className="settings-help">
+        Draft editing saves text locally in an open conversation. Unsaved human
+        text is protected, and messages are not sent.
+      </p>
+      <p className="settings-help">
+        New conversations become readable by this connection. Opening and
+        creating do not send messages to a provider.
       </p>
       <label>
         <input
@@ -1521,6 +1641,7 @@ function Pairing({
           disabled={
             busy ||
             !valid ||
+            (readChat && chatConversations.length === 0 && !createChat) ||
             (readAndroid && !androidDevices.some((d) => d.id === androidDevice))
           }
           onClick={() =>
@@ -1537,6 +1658,17 @@ function Pairing({
                   scopes: [
                     ...new Set([
                       "workspace.read",
+                      ...(readChat ? ["chat.read"] : []),
+                      ...(readChat && draftChat ? ["chat.draft"] : []),
+                      ...(readChat && sendChat ? ["chat.send"] : []),
+                      ...(readChat && stopChat ? ["chat.stop"] : []),
+                      ...(readChat && exportChat ? ["chat.export"] : []),
+                      ...(readChat && openChat
+                        ? ["chat.open", "panel.create", "panel.focus"]
+                        : []),
+                      ...(readChat && openChat && createChat
+                        ? ["chat.create"]
+                        : []),
                       ...(openSettings ? ["settings.open"] : []),
                       ...(readSettings ? ["settings.read"] : []),
                       ...(readSettings && writeSettings
@@ -1657,6 +1789,7 @@ function Pairing({
                     ]),
                   ],
                   androidDevices: readAndroid ? [androidDevice] : [],
+                  chatConversations: readChat ? chatConversations : [],
                   androidPackages:
                     readAndroid &&
                     controlAndroid &&

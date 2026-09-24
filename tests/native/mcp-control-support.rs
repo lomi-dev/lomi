@@ -8,6 +8,8 @@ use std::{
 use tauri::{Emitter, Listener, Manager, Webview};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
+#[path = "mcp-chat-support.rs"]
+mod chat_probe;
 #[path = "mcp-settings-support.rs"]
 mod settings_probe;
 #[path = "mcp-theme-support.rs"]
@@ -2808,7 +2810,7 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
     let workspace=evaluate(&settings,"(() => {const s=document.querySelector('.agent-control-request select');s.value=Array.from(s.options).find(o=>o.textContent.includes('Visible workspace')).value;s.dispatchEvent(new Event('change',{bubbles:true}));return s.value;})()").await?;
     evaluate(
         &settings,
-        "document.querySelectorAll('.agent-control-request input[type=checkbox]').forEach(e=>{if (!e.closest('fieldset') && !/browser|Android/.test(e.closest('label').textContent)) e.click();});true",
+        "document.querySelectorAll('.agent-control-request input[type=checkbox]').forEach(e=>{if (!e.closest('fieldset') && !/browser|Android|Chat AI/.test(e.closest('label').textContent)) e.click();});true",
     )
     .await?;
     if std::env::var_os("LOMI_MCP_SETTINGS_UPDATE_ONLY").is_some()
@@ -2897,11 +2899,20 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
         .await?;
         evaluate(&settings,"(()=>{const e=document.querySelector('textarea[id^=control-packages-]');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,'org.lomi.inputtest');e.dispatchEvent(new Event('input',{bubbles:true}));return true;})()").await?;
     }
-    if std::env::var_os("LOMI_MCP_PROJECT_CLOSE_ONLY").is_some() {
+    if std::env::var_os("LOMI_MCP_PROJECT_CLOSE_ONLY").is_some()
+        || std::env::var_os("LOMI_MCP_CHAT_SEND_ONLY").is_some()
+    {
         evaluate(&settings, "[...document.querySelectorAll('.agent-control-request fieldset label')].find(e=>e.textContent.includes('Private workspace')).querySelector('input').click();true").await?;
         wait_for(&settings, "![...document.querySelectorAll('.agent-control-request label')].find(e=>e.textContent.includes('Allow requesting project closure')).querySelector('input').disabled").await?;
         evaluate(&settings, "(()=>{const e=[...document.querySelectorAll('.agent-control-request label')].find(e=>e.textContent.includes('Allow requesting project closure')).querySelector('input');if(!e.checked)e.click();return true;})()").await?;
         screenshot(&settings, directory.join("project-close-permissions.png")).await?;
+    }
+    if std::env::var_os("LOMI_MCP_CHAT_READ_ONLY").is_some()
+        || (std::env::var_os("LOMI_MCP_CHAT_OPEN_ONLY").is_some()
+            || std::env::var_os("LOMI_MCP_CHAT_DRAFT_ONLY").is_some()
+            || std::env::var_os("LOMI_MCP_CHAT_SEND_ONLY").is_some())
+    {
+        chat_probe::prepare(app, &main, &settings, &workspace, directory).await?;
     }
     click(&settings, "Approve session").await?;
     let mut listed = Value::Null;
@@ -2945,7 +2956,8 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
     let items = listed["structuredContent"]["data"]["items"]
         .as_array()
         .ok_or_else(|| listed.to_string())?;
-    let project_close = std::env::var_os("LOMI_MCP_PROJECT_CLOSE_ONLY").is_some();
+    let project_close = std::env::var_os("LOMI_MCP_PROJECT_CLOSE_ONLY").is_some()
+        || std::env::var_os("LOMI_MCP_CHAT_SEND_ONLY").is_some();
     if project_close {
         if items.len() != 2
             || !items.iter().any(|w| w["id"] == workspace)
@@ -2964,6 +2976,17 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
         .await?;
     if connected["structuredContent"]["status"] != "ok" {
         return Err("Cannot select approved workspace".into());
+    }
+    if std::env::var_os("LOMI_MCP_CHAT_READ_ONLY").is_some()
+        || (std::env::var_os("LOMI_MCP_CHAT_OPEN_ONLY").is_some()
+            || std::env::var_os("LOMI_MCP_CHAT_DRAFT_ONLY").is_some()
+            || std::env::var_os("LOMI_MCP_CHAT_SEND_ONLY").is_some())
+    {
+        chat_probe::qualify(app, &mut wire, &main, &settings, &workspace, directory).await?;
+        child.kill().await.map_err(|e| e.to_string())?;
+        return Ok(
+            json!({"profile":if std::env::var_os("LOMI_MCP_CHAT_SEND_ONLY").is_some(){"chat-send-only"}else if std::env::var_os("LOMI_MCP_CHAT_DRAFT_ONLY").is_some(){"chat-draft-only"}else if std::env::var_os("LOMI_MCP_CHAT_OPEN_ONLY").is_some(){"chat-open-only"}else{"chat-read-only"},"catalogCount":catalog["result"]["tools"].as_array().map(Vec::len)}),
+        );
     }
     if std::env::var_os("LOMI_MCP_PROJECT_OPEN_ONLY").is_some() {
         qualify_project_open(&mut wire,&main,&settings,directory,json!({"anchor":workspace,"projectId":items[0]["projectId"],"retryEpoch":connected["structuredContent"]["data"]["retryEpoch"]})).await?;

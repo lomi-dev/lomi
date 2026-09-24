@@ -1,4 +1,11 @@
 import {
+  openAgentChat,
+  type ChatOpenCommand,
+  type ChatDraftCommand,
+  type ChatDraftUpdated,
+  type ChatSendCommand,
+} from "./agent-chat";
+import {
   moveAgentPanel,
   panelMoveIdentities,
   type PanelMove,
@@ -157,6 +164,7 @@ export interface ControlState {
       browserOrigins: string[];
       androidDeviceIds: string[];
       androidPackages: string[];
+      chatConversations: string[];
     }[];
   };
 }
@@ -170,6 +178,9 @@ interface UiCommand {
   domainRevision: string;
   projectId: string;
   action:
+    | ChatOpenCommand
+    | ChatDraftCommand
+    | ChatSendCommand
     | {
         type: "open_project";
         workspaceId: string;
@@ -385,6 +396,24 @@ interface FileTrashRequest {
   relativePath: string;
   notAfterMillis: string;
 }
+async function checkAgentChats(
+  panels: readonly (import("./model").Tab | import("./model").LayoutPane)[],
+  projectId: string,
+  reveal: boolean,
+) {
+  const chats = panels.filter((p) => p.type === "chat");
+  if (!chats.length) return;
+  const module = await import("./chat/chat-runtime");
+  for (const panel of chats) {
+    const runtime =
+      module.existing(panel.conversationId) ??
+      (reveal ? module.getChat(panel.conversationId) : undefined);
+    if (!runtime) continue;
+    await runtime.ready;
+    if (runtime.snapshot.loaded?.conversation.origin.projectId !== projectId)
+      throw Error("TARGET_NOT_FOUND");
+  }
+}
 export function useAgentControlBridge(
   session: Session | undefined,
   getCurrent: () => Session | undefined,
@@ -397,6 +426,9 @@ export function useAgentControlBridge(
   applyFileChange: (change: FileChange, canonicalChange: FileChange) => void,
   confirmGit: (
     request: import("./AgentGitApproval").GitApprovalRequest,
+  ) => Promise<boolean>,
+  confirmChat: (
+    request: import("./AgentChatApproval").ChatApprovalRequest,
   ) => Promise<boolean>,
   confirmWorkspaceClose: (
     ids: ReadonlySet<string>,
@@ -415,6 +447,7 @@ export function useAgentControlBridge(
     runFileOperation,
     applyFileChange,
     confirmGit,
+    confirmChat,
     confirmWorkspaceClose,
     refreshGit,
     layoutSize,
@@ -426,6 +459,7 @@ export function useAgentControlBridge(
     runFileOperation,
     applyFileChange,
     confirmGit,
+    confirmChat,
     confirmWorkspaceClose,
     refreshGit,
     layoutSize,
@@ -462,6 +496,8 @@ export function useAgentControlBridge(
                     panel.type === "terminal"
                       ? (runningTerminal(panel.id)?.sessionId ?? null)
                       : null,
+                  chatConversationId:
+                    panel.type === "chat" ? panel.conversationId : null,
                   androidDeviceId:
                     panel.type === "android" ? panel.deviceId : null,
                   browserGeneration:
@@ -722,6 +758,323 @@ export function useAgentControlBridge(
             }
             // Retain viewport changes made while the native claim was pending.
             if (!browserRuntime) before = domain.current.getCurrent()!;
+            if (action.type === "send_chat") {
+              const target = {
+                operationId: command.operationId,
+                nonce: command.nonce,
+              };
+              try {
+                const input = action.input;
+                const project = before.projects.find(
+                  (p) => p.id === command.projectId,
+                );
+                const workspace = project?.workspaces.find(
+                  (w) => w.id === action.workspaceId,
+                );
+                const panel = workspace?.tabs
+                  .flatMap((t) =>
+                    t.type === "terminal"
+                      ? layoutPanes(t.layout).filter((p) => p.type === "chat")
+                      : t.type === "chat"
+                        ? [t]
+                        : [],
+                  )
+                  .find((p) => p.id === input.panelId);
+                if (
+                  panel?.type !== "chat" ||
+                  panel.conversationId !== input.conversationId
+                )
+                  throw Error("TARGET_NOT_FOUND");
+                const runtime = (await import("./chat/chat-runtime")).existing(
+                  input.conversationId,
+                );
+                if (!runtime) throw Error("UI_NOT_READY");
+                await runtime.ready;
+                const matches = () => {
+                  const loaded = runtime.snapshot.loaded;
+                  return (
+                    alive &&
+                    sameAgentSession(domain.current.getCurrent(), before) &&
+                    Date.now() < Number(action.notAfterMillis) &&
+                    !runtime.dirty &&
+                    !runtime.snapshot.busy &&
+                    loaded?.conversation.origin.projectId ===
+                      command.projectId &&
+                    String(loaded.conversation.revision) ===
+                      input.expectedConversationRevision &&
+                    String(loaded.draft.revision) ===
+                      input.expectedDraftRevision &&
+                    loaded.conversation.config.connectionId ===
+                      input.connectionId &&
+                    loaded.conversation.config.model === input.model
+                  );
+                };
+                if (!matches()) throw Error("REVISION_CONFLICT");
+                const plan = await api<
+                  import("./AgentChatApproval").ChatSendPlan
+                >("agent_control_chat_send_prepare", target);
+                const isActive = async () =>
+                  matches() &&
+                  runtime.snapshot.text === plan.draftText &&
+                  (await api<boolean>("agent_control_chat_send_pending", {
+                    ...target,
+                    planHash: plan.planHash,
+                  }));
+                if (
+                  !(await domain.current.confirmChat({
+                    ...target,
+                    plan,
+                    isActive,
+                  }))
+                ) {
+                  await api("agent_control_chat_send_decide", {
+                    ...target,
+                    planHash: plan.planHash,
+                    approved: false,
+                  }).catch(() => {});
+                  return;
+                }
+                if (!matches() || runtime.snapshot.text !== plan.draftText)
+                  throw Error("REVISION_CONFLICT");
+                const result = await runtime.sendAgent(
+                  {
+                    requestId: action.requestId,
+                    userId: action.userId,
+                    assistantId: action.assistantId,
+                    conversationId: input.conversationId,
+                    expectedRevision: Number(
+                      input.expectedConversationRevision,
+                    ),
+                    draftRevision: Number(input.expectedDraftRevision),
+                    action: "send",
+                    targetId: null,
+                    text: plan.draftText,
+                  },
+                  { ...target, planHash: plan.planHash },
+                );
+                if (!alive) return;
+                await ack({ kind: "chat_sent", ...result });
+              } catch (error) {
+                const code =
+                  error instanceof Error ? error.message : String(error);
+                await ack({
+                  kind: "failure",
+                  code: [
+                    "CONTROL_REVOKED",
+                    "RESOURCE_EXHAUSTED",
+                    "TARGET_NOT_FOUND",
+                    "SCOPE_DENIED",
+                    "TARGET_BUSY",
+                    "DEADLINE_EXCEEDED",
+                    "REVISION_CONFLICT",
+                    "OUTCOME_UNKNOWN",
+                    "STORAGE_UNAVAILABLE",
+                    "UI_NOT_READY",
+                  ].includes(code)
+                    ? code
+                    : "OUTCOME_UNKNOWN",
+                });
+              }
+              return;
+            }
+            if (action.type === "draft_chat") {
+              try {
+                const input = action.input;
+                const project = before.projects.find(
+                  (p) => p.id === command.projectId,
+                );
+                const workspace = project?.workspaces.find(
+                  (w) => w.id === action.workspaceId,
+                );
+                const panel = workspace?.tabs
+                  .flatMap((t) =>
+                    t.type === "terminal"
+                      ? layoutPanes(t.layout).filter((p) => p.type === "chat")
+                      : t.type === "chat"
+                        ? [t]
+                        : [],
+                  )
+                  .find((p) => p.id === input.panelId);
+                if (
+                  panel?.type !== "chat" ||
+                  panel.conversationId !== input.conversationId
+                )
+                  throw Error("TARGET_NOT_FOUND");
+                const runtime = (await import("./chat/chat-runtime")).existing(
+                  input.conversationId,
+                );
+                if (!runtime) throw Error("UI_NOT_READY");
+                await runtime.ready;
+                if (
+                  runtime.snapshot.loaded?.conversation.origin.projectId !==
+                  command.projectId
+                )
+                  throw Error("TARGET_NOT_FOUND");
+                let result: ChatDraftUpdated | undefined;
+                await runtime.applyAgentDraft(
+                  input.expectedDraftRevision,
+                  input.expectedConversationRevision,
+                  input.text,
+                  async () => {
+                    if (
+                      !alive ||
+                      !sameAgentSession(domain.current.getCurrent(), before)
+                    )
+                      throw Error("REVISION_CONFLICT");
+                    if (
+                      !Number.isSafeInteger(Number(action.notAfterMillis)) ||
+                      Date.now() >= Number(action.notAfterMillis)
+                    )
+                      throw Error("DEADLINE_EXCEEDED");
+                    result = await api<ChatDraftUpdated>(
+                      "agent_control_chat_draft",
+                      {
+                        operationId: command.operationId,
+                        nonce: command.nonce,
+                      },
+                    );
+                    if (
+                      result.conversationId !== input.conversationId ||
+                      result.panelId !== input.panelId ||
+                      result.workspaceId !== action.workspaceId
+                    )
+                      throw Error("OUTCOME_UNKNOWN");
+                    return {
+                      ...runtime.snapshot.loaded!.draft,
+                      text: input.text,
+                      revision: Number(result.draftRevision),
+                    };
+                  },
+                );
+                if (!alive) return;
+                await ack({ kind: "chat_draft_updated", ...result });
+              } catch (error) {
+                const code =
+                  error instanceof Error ? error.message : String(error);
+                await ack({
+                  kind: "failure",
+                  code: [
+                    "CONTROL_REVOKED",
+                    "RESOURCE_EXHAUSTED",
+                    "TARGET_NOT_FOUND",
+                    "SCOPE_DENIED",
+                    "TARGET_BUSY",
+                    "DEADLINE_EXCEEDED",
+                    "REVISION_CONFLICT",
+                    "OUTCOME_UNKNOWN",
+                    "STORAGE_UNAVAILABLE",
+                  ].includes(code)
+                    ? code
+                    : "UI_NOT_READY",
+                });
+              }
+              return;
+            }
+            if (action.type === "open_chat") {
+              try {
+                openAgentChat(before, command.projectId, action, "Chat AI");
+                const conversation = await api<{
+                  conversationId: string;
+                  title: string;
+                }>("agent_control_chat_open", {
+                  operationId: command.operationId,
+                  nonce: command.nonce,
+                });
+                if (!alive || domain.current.getCurrent() !== before)
+                  throw Error("REVISION_CONFLICT");
+                if (
+                  !Number.isSafeInteger(Number(action.notAfterMillis)) ||
+                  Date.now() >= Number(action.notAfterMillis)
+                )
+                  throw Error("DEADLINE_EXCEEDED");
+                if (conversation.conversationId !== action.conversationId)
+                  throw Error("TARGET_NOT_FOUND");
+                const root = before.projects
+                  .find((p) => p.id === command.projectId)
+                  ?.workspaces.find((w) => w.id === action.workspaceId)
+                  ?.tabs.find(
+                    (t) =>
+                      t.id === action.panelId ||
+                      (t.type === "terminal" &&
+                        layoutPanes(t.layout).some(
+                          (p) => p.id === action.panelId,
+                        )),
+                  );
+                const revealing =
+                  root?.type === "terminal"
+                    ? layoutPanes(root.layout)
+                    : root
+                      ? [root]
+                      : [];
+                if (
+                  revealing.some(
+                    (p) =>
+                      (p.type === "terminal" &&
+                        !runningTerminal(p.id)?.sessionId) ||
+                      (p.type === "browser" &&
+                        (!p.automation ||
+                          !hasLiveAgentBrowser(
+                            p.id,
+                            p.automation.generation,
+                          ))) ||
+                      p.type === "android" ||
+                      p.type === "plugin",
+                  )
+                )
+                  throw Error("UI_NOT_READY");
+                await checkAgentChats(revealing, command.projectId, true);
+                if (
+                  !alive ||
+                  !sameAgentSession(domain.current.getCurrent(), before)
+                )
+                  throw Error("REVISION_CONFLICT");
+                const opened = openAgentChat(
+                  before,
+                  command.projectId,
+                  action,
+                  conversation.title,
+                );
+                domain.current.setCurrent(opened.session);
+                const runtime = (await import("./chat/chat-runtime")).getChat(
+                  action.conversationId,
+                );
+                await runtime.ready;
+                if (
+                  !runtime.snapshot.loaded ||
+                  runtime.snapshot.loaded.conversation.origin.projectId !==
+                    command.projectId
+                )
+                  throw Error("UI_NOT_READY");
+                if (!alive) return;
+                await send();
+                await ack({
+                  kind: "chat_opened",
+                  workspaceId: action.workspaceId,
+                  panelId: opened.panel.id,
+                  conversationId: action.conversationId,
+                  created: action.create,
+                });
+              } catch (error) {
+                const code =
+                  error instanceof Error ? error.message : String(error);
+                await ack({
+                  kind: "failure",
+                  code: [
+                    "CONTROL_REVOKED",
+                    "RESOURCE_EXHAUSTED",
+                    "TARGET_NOT_FOUND",
+                    "SCOPE_DENIED",
+                    "TARGET_BUSY",
+                    "UNSUPPORTED_CAPABILITY",
+                    "DEADLINE_EXCEEDED",
+                    "REVISION_CONFLICT",
+                  ].includes(code)
+                    ? code
+                    : "UI_NOT_READY",
+                });
+              }
+              return;
+            }
             if (action.type === "update_settings") {
               try {
                 const section =
@@ -956,6 +1309,7 @@ export function useAgentControlBridge(
               let saveAttempted = false;
               let saved = false;
               let discarded = false;
+              let chatSaveAttempted = false;
               try {
                 if (document.querySelector("dialog[open], [aria-modal='true']"))
                   throw new Error("TARGET_BUSY");
@@ -1000,6 +1354,7 @@ export function useAgentControlBridge(
                         "browser",
                         "diff",
                         "commit",
+                        "chat",
                       ].includes(p.type),
                   )
                 )
@@ -1023,6 +1378,7 @@ export function useAgentControlBridge(
                 )
                   throw new Error("REVISION_CONFLICT");
                 const ids = new Set(panels.map((p) => p.id));
+                await checkAgentChats(panels, command.projectId, false);
                 const documents = [
                   ...new Set(
                     panels.flatMap((p) =>
@@ -1099,10 +1455,20 @@ export function useAgentControlBridge(
                   throw new Error("TARGET_BUSY");
                 if (!unchanged() || !(await isActive()))
                   throw new Error("REVISION_CONFLICT");
+                const chatsSaved = panels.some((p) => p.type === "chat")
+                  ? await (
+                      await import("./chat/chat-service")
+                    ).prepareAgentChatClose(ids, () => {
+                      chatSaveAttempted = true;
+                    })
+                  : () => true;
+                if (!chatsSaved() || !unchanged() || !(await isActive()))
+                  throw new Error("REVISION_CONFLICT");
                 await api("agent_control_ui_commit_close", target);
                 committed = true;
                 if (
                   !alive ||
+                  !chatsSaved() ||
                   documents.some((d, i) => d.state.doc !== approvedText[i]) ||
                   closingEditorDocuments(ids).some(
                     (d) => d.dirty && (!discarded || !documents.includes(d)),
@@ -1150,6 +1516,7 @@ export function useAgentControlBridge(
                   code:
                     (!committed || code === "REVISION_CONFLICT") &&
                     !saveAttempted &&
+                    !chatSaveAttempted &&
                     [
                       "TARGET_BUSY",
                       "TARGET_NOT_FOUND",
@@ -1271,6 +1638,32 @@ export function useAgentControlBridge(
                   action.movement,
                   size,
                 );
+                const movement = action.movement;
+                const affected = new Set(
+                  movement.type === "dock_tab"
+                    ? [movement.tabId, movement.targetTabId]
+                    : movement.type === "move_pane"
+                      ? identities
+                          .filter((p) => p.panelId === movement.panelId)
+                          .map((p) => p.tabId)
+                      : [movement.tabId],
+                );
+                await checkAgentChats(
+                  workspace.tabs
+                    .filter((t) => affected.has(t.id))
+                    .flatMap<
+                      import("./model").Tab | import("./model").LayoutPane
+                    >((t) =>
+                      t.type === "terminal" ? layoutPanes(t.layout) : [t],
+                    ),
+                  command.projectId,
+                  movement.type === "dock_tab" || movement.type === "move_pane",
+                );
+                if (
+                  !alive ||
+                  !sameAgentSession(domain.current.getCurrent(), before)
+                )
+                  throw Error("REVISION_CONFLICT");
                 domain.current.setCurrent(after);
                 applied = true;
                 await send();
@@ -1836,6 +2229,7 @@ export function useAgentControlBridge(
               if (
                 !panel ||
                 (panel.type !== "terminal" &&
+                  panel.type !== "chat" &&
                   panel.type !== "file" &&
                   panel.type !== "browser" &&
                   !(
@@ -1862,12 +2256,38 @@ export function useAgentControlBridge(
                 await ack({ kind: "failure", code: "CONTROL_REVOKED" });
                 return;
               }
+              let chatsSaved = () => true;
+              let chatSaveAttempted = false;
+              if (panel.type === "chat") {
+                try {
+                  await checkAgentChats([panel], command.projectId, false);
+                  chatsSaved = await (
+                    await import("./chat/chat-service")
+                  ).prepareAgentChatClose(new Set([panel.id]), () => {
+                    chatSaveAttempted = true;
+                  });
+                } catch {
+                  await ack({
+                    kind: "failure",
+                    code: chatSaveAttempted
+                      ? "OUTCOME_UNKNOWN"
+                      : "STORAGE_UNAVAILABLE",
+                  });
+                  return;
+                }
+              }
               if (
                 !alive ||
                 domain.current.getCurrent() !== before ||
+                !chatsSaved() ||
                 (panel.type === "file" && loadedEditor(panel)?.dirty)
               ) {
-                await ack({ kind: "failure", code: "REVISION_CONFLICT" });
+                await ack({
+                  kind: "failure",
+                  code: chatSaveAttempted
+                    ? "OUTCOME_UNKNOWN"
+                    : "REVISION_CONFLICT",
+                });
                 return;
               }
               try {
@@ -1880,6 +2300,7 @@ export function useAgentControlBridge(
                 await ack({
                   kind: "failure",
                   code:
+                    !chatSaveAttempted &&
                     typeof error === "string" &&
                     [
                       "TARGET_BUSY",
@@ -1901,6 +2322,7 @@ export function useAgentControlBridge(
               if (
                 !alive ||
                 domain.current.getCurrent() !== before ||
+                !chatsSaved() ||
                 (panel.type === "file" && loadedEditor(panel)?.dirty)
               ) {
                 await ack({ kind: "failure", code: "OUTCOME_UNKNOWN" });
@@ -2000,6 +2422,19 @@ export function useAgentControlBridge(
                 )
               ) {
                 await ack({ kind: "failure", code: "TARGET_NOT_FOUND" });
+                return;
+              }
+              try {
+                await checkAgentChats(panels, command.projectId, true);
+              } catch {
+                await ack({ kind: "failure", code: "TARGET_NOT_FOUND" });
+                return;
+              }
+              if (
+                !alive ||
+                !sameAgentSession(domain.current.getCurrent(), before)
+              ) {
+                await ack({ kind: "failure", code: "REVISION_CONFLICT" });
                 return;
               }
               domain.current.setCurrent({

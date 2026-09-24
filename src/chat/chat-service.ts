@@ -46,12 +46,32 @@ export function conversationTitle(id: string, title: string) {
     if (tab.conversationId === id && tab.title !== title)
       host?.update(tab.id, { title });
 }
-export async function closeChatViews(panelIds?: ReadonlySet<string>) {
+function closingChatIds(panelIds?: ReadonlySet<string>) {
   const removed = retained.filter((t) => !panelIds || panelIds.has(t.id));
   const remaining = retained.filter((t) => panelIds && !panelIds.has(t.id));
-  const ids = [...new Set(removed.map((t) => t.conversationId))].filter(
+  return [...new Set(removed.map((t) => t.conversationId))].filter(
     (id) => !remaining.some((t) => t.conversationId === id),
   );
+}
+export async function prepareAgentChatClose(
+  panelIds: ReadonlySet<string>,
+  onSaveStart: () => void,
+) {
+  const entries = closingChatIds(panelIds).flatMap((id) => {
+    const entry = runtimeModule?.existing(id);
+    return entry ? [entry] : [];
+  });
+  for (const entry of entries) {
+    // flush queues behind other draft work, so even a currently clean entry
+    // can save input typed before that queued task executes.
+    onSaveStart();
+    await entry.flush();
+  }
+  return () =>
+    entries.every((entry) => !entry.dirty && !entry.snapshot.storageFailed);
+}
+export async function closeChatViews(panelIds?: ReadonlySet<string>) {
+  const ids = closingChatIds(panelIds);
   if (!ids.length && panelIds) return;
   for (const id of ids) {
     const entry = runtimeModule?.existing(id);

@@ -1,4 +1,5 @@
 import { useAgentControlBridge } from "./agent-control";
+import { useAgentChatApproval } from "./AgentChatApproval";
 import { useAgentGitApproval } from "./AgentGitApproval";
 import {
   configureChats,
@@ -218,6 +219,7 @@ export default function Workbench() {
   const [sourceControlState] = useState(() => new SourceControlState());
   const closeGuard = useCloseGuard();
   const gitApproval = useAgentGitApproval();
+  const chatApproval = useAgentChatApproval();
   const theme = useThemes();
   useSyncExternalStore(subscribeEditors, editorRevision);
   const fileOpenRequest = useRef(0);
@@ -282,7 +284,8 @@ export default function Workbench() {
     session,
     () => currentSession.current,
     setSession,
-    (id, terminal) => closeGuard.confirm(new Set([id]), terminal ? [id] : []),
+    (id, terminal) =>
+      closeGuard.confirm(new Set([id]), terminal ? [id] : [], undefined, true),
     async (operation, trash) => {
       if (fileOperationBusy.current || closing.current || updater.busy.current)
         throw new Error("TARGET_BUSY");
@@ -419,10 +422,11 @@ export default function Workbench() {
     },
     (result, canonicalChange) => applyDiskFileChange(result, canonicalChange),
     gitApproval.confirm,
+    chatApproval.confirm,
     (ids, decision) => {
       if (fileOperationBusy.current || closing.current || updater.busy.current)
         throw new Error("TARGET_BUSY");
-      return closeGuard.confirm(ids, [], decision);
+      return closeGuard.confirm(ids, [], decision, true);
     },
     () => git.refresh(),
     () => {
@@ -1700,6 +1704,7 @@ export default function Workbench() {
             {updater.dialog}
             {closeGuard.dialog}
             {gitApproval.dialog}
+            {chatApproval.dialog}
             {cliTitles.dialog}
             {agentNotifications.dialog}
           </div>
@@ -2734,6 +2739,7 @@ export default function Workbench() {
           {updater.dialog}
           {closeGuard.dialog}
           {gitApproval.dialog}
+          {chatApproval.dialog}
           {stoppingForClose && (
             <Modal
               protectTheme

@@ -2,6 +2,13 @@ import { Channel } from "@tauri-apps/api/core";
 import type { ChatTransport, UIMessage, UIMessageChunk } from "ai";
 import { api, errorMessage } from "../api";
 import type { Accepted, Start } from "./types";
+import type { ChatSent } from "../agent-chat";
+export interface AgentGeneration {
+  operationId: string;
+  nonce: string;
+  planHash: string;
+  result?: ChatSent;
+}
 export interface Packet {
   type: "chunk" | "resync" | "snapshot" | "terminal" | "storage-error";
   epoch: number;
@@ -21,6 +28,7 @@ export interface Packet {
 }
 export class NativeTransport implements ChatTransport<UIMessage> {
   input?: Start;
+  agent?: AgentGeneration;
   requestId = "";
   accepted: (value: Accepted) => void = () => {};
   failed: (error: string) => void = () => {};
@@ -36,6 +44,8 @@ export class NativeTransport implements ChatTransport<UIMessage> {
   reconnectToStream: ChatTransport<UIMessage>["reconnectToStream"] =
     async () => (this.requestId ? this.open(true) : null);
   private open(reconnect: boolean, input?: Start) {
+    const agent = reconnect ? undefined : this.agent;
+    if (!reconnect) this.agent = undefined;
     const requestId = this.requestId;
     let closed = false;
     let epoch = reconnect ? -1 : 0;
@@ -76,7 +86,22 @@ export class NativeTransport implements ChatTransport<UIMessage> {
         })
         .catch(fail);
     else
-      void api<Accepted>("chat_generate", { input, channel })
+      void (
+        agent
+          ? api<{ accepted: Accepted; result: ChatSent }>(
+              "agent_control_chat_send",
+              {
+                operationId: agent.operationId,
+                nonce: agent.nonce,
+                planHash: agent.planHash,
+                channel,
+              },
+            ).then((reply) => {
+              agent.result = reply.result;
+              return reply.accepted;
+            })
+          : api<Accepted>("chat_generate", { input, channel })
+      )
         .then(this.accepted)
         .catch((error) => {
           this.failed(errorMessage(error));

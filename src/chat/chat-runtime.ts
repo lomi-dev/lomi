@@ -9,7 +9,7 @@ import {
   registerChatRuntime,
 } from "./chat-service";
 import { NativeTransport } from "./chat-transport";
-import type { Packet } from "./chat-transport";
+import type { AgentGeneration, Packet } from "./chat-transport";
 import type {
   Accepted,
   Attachment,
@@ -140,7 +140,7 @@ export class ChatRuntime {
     if (this.disposed) return;
     this.snapshot = { ...this.snapshot, ...value };
     this.publishActivity();
-    this.listeners.forEach((fn) => fn());
+    this.listeners.forEach((listener) => listener());
   }
   report = (error: unknown) => this.update({ error: errorMessage(error) });
   constructor(readonly id: string) {
@@ -261,6 +261,46 @@ export class ChatRuntime {
       await this.saveDraft();
     });
   }
+  async applyAgentDraft(
+    expectedRevision: string,
+    expectedConversationRevision: string,
+    text: string,
+    commit: () => Promise<Draft>,
+  ): Promise<{ draft: Draft; humanTextRetained: boolean }> {
+    return this.enqueue(async () => {
+      await this.ready;
+      const loaded = this.snapshot.loaded;
+      if (!loaded || this.disposed) throw Error("TARGET_NOT_FOUND");
+      if (
+        this.dirty ||
+        String(loaded.draft.revision) !== expectedRevision ||
+        String(loaded.conversation.revision) !== expectedConversationRevision
+      )
+        throw Error("REVISION_CONFLICT");
+      const local = this.localRevision;
+      const draft = await commit();
+      if (
+        draft.text !== text ||
+        !Number.isSafeInteger(draft.revision) ||
+        draft.revision <= loaded.draft.revision
+      )
+        throw Error("OUTCOME_UNKNOWN");
+      if (this.disposed || !this.snapshot.loaded)
+        throw Error("TARGET_NOT_FOUND");
+      const humanTextRetained = this.localRevision !== local;
+      if (!humanTextRetained) {
+        this.localRevision++;
+        this.savedRevision = this.localRevision;
+      }
+      // A keystroke during native persistence remains the live draft; its next
+      // autosave uses the newly committed native revision instead of old CAS.
+      this.update({
+        loaded: { ...this.snapshot.loaded, draft },
+        ...(humanTextRetained ? {} : { text }),
+      });
+      return { draft, humanTextRetained };
+    });
+  }
   async configure(config: Config) {
     return this.enqueue(async () => {
       const loaded = this.snapshot.loaded;
@@ -278,22 +318,35 @@ export class ChatRuntime {
     action: Start["action"] = "send",
     targetId: string | null = null,
     text?: string,
+    agent?: { input: Start; authorization: AgentGeneration },
   ) {
     if (
       this.snapshot.busy ||
       this.snapshot.unsentText ||
       this.snapshot.storageFailed
-    )
+    ) {
+      if (agent) throw Error("TARGET_BUSY");
       return;
+    }
     this.terminalPacket = undefined;
     this.update({ busy: true, error: "", status: "Preparing request…" });
     try {
       await this.enqueue(async () => {
         await this.ready;
-        await this.saveDraft();
+        if (agent) {
+          if (this.dirty || this.snapshot.text !== agent.input.text)
+            throw Error("REVISION_CONFLICT");
+        } else await this.saveDraft();
         const loaded = this.snapshot.loaded;
         if (!loaded) throw Error("This conversation is unavailable.");
-        const input: Start = {
+        if (
+          agent &&
+          (agent.input.conversationId !== this.id ||
+            agent.input.expectedRevision !== loaded.conversation.revision ||
+            agent.input.draftRevision !== loaded.draft.revision)
+        )
+          throw Error("REVISION_CONFLICT");
+        const input: Start = agent?.input ?? {
           requestId: newId(),
           assistantId: newId(),
           userId: newId(),
@@ -310,6 +363,7 @@ export class ChatRuntime {
         });
         this.intent = input;
         this.transport.input = input;
+        this.transport.agent = agent?.authorization;
         const revision = this.localRevision;
         if (action === "send") {
           this.update({ text: "" });
@@ -404,7 +458,15 @@ export class ChatRuntime {
           ? "Request acknowledgement unavailable"
           : "Request not started",
       });
+      if (agent) throw error;
     }
+  }
+  async sendAgent(input: Start, authorization: AgentGeneration) {
+    if (input.action !== "send" || input.targetId !== null)
+      throw Error("SCOPE_DENIED");
+    await this.send("send", null, undefined, { input, authorization });
+    if (!authorization.result) throw Error("OUTCOME_UNKNOWN");
+    return authorization.result;
   }
   async reconnect() {
     const loaded = await main<Loaded>({ action: "load", id: this.id });
