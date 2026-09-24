@@ -8,6 +8,26 @@ the specific checks it actually covers. The active task list is in
 The concise [acceptance record](ACCEPTANCE.md) maps the selected product and
 security observations to this evidence. Overall acceptance remains in progress.
 
+## Completed native browser routing rows (2026-09-24)
+
+Source-frozen batch p0GALB also passed both repetitions of browser-select,
+browser-editable and browser-navigation. Each row now has three complete
+fixed-profile passes. Model answers were reviewed against independent native
+page/server observations; all six hosts exited normally and removed private
+app data. No competing actions occurred.
+
+| Task               | New complete runs | Native observation                                                                    |
+| ------------------ | ----------------- | ------------------------------------------------------------------------------------- |
+| browser-select     | Ufs3gn, kGBp7W    | Exactly one preferences submission with violet and alerts enabled                     |
+| browser-editable   | vPsCiK, 45aGzS    | Exactly one saved draft containing `Draft Zażółć 🙂`, also visible in the native page |
+| browser-navigation | L8LjPr, BQCgmW    | Details link and return to the starting URL in the same native browser panel          |
+
+All 59 recorded attempts matched the complete effective profile, including the
+74-tool set, features, instruction sources and absence of private configuration
+writes. The ledger now has 52 complete passes, 16 complete rows and seven retained
+failed attempts. File search, Git review and reconnect repetitions continue in
+p0GALB; two isolated APK runs follow. Overall acceptance remains IN_PROGRESS.
+
 ## Completed terminal and external-browser routing rows (2026-09-24)
 
 The first eight executions of source-frozen batch p0GALB passed. Together with

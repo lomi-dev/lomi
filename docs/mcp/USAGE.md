@@ -81,13 +81,13 @@ artifacts** to import an opaque file of 0–4 MiB using `lomi_artifact_import` w
 and retry fields. The completed private copy retains its original source
 classification; changing the source afterward does not change that copy.
 `lomi_artifact_read` returns its metadata, without exposing a private disk path.
-APK imports retain their separate permission, validation and512MiB limit.
+APK imports retain their separate permission, validation and 512 MiB limit.
 
 To save an artifact, also select **Allow creating project files and folders**
 and **Allow exporting artifacts to new project files**. Call
 `lomi_artifact_export` with the artifact ID/hash, a new project-relative path,
 the parent revision returned by `lomi_files_list`, and the revision/retry fields.
-The export limit is4MiB. Existing files and links are preserved. Source access
+The export limit is 4 MiB. Existing files and links are preserved. Source access
 still applies: a closed or human-taken browser/Android source cannot be exported.
 Poll the operation to confirm completion; reuse the exact original request for
 retry. An uncertain outcome requires inspecting the destination before new work.
@@ -101,7 +101,7 @@ pages** when pairing. Import the exact file as a private artifact, then use
 `lomi_browser_snapshot` to find a visible `file_input` and its frame ID.
 `lomi_browser_upload` takes that element/frame/snapshot/navigation, the owned
 browser's generation and lease, the artifact ID/hash, a filename without path
-components, and the usual layout revision/retry fields. The limit is4MiB.
+components, and the usual layout revision/retry fields. The limit is 4 MiB.
 
 Review the **Browser upload requests** card in Settings. It shows the exact
 destination document/origin/input, filename, size and SHA-256. **Upload this file**
@@ -296,7 +296,7 @@ requires a valid backup. Only preferences support reset, with typed
 `RESET PREFERENCES` confirmation. The corrupt original is preserved. Package
 maintenance uses `expectedManifestRevision` and refuses images used by any AVD.
 
-Prepared download plans expire after30 minutes; Settings decisions expire after
+Prepared download plans expire after 30 minutes; Settings decisions expire after
 10 minutes. Approved native work has a two-hour bound. Closing Settings does not
 cancel it. Cancelling the MCP operation, revoking access or closing its workspace
 invalidates only its own native work. Uncertain or partial completion is never

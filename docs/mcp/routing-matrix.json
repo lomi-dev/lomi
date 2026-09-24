@@ -79,18 +79,18 @@
     },
     {
       "task": "browser-select",
-      "executions": 3,
-      "completePasses": 1
+      "executions": 5,
+      "completePasses": 3
     },
     {
       "task": "browser-editable",
-      "executions": 1,
-      "completePasses": 1
+      "executions": 3,
+      "completePasses": 3
     },
     {
       "task": "browser-navigation",
-      "executions": 1,
-      "completePasses": 1
+      "executions": 3,
+      "completePasses": 3
     },
     {
       "task": "files-search",
@@ -1383,6 +1383,156 @@
       "androidCleanup": null,
       "batch": "p0GALB",
       "artifact": "lomi-mcp-control-nzvUKN",
+      "sourceFingerprint": "4ebf3ab32ccf7b4fe7088ce28fe9ca0f47b7689566abd78eee43de81cf622016"
+    },
+    {
+      "task": "browser-select",
+      "repeat": 1,
+      "passed": true,
+      "taskCompleted": true,
+      "modelTurnCompleted": true,
+      "selectedLomi": true,
+      "competingActions": [],
+      "silentFallback": false,
+      "toolCalls": 25,
+      "error": null,
+      "cleanup": {
+        "hostExited": true,
+        "appDataRemoved": true,
+        "retainedForRestart": false,
+        "exitCode": 0,
+        "signal": null,
+        "exitWaitMs": 193
+      },
+      "externalCleanup": null,
+      "androidCleanup": null,
+      "batch": "p0GALB",
+      "artifact": "lomi-mcp-control-Ufs3gn",
+      "sourceFingerprint": "4ebf3ab32ccf7b4fe7088ce28fe9ca0f47b7689566abd78eee43de81cf622016"
+    },
+    {
+      "task": "browser-select",
+      "repeat": 2,
+      "passed": true,
+      "taskCompleted": true,
+      "modelTurnCompleted": true,
+      "selectedLomi": true,
+      "competingActions": [],
+      "silentFallback": false,
+      "toolCalls": 29,
+      "error": null,
+      "cleanup": {
+        "hostExited": true,
+        "appDataRemoved": true,
+        "retainedForRestart": false,
+        "exitCode": 0,
+        "signal": null,
+        "exitWaitMs": 142
+      },
+      "externalCleanup": null,
+      "androidCleanup": null,
+      "batch": "p0GALB",
+      "artifact": "lomi-mcp-control-kGBp7W",
+      "sourceFingerprint": "4ebf3ab32ccf7b4fe7088ce28fe9ca0f47b7689566abd78eee43de81cf622016"
+    },
+    {
+      "task": "browser-editable",
+      "repeat": 1,
+      "passed": true,
+      "taskCompleted": true,
+      "modelTurnCompleted": true,
+      "selectedLomi": true,
+      "competingActions": [],
+      "silentFallback": false,
+      "toolCalls": 19,
+      "error": null,
+      "cleanup": {
+        "hostExited": true,
+        "appDataRemoved": true,
+        "retainedForRestart": false,
+        "exitCode": 0,
+        "signal": null,
+        "exitWaitMs": 149
+      },
+      "externalCleanup": null,
+      "androidCleanup": null,
+      "batch": "p0GALB",
+      "artifact": "lomi-mcp-control-vPsCiK",
+      "sourceFingerprint": "4ebf3ab32ccf7b4fe7088ce28fe9ca0f47b7689566abd78eee43de81cf622016"
+    },
+    {
+      "task": "browser-editable",
+      "repeat": 2,
+      "passed": true,
+      "taskCompleted": true,
+      "modelTurnCompleted": true,
+      "selectedLomi": true,
+      "competingActions": [],
+      "silentFallback": false,
+      "toolCalls": 18,
+      "error": null,
+      "cleanup": {
+        "hostExited": true,
+        "appDataRemoved": true,
+        "retainedForRestart": false,
+        "exitCode": 0,
+        "signal": null,
+        "exitWaitMs": 94
+      },
+      "externalCleanup": null,
+      "androidCleanup": null,
+      "batch": "p0GALB",
+      "artifact": "lomi-mcp-control-45aGzS",
+      "sourceFingerprint": "4ebf3ab32ccf7b4fe7088ce28fe9ca0f47b7689566abd78eee43de81cf622016"
+    },
+    {
+      "task": "browser-navigation",
+      "repeat": 1,
+      "passed": true,
+      "taskCompleted": true,
+      "modelTurnCompleted": true,
+      "selectedLomi": true,
+      "competingActions": [],
+      "silentFallback": false,
+      "toolCalls": 20,
+      "error": null,
+      "cleanup": {
+        "hostExited": true,
+        "appDataRemoved": true,
+        "retainedForRestart": false,
+        "exitCode": 0,
+        "signal": null,
+        "exitWaitMs": 77
+      },
+      "externalCleanup": null,
+      "androidCleanup": null,
+      "batch": "p0GALB",
+      "artifact": "lomi-mcp-control-L8LjPr",
+      "sourceFingerprint": "4ebf3ab32ccf7b4fe7088ce28fe9ca0f47b7689566abd78eee43de81cf622016"
+    },
+    {
+      "task": "browser-navigation",
+      "repeat": 2,
+      "passed": true,
+      "taskCompleted": true,
+      "modelTurnCompleted": true,
+      "selectedLomi": true,
+      "competingActions": [],
+      "silentFallback": false,
+      "toolCalls": 19,
+      "error": null,
+      "cleanup": {
+        "hostExited": true,
+        "appDataRemoved": true,
+        "retainedForRestart": false,
+        "exitCode": 0,
+        "signal": null,
+        "exitWaitMs": 7
+      },
+      "externalCleanup": null,
+      "androidCleanup": null,
+      "batch": "p0GALB",
+      "artifact": "lomi-mcp-control-BQCgmW",
       "sourceFingerprint": "4ebf3ab32ccf7b4fe7088ce28fe9ca0f47b7689566abd78eee43de81cf622016"
     },
     {
