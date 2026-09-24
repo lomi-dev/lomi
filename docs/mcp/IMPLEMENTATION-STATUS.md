@@ -51,18 +51,18 @@ Native dual-client isolation, real application restart, in-flight command/click/
 APK disconnects and product browser-profile separation have passed with normal
 cleanup. Their artifacts and scope are recorded in QUALIFICATION.md. The focused
 ADB guard regression and workspace all-target mcp-probe Clippy also passed.
-The fixed-profile actual-model matrix remains IN_PROGRESS: batch s6esnL passed
-all 12 dev-server/form/fix-test/origin-server executions, bringing the ledger to
-38 complete passes and nine complete three-run rows. Twenty remaining browser,
-terminal, files/Git/reconnect repetitions and two APK repetitions remain.
-Stale Android layout tool descriptions are corrected; eight helper wire tests
-passed. Real guest-space exhaustion exposed an unrecognized pre-session Android
-exception. The bounded parser correction passed native 5Gfkz6: exact storage
-failure, same retry receipt, unchanged installed package, restored guest space
-and normal cleanup. Both parser regressions and workspace all-target mcp-probe
-Clippy passed. Formatting, syntax, catalog coverage and local doc links passed.
-Continue the remaining model repetitions, then finish acceptance reconciliation
-and push the final changes.
+The fixed-profile actual-model matrix remains IN_PROGRESS: 46 complete passes
+and 13 complete three-run rows are recorded. Source-frozen batch p0GALB has
+passed its first eight terminal/external-browser runs and continues with
+browser, files/Git and reconnect. Do not edit application/helper/test sources
+until that batch ends. Two APK repetitions follow using the isolated Android
+fixture. The complete acceptance record is in ACCEPTANCE.md; overall signoff
+and the final push remain pending.
+
+Stale Android layout descriptions and the native pre-session storage-refusal
+parser are fixed and verified in dcaaa703bee9c6892e04b8ba13e8279be6806e83 on
+origin/main. Native 5Gfkz6, two parser regressions, eight wire tests, workspace
+all-target mcp-probe Clippy, formatting/syntax, catalog and link checks passed.
 
 ## Milestone history
 

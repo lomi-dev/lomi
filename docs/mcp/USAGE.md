@@ -76,7 +76,7 @@ without a completion marker do not imply a successful command.
 ## Import and export file artifacts
 
 Pair with **Allow reading project files** and **Allow importing project files as
-artifacts** to import an opaque file of0–4MiB using `lomi_artifact_import` with
+artifacts** to import an opaque file of 0–4 MiB using `lomi_artifact_import` with
 `kind: file`. Supply its exact byte length and SHA-256 plus the usual revision
 and retry fields. The completed private copy retains its original source
 classification; changing the source afterward does not change that copy.
@@ -108,7 +108,7 @@ destination document/origin/input, filename, size and SHA-256. **Upload this fil
 allows that page to read and send those bytes immediately. **Deny upload** or
 MCP cancellation before approval leaves the input unchanged. Page text is
 untrusted; check the destination and file identity. Snapshot references expire
-after60 seconds and also become invalid after navigation or a new snapshot.
+after 60 seconds and also become invalid after navigation or a new snapshot.
 
 Poll the operation for completion. Success confirms synthetic attachment and
 input/change events; it does not confirm the server accepted a submission.
@@ -189,6 +189,13 @@ observation, screenshot and installation access. Opening its panel does not
 start it. Input requires the visible selected panel in a focused Lomi window.
 SDK setup and licenses remain separate from pairing permissions.
 
+If an APK install reports `installerFailure: INSTALL_FAILED_INSUFFICIENT_STORAGE`,
+free space on the selected device and inspect the failed operation before making
+a new request. Exact retry returns the existing failure. Lomi preserves the
+installed package on the qualified pre-session storage-refusal path. Other
+interrupted or unrecognized installer failures can remain `outcome_unknown`;
+check the actual device state before deciding what to do next.
+
 Dirty editor closures use the existing Save/Discard/Cancel dialog. Saving during
 a workspace-close request keeps the workspace open and reports partial effects;
 read the new state before requesting closure again. New text entered while a
@@ -216,6 +223,12 @@ journals or journals above the 128 MiB startup budget stop agent control; Lomi
 does not erase them or start with an empty history. Restore only an explicit
 offline backup after stopping Lomi, retain the damaged originals, then pair
 again and inspect actual resources. Old retry epochs cannot authorize replay.
+
+The current store retains at most 4,096 operation receipts and 4,096 retry
+epochs. It returns `RESOURCE_EXHAUSTED` when either admission budget is full;
+expired records are not automatically deleted. Restarting the client does not
+clear that history. Preserve the store when arranging explicit offline
+maintenance so that incomplete effects and prior operations can be reconciled.
 
 For an interrupted Trash operation, use **Settings → Agent control → Show
 recovery folder**. An operation's `entry` folder contains retained data and its

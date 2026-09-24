@@ -8,6 +8,29 @@ the specific checks it actually covers. The active task list is in
 The concise [acceptance record](ACCEPTANCE.md) maps the selected product and
 security observations to this evidence. Overall acceptance remains in progress.
 
+## Completed terminal and external-browser routing rows (2026-09-24)
+
+The first eight executions of source-frozen batch p0GALB passed. Together with
+previous complete runs, external-playwright, terminal-interrupt, terminal-exit
+and terminal-binary each now have three complete fixed-profile passes. All
+final model answers were reviewed against independent native observations;
+there were no competing actions. Each host exited normally and private app data
+was removed; both external-browser runs also verified no remaining recorded PIDs.
+
+| Task                | New complete runs | Native observation                                                                                          |
+| ------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------- |
+| external-playwright | KnKa7X, oKImyU    | Exact Node/Chromium process ancestry; model correctly identifies external Playwright, no Lomi browser panel |
+| terminal-interrupt  | 54TESC, 7iuuCZ    | Exact owned command interrupted with exit 130; original shell and ready prompt retained                     |
+| terminal-exit       | Rqbxp2, bXKYJ6    | Expected marker and exit 7 observed; no automatic retry or command alteration                               |
+| terminal-binary     | X6rYd3, nzvUKN    | Actual raw bytes 00 FF 01 retained between markers, exit 0 and ready shell                                  |
+
+All 51 attempts available at the profile-audit checkpoint matched the complete
+recorded effective profile: CLI/model/provider/effort, feature values, instruction
+sources, private-configuration write count and 74-tool set. Later executions are
+still audited as they complete. The ledger currently records 46 complete passes,
+13 complete rows and all seven prior failed fixed-profile attempts. Batch
+p0GALB continues with browser, files/Git and reconnect; two APK runs follow.
+
 ## Real guest storage refusal — native correction verified (2026-09-24)
 
 5Gfkz6 passed the corrected native profile with 74 tools. It wrote 5,442 MiB
