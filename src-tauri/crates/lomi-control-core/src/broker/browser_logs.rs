@@ -45,7 +45,9 @@ impl Broker {
             Err(e) => return error(e),
         };
         let navigation = control.navigation_id();
-        let prefix = format!("{}:{}:", input.browser_generation, navigation);
+        let prefix = input
+            .log_kind
+            .cursor_prefix(&input.browser_generation, &navigation);
         let after = match input.cursor.as_ref() {
             None => 0,
             Some(cursor) => match cursor
@@ -85,7 +87,47 @@ impl Broker {
         if let Err(e) = current.check_document(&navigation) {
             return error(e);
         }
-        if result.entries.len() > input.limit as usize
+        let url = match control
+            .document_url()
+            .ok()
+            .and_then(|s| lomi_control_protocol::browser::address(&s).ok())
+        {
+            Some(url) => url,
+            None => return error(ErrorCode::StaleSnapshot),
+        };
+        if result.workspace_id != input.workspace_id
+            || result.panel_id != input.panel_id
+            || result.browser_generation != input.browser_generation
+            || result.navigation_id != navigation
+            || result.frame_id != "main"
+            || result.log_kind != input.log_kind
+            || result.origin != url.origin().ascii_serialization()
+            || !control.permits(url.as_str())
+        {
+            return error(ErrorCode::StaleSnapshot);
+        }
+        let mut through = after;
+        let ordered = result.entries.iter().all(|entry| {
+            let valid = entry.sequence > through
+                && entry.sequence < 9_007_199_254_740_991
+                && entry.kind == input.log_kind
+                && if input.log_kind == BrowserLogKind::PromiseRejection {
+                    entry.event_trusted.is_some()
+                } else {
+                    entry.event_trusted.is_none()
+                }
+                && match input.log_kind {
+                    BrowserLogKind::Console => entry.level.as_deref().is_some_and(|level| {
+                        matches!(level, "log" | "info" | "warn" | "error" | "debug")
+                    }),
+                    _ => entry.level.is_none(),
+                };
+            through = entry.sequence;
+            valid
+        });
+        if !ordered
+            || result.next_cursor != format!("{prefix}{through}")
+            || result.entries.len() > input.limit as usize
             || result.entries.iter().any(|e| e.message.len() > 1024)
             || serde_json::to_vec(&result).map_or(true, |v| v.len() > 65536)
         {

@@ -1,5 +1,31 @@
 # MCP requirements traceability
 
+## P5.7 expanded browser log contract (2026-09-24)
+
+`lomi_browser_logs` keeps its existing `browser.read` gate and adds optional
+`logKind`: `javascript_error` (default), `console`, or `promise_rejection`.
+Each kind has an independent bounded64-entry ring and cursor bound to kind,
+owner/control generation and navigation. Existing default error cursors remain
+compatible. Native reads recheck authorization, metadata identity, origin and
+ordered sequences before disclosure; navigation/takeover expire access.
+
+Console captures log/info/warn/error/debug calls only; rejection reasons capture
+primitive values only. Promise event reports include synthetic events and expose
+`eventTrusted`: qualified WKWebView reports false for genuine rejections too.
+These messages are never evidence of an authorized operation. Objects, arrays, functions, stacks, headers, cookies,
+network traffic and child-frame logs are omitted. Strings are truncated before
+retention, without invoking object coercion or getters. The main-frame collectors
+install at document start. DOM/error observation stays isolated; console/rejection
+collection necessarily runs in the page world with a fixed bounded reader and no
+native message handler, file access, generic evaluation tool or broker token.
+All messages remain untrusted page content and coverage is explicitly partial.
+A page replacing console methods can bypass later collection. The permission
+label states that browser logs are readable; old saved sessions do not restore grants.
+
+Native a6K0Te11, real WebKit rejection1, collector3 and broker64 passed on
+macOS ARM64. Qualification includes collector tampering, overflow, navigation,
+foreign workspace denial and retained primitive/opaque rejection reasons.
+
 ## P5.7 same-origin browser frame contract (2026-09-24)
 
 The existing snapshot tool returns a `frames` array (main first), each with
@@ -113,7 +139,7 @@ The source contracts remain normative. Native57 and earlier evidence predates th
 | `lomi_browser_scroll`        | 04 / P2–P3/P5.7 | Top-level viewport CSS deltas, snapshot/lease                                                                                                                                                                                           | Native scroll position and retry                                                                                                             | IN_PROGRESS                                                         |
 | `lomi_browser_wait`          | 04 / P2–P3/P5.7 | Bounded DOM text/element/URL/load polling                                                                                                                                                                                               | Native async result, timeout, fresh snapshot                                                                                                 | IN_PROGRESS                                                         |
 | `lomi_browser_screenshot`    | 04 / P2–P3/P5.7 | Explicit browser.capture_composite; native WK snapshot, bounded producer, PNG and immutable artifact                                                                                                                                    | Native ggnnxP and visual inspection; further frame/geometry/fault matrix pending                                                             | IN_PROGRESS                                                         |
-| `lomi_browser_logs`          | 04 / P2–P3/P5.7 | browser.read; document-start main-frame errors, 64 entries, scoped cursor; native agent_dom and broker/browser_logs                                                                                                                     | Native dmOW6D: error capture, private-world separation, overflow/pagination, foreign workspace and takeover                                  | IN_PROGRESS                                                         |
+| `lomi_browser_logs`          | 04 / P2–P3/P5.7 | browser.read; document-start main-frame errors/console/rejections, bounded rings and kind-bound cursors; native agent_dom and broker/browser_logs                                                                                       | Native a6K0Te11 and dmOW6D: bounded capture, tampering, overflow/pagination, foreign workspace and takeover                                  | IN_PROGRESS                                                         |
 | `lomi_android_list`          | 03/06/08, P4    | Selected managed-device metadata; no runtime startup                                                                                                                                                                                    | Native `1A9KWF/android-list.json`, UDS device/scope/revoke guards                                                                            | VERIFIED (metadata only)                                            |
 | `lomi_android_open`          | 03/06 / P4      | Selected device + workspace/panel.create/android.read; strict revision/retry; actual retained manual-start panel                                                                                                                        | UiAction::CreateAndroid / Workbench / Android runtime                                                                                        | VERIFIED: cplPJo; no boot, one panel on retry, persistence/UI       |
 | `lomi_android_start`         | 03/06 / P4      | Selected device/panel, android.control + read, revision/retry; ready requires guest/RPC/ADB/IME; 180s bound                                                                                                                             | Manager/actor with revocable queued dispatch and device authority; native completion                                                         | VERIFIED: H8Q7b3; native readiness, retry; queue tests PASS         |
@@ -166,7 +192,7 @@ Chapter 07 additional contracts: theme import, plugin install/enable/update/unin
 
 ### Browser log and focus increment
 
-`lomi_browser_logs`: BrowserLogsInput → BrowserLogs; browser.read; existing owned workspace/panel/generation, top-level approved origin, 1–64 entries, 64-entry per-document retention and 256 UTF-16-unit messages. Read-only, no mutation receipt. Cursor binds generation/navigation/sequence and expires on navigation. Dispatch/callback/disclosure require current source authority; timeout retains native callback capacity. CURSOR_EXPIRED, SCOPE_DENIED, CONTROL_REVOKED and target/generation errors are explicit. No console/network/Promise rejection coverage is claimed. Native `dmOW6D`/`TWNWAc`, wire schemas and core scope-denial test are executed evidence; advanced P5 logs remain pending.
+`lomi_browser_logs`: BrowserLogsInput → BrowserLogs; browser.read; existing owned workspace/panel/generation, top-level approved origin, 1–64 entries, 64-entry per-document retention and 256 UTF-16-unit messages. Read-only, no mutation receipt. Cursor binds generation/navigation/sequence and expires on navigation. Dispatch/callback/disclosure require current source authority; timeout retains native callback capacity. CURSOR_EXPIRED, SCOPE_DENIED, CONTROL_REVOKED and target/generation errors are explicit. The expanded console and Promise contract above supersedes this initial error-only coverage. Network logs remain omitted. Native `dmOW6D`/`TWNWAc` qualify the initial error stream; native `a6K0Te` qualifies the expanded streams.
 
 `lomi_panel_focus` adds optional browserGeneration, required to match a browser target. It reuses only an owned started native browser; mixed tabs reject lazy/unqualified peers. Workbench retains authority and existing layout revision/retry/cancellation semantics. Native `TWNWAc` verifies preserved form, stale-generation rejection and exactly-once receipt, plus capture rejection while another tab is selected.
 

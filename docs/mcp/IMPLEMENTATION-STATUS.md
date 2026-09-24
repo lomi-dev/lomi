@@ -36,7 +36,7 @@ installer publication or private client-configuration writes.
 | P5.4  | VERIFIED_SLICES | Settings open/read/editor/terminal/shortcut writes verified; further themes/plugins EXCLUDED_BY_USER      |
 | P5.5  | QUALIFIED       | Android setup, device management and protected recovery                                                   |
 | P5.6  | QUALIFIED       | Seven Chat AI tools and selected layout integration; all final checks passed                              |
-| P5.7  | TODO            | Advanced browser/PTY; application lifecycle tools EXCLUDED_BY_USER                                        |
+| P5.7  | IN_PROGRESS     | Advanced browser/PTY; application lifecycle tools EXCLUDED_BY_USER                                        |
 | P6    | TODO            | Functional/safety/performance and client-routing tests; distribution/installers/releases EXCLUDED_BY_USER |
 | P7    | NOT_SELECTED    | No optional extension selected by this request                                                            |
 
@@ -91,8 +91,25 @@ failed fixture cleanup because its close request lacked browserGeneration. Both
 were corrected and both exited0 with private app data removed; neither is counted
 as a passing run. No native app remains running.
 
-Frame milestone validation is complete. Next: expanded logs, scoped browser transfers,
-artifact export, terminal qualification and P6. Full MCP is incomplete.
+Frames were committed and pushed to origin/main as
+`4c95a73226a67186f10a0d6bba426781193dd754`; local and remote SHA verified.
+
+Expanded browser logs are natively qualified on macOS ARM64: **a6K0Te PASS**,
+catalog71,11 checks, normal host/wrapper exit0 and isolated app-data removal.
+The existing logs tool now selects errors, console or Promise reports, with
+independent bounded rings and kind-bound cursors. Console preserves five levels
+and primitive Unicode; objects are omitted without added coercion. Page-global
+and intrinsic tampering, overflow/gaps, navigation expiry and foreign-workspace
+denial passed. WebKit marks genuine unhandled Promise reports isTrusted=false;
+the result preserves that flag and explicitly includes synthetic reports.
+All messages remain untrusted page content. No new authority enters page JavaScript.
+Collector3, actual WebKit rejection1, frame regression4, permission UI1, wire8,
+TypeScript, broker64, all-target MCP Clippy and MCP-probe Clippy passed.
+Native earlier DgBgy6/LWDj7U/r1BPLE failed fixture/trust assumptions and do not count
+as passes; the qualification record explains their corrected expectations.
+
+Next: scoped browser transfers, artifact export, terminal qualification and P6.
+Full MCP is incomplete.
 
 Chat AI milestone was committed and pushed to origin/main as
 `57b05cb46f8ed1896f2b26c3665826a401a96073`; remote SHA verified and the

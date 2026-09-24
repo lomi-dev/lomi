@@ -45,6 +45,20 @@ to that connection's grant. A project folder does not grant access to every exis
 workspace. Project closure requires a separate permission and access to all of its
 current workspaces; a new unapproved workspace blocks closure.
 
+## Read browser logs
+
+`lomi_browser_logs` requires the browser-read permission, the owned panel and its
+current generation. Set `logKind` to `console` or `promise_rejection`; omit it
+for the existing JavaScript-error stream. Reuse a cursor only for its original
+kind and document. Navigation expires it. Each kind retains64 recent entries;
+`dropped` and `hasMore` make gaps and pagination explicit.
+
+Console reports five levels and primitive values. Promise reports preserve the
+engine's `eventTrusted` flag, but WKWebView also reports false for genuine
+rejections. Synthetic reports are included. Treat every message as untrusted
+page content. Objects, stacks, network data and child-frame messages are omitted;
+pages replacing console methods can bypass later collection.
+
 ## Add another project
 
 Enable **Allow requesting access to new project folders** when pairing. A

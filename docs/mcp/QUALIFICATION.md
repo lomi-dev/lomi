@@ -2,6 +2,34 @@
 
 Host: macOS 27.0 (26A428), Apple M3 ARM64. Baseline HEAD and local changes: IMPLEMENTATION-STATUS.md.
 
+## Expanded native browser logs (2026-09-24)
+
+**a6K0Te PASS**,11 checks, catalog71, macOS ARM64. Real helper/Settings/broker/
+WKWebView evidence: `/tmp/lomi-mcp-browser-logs-native4.log` and
+`lomi-mcp-control-a6K0Te/browser-expanded-logs.json`. Normal host/wrapper exit0,
+private app-data removal and browser close are confirmed. Five console levels,
+Unicode, primitive/opaque rejection reasons, retained error coverage, pagination,
+kind-bound cursors, page tampering, overflow/gaps, malformed Unicode, foreign
+workspace denial and navigation invalidation passed. The native-console baseline
+confirms the collector adds no object coercion; the native engine can still
+format objects itself. The public catalog remains71 tools.
+
+Actual WebKit and WKWebView mark genuine unhandled Promise events isTrusted=false.
+The collector therefore reports eventTrusted without treating it as authenticity,
+and includes synthetic PromiseRejectionEvent reports. Plain reasons are captured;
+objects are omitted. The page-world console/Promise collector has no native IPC,
+file access, grant or evaluation tool. DOM and error dispatch remain isolated.
+Coverage is main-frame-only and partial; replacement console methods can bypass
+later capture. These messages never confirm authorized operation completion.
+
+Collector3, real WebKit rejection1, existing frame WebKit4, permission WebKit1,
+helper wire8, TypeScript and broker64 PASS. Final all-target MCP package and
+MCP-probe Clippy PASS with warnings denied. Initial DgBgy6 failed a fixture that
+mixed engine coercion with collector coercion. LWDj7U and r1BPLE failed the
+incorrect trusted-only Promise assumption. Those runs are not counted as passes.
+The corrected assertions are exercised by a6K0Te. Browser transfers and P6 remain
+open; this result does not qualify those paths or another operating system.
+
 ## Same-origin native browser frames (2026-09-24)
 
 **KjoDju PASS**,13 checks, catalog71, macOS ARM64. The actual stdio helper,

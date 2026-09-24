@@ -1210,7 +1210,7 @@ function Pairing({
           disabled={busy || !navigateBrowser}
           onChange={(event) => setReadBrowser(event.target.checked)}
         />{" "}
-        Allow reading page text, form structure and JavaScript errors
+        Allow reading page text, form structure and browser logs
       </label>
       <label>
         <input

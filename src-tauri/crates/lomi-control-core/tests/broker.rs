@@ -3971,6 +3971,7 @@ async fn browser_start_ticket_binds_the_approved_profile_and_never_persists_its_
     ));
     let denied_logs = client
         .call(Request::BrowserLogs(BrowserLogsInput {
+            log_kind: BrowserLogKind::JavascriptError,
             workspace_id: "a".into(),
             panel_id: panel_id.clone(),
             browser_generation: browser_generation.clone(),

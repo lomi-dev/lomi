@@ -14,6 +14,8 @@ mod android_layout_probe;
 mod android_setup_probe;
 #[path = "mcp-browser-frames-support.rs"]
 mod browser_frames_probe;
+#[path = "mcp-browser-logs-support.rs"]
+mod browser_logs_probe;
 #[path = "mcp-chat-support.rs"]
 mod chat_probe;
 #[path = "mcp-settings-support.rs"]
@@ -2907,7 +2909,7 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
     )
     .await?;
     evaluate(&settings, &format!("(()=>{{const e=document.querySelector('.agent-control-request textarea');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,{});e.dispatchEvent(new Event('input',{{bubbles:true}}));return true;}})()",browser_fixture["origin"])).await?;
-    evaluate(&settings, "[...document.querySelectorAll('.agent-control-request label')].find(e=>e.textContent.includes('Allow reading page text, form structure and JavaScript errors')).querySelector('input').click();true").await?;
+    evaluate(&settings, "[...document.querySelectorAll('.agent-control-request label')].find(e=>e.textContent.includes('Allow reading page text, form structure and browser logs')).querySelector('input').click();true").await?;
     evaluate(&settings, "[...document.querySelectorAll('.agent-control-request label')].find(e=>e.textContent.includes('Allow clicking, typing and scrolling in pages')).querySelector('input').click();true").await?;
     evaluate(&settings,"[...document.querySelectorAll('.agent-control-request label')].find(e=>e.textContent.includes('Allow screenshots of pages')).querySelector('input').click();true").await?;
     let android_fixture = std::fs::read(directory.join("android-fixture.json"))
@@ -3031,6 +3033,22 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
         .await?;
     if connected["structuredContent"]["status"] != "ok" {
         return Err("Cannot select approved workspace".into());
+    }
+    if std::env::var_os("LOMI_MCP_BROWSER_LOGS_ONLY").is_some() {
+        browser_logs_probe::qualify(
+            app,
+            &mut wire,
+            &main,
+            &workspace,
+            &connected["structuredContent"]["data"]["retryEpoch"],
+            directory,
+            &browser_fixture,
+        )
+        .await?;
+        child.kill().await.map_err(|e| e.to_string())?;
+        return Ok(
+            json!({"profile":"browser-logs-only","catalogCount":catalog["result"]["tools"].as_array().map(Vec::len)}),
+        );
     }
     if std::env::var_os("LOMI_MCP_BROWSER_FRAMES_ONLY").is_some() {
         browser_frames_probe::qualify(

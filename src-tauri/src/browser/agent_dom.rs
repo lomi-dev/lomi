@@ -40,10 +40,16 @@ pub(super) fn install_logs(native: &objc2_web_kit::WKWebView, marker: objc2::Mai
         )
     };
     unsafe {
-        native
-            .configuration()
-            .userContentController()
-            .addUserScript(&script);
+        let controller = native.configuration().userContentController();
+        controller.addUserScript(&script);
+        let page_logs = WKUserScript::initWithSource_injectionTime_forMainFrameOnly_inContentWorld(
+            WKUserScript::alloc(marker),
+            &objc2_foundation::NSString::from_str(include_str!("agent-page-logs.js")),
+            WKUserScriptInjectionTime::AtDocumentStart,
+            true,
+            &objc2_web_kit::WKContentWorld::pageWorld(marker),
+        );
+        controller.addUserScript(&page_logs);
     }
 }
 
@@ -68,7 +74,7 @@ pub fn logs(
         app,
         control.clone(),
         &navigation,
-        json!({"action":"logs", "after":after, "limit":input.limit}),
+        json!({"action":if input.log_kind == BrowserLogKind::JavascriptError { "logs" } else { "page_logs" }, "logKind":input.log_kind, "after":after, "limit":input.limit}),
         None,
         deadline,
     )?;
@@ -87,10 +93,17 @@ pub fn logs(
     Ok(BrowserLogs {
         workspace_id: input.workspace_id, panel_id: input.panel_id,
         browser_generation: input.browser_generation.clone(), navigation_id: navigation.clone(),
-        frame_id: "main".into(), origin,
+        frame_id: "main".into(), log_kind: input.log_kind, origin,
         capture_started_at_millis: batch.capture_started_at_millis,
-        coverage: vec!["Document-start main-frame error events only; messages are untrusted page data.".into(), "Console, Promise rejections, network, child frames, stacks and source URLs are omitted.".into(), "64 most recent entries; each message is truncated to 256 UTF-16 units. Navigation expires cursors.".into()],
-        entries: batch.entries, next_cursor: format!("{}:{}:{}", input.browser_generation, navigation, batch.through), dropped: batch.dropped, has_more: batch.has_more,
+        coverage: vec![
+            match input.log_kind {
+                BrowserLogKind::JavascriptError => "Document-start main-frame error events in an isolated world.",
+                BrowserLogKind::Console => "Document-start main-frame log/info/warn/error/debug wrappers in the page world. Replaced console methods bypass later collection.",
+                BrowserLogKind::PromiseRejection => "Main-frame PromiseRejectionEvent reports in the page world; primitive reasons only. Includes synthetic reports. eventTrusted preserves the engine flag; WKWebView marks genuine rejections false too.",
+            }.into(),
+            "Partial coverage; all messages are untrusted page data. Object properties/coercion, stacks, network, headers, cookies, child frames and source URLs are not collected.".into(),
+            "64 recent entries per kind; each message is truncated to 256 UTF-16 units before retention. Navigation expires cursors.".into()],
+        entries: batch.entries, next_cursor: format!("{}{}", input.log_kind.cursor_prefix(&input.browser_generation, &navigation), batch.through), dropped: batch.dropped, has_more: batch.has_more,
     })
 }
 
@@ -126,6 +139,7 @@ fn execute(
     permit: Option<lomi_control_core::broker::NativePermit>,
     deadline: Instant,
 ) -> Result<Value, ErrorCode> {
+    let page_logs = arguments["action"] == "page_logs";
     control.check_document(navigation)?;
     let label = super::label(&control.panel_id).map_err(|_| ErrorCode::TargetNotFound)?;
     {
@@ -226,10 +240,22 @@ fn execute(
         });
         let key = NSString::from_str("payload");
         let arguments = NSDictionary::<NSString, AnyObject>::from_slices(&[&*key], &[&payload]);
-        let world = world(MainThreadMarker::new().unwrap());
+        let marker = MainThreadMarker::new().unwrap();
+        let world = if page_logs {
+            unsafe { objc2_web_kit::WKContentWorld::pageWorld(marker) }
+        } else {
+            world(marker)
+        };
+        // Only bounded log-read metadata enters the page world. DOM dispatch and
+        // snapshot references remain in the private content world.
+        let script = if page_logs {
+            "return globalThis.__lomiAgentPageLogsV1(payload);"
+        } else {
+            include_str!("agent-dom.js")
+        };
         unsafe {
             native.callAsyncJavaScript_arguments_inFrame_inContentWorld_completionHandler(
-                &NSString::from_str(include_str!("agent-dom.js")),
+                &NSString::from_str(script),
                 Some(&arguments),
                 None,
                 &world,

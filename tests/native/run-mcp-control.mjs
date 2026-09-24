@@ -94,6 +94,7 @@ await new Promise((resolve) => portReservation.listen(0, "127.0.0.1", resolve));
 const serverPort = portReservation.address().port;
 await new Promise((resolve) => portReservation.close(resolve));
 const closeStressServer =
+  process.env.LOMI_MCP_BROWSER_LOGS_ONLY ||
   process.env.LOMI_MCP_BROWSER_FRAMES_ONLY ||
   process.env.LOMI_MCP_ANDROID_LAYOUT_ONLY ||
   process.env.LOMI_MCP_ANDROID_SETUP_ONLY ||
@@ -112,7 +113,8 @@ const closeStressServer =
   process.env.LOMI_MCP_PROJECT_CLOSE_ONLY
     ? createServer((_request, response) =>
         response.end(
-          process.env.LOMI_MCP_BROWSER_FRAMES_ONLY
+          process.env.LOMI_MCP_BROWSER_FRAMES_ONLY ||
+            process.env.LOMI_MCP_BROWSER_LOGS_ONLY
             ? browserFramePage(_request.url ?? "/frames")
             : "<!doctype html><title>Close fixture</title><p>Owned page</p>",
         ),
@@ -256,7 +258,21 @@ try {
     }
   }
   if (!result) throw Error("Native control probe timed out");
-  if (result.stage === "passed" && process.env.LOMI_MCP_BROWSER_FRAMES_ONLY) {
+  if (result.stage === "passed" && process.env.LOMI_MCP_BROWSER_LOGS_ONLY) {
+    const proof = JSON.parse(
+      await readFile(join(directory, "browser-expanded-logs.json"), "utf8"),
+    );
+    if (
+      deniedRequests !== 0 ||
+      result.data?.profile !== "browser-logs-only" ||
+      proof.checks?.length !== 11 ||
+      proof.closed?.structuredContent?.data?.state !== "succeeded"
+    )
+      throw Error("Browser log qualification returned incomplete evidence");
+  } else if (
+    result.stage === "passed" &&
+    process.env.LOMI_MCP_BROWSER_FRAMES_ONLY
+  ) {
     const proof = JSON.parse(
       await readFile(join(directory, "browser-frames.json"), "utf8"),
     );

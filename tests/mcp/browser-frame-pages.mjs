@@ -12,5 +12,5 @@ export function browserFramePage(path) {
     return `<!doctype html>${style}${controls("Nested")}<div style="height:1800px"></div>`;
   if (path.startsWith("/child"))
     return `<!doctype html>${style}${controls("Child")}<iframe id="nested" src="/nested"></iframe><div style="height:1800px"></div>`;
-  return `<!doctype html>${style}<h1>Native browser frames</h1>${controls("Main")}<iframe id="child" src="/child"></iframe><iframe id="opaque" sandbox="allow-scripts" srcdoc="<p>opaque-private-text</p>"></iframe><iframe id="local" srcdoc="<p>srcdoc-private-text</p>"></iframe><iframe id="hidden" style="display:none" src="/nested?hidden"></iframe>`;
+  return `<!doctype html>${style}<h1>Native browser frames</h1>${controls("Main")}<button id="rejections" onclick="Promise.reject('native-rejection');Promise.reject({privateReason:'not collected'})">Reject fixture promises</button><script>window.rejectionEvents=[];addEventListener('unhandledrejection',event=>window.rejectionEvents.push({trusted:event.isTrusted,constructor:event.constructor.name}))</script><iframe id="child" src="/child"></iframe><iframe id="opaque" sandbox="allow-scripts" srcdoc="<p>opaque-private-text</p>"></iframe><iframe id="local" srcdoc="<p>srcdoc-private-text</p>"></iframe><iframe id="hidden" style="display:none" src="/nested?hidden"></iframe>`;
 }
