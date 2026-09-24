@@ -51,14 +51,13 @@ Native dual-client isolation, real application restart, in-flight command/click/
 APK disconnects and product browser-profile separation have passed with normal
 cleanup. Their artifacts and scope are recorded in QUALIFICATION.md. The focused
 ADB guard regression and workspace all-target mcp-probe Clippy also passed.
-The fixed-profile actual-model matrix remains IN_PROGRESS: 52 complete passes
-and 16 complete three-run rows are recorded. Source-frozen batch p0GALB has
-passed all terminal/external-browser and native browser repetitions and continues
-with file search, Git review and reconnect. Do not edit application/helper/test
-sources until that batch ends. Two APK repetitions follow using the isolated
-Android fixture. All 59 recorded attempts match the effective profile. The
-complete acceptance record is in ACCEPTANCE.md; overall signoff and the final
-push remain pending.
+The fixed-profile actual-model matrix remains IN_PROGRESS: 58 complete passes
+and 19 complete three-run rows are recorded. Source-frozen batch p0GALB finished
+20/20 with normal cleanup. All 65 recorded attempts match the effective profile.
+The final two APK repetitions are running with the isolated Android fixture;
+application/helper/test sources remain frozen until that batch ends. The complete
+acceptance record is in ACCEPTANCE.md; final validation, documentation
+reconciliation and the final push remain pending.
 
 Stale Android layout descriptions and the native pre-session storage-refusal
 parser are fixed and verified in dcaaa703bee9c6892e04b8ba13e8279be6806e83 on

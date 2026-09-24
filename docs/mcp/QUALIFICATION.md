@@ -8,6 +8,27 @@ the specific checks it actually covers. The active task list is in
 The concise [acceptance record](ACCEPTANCE.md) maps the selected product and
 security observations to this evidence. Overall acceptance remains in progress.
 
+## Completed file, Git and reconnect routing rows (2026-09-24)
+
+Batch p0GALB finished with 20/20 complete passes. Its last six executions
+complete three-run coverage for files-search, git-review and reconnect. All
+model final answers were reviewed against independent native postconditions;
+there were no competing actions and every host exited normally with private
+app data removed.
+
+| Task         | New complete runs | Native observation                                                                                                                               |
+| ------------ | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| files-search | xB1aFk, CnpzNI    | Correct relative file and exact `Preserve Zażółć 🙂` text; disk contents preserved                                                               |
+| git-review   | eGq5iz, AyXwQQ    | Correct unstaged one-line diff; files and Git state preserved                                                                                    |
+| reconnect    | TrjZ6k, 9nKus7    | Two actual clients per run, fresh native approval, prior processes absent, old receipt denied, exactly one retained command effect and no replay |
+
+All 65 recorded attempts match the declared effective profile. The ledger has
+58 complete passes and 19 complete rows, retaining all seven previous failures.
+Only two actual-model APK repetitions remain before final reconciliation.
+The 74-tool runtime/source/document mapping and all 36 local documentation
+links passed a separate audit. No additional source changes were made during
+p0GALB.
+
 ## Completed native browser routing rows (2026-09-24)
 
 Source-frozen batch p0GALB also passed both repetitions of browser-select,
