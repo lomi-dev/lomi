@@ -1,5 +1,112 @@
 # MCP qualification
 
+Newest qualification records appear first. Earlier increment notes preserve
+their original failures and pending work; subsequent evidence supersedes only
+the specific checks it actually covers. The active task list is in
+[implementation status](IMPLEMENTATION-STATUS.md).
+
+## P6 actual Codex model routing — in progress (2026-09-24)
+
+Pinned Codex CLI 0.156.1, configured model gpt-6-sol, OpenAI provider, existing
+ChatGPT subscription authentication. The runner rejects API-key authentication
+and keeps client configuration files unchanged. Each trial starts an ephemeral
+thread in a disposable project. Other MCP servers, apps, hooks, notification
+commands and delegation are disabled only in the subprocess configuration.
+The effective feature inventory confirms shell/unified execution remain enabled:
+this is **prefer-Lomi**, not a strict execution sandbox. Native Lomi grants and
+per-operation confirmations remain independent of client tool approvals.
+
+Executed categories:
+
+- Unavailable selected app: **3/3 passed**, fresh sessions
+  `/tmp/lomi-mcp-routing-unavailable-{shg1rw,LTw9Ck,Ybvnln}`. The helper had no
+  endpoint, returned `app_unavailable`, and the model selected `lomi_status`,
+  reported the limitation and stopped. No shell, browser search or delegation
+  action occurred. These are model choices, not bootstrap calls.
+- Development server/native page: **G1u0SB passed**. The model created an owned
+  Lomi terminal, ran the local Node fixture, read its printed URL, opened an
+  actual WKWebView, checked its DOM and captured a standard MCP image. Native
+  verification independently matched the terminal session/rendered server
+  marker, child webview ID/generation, URL, heading and server state while the
+  client was still connected. `routing-browser.png` was inspected. The final
+  report confirms native postconditions and no competing action; cleanup exited
+  normally and removed private app data. The Codex process itself was launched
+  by the native fixture, not yet inside a Lomi origin terminal; the complete
+  E01 origin scenario remains open.
+- Native form: **dzL2Kq passed**. A fresh model session started its own server,
+  opened the actual native browser, filled `Zażółć 🙂`, submitted once and
+  captured the saved page. The independent native oracle observed exactly one
+  POST with those exact bytes and `Saved: Zażółć 🙂` in that WKWebView. Native
+  screenshot inspected; completed model turn, no competing action, native
+  postconditions and normal host/client cleanup confirmed. Model input and
+  operation receipts are recorded separately from bootstrap calls.
+- Repair a failing test: **crfwhe passed**. The model observed an actual failing
+  `node --test` run in a new Lomi terminal, read/opened the implementation,
+  changed subtraction to addition through the editor, saved it and observed
+  exit 0 on rerun. The original test file remained byte-identical. A separate
+  native-launched Node test also exited 0. No competing action occurred;
+  normal host/client cleanup confirmed.
+- Native scope denial: **IFyupE passed**. The client allowed the attempted
+  terminal-create tool, but this Lomi connection had only workspace metadata
+  permission. The actual `lomi_terminal_create` returned `SCOPE_DENIED`; the
+  model clearly reported the refusal and did not run the requested command or
+  any competing action. Native verification matched the refusal and teardown
+  completed normally. `expectedToolsSucceeded=false` is intentional for this
+  negative case, while `nativePostconditionsVerified=true` confirms its criteria.
+
+Successful required call results (including actual MCP image content for
+screenshots) were checked in the saved traces for all three positive cases.
+The runner now records `expectedToolsSucceeded`, and the native positive-case
+oracle requires it: merely attempting a tool does not qualify a workflow.
+Probe Clippy with warnings denied, Rust formatting, JavaScript/generated-fixture
+syntax and changed-file formatting passed. Logs:
+`/tmp/lomi-mcp-routing-clippy-final2.log` and the individual routing run logs.
+
+The preceding **QB2GgW failed** at Codex's own approval layer, before terminal
+creation reached Lomi: noninteractive `approval_policy=never` cannot grant a
+required MCP approval. The corrected test explicitly approves only named tools
+needed by its case through subprocess CLI overrides. Lomi still checks all
+scopes, IDs, leases and native approvals. This is documented in USAGE.md and
+follows the [official client options](https://learn.chatgpt.com/docs/extend/mcp).
+The failed trial is not counted as a completed workflow. Initial form trial
+OndJrH hit the same client-layer refusal because its case omitted terminal
+creation from the named approval list; the required tool was added before its
+rerun. Neither failure reached terminal execution or submitted the form.
+
+Reports separate model-selected calls from direct bootstrap/pairing calls and
+record the model, effective features/catalog, client-approved tools, completed
+turn, competing actions and independently checked postconditions. Remaining
+categories, repeats and native origin protection are not inferred from these
+passes. This does not meet the proposed 20-task × 3-run reliability threshold.
+
+## P6 full native regression (2026-09-24)
+
+`lomi-mcp-control-ifJdyT` **PASS** on macOS ARM64 at
+`6e3ffca9b29dfd522af9b8d670fd063490c36eca`. The default end-to-end harness
+advertised 74 tools and completed its 91 named primary checks plus the
+individual file/editor/Git/layout/Android assertions and evidence files. This
+does not replace the separately recorded Chat, management, frame, log, artifact,
+download and upload profiles.
+
+The run used actual stdio MCP, retained PTYs/xterm, native WKWebView, Settings
+approvals and the approved isolated Android device. APK build/import/install,
+real incompatible-signature refusal, launch, Unicode form submission,
+Backspace/restore, rotation, touch transforms, takeover and stale generations
+passed. `androidInputQualification=RUN`; no locked-screen skip was used.
+The native main window was visible and focused. `android-controlled.png` was
+inspected and shows both the entered and submitted `MCP Zażółć gęślą jaźń 🙂`.
+Browser form/navigation/cancellation/capture, scoped file/editor/Git changes,
+retained panel moves, revoke during a main-renderer hang and the real Codex
+0.156.1 direct-call integration also passed. That direct-call integration does
+not count as model-driven routing.
+
+`cleanup.json`: normal host exit 0, private app data removed.
+`android-cleanup-after.json`: device stopped, no forced termination, private
+ADB stopped. Existing shared Android SDK build tools were read-only inputs for
+the disposable APK; runtime used the approved private SDK/AVD. Log:
+`/tmp/lomi-mcp-p6-native-full.log`. Throughput, Android latency, remaining
+actual-model categories and final acceptance-matrix reconciliation remain open.
+
 ## P6 native latency and idle resources (2026-09-24)
 
 **VERIFIED for the measured macOS ARM64 scope.** Apple M3, macOS 27.0

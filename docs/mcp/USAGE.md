@@ -39,6 +39,15 @@ Access ends when the connection is revoked, Lomi restarts, or the workspace view
 is re-registered. Use fresh generated configuration after restarting Lomi or
 disabling control. Do not reuse an endpoint from an old diagnostic run.
 
+Codex can require its own approval before sending a modifying MCP call, in
+addition to Lomi's pairing and operation approvals. A noninteractive
+`approval_policy = "never"` does not grant that approval: the client can reject
+the call before it reaches Lomi. Use interactive client approval, or explicitly
+approve only the intended tools for a controlled noninteractive workflow with
+`mcp_servers.<server>.tools.<tool>.approval_mode = "approve"`. This does not
+expand Lomi permissions or remove native confirmation dialogs. See the
+[official Codex MCP configuration](https://learn.chatgpt.com/docs/extend/mcp).
+
 The pairing form selects one existing project and its explicitly checked
 workspaces. Workspace creation, when authorized, adds the newly created workspace
 to that connection's grant. A project folder does not grant access to every existing
@@ -395,9 +404,19 @@ preferences remain preserved for the existing human recovery controls. After a
 conflict, read the new snapshot and use a new request key. Retrying the original
 request returns its original receipt, including unknown outcomes. It never writes
 again. This permission does not include credentials, approval policy or shell
-profile code. Shortcut and theme writes are still being implemented. Terminal field writes have passed native qualification on macOS ARM64.
+profile code. Terminal fields and keyboard shortcut writes have passed native
+qualification on macOS ARM64. Further theme/plugin MCP work is excluded from
+this delivery; already implemented builtin theme choices retain their existing
+native approvals.
 
 Terminal preference requests use `{"type":"terminal_field","field":"appearance.fontSize","value":18}` with the `terminal` snapshot revision. The field enum is closed and includes appearance, colors, behavior and the existing data-only choices. `value` is required; explicit `null` restores theme inheritance for appearance leaves, for example `appearance.colors.red`. Other terminal fields do not accept null. Existing native ranges, color and string validators apply. A lower `behavior.scrollback` can trim older displayed lines, which the approval explains. Selecting the fixed Windows shell preference does not execute or edit a shell profile.
+
+Keyboard patches use the current `keybinds` snapshot revision and an action ID
+returned by that snapshot. `keybinding_set` takes `action` and a required
+`shortcut` string; explicit `null` disables that action's shortcut.
+`keybinding_reset` removes its stored override. `keybinds_focus_follows_pointer`
+takes a boolean `value`. Invalid or conflicting shortcuts and changed action
+definitions are rejected; each valid change still needs native Settings approval.
 
 ## Interact with a same-origin browser frame
 

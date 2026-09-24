@@ -13,6 +13,7 @@ import { createServer } from "node:http";
 import { uploadFixture } from "../mcp/browser-upload-server.mjs";
 import { downloadFixture } from "../mcp/browser-download-server.mjs";
 import { browserFramePage } from "../mcp/browser-frame-pages.mjs";
+import { prepareRoutingFixture } from "../mcp/routing-fixtures.mjs";
 import { newSession, newProject } from "../../src/model.ts";
 
 if (process.platform !== "darwin" || process.arch !== "arm64")
@@ -98,7 +99,8 @@ if (process.env.LOMI_ANDROID_PRODUCT_DIRECTORY) {
   );
 }
 
-await mkdir(appData, { recursive: true });
+// Existing data is never overwritten, including another still-running fixture.
+await mkdir(appData);
 let deniedRequests = 0;
 const blockedServer = createServer((_req, res) => {
   deniedRequests++;
@@ -115,6 +117,15 @@ await new Promise((resolve) => blockedServer.listen(0, "127.0.0.1", resolve));
 await new Promise((resolve) => portReservation.listen(0, "127.0.0.1", resolve));
 const serverPort = portReservation.address().port;
 await new Promise((resolve) => portReservation.close(resolve));
+if (process.env.LOMI_MCP_ROUTING_ONLY) {
+  const cases = await prepareRoutingFixture(
+    folder,
+    `http://127.0.0.1:${serverPort}`,
+    process.execPath,
+  );
+  if (!Object.hasOwn(cases, process.env.LOMI_MCP_ROUTING_ONLY))
+    throw Error("Unknown model-routing fixture case");
+}
 const downloads = downloadFixture(
   `http://127.0.0.1:${blockedServer.address().port}`,
 );
@@ -294,7 +305,22 @@ try {
     }
   }
   if (!result) throw Error("Native control probe timed out");
-  if (result.stage === "passed" && process.env.LOMI_MCP_PERFORMANCE_ONLY) {
+  if (result.stage === "passed" && process.env.LOMI_MCP_ROUTING_ONLY) {
+    const proof = JSON.parse(
+      await readFile(join(directory, "routing-result.json"), "utf8"),
+    );
+    if (
+      result.data?.profile !== "routing-only" ||
+      result.data?.catalogCount !== 74 ||
+      !proof.nativePostconditionsVerified ||
+      !proof.modelTurnCompleted ||
+      !proof.expectedToolsObserved
+    )
+      throw Error("Model routing returned incomplete native evidence");
+  } else if (
+    result.stage === "passed" &&
+    process.env.LOMI_MCP_PERFORMANCE_ONLY
+  ) {
     const proof = JSON.parse(
       await readFile(join(directory, "performance.json"), "utf8"),
     );

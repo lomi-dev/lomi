@@ -3,6 +3,8 @@
 mod browser_upload_probe;
 #[path = "mcp-performance-support.rs"]
 mod performance_probe;
+#[path = "mcp-routing-support.rs"]
+mod routing_probe;
 #[path = "mcp-terminal-control-support.rs"]
 mod terminal_probe;
 use crate::mcp_browser_probe::{evaluate, screenshot, wait_for};
@@ -3068,6 +3070,21 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
         .await?;
     if connected["structuredContent"]["status"] != "ok" {
         return Err("Cannot select approved workspace".into());
+    }
+    if std::env::var_os("LOMI_MCP_ROUTING_ONLY").is_some() {
+        routing_probe::qualify(
+            app,
+            &settings,
+            &workspace,
+            helper,
+            directory,
+            &browser_fixture,
+        )
+        .await?;
+        child.kill().await.map_err(|e| e.to_string())?;
+        return Ok(
+            json!({"profile":"routing-only","catalogCount":catalog["result"]["tools"].as_array().map(Vec::len)}),
+        );
     }
     if std::env::var_os("LOMI_MCP_PERFORMANCE_ONLY").is_some() {
         performance_probe::qualify(

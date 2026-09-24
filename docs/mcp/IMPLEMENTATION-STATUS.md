@@ -74,14 +74,34 @@ connection still usable afterward. The separate native 30-minute run
 cleanup confirmed. Native app/helper RSS showed no sustained growth in the
 recorded run; its exact scope excludes renderer/emulator/model processes.
 See QUALIFICATION.md for samples, budgets, the earlier failed short diagnostic
-and remaining throughput/Android-latency checks. Source is unfrozen.
-`tests/mcp/codex-routing.mjs` is an unqualified actual-model runner;
-the first unavailable-app case passed at
-`/tmp/lomi-mcp-routing-unavailable-shg1rw`: Codex 0.156.1 / gpt-6-sol
+and remaining throughput/Android-latency checks. This milestone was pushed as
+`6e3ffca9b29dfd522af9b8d670fd063490c36eca`; remote main verified.
+Full native regression `lomi-mcp-control-ifJdyT` passed: catalog 74, 91 named
+primary checks, Android input RUN, normal host exit 0, private app-data removal,
+guest/private ADB stopped without forced termination. Log:
+`/tmp/lomi-mcp-p6-native-full.log`. Native screenshot inspected.
+`tests/mcp/codex-routing.mjs` now has initial actual-model evidence;
+the unavailable-app case passed in three fresh sessions at
+`/tmp/lomi-mcp-routing-unavailable-{shg1rw,LTw9Ck,Ybvnln}`:
+Codex 0.156.1 / gpt-6-sol
 selected lomi_status, observed app_unavailable and stopped without competing
 actions. Shell/unified execution remained enabled; hooks/apps/delegation were
-disabled. This single case is not reliable-routing qualification. The native
-routing fixture is prepared but has not been compiled or executed. The intended
+disabled. Native development-server case G1u0SB passed with independently
+verified PTY/WKWebView/PNG and clean teardown. Its predecessor QB2GgW failed
+because Codex's client approval policy blocked terminal creation before Lomi;
+case-specific subprocess approval overrides corrected the fixture. Form case
+dzL2Kq passed with one exact Unicode POST, native DOM/PNG and normal cleanup;
+the first form attempt OndJrH omitted terminal-create client approval and failed
+before dispatch. Fix-test crfwhe passed: Lomi-observed failure, editor change,
+unchanged tests, successful rerun and independent native Node exit 0; no
+competing action and clean teardown. Scope-denied IFyupE passed with an actual
+terminal-create SCOPE_DENIED, an explicit model refusal and no competing action.
+Final probe Clippy passed, including the exact-tool refusal check
+(`/tmp/lomi-mcp-routing-clippy-final2.log`). Rust/JS syntax and formatting passed.
+No native host or model trial remains running. Source is unfrozen.
+The complete origin-terminal, APK, two-workspace and reconnect model scenarios
+remain open. These initial categories are not reliable-routing qualification.
+The intended
 profile is prefer-Lomi, with private client configuration unchanged and hooks,
 notifications, other MCP servers, apps and delegation disabled for the subprocess.
 
