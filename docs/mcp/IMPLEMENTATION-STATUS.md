@@ -42,6 +42,15 @@ installer publication or private client-configuration writes.
 
 ## Current work
 
+The final storage-fault audit found SQLite silently discarding a corrupted
+committed WAL suffix. A bounded read-only checksum preflight now refuses startup
+and preserves the original DB/WAL. The reproducer, read-only storage, valid WAL
+reuse and the full core/broker suites pass (68 + 68). See QUALIFICATION.md for
+the actual failure and correction. Actual-model Android qualification is being
+rerun after fixing XML entity decoding in its independent native oracle;
+the first trace showed successful installation and one Unicode submission,
+but that failed oracle is not recorded as a complete pass.
+
 Actual Codex routing milestone `42dfa9411676fba1a2e798b6614db881f9d26e75`
 was pushed to origin/main and verified. E01 subsequently passed in EFPfJF:
 Codex ran inside a real ordinary Lomi PTY, created a distinct execution PTY,

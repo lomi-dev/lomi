@@ -5,6 +5,39 @@ their original failures and pending work; subsequent evidence supersedes only
 the specific checks it actually covers. The active task list is in
 [implementation status](IMPLEMENTATION-STATUS.md).
 
+## P6 WAL corruption and read-only storage (2026-09-24)
+
+The new crash test exposed a missing recovery guard. A subprocess checkpointed
+a queued receipt, committed its running transition to WAL, then was killed
+without destructors. Flipping a payload byte in the final committed WAL frame
+let SQLite discard that suffix during startup. The pre-change test failed
+(`/tmp/lomi-mcp-p6-wal-baseline.log`). Old retry epochs were already invalidated,
+but silently losing the journal was unacceptable recovery behavior.
+
+Before SQLite opens the store, a read-only bounded preflight now checks the
+WAL header and current-salt frame checksums using the
+[documented SQLite format](https://www.sqlite.org/fileformat2.html#walformat).
+Checksum damage, a truncated current frame/header and journals above 128 MiB
+return storage unavailable without modifying the database or WAL. The scan
+holds at most one page (64 KiB) and accepts old-salt frames left by legitimate
+checkpoint reuse. It does not repair journals or claim detection of every
+possible disk corruption; private owner/lock checks and retry invalidation
+remain in force.
+
+The reproducer now passes with byte-identical original DB/WAL files. Tests also
+cover a genuinely checkpointed/reused SQLite WAL, truncated/oversized files,
+ordinary SIGKILL recovery, old backups and startup against a mode-0400 database
+in a mode-0500 directory. Read-only startup is refused by the private-permission
+policy, before SQLite mutation; original history remains unchanged.
+The first checkpoint-reuse test accidentally wrote identical data and produced
+no new salt; changing one real byte corrected that fixture before its successful
+rerun. Logs: `/tmp/lomi-mcp-p6-wal-fixed2.log`,
+`/tmp/lomi-mcp-p6-wal-core.log`. Full core: 68 unit tests + 68 broker integration
+tests passed; the crash subprocess and separate long/volume probes remain opt-in.
+Final focused receipt/WAL tests: 13 passed, one subprocess entry ignored;
+all-target core Clippy with warnings denied passed. Logs:
+`/tmp/lomi-mcp-p6-wal-final.log`, `/tmp/lomi-mcp-p6-wal-clippy-final.log`.
+
 ## P6 actual Codex model routing — in progress (2026-09-24)
 
 **E01 origin-terminal scenario: EFPfJF passed.** The actual Codex 0.156.1 /

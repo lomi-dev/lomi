@@ -6,6 +6,7 @@ use lomi_control_protocol::control::OperationResult;
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+mod wal;
 
 const DAY: i64 = 24 * 60 * 60;
 const MAX_RECEIPTS: i64 = 4096;
@@ -320,6 +321,9 @@ impl Store {
                 Err(error) => return Err(error.into()),
             }
         }
+        // SQLite normally discards a checksum-invalid WAL suffix. Preserve
+        // uncertain committed history for explicit recovery instead.
+        wal::validate(&root.join("control.sqlite3-wal"))?;
         let file = fs::OpenOptions::new()
             .read(true)
             .write(true)
@@ -1082,6 +1086,12 @@ mod tests {
             .unwrap()
             .receipt
             .operation_id;
+        if std::env::var_os("LOMI_RECEIPT_WAL_BASELINE").is_some() {
+            store
+                .connection
+                .execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")
+                .unwrap();
+        }
         store
             .transition(
                 "paired-client",
@@ -1129,6 +1139,70 @@ mod tests {
             Err(Error::StorageUnavailable)
         ));
         assert_eq!(fs::read(&path).unwrap(), damaged);
+    }
+
+    #[test]
+    fn read_only_database_refuses_startup_without_changing_history() {
+        use std::os::unix::fs::PermissionsExt;
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("control");
+        let mut store = Store::open(&root, 100).unwrap();
+        let epoch = store.issue_epoch("paired-client", 100).unwrap();
+        store.reserve(&key(&epoch), [1; 32], 101).unwrap();
+        drop(store);
+        let path = root.join("control.sqlite3");
+        let original = fs::read(&path).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o400)).unwrap();
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o500)).unwrap();
+        let result = Store::open(&root, 102);
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        assert!(matches!(result, Err(Error::StorageUnavailable)));
+        assert_eq!(fs::read(&path).unwrap(), original);
+    }
+
+    #[test]
+    fn corrupt_wal_is_preserved_and_cannot_silently_rollback_history() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("control");
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "receipts::tests::crash_child",
+                "--ignored",
+                "--nocapture",
+            ])
+            .env("LOMI_RECEIPT_CRASH_ROOT", &root)
+            .env("LOMI_RECEIPT_WAL_BASELINE", "1")
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while !temp.path().join("committed.json").exists() {
+            assert!(
+                child.try_wait().unwrap().is_none(),
+                "Child exited before commit"
+            );
+            assert!(std::time::Instant::now() < deadline, "Child did not commit");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        child.kill().unwrap();
+        child.wait().unwrap();
+        let path = root.join("control.sqlite3-wal");
+        let mut damaged = fs::read(&path).unwrap();
+        assert!(damaged.len() > 32 + 24 + 512);
+        // Damage the checksum of the final committed frame, retaining its
+        // header/salts/commit marker and the checkpointed queued receipt.
+        *damaged.last_mut().unwrap() ^= 0x80;
+        fs::write(&path, &damaged).unwrap();
+        let original_db = fs::read(root.join("control.sqlite3")).unwrap();
+        let result = Store::open(&root, 200);
+        assert!(
+            matches!(result, Err(Error::StorageUnavailable)),
+            "A corrupt committed WAL was silently recovered"
+        );
+        assert_eq!(fs::read(&path).unwrap(), damaged);
+        assert_eq!(fs::read(root.join("control.sqlite3")).unwrap(), original_db);
     }
 
     #[test]

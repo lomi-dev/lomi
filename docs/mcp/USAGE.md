@@ -210,6 +210,13 @@ exited; inspect their actual terminal or device state before taking further
 action. Disabling agent control also requires new configuration for a later
 connection.
 
+If receipt storage cannot open, preserve its database and matching WAL/SHM
+files together before attempting recovery. Invalid WAL checksums, truncated
+journals or journals above the 128 MiB startup budget stop agent control; Lomi
+does not erase them or start with an empty history. Restore only an explicit
+offline backup after stopping Lomi, retain the damaged originals, then pair
+again and inspect actual resources. Old retry epochs cannot authorize replay.
+
 For an interrupted Trash operation, use **Settings → Agent control → Show
 recovery folder**. An operation's `entry` folder contains retained data and its
 `plan.json` records the original destination. A `completed.json` record means
