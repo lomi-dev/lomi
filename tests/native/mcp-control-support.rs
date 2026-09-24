@@ -1,8 +1,12 @@
 //! Native enrollment/stdio qualification. Compiled only with mcp-probe.
 #[path = "mcp-browser-upload-support.rs"]
 mod browser_upload_probe;
+#[path = "mcp-client-isolation.rs"]
+mod client_isolation_probe;
 #[path = "mcp-performance-support.rs"]
 mod performance_probe;
+#[path = "mcp-restart-support.rs"]
+mod restart_probe;
 #[path = "mcp-routing-support.rs"]
 mod routing_probe;
 #[path = "mcp-terminal-control-support.rs"]
@@ -3077,6 +3081,20 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
         .await?;
     if connected["structuredContent"]["status"] != "ok" {
         return Err("Cannot select approved workspace".into());
+    }
+    if std::env::var_os("LOMI_MCP_CLIENT_ISOLATION_ONLY").is_some() {
+        client_isolation_probe::qualify(app, &mut wire, &settings, &mut child, helper, directory,
+            &json!({"workspaceId":workspace,"retryEpoch":connected["structuredContent"]["data"]["retryEpoch"]})).await?;
+        return Ok(
+            json!({"profile":"client-isolation-only","catalogCount":catalog["result"]["tools"].as_array().map(Vec::len)}),
+        );
+    }
+    if std::env::var_os("LOMI_MCP_RESTART_PHASE").is_some() {
+        restart_probe::qualify(app, &mut wire, &workspace, &connected, directory).await?;
+        child.kill().await.map_err(|e| e.to_string())?;
+        return Ok(
+            json!({"profile":"restart-only","catalogCount":catalog["result"]["tools"].as_array().map(Vec::len)}),
+        );
     }
     if std::env::var_os("LOMI_MCP_ROUTING_ONLY").is_some() {
         routing_probe::qualify(
@@ -7076,5 +7094,22 @@ pub fn start(app: tauri::AppHandle) {
             serde_json::to_vec_pretty(&result).unwrap(),
         );
         app.exit(i32::from(failed));
+        // Normal exit ends the runtime before this diagnostic. Preserve the
+        // ordinary close guard and inspect any surviving fixture window.
+        tokio::time::sleep(Duration::from_millis(750)).await;
+        if let Some(main) = app.get_webview("main") {
+            let ui = tokio::time::timeout(Duration::from_secs(2), javascript(&main, "const m=await import('/src/terminal-runtime.ts');return {visibility:document.visibilityState,focused:document.hasFocus(),text:document.body.innerText.slice(-8000),dialogs:[...document.querySelectorAll('dialog[open]')].map(e=>e.innerText),busy:await m.terminalsWithProcesses()};")).await;
+            let window = app.get_window("main");
+            let state = json!({"ui":ui.ok().map(|v|v.unwrap_or_else(|e|json!({"error":e}))),"windows":app.windows().keys().collect::<Vec<_>>(),"sessions":app.state::<crate::terminal::Terminals>().smoke_sessions(),"nativeFocused":window.as_ref().and_then(|w|w.is_focused().ok()),"nativeVisible":window.as_ref().and_then(|w|w.is_visible().ok())});
+            let _ = std::fs::write(
+                directory.join("exit-ui.json"),
+                serde_json::to_vec_pretty(&state).unwrap(),
+            );
+            let _ = tokio::time::timeout(
+                Duration::from_secs(2),
+                screenshot(&main, directory.join("exit-ui.png")),
+            )
+            .await;
+        }
     });
 }

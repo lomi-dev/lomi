@@ -19,7 +19,7 @@ fn write_json(path: &Path, value: &Value) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     std::fs::rename(temporary, path).map_err(|e| e.to_string())
 }
-async fn approve(
+pub(super) async fn approve(
     settings: &Webview,
     request: &str,
     workspace: &Value,

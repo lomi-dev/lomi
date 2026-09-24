@@ -42,6 +42,14 @@ installer publication or private client-configuration writes.
 
 ## Current work
 
+Native dual-client isolation E07 and terminal application restart E12 passed
+with normal cleanup (KoF9rh, NHdHGE/TjYIpJ). Disconnecting a helper inside a
+running native command preserved its sole side effect and retained terminal,
+recorded durable uncertainty, and left the other client functional. Browser
+click/APK install disconnect trials remain required. Fixed-profile routing is
+25/60 complete passes across 20 tasks; a fresh REPL trial is diagnosing the
+previous fixture-exit failure. No full-system completion is claimed.
+
 File mutation now identifies an invalid domain revision as REVISION_CONFLICT
 and describes its decimal workspace source in the tool/schema. Actual-model
 rename trials passed 3/3, including recovery from the originally mistaken hash.

@@ -5,6 +5,43 @@ their original failures and pending work; subsequent evidence supersedes only
 the specific checks it actually covers. The active task list is in
 [implementation status](IMPLEMENTATION-STATUS.md).
 
+## Native client isolation and application restart (2026-09-24)
+
+E07 passed at KoF9rh through two distinct production helper processes with
+identical clientInfo and the same configured endpoint credential. The second
+still required its own Settings approval. Each grant exposed only its selected
+workspace and retained a distinct native PTY. With B focused, A's long command
+wrote only A's exact marker; cross-client reads returned TARGET_NOT_FOUND.
+Killing helper A during the running command durably recorded
+outcome_unknown / unknown, retained its existing PTY and single file effect,
+and allowed B to execute another command. Fixture-only human Ctrl+C followed
+the observations; normal host exit 0 and private app-data removal passed.
+This covers the run part of E09; native install/click disconnects remain open.
+The first attempt b7wL3z omitted terminalSessionId on panel focus and correctly
+received STALE_GENERATION; the corrected fixture, not a relaxed product guard,
+passed. Evidence: client-isolation.json and cleanup.json in KoF9rh.
+
+E12's native application restart passed at NHdHGE, orchestrated by TjYIpJ.
+The first application wrote exactly one line through its owned PTY and exited
+normally through existing close guards. Its actual saved layout was reopened
+by the same executable over the exact isolated app-data directory. The second
+native process had a new broker instance, retry epoch and terminal runtime;
+the original tab and panel survived, with a fresh human-owned shell and no
+historical output or lease. Fresh Settings approval was required. The old
+receipt returned TARGET_NOT_FOUND, old run arguments returned
+RETRY_WINDOW_EXPIRED without an operation, and the file still contained one
+line. Both native exits were 0; Vite and final app-data cleanup passed. This
+qualifies terminal restoration and manual client reapproval, not transparent
+resumption of previous authority. No application lifecycle MCP tool was added.
+Evidence: restart-{baseline,proof,first-cleanup}.json and prebuilt-process.json
+in NHdHGE; final cleanup.json in lomi-mcp-restart-TjYIpJ.
+
+Workspace all-target mcp-probe Clippy with warnings denied passed
+(`/tmp/lomi-mcp-native-followups-clippy.log`). Both native profiles compiled
+and exercised the actual production helper. Added bounded post-exit UI
+diagnostics preserve existing guards when a fixture window survives; the REPL
+exit investigation is still separate from these passing acceptance checks.
+
 ## File mutation revision correction and native reruns (2026-09-24)
 
 The file rename failure hRw3ID supplied a directory hash in expectedRevision.
@@ -195,10 +232,10 @@ Handlers were disposed afterward; production ACKs and flow control were
 unchanged. Three paired warmups preceded 20 measured pairs with alternating
 order. Both paths returned to their parsed shell prompt with exit 0.
 
-| Path | Median | p95 | Maximum |
-| --- | --- | --- | --- |
-| Ordinary PTY | 238.5 ms | 246 ms | 279 ms |
-| MCP-observed PTY | 248 ms | 258 ms | 259 ms |
+| Path             | Median   | p95    | Maximum |
+| ---------------- | -------- | ------ | ------- |
+| Ordinary PTY     | 238.5 ms | 246 ms | 279 ms  |
+| MCP-observed PTY | 248 ms   | 258 ms | 259 ms  |
 
 Observed/ordinary median ratio was **1.0398** (+3.98%), below the fixture's
 predeclared 1.10 regression threshold. This is a same-build comparison of

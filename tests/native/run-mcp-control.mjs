@@ -14,6 +14,7 @@ import { uploadFixture } from "../mcp/browser-upload-server.mjs";
 import { downloadFixture } from "../mcp/browser-download-server.mjs";
 import { browserFramePage } from "../mcp/browser-frame-pages.mjs";
 import { prepareRoutingFixture } from "../mcp/routing-fixtures.mjs";
+import { binaryFingerprint } from "../mcp/routing-build.mjs";
 import { newSession, newProject } from "../../src/model.ts";
 
 if (process.platform !== "darwin" || process.arch !== "arm64")
@@ -48,6 +49,9 @@ if (
 // exclusive, so a live or incompletely cleaned fixture cannot be overwritten.
 const identifier = batchIdentifier ?? `dev.lomi.mcp-control-${Date.now()}`;
 const appData = join(homedir(), "Library/Application Support", identifier);
+const restartPhase = process.env.LOMI_MCP_RESTART_PHASE;
+if (restartPhase && (restartPhase !== "first" || !batchIdentifier))
+  throw Error("Start restart qualification only through run-mcp-restart.mjs");
 const folder = join(directory, "project");
 await mkdir(folder);
 if (process.env.LOMI_MCP_TERMINAL_ONLY) {
@@ -346,7 +350,39 @@ try {
     )
       throw Error("Android latency returned incomplete measurement evidence");
   }
-  if (result.stage === "passed" && process.env.LOMI_MCP_THROUGHPUT_ONLY) {
+  if (result.stage === "passed" && restartPhase) {
+    const proof = JSON.parse(
+      await readFile(join(directory, "restart-baseline.json"), "utf8"),
+    );
+    if (
+      result.data?.profile !== "restart-only" ||
+      result.data?.catalogCount !== 74 ||
+      !proof.target?.terminalSessionId ||
+      !proof.native?.promptReady
+    )
+      throw Error("First restart phase returned incomplete native evidence");
+  } else if (
+    result.stage === "passed" &&
+    process.env.LOMI_MCP_CLIENT_ISOLATION_ONLY
+  ) {
+    const proof = JSON.parse(
+      await readFile(join(directory, "client-isolation.json"), "utf8"),
+    );
+    if (
+      result.data?.profile !== "client-isolation-only" ||
+      result.data?.catalogCount !== 74 ||
+      !proof.passed ||
+      proof.helpers?.length !== 2 ||
+      proof.helpers[0] === proof.helpers[1] ||
+      proof.effectCount !== 1 ||
+      !proof.secondClientContinued ||
+      !proof.fixtureCommandsStopped
+    )
+      throw Error("Native two-client isolation evidence is incomplete");
+  } else if (
+    result.stage === "passed" &&
+    process.env.LOMI_MCP_THROUGHPUT_ONLY
+  ) {
     const proof = JSON.parse(
       await readFile(join(directory, "terminal-throughput.json"), "utf8"),
     );
@@ -798,7 +834,28 @@ try {
   await writeFile(join(directory, "native.log"), log);
   if (!childClosed)
     throw Error("Native fixture did not exit; app data retained.");
-  if (result)
+  const retainedForRestart =
+    restartPhase === "first" &&
+    result?.stage === "passed" &&
+    child.exitCode === 0 &&
+    child.signalCode === null;
+  if (retainedForRestart) {
+    await writeFile(
+      join(directory, "restart-launch.json"),
+      JSON.stringify(
+        {
+          directory,
+          appData,
+          identifier,
+          binarySha256: await binaryFingerprint(root),
+        },
+        null,
+        2,
+      ),
+      { mode: 0o600 },
+    );
+  }
+  if (result && !retainedForRestart)
     await rm(appData, {
       recursive: true,
       force: true,
@@ -810,7 +867,8 @@ try {
     JSON.stringify(
       {
         hostExited: true,
-        appDataRemoved: Boolean(result),
+        appDataRemoved: Boolean(result) && !retainedForRestart,
+        retainedForRestart,
         exitCode: child.exitCode,
         signal: child.signalCode,
         exitWaitMs: Date.now() - cleanupStarted,
