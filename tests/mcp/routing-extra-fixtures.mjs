@@ -100,6 +100,7 @@ for(const signal of ['SIGHUP','SIGTERM'])process.on(signal,async()=>{
       },
       "terminal-repl": {
         prompt: `Start the interactive Node REPL using ${quote(node)} -i in a new Lomi terminal. Use terminal input to evaluate JSON.stringify({sum:19+23,text:'Zażółć 🙂'}), read the actual answer, then exit the REPL with .exit and verify that the shell prompt has returned.`,
+        clientApprovedTools: ["lomi_terminal_run"],
         expectedTools: [
           "lomi_terminal_create",
           "lomi_terminal_read",

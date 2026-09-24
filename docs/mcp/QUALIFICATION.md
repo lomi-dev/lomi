@@ -5,6 +5,78 @@ their original failures and pending work; subsequent evidence supersedes only
 the specific checks it actually covers. The active task list is in
 [implementation status](IMPLEMENTATION-STATUS.md).
 
+## Final native fault/profile check validation (2026-09-24)
+
+The focused production ADB guard regression passed (one selected test, 252
+filtered), covering stalled acknowledgement and interrupted transfer without
+replacing ADB. Workspace all-target mcp-probe Clippy with warnings denied passed.
+Rust formatting, Node syntax checks for the runners/server and git diff checks
+passed. Logs: /tmp/lomi-mcp-disconnect-adb-test.log and
+/tmp/lomi-mcp-disconnect-clippy.log. Actual fixed-profile batch s6esnL is still
+running; the ledger records only its completed attempts. TxfmVk dev-server's
+PNG was visually inspected and its final answer reviewed; 76v6Q8's final
+answer was also reviewed, with no competing actions in either completed run.
+
+## Product browser profile isolation (2026-09-24)
+
+Hv3cqb passed six S07 observations through actual product-created child
+webviews. An ordinary fixture tab and two independently approved MCP clients
+in different projects loaded the same controlled origin. Each initially had
+no fixture cookie, localStorage, CacheStorage or service-worker registration.
+After seeding three different identities, all three retained only their own
+cookie/localStorage value and cache, with independent worker registries.
+The second client could not read the first project's browser snapshot.
+Normal exit 0 and private app-data cleanup passed. This strengthens the earlier
+candidate-engine profile test with real broker grants and browser creation.
+Existing KjoDju frame evidence is separate; this run does not extend iframe
+or network-isolation claims.
+
+The first attempt MddybB clicked the tab's presentation container instead of
+its actual button and therefore never opened the ordinary tab; its normal
+cleanup passed. The corrected fixture activates main and clicks the role=tab
+button. The restart fixture uses the same corrected selector; NHdHGE's saved
+terminal was already the active restored tab, and its fresh-runtime/no-replay
+observations remain valid.
+
+## Native in-flight browser/APK disconnects (2026-09-24)
+
+E09's browser click passed at 6im2p3. The actual product child webview issued
+one controlled POST while its synchronous page handler awaited the server's
+delayed response. The receipt was still running when the real helper was
+killed. Read-only SQLite observation then recorded outcome_unknown / unknown;
+the page subsequently displayed effect:1, and its late native acknowledgement
+did not replace the uncertain receipt. A replacement helper required fresh
+Settings approval; the old receipt was hidden and old click arguments were
+rejected with RETRY_WINDOW_EXPIRED. The server counted exactly one effect.
+Native exit 0 and private app-data cleanup passed. K7AckY and the second
+attempt failed because the fixture connected before asynchronous Settings
+approval finished (PAIRING_REQUIRED), not because the old receipt was exposed.
+The approval helper now waits for the pending request to disappear; the
+corrected scenario passed without changing production authorization.
+
+E09's APK installation passed at wYdLH1 on the explicitly licensed isolated
+MCP qualification device. A real owned Lomi terminal built a 12,695-byte APK,
+MCP imported its immutable hash, and Settings approved that exact copy/device.
+A macOS mcp-probe-only timing barrier paused the real generation-checked ADB
+stream after 1,024 bytes, leaving the remainder unsent. Killing the actual
+helper durably recorded outcome_unknown / unknown. Releasing the artificial
+barrier preserved the production transport guard. The installed package's
+exact SHA-256 and path remained unchanged after completion and reconnect.
+Fresh Settings approval did not restore the old operation or install authority;
+old retry returned RETRY_WINDOW_EXPIRED and only one transfer started. The
+barrier and fixed-package observer are absent from normal builds. This tests
+uncertain interruption, not rollback or a claim that an arbitrary interrupted
+installation has no effects. Normal exit 0, unforced owned guest stop and
+private ADB cleanup passed; no shared ADB or unrelated device was modified.
+
+The fresh REPL run vFL2iy passed with exact Unicode/42 output, explicit .exit,
+native shell readiness, no competing action and normal cleanup in 87 ms.
+Its model final answer was reviewed. The matrix now has 26/60 complete passes
+and five complete rows. The earlier 0KCGWi cleanup failure did not recur and
+is retained without claiming its cause was fixed. Optional terminal_run is
+now separately client-approved for REPL; terminal_input remains a valid launch
+path and the fixture no longer requires both alternatives.
+
 ## Native client isolation and application restart (2026-09-24)
 
 E07 passed at KoF9rh through two distinct production helper processes with

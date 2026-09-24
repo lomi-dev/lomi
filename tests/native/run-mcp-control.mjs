@@ -11,6 +11,7 @@ import { join, resolve } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:http";
 import { uploadFixture } from "../mcp/browser-upload-server.mjs";
+import { disconnectFixture } from "../mcp/browser-disconnect-server.mjs";
 import { downloadFixture } from "../mcp/browser-download-server.mjs";
 import { browserFramePage } from "../mcp/browser-frame-pages.mjs";
 import { prepareRoutingFixture } from "../mcp/routing-fixtures.mjs";
@@ -22,7 +23,11 @@ if (process.platform !== "darwin" || process.arch !== "arm64")
 const root = resolve(import.meta.dirname, "../..");
 const directory = await mkdtemp(join(tmpdir(), "lomi-mcp-control-"));
 const androidRoot = process.env.LOMI_ANDROID_PRODUCT_DIRECTORY;
-if (process.env.LOMI_MCP_ROUTING_ONLY === "apk" && !androidRoot)
+if (
+  (process.env.LOMI_MCP_ROUTING_ONLY === "apk" ||
+    process.env.LOMI_MCP_ANDROID_DISCONNECT_ONLY) &&
+  !androidRoot
+)
   throw Error("APK routing requires the licensed isolated Android fixture.");
 if (process.env.LOMI_MCP_ANDROID_LATENCY && !androidRoot)
   throw Error(
@@ -148,7 +153,10 @@ const downloads = downloadFixture(
   `http://127.0.0.1:${blockedServer.address().port}`,
 );
 const uploads = uploadFixture();
+const disconnect = disconnectFixture(directory);
 const closeStressServer =
+  process.env.LOMI_MCP_BROWSER_PROFILES_ONLY ||
+  process.env.LOMI_MCP_BROWSER_DISCONNECT_ONLY ||
   process.env.LOMI_MCP_THROUGHPUT_ONLY ||
   process.env.LOMI_MCP_PERFORMANCE_ONLY ||
   process.env.LOMI_MCP_TERMINAL_ONLY ||
@@ -173,16 +181,19 @@ const closeStressServer =
   process.env.LOMI_MCP_CLOSE_STRESS_ONLY ||
   process.env.LOMI_MCP_PROJECT_CLOSE_ONLY
     ? createServer((_request, response) =>
-        process.env.LOMI_MCP_BROWSER_UPLOAD_ONLY
-          ? uploads.serve(_request, response)
-          : process.env.LOMI_MCP_BROWSER_DOWNLOAD_ONLY
-            ? downloads.serve(_request, response)
-            : response.end(
-                process.env.LOMI_MCP_BROWSER_FRAMES_ONLY ||
-                  process.env.LOMI_MCP_BROWSER_LOGS_ONLY
-                  ? browserFramePage(_request.url ?? "/frames")
-                  : "<!doctype html><title>Close fixture</title><p>Owned page</p>",
-              ),
+        process.env.LOMI_MCP_BROWSER_DISCONNECT_ONLY ||
+        process.env.LOMI_MCP_BROWSER_PROFILES_ONLY
+          ? disconnect(_request, response)
+          : process.env.LOMI_MCP_BROWSER_UPLOAD_ONLY
+            ? uploads.serve(_request, response)
+            : process.env.LOMI_MCP_BROWSER_DOWNLOAD_ONLY
+              ? downloads.serve(_request, response)
+              : response.end(
+                  process.env.LOMI_MCP_BROWSER_FRAMES_ONLY ||
+                    process.env.LOMI_MCP_BROWSER_LOGS_ONLY
+                    ? browserFramePage(_request.url ?? "/frames")
+                    : "<!doctype html><title>Close fixture</title><p>Owned page</p>",
+                ),
       )
     : null;
 if (closeStressServer)
@@ -225,6 +236,13 @@ workspace.tabs = [
     relative: "fixture.txt",
   },
 ];
+if (process.env.LOMI_MCP_BROWSER_PROFILES_ONLY)
+  workspace.tabs.push({
+    type: "browser",
+    id: "mcp-profile-human",
+    title: "Ordinary fixture browser",
+    url: `http://127.0.0.1:${serverPort}`,
+  });
 workspace.activeTabId = "mcp-control-fixture";
 project.workspaces.push({
   ...workspace,
@@ -236,12 +254,21 @@ project.workspaces.push({
 const projects = [project];
 if (
   process.env.LOMI_MCP_PROJECT_CLOSE_ONLY ||
-  process.env.LOMI_MCP_ANDROID_LAYOUT_ONLY
+  process.env.LOMI_MCP_ANDROID_LAYOUT_ONLY ||
+  process.env.LOMI_MCP_BROWSER_PROFILES_ONLY
 ) {
   const retainedFolder = join(directory, "retained-project");
   await mkdir(retainedFolder);
   const retained = newProject(retainedFolder, "local:zsh");
   retained.workspaces[0].name = "Retained other project";
+  if (process.env.LOMI_MCP_BROWSER_PROFILES_ONLY)
+    await writeFile(
+      join(directory, "browser-profiles-fixture.json"),
+      JSON.stringify({
+        projectId: retained.id,
+        workspaceId: retained.workspaces[0].id,
+      }),
+    );
   projects.push(retained);
 }
 await writeFile(
@@ -350,7 +377,53 @@ try {
     )
       throw Error("Android latency returned incomplete measurement evidence");
   }
-  if (result.stage === "passed" && restartPhase) {
+  if (result.stage === "passed" && process.env.LOMI_MCP_BROWSER_PROFILES_ONLY) {
+    const proof = JSON.parse(
+      await readFile(join(directory, "browser-profiles.json"), "utf8"),
+    );
+    if (
+      result.data?.profile !== "browser-profiles-only" ||
+      result.data?.catalogCount !== 74 ||
+      !proof.passed ||
+      !proof.distinctProjects ||
+      proof.after?.length !== 3 ||
+      proof.checks?.length !== 6
+    )
+      throw Error("Incomplete native browser profile isolation evidence");
+  } else if (
+    result.stage === "passed" &&
+    process.env.LOMI_MCP_ANDROID_DISCONNECT_ONLY
+  ) {
+    const proof = JSON.parse(
+      await readFile(join(directory, "android-disconnect.json"), "utf8"),
+    );
+    if (
+      result.data?.profile !== "android-disconnect-only" ||
+      result.data?.catalogCount !== 74 ||
+      !proof.passed ||
+      proof.transfer?.transfers !== 1 ||
+      proof.transfer?.sentBytes !== 1024 ||
+      proof.disconnected?.[0] !== "outcome_unknown" ||
+      proof.beforePackage !== proof.finalPackage
+    )
+      throw Error("Incomplete native APK disconnect evidence");
+  } else if (
+    result.stage === "passed" &&
+    process.env.LOMI_MCP_BROWSER_DISCONNECT_ONLY
+  ) {
+    const proof = JSON.parse(
+      await readFile(join(directory, "browser-disconnect.json"), "utf8"),
+    );
+    if (
+      result.data?.profile !== "browser-disconnect-only" ||
+      result.data?.catalogCount !== 74 ||
+      !proof.passed ||
+      proof.effects?.effects !== 1 ||
+      proof.disconnected?.[0] !== "outcome_unknown" ||
+      proof.afterLateAck?.[0] !== "outcome_unknown"
+    )
+      throw Error("Incomplete native click disconnect evidence");
+  } else if (result.stage === "passed" && restartPhase) {
     const proof = JSON.parse(
       await readFile(join(directory, "restart-baseline.json"), "utf8"),
     );

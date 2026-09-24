@@ -1,4 +1,8 @@
 //! Native enrollment/stdio qualification. Compiled only with mcp-probe.
+#[path = "mcp-browser-disconnect.rs"]
+mod browser_disconnect_probe;
+#[path = "mcp-browser-profiles.rs"]
+mod browser_profiles_probe;
 #[path = "mcp-browser-upload-support.rs"]
 mod browser_upload_probe;
 #[path = "mcp-client-isolation.rs"]
@@ -22,6 +26,9 @@ use std::{
 use tauri::{Emitter, Listener, Manager, Webview};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
+#[path = "mcp-android-disconnect.rs"]
+mod android_disconnect_probe;
+pub(crate) use android_disconnect_probe::transfer_checkpoint as android_transfer_checkpoint;
 #[path = "mcp-android-latency-support.rs"]
 mod android_latency_probe;
 #[path = "mcp-android-layout-support.rs"]
@@ -3081,6 +3088,28 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
         .await?;
     if connected["structuredContent"]["status"] != "ok" {
         return Err("Cannot select approved workspace".into());
+    }
+    if std::env::var_os("LOMI_MCP_BROWSER_PROFILES_ONLY").is_some() {
+        browser_profiles_probe::qualify(app, &mut wire, &settings, helper, directory,
+            &json!({"workspaceId":workspace,"retryEpoch":connected["structuredContent"]["data"]["retryEpoch"],"origin":browser_fixture["origin"]})).await?;
+        child.kill().await.map_err(|e| e.to_string())?;
+        return Ok(
+            json!({"profile":"browser-profiles-only","catalogCount":catalog["result"]["tools"].as_array().map(Vec::len)}),
+        );
+    }
+    if std::env::var_os("LOMI_MCP_ANDROID_DISCONNECT_ONLY").is_some() {
+        android_disconnect_probe::qualify(app, &mut wire, &settings, &mut child, helper, directory,
+            &json!({"workspaceId":workspace,"retryEpoch":connected["structuredContent"]["data"]["retryEpoch"]})).await?;
+        return Ok(
+            json!({"profile":"android-disconnect-only","catalogCount":catalog["result"]["tools"].as_array().map(Vec::len)}),
+        );
+    }
+    if std::env::var_os("LOMI_MCP_BROWSER_DISCONNECT_ONLY").is_some() {
+        browser_disconnect_probe::qualify(app, &mut wire, &settings, &mut child, helper, directory,
+            &json!({"workspaceId":workspace,"retryEpoch":connected["structuredContent"]["data"]["retryEpoch"],"origin":browser_fixture["origin"]})).await?;
+        return Ok(
+            json!({"profile":"browser-disconnect-only","catalogCount":catalog["result"]["tools"].as_array().map(Vec::len)}),
+        );
     }
     if std::env::var_os("LOMI_MCP_CLIENT_ISOLATION_ONLY").is_some() {
         client_isolation_probe::qualify(app, &mut wire, &settings, &mut child, helper, directory,

@@ -74,7 +74,7 @@ pub(super) async fn qualify(
     let target = &before["target"];
     // Restored terminals are human-owned and may be lazy; use the ordinary tab
     // action, not a broker focus request that correctly forbids lazy starts.
-    javascript(&main,&format!("const e=[...document.querySelectorAll('[data-tab-id]')].find(e=>e.dataset.tabId==={});if(!e)throw Error('Missing restored tab');e.click();return true;",before["tabId"])).await?;
+    javascript(&main,&format!("const e=[...document.querySelectorAll('[data-tab-id]')].find(e=>e.dataset.tabId==={});if(!e)throw Error('Missing restored tab');e.querySelector('[role=tab]').click();return true;",before["tabId"])).await?;
     let mut native = Value::Null;
     for _ in 0..100 {
         native=javascript(&main,&format!("const m=await import('/src/terminal-runtime.ts');const r=m.runningTerminal({});return {{sessionId:r?.sessionId,promptReady:Boolean(r?.atPrompt&&!r?.activeBlock),text:r?[...Array(r.terminal.buffer.active.length)].map((_,i)=>r.terminal.buffer.active.getLine(i)?.translateToString()).join('\\n'):null}};",target["panelId"])).await?;

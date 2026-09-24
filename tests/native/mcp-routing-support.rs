@@ -88,6 +88,7 @@ pub(super) async fn approve(
     let button = format!("[...({article}).querySelectorAll('button')].find(b=>b.textContent.trim()==='Approve session')");
     wait_for(settings, &format!("!({button}).disabled")).await?;
     evaluate(settings, &format!("({button}).click();true")).await?;
+    wait_for(settings, &format!("!({article})")).await?;
     Ok(())
 }
 

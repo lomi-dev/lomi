@@ -189,6 +189,11 @@ impl Guest {
         self.shell(&(self.guard()? + &command))
     }
 
+    #[cfg(all(feature = "mcp-probe", target_os = "macos"))]
+    pub fn native_apk_fixture_hash(&self) -> Result<String, String> {
+        self.shell(&(self.guard()? + r#"path=$(pm path org.lomi.inputtest); case "$path" in package:/data/app/*/base.apk) sha256sum "${path#package:}" ;; *) printf absent ;; esac"#))
+    }
+
     fn identity(&self) -> Result<(), String> {
         if !super::storage::valid_id(&self.device_id)
             || !super::storage::valid_id(&self.generation_key)
@@ -614,6 +619,9 @@ impl Guest {
         if &ready != b"SBOK" {
             return Err("Android transport rejected APK transfer.".into());
         }
+        #[cfg(all(feature = "mcp-probe", target_os = "macos"))]
+        let qualification = socket.guard.is_some()
+            && std::env::var_os("LOMI_MCP_ANDROID_DISCONNECT_ONLY").is_some();
         let mut remaining = length;
         let mut buffer = [0; 65536];
         while remaining > 0 {
@@ -621,12 +629,30 @@ impl Guest {
                 return Err("Android APK installation cancelled".into());
             }
             let chunk = remaining.min(buffer.len() as u64) as usize;
+            #[cfg(all(feature = "mcp-probe", target_os = "macos"))]
+            let first = remaining == length;
+            #[cfg(all(feature = "mcp-probe", target_os = "macos"))]
+            let chunk = if qualification && first {
+                chunk.min(1024)
+            } else {
+                chunk
+            };
             let count = reader.read(&mut buffer[..chunk]).map_err(error)?;
             if count == 0 {
                 return Err("The selected APK changed during installation.".into());
             }
             socket.write_all(&buffer[..count]).map_err(error)?;
             remaining -= count as u64;
+            #[cfg(all(feature = "mcp-probe", target_os = "macos"))]
+            if qualification && first {
+                crate::mcp_control_probe::android_transfer_checkpoint(
+                    &self.device_id,
+                    &self.generation_key,
+                    self.console_port,
+                    length,
+                    length - remaining,
+                )?;
+            }
         }
         let mut output = Vec::new();
         socket.take(4097).read_to_end(&mut output).map_err(error)?;

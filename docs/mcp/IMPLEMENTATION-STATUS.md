@@ -42,6 +42,31 @@ installer publication or private client-configuration writes.
 
 ## Current work
 
+Native dual-client isolation, real application restart, in-flight command/click/
+APK disconnects and product browser-profile separation have passed with normal
+cleanup. Their artifacts and scope are recorded in QUALIFICATION.md. The focused
+ADB guard regression and workspace all-target mcp-probe Clippy also passed.
+The fixed-profile actual-model matrix remains IN_PROGRESS: batch s6esnL is
+repeating dev-server, form, fix-test and origin-server. See routing-matrix.json
+for the recorded completed attempts; unexecuted repetitions are not passes.
+After this frozen batch, correct the stale panel_move description that still
+calls Android transfers unqualified, then continue the remaining repetitions.
+Final acceptance/documentation reconciliation and the last push remain required.
+
+## Milestone history
+
+These dated observations retain prior failures and then-current next steps.
+They do not replace the current work or the explicitly narrowed delivery scope.
+
+Native in-flight browser click and APK transfer disconnects passed at 6im2p3
+and wYdLH1, completing the run/install/click observations of E09. Both preserve
+durable uncertainty and reject replay by a newly approved helper. Cleanup
+passed, including the isolated Android guest/private ADB. The fresh REPL run
+vFL2iy passed normally, bringing routing to 26/60 complete passes and five
+complete rows. A product-level two-project browser storage isolation probe is
+running to strengthen the earlier engine/profile evidence. Final checks and
+the remaining routing repetitions are still required.
+
 Native dual-client isolation E07 and terminal application restart E12 passed
 with normal cleanup (KoF9rh, NHdHGE/TjYIpJ). Disconnecting a helper inside a
 running native command preserved its sole side effect and retained terminal,
