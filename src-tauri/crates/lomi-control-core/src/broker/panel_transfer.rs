@@ -75,6 +75,7 @@ impl Broker {
             match panel.kind.as_str() {
                 "chat" => Self::chat_panel_scope(state, owner, &panel.panel_id, "chat.open")?,
                 "file" => {}
+                "android" => Self::android_panel_access(state, owner, &panel.panel_id, true)?,
                 "terminal" => {
                     if let Some(generation) = &panel.terminal_session_id {
                         let target = Self::terminal_target(
@@ -232,6 +233,7 @@ impl Broker {
                     || work.native_committed
                     || work.command.domain_revision != state.projection.revision
                     || work.native_permit.check().is_err()
+                    || Self::validate_android_layout(state, work).is_err()
                     || Self::validate_panel_move(state, &work.pairing, command).is_err()
                 {
                     return None;
@@ -266,6 +268,20 @@ impl Broker {
             .collect();
         for (id, owner, source, destination, panels) in transfers {
             for panel in &panels {
+                if let Some(target) = panel
+                    .android_device_id
+                    .as_ref()
+                    .and_then(|id| state.android.get_mut(id))
+                {
+                    target.control.revoke_input();
+                    target.workspaces.insert(destination.clone());
+                    if !projection.panels.iter().any(|p| {
+                        p.workspace_id == source
+                            && p.android_device_id.as_ref() == Some(&target.control.device)
+                    }) {
+                        target.workspaces.remove(&source);
+                    }
+                }
                 if let Some(target) = panel
                     .terminal_session_id
                     .as_ref()

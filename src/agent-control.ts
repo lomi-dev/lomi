@@ -398,11 +398,33 @@ interface FileTrashRequest {
   relativePath: string;
   notAfterMillis: string;
 }
-async function checkAgentChats(
+async function checkAgentPanels(
   panels: readonly (import("./model").Tab | import("./model").LayoutPane)[],
   projectId: string,
   reveal: boolean,
 ) {
+  const phones = panels.filter((p) => p.type === "android");
+  if (reveal && phones.length) {
+    const { refreshAndroid, androidSnapshot } = await import("./android/state");
+    const runtime = await import("./android/runtime");
+    await refreshAndroid();
+    if (
+      phones.some(
+        (p) =>
+          !p.deviceId ||
+          runtime.stopPending(p.deviceId) ||
+          (p.startMode !== "manual" &&
+            runtime.launchPending(p.id, p.deviceId)) ||
+          !androidSnapshot()?.statuses.some(
+            (s) =>
+              s.deviceId === p.deviceId &&
+              s.phase === "running" &&
+              s.processAlive,
+          ),
+      )
+    )
+      throw Error("UI_NOT_READY");
+  }
   const chats = panels.filter((p) => p.type === "chat");
   if (!chats.length) return;
   const module = await import("./chat/chat-runtime");
@@ -1019,12 +1041,11 @@ export function useAgentControlBridge(
                             p.id,
                             p.automation.generation,
                           ))) ||
-                      p.type === "android" ||
                       p.type === "plugin",
                   )
                 )
                   throw Error("UI_NOT_READY");
-                await checkAgentChats(revealing, command.projectId, true);
+                await checkAgentPanels(revealing, command.projectId, true);
                 if (
                   !alive ||
                   !sameAgentSession(domain.current.getCurrent(), before)
@@ -1357,6 +1378,7 @@ export function useAgentControlBridge(
                         "diff",
                         "commit",
                         "chat",
+                        "android",
                       ].includes(p.type),
                   )
                 )
@@ -1380,7 +1402,7 @@ export function useAgentControlBridge(
                 )
                   throw new Error("REVISION_CONFLICT");
                 const ids = new Set(panels.map((p) => p.id));
-                await checkAgentChats(panels, command.projectId, false);
+                await checkAgentPanels(panels, command.projectId, false);
                 const documents = [
                   ...new Set(
                     panels.flatMap((p) =>
@@ -1650,7 +1672,7 @@ export function useAgentControlBridge(
                           .map((p) => p.tabId)
                       : [movement.tabId],
                 );
-                await checkAgentChats(
+                await checkAgentPanels(
                   workspace.tabs
                     .filter((t) => affected.has(t.id))
                     .flatMap<
@@ -2232,6 +2254,7 @@ export function useAgentControlBridge(
                 !panel ||
                 (panel.type !== "terminal" &&
                   panel.type !== "chat" &&
+                  panel.type !== "android" &&
                   panel.type !== "file" &&
                   panel.type !== "browser" &&
                   !(
@@ -2262,7 +2285,7 @@ export function useAgentControlBridge(
               let chatSaveAttempted = false;
               if (panel.type === "chat") {
                 try {
-                  await checkAgentChats([panel], command.projectId, false);
+                  await checkAgentPanels([panel], command.projectId, false);
                   chatsSaved = await (
                     await import("./chat/chat-service")
                   ).prepareAgentChatClose(new Set([panel.id]), () => {
@@ -2427,7 +2450,7 @@ export function useAgentControlBridge(
                 return;
               }
               try {
-                await checkAgentChats(panels, command.projectId, true);
+                await checkAgentPanels(panels, command.projectId, true);
               } catch {
                 await ack({ kind: "failure", code: "TARGET_NOT_FOUND" });
                 return;

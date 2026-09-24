@@ -180,6 +180,28 @@ cancel it. Cancelling the MCP operation, revoking access or closing its workspac
 invalidates only its own native work. Uncertain or partial completion is never
 replayed automatically. Native progress remains visible in Android settings.
 
+## Rearrange and close Android views
+
+On qualified macOS ARM64 hosts, an agent can focus, dock, rearrange and transfer its running Android views using the
+existing panel tools. The selected device needs `android.read` and
+`android.control`; moves also need the existing workspace/panel permissions.
+A transfer stays within one project and requires both workspace grants. The
+same native process and retained viewport survive; input ownership is released
+when the selected view changes or the view moves to another workspace. Focus
+never starts a stopped or lazy device: use `lomi_android_start` explicitly.
+
+Closing a shared view preserves the phone while another domain view exists.
+Closing its last view, workspace or project requires `android.control`, passes
+the existing editor guards, and waits for confirmed native Stop. Device files
+and apps remain configured. A native admission barrier prevents a new start
+until the close receipt settles. Cancelled guards preserve the running device;
+a cancellation after native dispatch can leave it stopped with its views still
+present. Failed Stop keeps the views and the owned process handle.
+
+Native generation changes or human takeover invalidate queued layout authority.
+Keep the same request key after uncertainty; a retry never repeats native Stop.
+Operation reads and cancellation remain available while the native stop runs.
+
 ## Control selected Chat AI conversations
 
 In **Settings → Agent control**, enable history access and select the exact

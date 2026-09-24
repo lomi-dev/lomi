@@ -93,6 +93,7 @@ await new Promise((resolve) => portReservation.listen(0, "127.0.0.1", resolve));
 const serverPort = portReservation.address().port;
 await new Promise((resolve) => portReservation.close(resolve));
 const closeStressServer =
+  process.env.LOMI_MCP_ANDROID_LAYOUT_ONLY ||
   process.env.LOMI_MCP_ANDROID_SETUP_ONLY ||
   process.env.LOMI_MCP_CHAT_SEND_ONLY ||
   process.env.LOMI_MCP_CHAT_DRAFT_ONLY ||
@@ -162,7 +163,10 @@ project.workspaces.push({
   activeTabId: "",
 });
 const projects = [project];
-if (process.env.LOMI_MCP_PROJECT_CLOSE_ONLY) {
+if (
+  process.env.LOMI_MCP_PROJECT_CLOSE_ONLY ||
+  process.env.LOMI_MCP_ANDROID_LAYOUT_ONLY
+) {
   const retainedFolder = join(directory, "retained-project");
   await mkdir(retainedFolder);
   const retained = newProject(retainedFolder, "local:zsh");
@@ -248,7 +252,23 @@ try {
     }
   }
   if (!result) throw Error("Native control probe timed out");
-  if (result.stage === "passed" && process.env.LOMI_MCP_ANDROID_SETUP_ONLY) {
+  if (result.stage === "passed" && process.env.LOMI_MCP_ANDROID_LAYOUT_ONLY) {
+    const proof = JSON.parse(
+      await readFile(join(directory, "android-layout.json"), "utf8"),
+    );
+    if (
+      deniedRequests !== 0 ||
+      result.data?.profile !== "android-layout-only" ||
+      result.data?.catalogCount !== 71 ||
+      proof.checks?.length !== 14 ||
+      !proof.stopped ||
+      !proof.originalDevicePreserved
+    )
+      throw Error("Android layout qualification returned incomplete evidence");
+  } else if (
+    result.stage === "passed" &&
+    process.env.LOMI_MCP_ANDROID_SETUP_ONLY
+  ) {
     const proof = JSON.parse(
       await readFile(join(directory, "android-setup.json"), "utf8"),
     );

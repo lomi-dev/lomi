@@ -223,6 +223,10 @@ impl Broker {
                     if !target.control.authorized() {
                         return Err(ErrorCode::ControlRevoked);
                     }
+                } else if p.kind == "android" && (focus || p.id == *panel_id) {
+                    Self::android_panel_access(state, owner, &p.id, focus)?;
+                } else if p.kind == "android" {
+                    continue;
                 } else if p.kind == "chat" {
                     if focus {
                         Self::chat_panel_scope(state, owner, &p.id, "chat.open")?;
@@ -399,6 +403,13 @@ impl Broker {
         if let Err(e) = Self::validate_panel_action(&state, id, &action) {
             return error(e);
         }
+        if close {
+            if let Err(code) =
+                self.preflight_android_close(&state, id, std::slice::from_ref(&input.panel_id))
+            {
+                return error(code);
+            }
+        }
         self.enqueue_ui(
             &mut state,
             id,
@@ -465,8 +476,6 @@ impl Broker {
         let UiAction::ClosePanel {
             workspace_id,
             panel_id,
-            terminal_session_id,
-            browser_generation,
             ..
         } = &work.command.action
         else {
@@ -489,6 +498,7 @@ impl Broker {
         {
             return Err(ErrorCode::ScopeDenied);
         }
+        Self::validate_android_layout(&state, work)?;
         Self::validate_panel_action(&state, &work.pairing, &work.command.action)?;
         let receipt = self
             .store
@@ -501,84 +511,13 @@ impl Broker {
         }
         self.check_policy(&state)
             .map_err(|_| ErrorCode::ControlRevoked)?;
-        let chat_close = (
-            work.pairing.clone(),
-            work.project.clone(),
-            panel_id.clone(),
-            work.native_permit.clone(),
-        );
-        self.close_chats(
-            &state,
-            &chat_close.0,
-            &chat_close.1,
-            std::slice::from_ref(&chat_close.2),
-            None,
-        )?;
-        if let Some(generation) = browser_generation {
-            let target = state
-                .browsers
-                .get(generation)
-                .filter(|t| t.owner == work.pairing)
-                .ok_or(ErrorCode::TargetNotFound)?;
-            if !target.control.authorized() {
-                return Err(ErrorCode::ControlRevoked);
-            }
-            let dispatch = self
-                .browser_close_dispatch
-                .lock()
-                .ok()
-                .and_then(|d| d.clone())
-                .ok_or(ErrorCode::HostUnqualified)?;
-            if let Err(error) = dispatch(target.control.clone()) {
-                if error == ErrorCode::OutcomeUnknown {
-                    state.work.get_mut(operation).unwrap().native_committed = true;
-                }
-                return Err(error);
-            }
-        }
-        if let Some(generation) = terminal_session_id {
-            let target = state
-                .terminals
-                .get(generation)
-                .filter(|t| t.owner == work.pairing)
-                .ok_or(ErrorCode::ProtectedOriginTerminal)?;
-            if target
-                .control
-                .lock()
-                .map_err(|_| ErrorCode::AppUnavailable)?
-                .human_owned
-            {
-                return Err(ErrorCode::ControlRevoked);
-            }
-            let peers = state
-                .sessions
-                .values()
-                .map(|s| s.peer_pid)
-                .collect::<Option<Vec<_>>>()
-                .ok_or(ErrorCode::ProtectedOriginTerminal)?;
-            let dispatch = self
-                .terminal_close_dispatch
-                .lock()
-                .ok()
-                .and_then(|d| d.clone())
-                .ok_or(ErrorCode::HostUnqualified)?;
-            // The callback refuses a busy writer and never waits for process exit.
-            let result = dispatch(generation, &target.control, &peers, true);
-            if let Err(error) = result {
-                if error == ErrorCode::OutcomeUnknown {
-                    state.work.get_mut(operation).unwrap().native_committed = true;
-                }
-                return Err(error);
-            }
-        }
+        let panels = super::panel_move::identities(&state, workspace_id)
+            .into_iter()
+            .filter(|p| p.panel_id == *panel_id)
+            .collect::<Vec<_>>();
+        let steps = self.prepare_close_resources(&state, operation, &panels)?;
         state.work.get_mut(operation).unwrap().native_committed = true;
-        self.close_chats(
-            &state,
-            &chat_close.0,
-            &chat_close.1,
-            std::slice::from_ref(&chat_close.2),
-            Some(chat_close.3),
-        )?;
-        Ok(())
+        drop(state);
+        self.finish_close_resources(operation, steps)
     }
 }

@@ -32,7 +32,7 @@ installer publication or private client-configuration writes.
 | P4    | IN_PROGRESS     | Managed Android end-to-end                                                                                |
 | P5.1  | IN_PROGRESS     | Scoped disk reads and editor/file adapters                                                                |
 | P5.2  | IN_PROGRESS     | Git reads/views and all seven bounded mutations; qualification active                                     |
-| P5.3  | IN_PROGRESS     | Project open/moves and Chat closure verified; Android descendants pending; plugins excluded               |
+| P5.3  | QUALIFIED       | Selected project/workspace/panel lifecycle, mixed layout and Chat/Android descendants; plugins excluded   |
 | P5.4  | VERIFIED_SLICES | Settings open/read/editor/terminal/shortcut writes verified; further themes/plugins EXCLUDED_BY_USER      |
 | P5.5  | QUALIFIED       | Android setup, device management and protected recovery                                                   |
 | P5.6  | QUALIFIED       | Seven Chat AI tools and selected layout integration; all final checks passed                              |
@@ -41,6 +41,38 @@ installer publication or private client-configuration writes.
 | P7    | NOT_SELECTED    | No optional extension selected by this request                                                            |
 
 ## Current work
+
+Android management was committed and pushed to origin/main as
+`464ed18da59e5786c3b348e38783d9cc7feec732`; remote SHA verified.
+
+Android layout passed native qualification on macOS ARM64: **ErnuOt PASS**,
+catalog71,14 checks, normal host/wrapper exit0 and isolated app-data cleanup.
+Focus/docking/moves/transfer retain the runtime, native generation, PTY and zoom.
+An admitted workspace transfer extends only the existing owner's binding to the
+granted destination, preserves shared source views and releases input leases.
+Panel/workspace/project last-view close passes editor guards, confirms Stop,
+and retains a native start barrier until the receipt settles. Slow native cleanup
+runs outside the broker mutex; a separate completion flag rejects early close ACKs.
+Native **0ovWOt Chat54 PASS**, catalog71, normal exit0/app-data cleanup, confirms
+the shared closure refactor preserves existing Chat behavior. No paid provider calls.
+
+Core3/full broker64, existing WebKit workspace/Chat17, model179 + AI17,
+TypeScript, frontend build and wire5 PASS. Native Android76 PASS (17 opt-in
+tests ignored). Production workspace, all-target MCP packages and final MCP-probe
+Clippy PASS with warnings denied. Native project/browser/PTY close regression
+**wGLMu7 PASS**, catalog71, normal exit0 and isolated app-data cleanup.
+The extra application all-target Clippy check reports nine pre-existing test-only
+lints in android/input.rs, chat/preferences.rs, chat/store.rs, files/editor.rs,
+themes.rs and updater.rs; those files are unchanged from HEAD. These remain for
+P6 cleanup, not an Android regression. Source is unfrozen; no native app or
+emulator remains running.
+The mixed Android/PTY and dirty-close screenshots were inspected. First attempts
+bMi7lr and K0tPJi failed fixture assertions (percentage zoom and map-shaped
+terminal contexts), were corrected, and each cleaned up normally. Their partial
+results are not counted as passing runs.
+
+Android layout is ready for its milestone commit/push. Next: advanced
+browser/terminal and P6. Full MCP is incomplete.
 
 Chat AI milestone was committed and pushed to origin/main as
 `57b05cb46f8ed1896f2b26c3665826a401a96073`; remote SHA verified and the
@@ -65,8 +97,8 @@ and workspace removal invalidate only the operation's permit. Full broker61,
 Android units75 (17 opt-in tests ignored), WebKit approval/permission2,
 TypeScript, frontend build, workspace/probe Clippy and helper wire5 passed. A
 subsequent error-mapping-only change passed native3, including actual disk-space
-and mutation-gate errors. Android management is ready for its milestone push.
-Android layout remains a separate outstanding part of the selected delivery.
+and mutation-gate errors. Android management was pushed as the milestone recorded above.
+Android layout is qualified separately in the current-work record above.
 
 ### Completed Chat module
 

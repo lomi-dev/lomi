@@ -337,7 +337,7 @@ impl Broker {
                 state
                     .android
                     .get(&result.device_id)
-                    .filter(|t| t.owner == owner && t.workspace == result.workspace_id)
+                    .filter(|t| t.owner == owner && t.workspaces.contains(&result.workspace_id))
                     .and_then(|t| t.control.input())
                     .filter(|l| l.generation == result.generation)
                     .map(|l| l.id.clone())

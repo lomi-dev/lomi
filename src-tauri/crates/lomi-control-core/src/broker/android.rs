@@ -240,7 +240,7 @@ impl Broker {
 
 pub(super) struct OwnedAndroid {
     pub owner: String,
-    pub workspace: String,
+    pub workspaces: HashSet<String>,
     pub control: Arc<crate::android::AndroidControl>,
 }
 
@@ -279,7 +279,7 @@ impl Broker {
             .get(device)
             .filter(|t| t.control.check().is_ok())
         {
-            if target.owner != owner || target.workspace != workspace {
+            if target.owner != owner || !target.workspaces.contains(workspace) {
                 return Err(ErrorCode::TargetBusy);
             }
         }
@@ -287,7 +287,7 @@ impl Broker {
             let target = state
                 .android
                 .get(device)
-                .filter(|t| t.owner == owner && t.workspace == workspace)
+                .filter(|t| t.owner == owner && t.workspaces.contains(workspace))
                 .ok_or(ErrorCode::TargetNotFound)?;
             target.control.check_generation(generation)?;
         }
@@ -450,7 +450,7 @@ impl Broker {
                     device,
                     OwnedAndroid {
                         owner,
-                        workspace: workspace.clone(),
+                        workspaces: HashSet::from([workspace.clone()]),
                         control: control.clone(),
                     },
                 );

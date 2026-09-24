@@ -1,6 +1,8 @@
 use super::operations::{storage_error, UiMutation};
 use super::*;
 
+pub(super) type CloseSteps = Vec<Box<dyn FnOnce() -> Result<(), ErrorCode> + Send>>;
+
 impl Broker {
     pub(super) fn receipt_workspace_authorized(
         state: &State,
@@ -103,6 +105,7 @@ impl Broker {
         for panel in &command.panels {
             match panel.kind.as_str() {
                 "file" => {}
+                "android" => Self::android_panel_access(state, owner, &panel.panel_id, false)?,
                 "chat" => {
                     Self::chat_panel_scope(state, owner, &panel.panel_id, "chat.read")?;
                 }
@@ -175,6 +178,15 @@ impl Broker {
         command: &WorkspaceCloseCommand,
     ) -> Result<(), ErrorCode> {
         Self::validate_workspace_close(state, owner, command)?;
+        self.preflight_android_close(
+            state,
+            owner,
+            &command
+                .panels
+                .iter()
+                .map(|p| p.panel_id.clone())
+                .collect::<Vec<_>>(),
+        )?;
         let peers = state
             .sessions
             .values()
@@ -355,6 +367,7 @@ impl Broker {
             return Err(ErrorCode::ControlRevoked);
         }
         work.native_permit.check()?;
+        Self::validate_android_layout(&state, work)?;
         self.check_policy(&state)
             .map_err(|_| ErrorCode::ControlRevoked)?;
         let UiAction::CloseWorkspace(command) = &work.command.action else {
@@ -407,28 +420,42 @@ impl Broker {
                 .map_err(|_| ErrorCode::StorageUnavailable)?;
         }
         // From the first native close, cancellation cannot claim that every resource survived.
+        let steps = self.prepare_close_resources(&state, operation, &command.panels)?;
         state.work.get_mut(operation).unwrap().native_committed = true;
-        self.commit_close_resources(&state, operation, &command.panels)
+        drop(state);
+        self.finish_close_resources(operation, steps)
     }
-    pub(super) fn commit_close_resources(
+    pub(super) fn prepare_close_resources(
         &self,
         state: &State,
         operation: &str,
         panels: &[PanelMoveIdentity],
-    ) -> Result<(), ErrorCode> {
+    ) -> Result<CloseSteps, ErrorCode> {
         let work = state.work.get(operation).ok_or(ErrorCode::ControlRevoked)?;
         let ids = panels
             .iter()
             .map(|p| p.panel_id.clone())
             .collect::<Vec<_>>();
-        self.close_chats(state, &work.pairing, &work.project, &ids, None)?;
-        self.close_chats(
-            state,
-            &work.pairing,
-            &work.project,
-            &ids,
-            Some(work.native_permit.clone()),
-        )?;
+        let mut steps: CloseSteps = Vec::new();
+        let conversations = Self::closing_chats(state, &work.pairing, &ids)?;
+        if !conversations.is_empty() {
+            let dispatch = self
+                .chat_close_dispatch
+                .lock()
+                .ok()
+                .and_then(|d| d.clone())
+                .ok_or(ErrorCode::HostUnqualified)?;
+            dispatch(&work.project, &conversations, None)?;
+            let project = work.project.clone();
+            let permit = work.native_permit.clone();
+            steps.push(Box::new(move || {
+                dispatch(&project, &conversations, Some(permit))
+            }));
+        }
+        if let Some((targets, dispatch)) = self.android_close_plan(state, &work.pairing, &ids)? {
+            let permit = work.native_permit.clone();
+            steps.push(Box::new(move || dispatch(&targets, Some(permit))));
+        }
         let peers = state
             .sessions
             .values()
@@ -440,26 +467,71 @@ impl Broker {
                 let target = state
                     .browsers
                     .get(generation)
-                    .ok_or(ErrorCode::OutcomeUnknown)?;
-                self.browser_close_dispatch
+                    .ok_or(ErrorCode::StaleGeneration)?;
+                let control = target.control.clone();
+                let dispatch = self
+                    .browser_close_dispatch
                     .lock()
                     .ok()
                     .and_then(|d| d.clone())
-                    .ok_or(ErrorCode::HostUnqualified)?(target.control.clone())?;
+                    .ok_or(ErrorCode::HostUnqualified)?;
+                steps.push(Box::new(move || dispatch(control)));
             }
             if let Some(generation) = &panel.terminal_session_id {
                 let target = state
                     .terminals
                     .get(generation)
-                    .ok_or(ErrorCode::OutcomeUnknown)?;
-                self.terminal_close_dispatch
+                    .ok_or(ErrorCode::StaleGeneration)?;
+                let control = target.control.clone();
+                let dispatch = self
+                    .terminal_close_dispatch
                     .lock()
                     .ok()
                     .and_then(|d| d.clone())
-                    .ok_or(ErrorCode::HostUnqualified)?(
-                    generation, &target.control, &peers, true
-                )?;
+                    .ok_or(ErrorCode::HostUnqualified)?;
+                dispatch(generation, &control, &peers, false)?;
+                let generation = generation.clone();
+                let peers = peers.clone();
+                steps.push(Box::new(move || {
+                    dispatch(&generation, &control, &peers, true)
+                }));
             }
+        }
+        Ok(steps)
+    }
+
+    // A slow native Stop must not hold the broker mutex: reads, cancellation and
+    // human takeover remain available. Only native completion admits a close ACK.
+    pub(super) fn finish_close_resources(
+        &self,
+        operation: &str,
+        steps: CloseSteps,
+    ) -> Result<(), ErrorCode> {
+        for step in steps {
+            {
+                let state = self.lock_state().map_err(|_| ErrorCode::OutcomeUnknown)?;
+                self.check_close_pending(&state, operation)?;
+            }
+            step()?;
+        }
+        let mut state = self.lock_state().map_err(|_| ErrorCode::OutcomeUnknown)?;
+        self.check_close_pending(&state, operation)?;
+        state.work.get_mut(operation).unwrap().close_completed = true;
+        Ok(())
+    }
+    fn check_close_pending(&self, state: &State, operation: &str) -> Result<(), ErrorCode> {
+        self.check_policy(state)
+            .map_err(|_| ErrorCode::OutcomeUnknown)?;
+        let work = state.work.get(operation).ok_or(ErrorCode::OutcomeUnknown)?;
+        work.native_permit
+            .check()
+            .map_err(|_| ErrorCode::OutcomeUnknown)?;
+        if !work.native_committed
+            || work.close_completed
+            || work.command.ui_epoch != state.projection.ui_epoch
+            || work.command.domain_revision != state.projection.revision
+        {
+            return Err(ErrorCode::OutcomeUnknown);
         }
         Ok(())
     }

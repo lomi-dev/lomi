@@ -38,6 +38,8 @@ pub use operations::NativePermit;
 mod panel_control;
 pub use panel_control::{PendingControlView, TerminalAttachDispatch};
 mod android;
+mod android_layout;
+pub use android_layout::{AndroidCloseDispatch, AndroidCloseTarget};
 mod editor;
 mod editor_edits;
 mod editor_open;
@@ -322,6 +324,7 @@ pub struct Broker {
     editor_read_dispatch: Mutex<Option<EditorReadDispatch>>,
     editor_reads: Mutex<HashMap<String, editor::PendingRead>>,
     android_list_dispatch: Mutex<Option<AndroidListDispatch>>,
+    android_close_dispatch: Mutex<Option<AndroidCloseDispatch>>,
     android_setup_dispatch: Mutex<Option<AndroidSetupDispatch>>,
     android_logcat_dispatch: Mutex<Option<AndroidLogcatDispatch>>,
     android_snapshot_dispatch: Mutex<Option<AndroidSnapshotDispatch>>,
@@ -441,6 +444,7 @@ impl Broker {
             editor_read_dispatch: Mutex::new(None),
             editor_reads: Mutex::new(HashMap::new()),
             android_list_dispatch: Mutex::new(None),
+            android_close_dispatch: Mutex::new(None),
             android_setup_dispatch: Mutex::new(None),
             android_logcat_dispatch: Mutex::new(None),
             android_snapshot_dispatch: Mutex::new(None),
@@ -777,15 +781,26 @@ impl Broker {
             if !visible && !pending { if let Ok(mut control) = terminal.control.lock() { control.detach(); } }
             visible || pending
         });
-        for target in android.values() {
+        android.retain(|_, target| {
+            target.workspaces.retain(|workspace| {
+                projection.panels.iter().any(|p| {
+                    p.workspace_id == *workspace
+                        && p.android_device_id.as_ref() == Some(&target.control.device)
+                })
+            });
+            if target.workspaces.is_empty() {
+                target.control.revoke();
+                return false;
+            }
             let selected = projection.panels.iter().find(|p| {
                 Some(&p.id) == projection.focused_panel_id.as_ref()
-                    && p.workspace_id == target.workspace
+                    && target.workspaces.contains(&p.workspace_id)
                     && p.kind == "android"
                     && p.android_device_id.as_ref() == Some(&target.control.device)
             });
             target.control.select(selected.map(|p| p.id.clone()));
-        }
+            true
+        });
         browsers.retain(|generation, browser| {
             let visible = projection.panels.iter().any(|p| p.id == browser.control.panel_id && p.workspace_id == browser.workspace && p.browser_generation.as_ref() == Some(generation));
             let focused = projection.panels.iter().find(|p| Some(&p.id) == projection.focused_panel_id.as_ref());

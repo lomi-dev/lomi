@@ -2,6 +2,7 @@ use super::*;
 use receipts::{Effect, State as OperationState};
 
 pub(super) struct Work {
+    pub(super) android_layout: Vec<(String, Option<String>)>,
     pub(super) chat_open: Option<ChatSummary>,
     pub(super) chat_send: Option<super::chat_send::Approval>,
     pub(super) chat_send_rejection: Option<ErrorCode>,
@@ -16,6 +17,7 @@ pub(super) struct Work {
     pub(super) deadline: Instant,
     pub(super) claimed: bool,
     pub(super) native_committed: bool,
+    pub(super) close_completed: bool,
     pub(super) file_trash_plan: Option<super::files_mutate::TrashApproval>,
     pub(super) editor_preview: Option<EditorPreviewed>,
     pub(super) git_view_revision: Option<String>,
@@ -561,6 +563,7 @@ impl Broker {
             || matches!(
                 &command.action,
                 UiAction::GitMutate(_)
+                    | UiAction::ClosePanel { .. }
                     | UiAction::CloseWorkspace(_)
                     | UiAction::CloseProject(_)
                     | UiAction::OpenProject(_)
@@ -576,9 +579,11 @@ impl Broker {
         } else {
             Duration::from_secs(30)
         };
+        let android_layout = Self::android_layout_bindings(state, &command.action);
         state.work.insert(
             op.clone(),
             Work {
+                android_layout,
                 chat_open: None,
                 chat_send: None,
                 chat_send_rejection: None,
@@ -593,6 +598,7 @@ impl Broker {
                 deadline: Instant::now() + duration,
                 claimed: false,
                 native_committed: false,
+                close_completed: false,
                 file_trash_plan: None,
                 editor_preview: None,
                 git_view_revision: None,
@@ -673,6 +679,7 @@ impl Broker {
         {
             return Err(failure());
         }
+        Self::validate_android_layout(&state, work).map_err(|_| failure())?;
         Self::validate_panel_action(&state, &work.pairing, &work.command.action)
             .map_err(|_| failure())?;
         if !matches!(&work.command.action, UiAction::FilesMutate(c) if c.input.operation.is_trash())
@@ -1026,7 +1033,7 @@ impl Broker {
                         .map_err(|_| failure())?;
                     (OperationState::Failed, Effect::Partial)
                 } else {
-                    if !work.native_committed
+                    if !work.close_completed
                         || **result != Self::project_closure(command, &work.project, Some(true))
                         || state.projection.workspaces.iter().any(|w| {
                             w.project_id == work.project || result.workspace_ids.contains(&w.id)
@@ -1075,7 +1082,7 @@ impl Broker {
                                 .any(|w| w.project_id == work.project),
                         ),
                     );
-                    if !work.native_committed
+                    if !work.close_completed
                         || *result != expected
                         || state
                             .projection
@@ -1094,6 +1101,7 @@ impl Broker {
                 }
             }
             OperationResult::PanelMoved(result) => {
+                Self::validate_android_layout(&state, work).map_err(|_| failure())?;
                 let UiAction::MovePanel(command) = &work.command.action else {
                     return Err(failure());
                 };
@@ -1139,7 +1147,7 @@ impl Broker {
                         panel_id: expected_panel,
                         ..
                     } => {
-                        if !work.native_committed
+                        if !work.close_completed
                             || workspace_id != expected_workspace
                             || panel_id != expected_panel
                             || *focused

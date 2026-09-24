@@ -406,6 +406,14 @@ pub async fn agent_control_enable(
                         },
                     ))
                     .map_err(|_| unavailable())?;
+                let close_android_app = app.clone();
+                broker
+                    .set_android_close_dispatch(Arc::new(move |targets, permit| {
+                        close_android_app
+                            .state::<crate::android::manager::Android>()
+                            .close_agent_views(targets, permit)
+                    }))
+                    .map_err(|_| unavailable())?;
                 let close_chat_app = app.clone();
                 broker
                     .set_chat_close_dispatch(Arc::new(move |project, conversations, permit| {

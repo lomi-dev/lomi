@@ -39,25 +39,4 @@ impl Broker {
         conversations.dedup();
         Ok(conversations)
     }
-
-    pub(super) fn close_chats(
-        &self,
-        state: &State,
-        owner: &str,
-        project: &str,
-        panels: &[String],
-        permit: Option<NativePermit>,
-    ) -> Result<(), ErrorCode> {
-        let conversations = Self::closing_chats(state, owner, panels)?;
-        if conversations.is_empty() {
-            return Ok(());
-        }
-        let dispatch = self
-            .chat_close_dispatch
-            .lock()
-            .ok()
-            .and_then(|d| d.clone())
-            .ok_or(ErrorCode::HostUnqualified)?;
-        dispatch(project, &conversations, permit)
-    }
 }

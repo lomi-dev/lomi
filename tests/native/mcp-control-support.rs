@@ -8,6 +8,8 @@ use std::{
 use tauri::{Emitter, Listener, Manager, Webview};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
+#[path = "mcp-android-layout-support.rs"]
+mod android_layout_probe;
 #[path = "mcp-android-setup-support.rs"]
 mod android_setup_probe;
 #[path = "mcp-chat-support.rs"]
@@ -2394,7 +2396,16 @@ async fn layout_call(
         let operation = reply["structuredContent"]["data"]["operationId"]
             .as_str()
             .ok_or_else(|| reply.to_string())?;
-        let result = wire.settled(operation).await?;
+        let result = wire
+            .settled_with_limit(
+                operation,
+                if std::env::var_os("LOMI_MCP_ANDROID_LAYOUT_ONLY").is_some() {
+                    7200
+                } else {
+                    900
+                },
+            )
+            .await?;
         let data = &result["structuredContent"]["data"];
         if data["state"] == "succeeded" {
             return Ok((args, result));
@@ -2940,6 +2951,7 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
         evaluate(&settings,"(()=>{const e=document.querySelector('textarea[id^=control-packages-]');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,'org.lomi.inputtest');e.dispatchEvent(new Event('input',{bubbles:true}));return true;})()").await?;
     }
     if std::env::var_os("LOMI_MCP_PROJECT_CLOSE_ONLY").is_some()
+        || std::env::var_os("LOMI_MCP_ANDROID_LAYOUT_ONLY").is_some()
         || std::env::var_os("LOMI_MCP_CHAT_SEND_ONLY").is_some()
     {
         evaluate(&settings, "[...document.querySelectorAll('.agent-control-request fieldset label')].find(e=>e.textContent.includes('Private workspace')).querySelector('input').click();true").await?;
@@ -2997,6 +3009,7 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
         .as_array()
         .ok_or_else(|| listed.to_string())?;
     let project_close = std::env::var_os("LOMI_MCP_PROJECT_CLOSE_ONLY").is_some()
+        || std::env::var_os("LOMI_MCP_ANDROID_LAYOUT_ONLY").is_some()
         || std::env::var_os("LOMI_MCP_CHAT_SEND_ONLY").is_some();
     if project_close {
         if items.len() != 2
@@ -3016,6 +3029,21 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
         .await?;
     if connected["structuredContent"]["status"] != "ok" {
         return Err("Cannot select approved workspace".into());
+    }
+    if std::env::var_os("LOMI_MCP_ANDROID_LAYOUT_ONLY").is_some() {
+        android_layout_probe::qualify(
+            app,
+            &mut wire,
+            &main,
+            &workspace,
+            &connected["structuredContent"]["data"]["retryEpoch"],
+            directory,
+        )
+        .await?;
+        child.kill().await.map_err(|e| e.to_string())?;
+        return Ok(
+            json!({"profile":"android-layout-only","catalogCount":catalog["result"]["tools"].as_array().map(Vec::len)}),
+        );
     }
     if std::env::var_os("LOMI_MCP_ANDROID_SETUP_ONLY").is_some() {
         android_setup_probe::qualify(

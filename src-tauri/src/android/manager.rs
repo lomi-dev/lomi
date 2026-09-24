@@ -26,6 +26,8 @@ struct Initialization {
     manager: Option<Arc<Manager>>,
     exit: Option<String>,
     exit_ready: bool,
+    #[cfg(unix)]
+    agent_closing: Option<lomi_control_core::broker::NativePermit>,
 }
 
 impl Android {
@@ -36,6 +38,16 @@ impl Android {
             .map_err(|_| "Android initialization failed")?;
         if let Some(manager) = &loaded.manager {
             return Ok(manager.clone());
+        }
+        #[cfg(unix)]
+        if loaded
+            .agent_closing
+            .as_ref()
+            .is_some_and(|p| p.check().is_ok())
+        {
+            return Err(
+                "Android views are being closed. Wait for the layout operation to settle.".into(),
+            );
         }
         if loaded.exit.is_some() {
             return Err(
@@ -72,6 +84,28 @@ impl Android {
 
     pub fn loaded(&self) -> Option<Arc<Manager>> {
         self.loaded.lock().ok()?.manager.clone()
+    }
+
+    #[cfg(unix)]
+    pub fn close_agent_views(
+        &self,
+        targets: &[lomi_control_core::broker::AndroidCloseTarget],
+        permit: Option<lomi_control_core::broker::NativePermit>,
+    ) -> Result<(), lomi_control_protocol::ErrorCode> {
+        use lomi_control_protocol::ErrorCode;
+        let mut loaded = self.loaded.lock().map_err(|_| ErrorCode::AppUnavailable)?;
+        if let Some(manager) = loaded.manager.clone() {
+            drop(loaded);
+            return manager.close_agent_views(targets, permit);
+        }
+        if targets.iter().any(|t| t.control.is_some()) {
+            return Err(ErrorCode::UiNotReady);
+        }
+        if let Some(permit) = permit.filter(|_| targets.iter().any(|t| t.last_view)) {
+            permit.check()?;
+            loaded.agent_closing = Some(permit);
+        }
+        Ok(())
     }
 
     pub fn begin_exit(&self) -> Result<String, String> {
@@ -188,6 +222,8 @@ struct Core {
     devices: BTreeMap<String, (Device, DeviceRuntime)>,
     starting: BTreeMap<String, Arc<Starting>>,
     mutation: Option<String>,
+    #[cfg(unix)]
+    agent_closing: BTreeMap<String, lomi_control_core::broker::NativePermit>,
     preparing_exit: Option<String>,
     settling_exit: bool,
 }
@@ -214,6 +250,12 @@ impl Starting {
 
 impl Core {
     fn editable(&self) -> Result<(), String> {
+        #[cfg(unix)]
+        if self.agent_closing.values().any(|p| p.check().is_ok()) {
+            return Err(
+                "Android views are being closed. Wait for the layout operation to settle.".into(),
+            );
+        }
         if self.preparing_exit.is_some() {
             return Err(
                 "Lomi is preparing to close. Finish or cancel that operation first.".into(),
@@ -242,6 +284,89 @@ impl Drop for Mutation {
 }
 
 impl Manager {
+    #[cfg(unix)]
+    pub fn close_agent_views(
+        &self,
+        targets: &[lomi_control_core::broker::AndroidCloseTarget],
+        permit: Option<lomi_control_core::broker::NativePermit>,
+    ) -> Result<(), lomi_control_protocol::ErrorCode> {
+        use lomi_control_protocol::ErrorCode;
+        if targets.len() > 16 {
+            return Err(ErrorCode::ResourceExhausted);
+        }
+        let runtimes = {
+            let controls = self
+                .agent_controls
+                .lock()
+                .map_err(|_| ErrorCode::AppUnavailable)?;
+            let mut core = self.core.lock().map_err(|_| ErrorCode::AppUnavailable)?;
+            core.editable().map_err(|_| ErrorCode::TargetBusy)?;
+            let mut runtimes = Vec::new();
+            for target in targets {
+                if core.starting.contains_key(&target.device) {
+                    return Err(ErrorCode::TargetBusy);
+                }
+                if let Some(control) = &target.control {
+                    control.check()?;
+                    if !controls
+                        .get(&target.device)
+                        .is_some_and(|c| Arc::ptr_eq(c, control))
+                    {
+                        return Err(ErrorCode::ControlRevoked);
+                    }
+                }
+                if let Some((_, runtime)) = core.devices.get(&target.device) {
+                    let status = runtime.status();
+                    if runtime.is_busy() {
+                        let control = target.control.as_ref().ok_or(ErrorCode::TargetBusy)?;
+                        let generation = target
+                            .generation
+                            .as_ref()
+                            .ok_or(ErrorCode::StaleGeneration)?;
+                        control.check_generation(generation)?;
+                        if status.generation.as_ref() != Some(generation) {
+                            return Err(ErrorCode::StaleGeneration);
+                        }
+                        if target.last_view {
+                            runtimes.push((runtime.clone(), control.clone(), generation.clone()));
+                        }
+                    }
+                }
+            }
+            let Some(permit) = &permit else {
+                return Ok(());
+            };
+            permit.check()?;
+            core.agent_closing.retain(|_, p| p.check().is_ok());
+            for target in targets.iter().filter(|t| t.last_view) {
+                core.agent_closing
+                    .insert(target.device.clone(), permit.clone());
+            }
+            runtimes
+        };
+        let permit = permit.unwrap();
+        for (runtime, control, generation) in runtimes {
+            permit.check().map_err(|_| ErrorCode::OutcomeUnknown)?;
+            control.revoke_input();
+            let guard_control = control.clone();
+            let guard_permit = permit.clone();
+            let guard: super::runtime::DispatchGuard = Arc::new(move || {
+                guard_control
+                    .check()
+                    .and_then(|_| guard_permit.check())
+                    .map_err(|_| "Android close authority expired".into())
+            });
+            let status = tauri::async_runtime::block_on(runtime.stop_guarded(generation, guard))
+                .map_err(|_| ErrorCode::OutcomeUnknown)?;
+            if status.process_alive || runtime.is_busy() {
+                return Err(ErrorCode::OutcomeUnknown);
+            }
+            control.revoke();
+            permit.check().map_err(|_| ErrorCode::OutcomeUnknown)?;
+        }
+        Ok(())
+    }
+
     #[cfg(unix)]
     pub fn agent_control(
         &self,

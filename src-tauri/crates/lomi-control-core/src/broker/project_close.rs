@@ -190,6 +190,17 @@ impl Broker {
                 return error(code);
             }
         }
+        if let Err(code) = self.preflight_android_close(
+            &state,
+            owner,
+            &command
+                .workspaces
+                .iter()
+                .flat_map(|w| w.panels.iter().map(|p| p.panel_id.clone()))
+                .collect::<Vec<_>>(),
+        ) {
+            return error(code);
+        }
         self.enqueue_ui(
             &mut state,
             owner,
@@ -223,6 +234,7 @@ impl Broker {
             return Err(ErrorCode::ControlRevoked);
         }
         work.native_permit.check()?;
+        Self::validate_android_layout(&state, work)?;
         self.check_policy(&state)
             .map_err(|_| ErrorCode::ControlRevoked)?;
         let UiAction::CloseProject(command) = &work.command.action else {
@@ -270,7 +282,9 @@ impl Broker {
                 )
                 .map_err(|_| ErrorCode::StorageUnavailable)?;
         }
+        let steps = self.prepare_close_resources(&state, operation, &panels)?;
         state.work.get_mut(operation).unwrap().native_committed = true;
-        self.commit_close_resources(&state, operation, &panels)
+        drop(state);
+        self.finish_close_resources(operation, steps)
     }
 }

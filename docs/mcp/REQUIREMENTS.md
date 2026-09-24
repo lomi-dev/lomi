@@ -8,6 +8,20 @@ Chat AI, Android management, remaining browser/terminal/layout integration and
 functional/safety/performance tests remain required. Publish completed modules
 as ordinary commits to origin/main, with no tags or releases.
 
+Android layout contract (selected; native ErnuOt14 verified on macOS ARM64):
+existing panel focus/move/close and workspace/project closure include Android.
+Reveals require a granted, controlled, already running device; no implicit start.
+Admitted same-project transfers preserve the generation and retained viewport,
+extend only the owner's binding to the granted destination, preserve shared
+source views and revoke input leases. Closing the last domain view requires
+android.control in addition to selected-device read and layout permissions.
+Editor guards precede native Stop; a native start barrier remains until receipt
+settlement. Native generation bindings are independent of domain revisions.
+Slow Stop runs outside the broker mutex, and a private completion marker blocks
+forged success before native exit. Cancellation/failed Stop preserves descriptors
+and does not restore an old domain snapshot or automatically replay an effect.
+Core3/full broker64, existing WebKit17 and native14 are recorded in QUALIFICATION.
+
 Chat AI implementation contract (selected; qualified on macOS ARM64): workspace access does
 not imply history access. Settings chooses up to64 exact conversation IDs from
 the selected project; chat.read is separate from draft/create/send/stop/export.

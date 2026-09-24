@@ -2,6 +2,55 @@
 
 Host: macOS 27.0 (26A428), Apple M3 ARM64. Baseline HEAD and local changes: IMPLEMENTATION-STATUS.md.
 
+## Android layout native qualification (2026-09-24)
+
+Native **ErnuOt PASS** (`/tmp/lomi-mcp-android-layout-native3.log`), catalog71,
+14 checks and normal host/wrapper exit0 with isolated app-data cleanup. The real
+private emulator preserved its generation across duplicate views, focus,
+docking, pane moves, tab reordering and transfer of a mixed Android/PTY tab.
+The retained zoom survived; the PTY kept its native session. Closing one shared
+view did not stop Android. Last-view panel/workspace/project closure confirmed
+native exit, preserved device metadata, and exact retries reused receipts.
+A dirty editor Cancel preceded Stop and retained the running phone; Discard
+allowed project close and Stop. The closed PTY was absent from terminal_contexts.
+K0tPJi's mixed Android/PTY and dirty-close screenshots were visually inspected;
+ErnuOt ran the same rendering/close paths after a fixture-only assertion repair.
+
+Shared Chat closure regression **0ovWOt PASS**, catalog71 and54 checks,
+`/tmp/lomi-mcp-android-layout-chat-regression.log`: normal host/wrapper exit0,
+isolated app-data cleanup, actual local fixture generations and existing Chat
+panel/workspace/project close behavior. No paid provider request. Native
+project/browser/PTY close regression **wGLMu7 PASS**, catalog71, normal exit0 and
+isolated app-data cleanup, covers dirty Cancel/Save/Discard, MCP cancellation,
+real idle PTYs, hidden WKWebView cleanup, exact retry and a retained project.
+Wire5 passed at `/tmp/lomi-mcp-android-layout-wire-all.log`; native Android76
+passed (17 opt-in tests ignored). Production workspace, all-target MCP packages
+and final MCP-probe Clippy passed with warnings denied. The additional application
+all-target check found nine existing test-only lints in android/input.rs,
+chat/preferences.rs, chat/store.rs, files/editor.rs, themes.rs and updater.rs.
+All six files are unchanged from HEAD; these lints remain recorded for P6.
+This increment is ready for its milestone commit/push.
+No advanced browser/terminal or P6 qualification is claimed by this Android run.
+
+Current broker64 PASS (`/tmp/lomi-mcp-android-layout-broker2.log`) includes shared
+last-view detection, missing stop scope on whole-project closure, native barrier
+lifetime, exact replay, workspace transfer with shared source views, preserved
+generation, input revocation and human takeover. A slow native callback proves
+that operation reads/cancel remain responsive and a forged early close ACK is
+refused. Existing WebKit workspace/Chat17 PASS; model179 + AI17, TypeScript,
+frontend build and MCP-probe Clippy PASS. Formatting/diff checks passed.
+
+Native bMi7lr did not pass: the fixture supplied a scale factor to the existing
+percentage-based zoom API. It reached native boot and shared-view focus, then
+failed its zoom setup assertion. Host exit0 and isolated app-data cleanup were
+confirmed. The fixture now supplies125%; production zoom code was unchanged.
+K0tPJi reached all successful native close paths, then failed the final fixture
+assertion because terminal_contexts returns a map, not an array. Normal exit0
+and private app-data cleanup were confirmed; its Android/PTY and dirty-close
+screenshots were inspected. The corrected fixture asserts absence of the exact
+closed PTY generation. The corrected ErnuOt completed proof and cleanup were inspected as recorded
+above.
+
 ## Android management selected module (2026-09-24)
 
 Native **7dOf1P PASS** (`/tmp/lomi-mcp-android-setup-native2.log`): catalog71,
