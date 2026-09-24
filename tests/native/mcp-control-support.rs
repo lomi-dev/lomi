@@ -14,6 +14,8 @@ mod android_layout_probe;
 mod android_setup_probe;
 #[path = "mcp-artifact-files-support.rs"]
 mod artifact_files_probe;
+#[path = "mcp-browser-download-support.rs"]
+mod browser_download_probe;
 #[path = "mcp-browser-frames-support.rs"]
 mod browser_frames_probe;
 #[path = "mcp-browser-logs-support.rs"]
@@ -2904,7 +2906,9 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
     evaluate(&settings,"(()=>{const e=[...document.querySelectorAll('.agent-control-request label')].find(e=>e.textContent.includes('Allow renaming and moving project files')).querySelector('input');if(!e.checked)e.click();return true;})()").await?;
     evaluate(&settings,"(()=>{const e=[...document.querySelectorAll('.agent-control-request label')].find(e=>e.textContent.includes('Allow moving project files and folders to Trash')).querySelector('input');if(!e.checked)e.click();return true;})()").await?;
     evaluate(&settings,"(()=>{const e=[...document.querySelectorAll('.agent-control-request label')].find(e=>e.textContent.includes('Allow importing APK files')).querySelector('input');if(!e.checked)e.click();return true;})()").await?;
-    if std::env::var_os("LOMI_MCP_ARTIFACT_FILES_ONLY").is_some() {
+    if std::env::var_os("LOMI_MCP_ARTIFACT_FILES_ONLY").is_some()
+        || std::env::var_os("LOMI_MCP_BROWSER_DOWNLOAD_ONLY").is_some()
+    {
         for label in [
             "Allow importing project files as artifacts",
             "Allow exporting artifacts to new project files",
@@ -2923,6 +2927,11 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
     evaluate(&settings, "[...document.querySelectorAll('.agent-control-request label')].find(e=>e.textContent.includes('Allow reading page text, form structure and browser logs')).querySelector('input').click();true").await?;
     evaluate(&settings, "[...document.querySelectorAll('.agent-control-request label')].find(e=>e.textContent.includes('Allow clicking, typing and scrolling in pages')).querySelector('input').click();true").await?;
     evaluate(&settings,"[...document.querySelectorAll('.agent-control-request label')].find(e=>e.textContent.includes('Allow screenshots of pages')).querySelector('input').click();true").await?;
+    if std::env::var_os("LOMI_MCP_BROWSER_DOWNLOAD_ONLY").is_some() {
+        evaluate(&settings,"(()=>{const e=[...document.querySelectorAll('.agent-control-request label')].find(e=>e.textContent.includes('Allow downloading page files')).querySelector('input');if(e.disabled)throw Error('Download permission unavailable');e.click();e.scrollIntoView({block:'center'});return true;})()").await?;
+        screenshot(&settings, directory.join("browser-download-permission.png")).await?;
+    }
+
     let android_fixture = std::fs::read(directory.join("android-fixture.json"))
         .ok()
         .map(|bytes| serde_json::from_slice::<Value>(&bytes))
@@ -3044,6 +3053,22 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
         .await?;
     if connected["structuredContent"]["status"] != "ok" {
         return Err("Cannot select approved workspace".into());
+    }
+    if std::env::var_os("LOMI_MCP_BROWSER_DOWNLOAD_ONLY").is_some() {
+        browser_download_probe::qualify(
+            app,
+            &mut wire,
+            &main,
+            &workspace,
+            &connected["structuredContent"]["data"]["retryEpoch"],
+            directory,
+            &browser_fixture,
+        )
+        .await?;
+        child.kill().await.map_err(|e| e.to_string())?;
+        return Ok(
+            json!({"profile":"browser-download-only","catalogCount":catalog["result"]["tools"].as_array().map(Vec::len)}),
+        );
     }
     if std::env::var_os("LOMI_MCP_ARTIFACT_FILES_ONLY").is_some() {
         artifact_files_probe::qualify(

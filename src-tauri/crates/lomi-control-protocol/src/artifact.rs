@@ -216,6 +216,24 @@ pub struct ArtifactExported {
     pub artifact: Box<Artifact>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowserDownloadInput {
+    pub workspace_id: String,
+    pub panel_id: String,
+    pub browser_generation: String,
+    pub navigation_id: String,
+    pub url: String,
+    #[serde(default = "default_download_bytes")]
+    pub max_bytes: u32,
+    pub expected_revision: String,
+    pub retry_epoch: String,
+    pub request_key: String,
+}
+fn default_download_bytes() -> u32 {
+    4 * 1024 * 1024
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

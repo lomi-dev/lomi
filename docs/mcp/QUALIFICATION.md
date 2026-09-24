@@ -2,6 +2,32 @@
 
 Host: macOS 27.0 (26A428), Apple M3 ARM64. Baseline HEAD and local changes: IMPLEMENTATION-STATUS.md.
 
+## Bounded native browser download (2026-09-24)
+
+**PvUmgs PASS**,12 checks, catalog73, macOS ARM64. The actual helper/broker/
+WKContentWorld fetched binary, empty204 and full4MiB responses using the isolated
+profile's HttpOnly session cookie. Private artifacts and exported project files
+matched exact bytes and SHA-256. Replacing page-world fetch could not forge the
+native result. Redirect, overflow, stalled body, cancellation, stale navigation,
+foreign workspace/origin and post-close reads/exports/receipts were exercised.
+Dispatched failures preserve outcome_unknown; retries reuse the original operation.
+Every fixture route received exactly one GET, including retried failures, and
+the unapproved server received zero requests. Normal host/wrapper exit0 and
+private app-data removal are confirmed. The native Settings permission screenshot
+was inspected. Evidence: `/tmp/lomi-mcp-browser-download-native.log`,
+`lomi-mcp-control-PvUmgs/browser-downloads.json`, `browser-download-requests.json`
+and `cleanup.json`.
+
+Core60 and broker66 PASS (two separate opt-in tests ignored); helper wire8,
+WebKit adapter/permission2, TypeScript, production workspace check, all-target
+MCP and MCP-probe Clippy PASS. The broker test covers absent scope, URL authority,
+unclaimed/reused native dispatch, known no-effect versus uncertain failure,
+oversize producer return, source-only metadata reads and revoked-source receipts.
+Logs: `/tmp/lomi-mcp-browser-download-{core-final,clippy-final,probe-clippy,wire,ui-final}.log`.
+This qualifies explicit bounded GET into private artifacts. Ordinary browser
+downloads/file pickers remain denied. Upload, other engines/platforms and the
+full P6 fault/performance matrix remain separate work.
+
 ## Scoped file artifact import/export (2026-09-24)
 
 **lVi0Ip PASS**,12 checks, catalog72, macOS ARM64. The real stdio helper,

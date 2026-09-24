@@ -269,6 +269,7 @@ interface UiCommand {
           | "agent-control";
       }
     | { type: "import_artifact"; workspaceId: string }
+    | { type: "download_browser"; workspaceId: string }
     | { type: "export_artifact"; workspaceId: string; notAfterMillis: string }
     | {
         type: "android_launch";
@@ -739,7 +740,8 @@ export function useAgentControlBridge(
               action.type === "navigate_browser" ||
               action.type === "interact_browser" ||
               action.type === "android_input" ||
-              action.type === "import_artifact";
+              action.type === "import_artifact" ||
+              action.type === "download_browser";
             if (browserRuntime) await send();
             let before = domain.current.getCurrent();
             if (
@@ -2674,11 +2676,19 @@ export function useAgentControlBridge(
                 operationId: command.operationId,
                 nonce: command.nonce,
               }).catch(() => {});
-            } else if (action.type === "import_artifact") {
-              void api("agent_artifact_import", {
-                operationId: command.operationId,
-                nonce: command.nonce,
-              }).catch(() => {});
+            } else if (
+              action.type === "import_artifact" ||
+              action.type === "download_browser"
+            ) {
+              void api(
+                action.type === "download_browser"
+                  ? "agent_browser_download"
+                  : "agent_artifact_import",
+                {
+                  operationId: command.operationId,
+                  nonce: command.nonce,
+                },
+              ).catch(() => {});
             } else if (action.type === "android_launch") {
               void api("agent_android_launch", {
                 operationId: command.operationId,

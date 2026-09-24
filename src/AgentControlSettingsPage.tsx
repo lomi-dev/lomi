@@ -802,6 +802,7 @@ function Pairing({
   const [captureBrowser, setCaptureBrowser] = useState(false);
   const [interactBrowser, setInteractBrowser] = useState(false);
   const [readBrowser, setReadBrowser] = useState(false);
+  const [downloadBrowser, setDownloadBrowser] = useState(false);
   const [readAndroid, setReadAndroid] = useState(false);
   const [setupAndroid, setSetupAndroid] = useState(false);
   const [manageAndroid, setManageAndroid] = useState(false);
@@ -1201,7 +1202,10 @@ function Pairing({
           type="checkbox"
           checked={navigateBrowser}
           disabled={busy}
-          onChange={(event) => setNavigateBrowser(event.target.checked)}
+          onChange={(event) => {
+            setNavigateBrowser(event.target.checked);
+            if (!event.target.checked) setDownloadBrowser(false);
+          }}
         />{" "}
         Allow opening and navigating isolated browser panels
       </label>
@@ -1210,7 +1214,10 @@ function Pairing({
           type="checkbox"
           checked={readBrowser}
           disabled={busy || !navigateBrowser}
-          onChange={(event) => setReadBrowser(event.target.checked)}
+          onChange={(event) => {
+            setReadBrowser(event.target.checked);
+            if (!event.target.checked) setDownloadBrowser(false);
+          }}
         />{" "}
         Allow reading page text, form structure and browser logs
       </label>
@@ -1232,6 +1239,20 @@ function Pairing({
         />{" "}
         Allow screenshots of pages, including embedded third-party frames
       </label>
+      <label>
+        <input
+          type="checkbox"
+          checked={downloadBrowser}
+          disabled={busy || !navigateBrowser || !readBrowser}
+          onChange={(event) => setDownloadBrowser(event.target.checked)}
+        />{" "}
+        Allow downloading page files as private artifacts
+      </label>
+      <p className="settings-help">
+        Fetch an explicit URL from the current page's origin, using its browser
+        session. Transfers are limited to 4 MiB and block redirects. Export to a
+        project file requires separate permission.
+      </p>
       {navigateBrowser && (
         <>
           <label htmlFor={`control-origins-${request.id}`}>
@@ -1864,6 +1885,9 @@ function Pairing({
                             ...(readBrowser
                               ? [
                                   "browser.read",
+                                  ...(downloadBrowser
+                                    ? ["browser.download"]
+                                    : []),
                                   ...(interactBrowser
                                     ? ["browser.interact"]
                                     : []),

@@ -233,6 +233,7 @@ pub enum OperationResult {
     GitMutated(Box<GitMutated>),
     FilesMutated(FilesMutated),
     ArtifactExported(Box<ArtifactExported>),
+    BrowserDownloaded(Box<Artifact>),
     EditorSaved(Box<EditorSaved>),
     EditorOpened(Box<EditorOpened>),
     GitOpened(Box<GitOpened>),
@@ -572,6 +573,7 @@ pub enum UiAction {
     EditorEdits(EditorEditsCommand),
     ImportArtifact(ArtifactImportInput),
     ExportArtifact(ArtifactExportCommand),
+    DownloadBrowser(BrowserDownloadInput),
     AndroidLaunch(AndroidLaunchInput),
     AndroidInputControl(AndroidControlInput),
     AndroidInput(AndroidInput),
@@ -708,6 +710,8 @@ pub enum Request {
     AndroidLaunch(AndroidLaunchInput),
     #[serde(rename = "lomi_android_install_apk")]
     AndroidInstall(AndroidInstallInput),
+    #[serde(rename = "lomi_browser_download")]
+    DownloadBrowser(BrowserDownloadInput),
     #[serde(rename = "lomi_artifact_export")]
     ExportArtifact(ArtifactExportInput),
     #[serde(rename = "lomi_artifact_import")]

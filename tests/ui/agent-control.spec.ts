@@ -527,6 +527,36 @@ test("Android metadata approval requires a selected device and grants only read 
   await expect(importFiles).not.toBeChecked();
   await expect(importFiles).toBeDisabled();
 
+  const navigateBrowser = page.getByLabel(
+    "Allow opening and navigating isolated browser panels",
+  );
+  const readBrowser = page.getByLabel(
+    "Allow reading page text, form structure and browser logs",
+  );
+  const downloadBrowser = page.getByLabel(
+    "Allow downloading page files as private artifacts",
+  );
+  await expect(downloadBrowser).toBeDisabled();
+  await expect(downloadBrowser).not.toBeChecked();
+  await navigateBrowser.check();
+  await page
+    .getByLabel("Allowed browser origins")
+    .fill("http://localhost:3000");
+  await readBrowser.check();
+  await approve.click();
+  expect(
+    await page.evaluate(() => (window as any).__agentTest.approval.scopes),
+  ).not.toContain("browser.download");
+  await downloadBrowser.check();
+  await approve.click();
+  expect(
+    await page.evaluate(() => (window as any).__agentTest.approval.scopes),
+  ).toContain("browser.download");
+  await readBrowser.uncheck();
+  await expect(downloadBrowser).not.toBeChecked();
+  await expect(downloadBrowser).toBeDisabled();
+  await navigateBrowser.uncheck();
+
   const gitPermission = page.getByLabel(
     "Allow reading Git information in this project",
   );

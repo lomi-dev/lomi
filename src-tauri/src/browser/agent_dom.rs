@@ -140,6 +140,21 @@ fn execute(
     deadline: Instant,
 ) -> Result<Value, ErrorCode> {
     let page_logs = arguments["action"] == "page_logs";
+    let download = arguments["action"] == "download";
+    let response_limit = if download {
+        let bytes = arguments["maxBytes"]
+            .as_u64()
+            .filter(|n| (1..=4 * 1024 * 1024).contains(n))
+            .ok_or(ErrorCode::ResourceExhausted)?;
+        bytes.div_ceil(3) as usize * 4 + 1024
+    } else {
+        65536
+    };
+    let transfer_guard = if download {
+        Some(lomi_control_core::artifacts::ProducerPermit::acquire()?)
+    } else {
+        None
+    };
     control.check_document(navigation)?;
     let label = super::label(&control.panel_id).map_err(|_| ErrorCode::TargetNotFound)?;
     {
@@ -209,24 +224,27 @@ fn execute(
             }
         };
         let answer = Mutex::new(Some(answer));
-        let native_guard = Mutex::new(Some(native_guard));
+        let native_guard = Mutex::new(Some((native_guard, transfer_guard)));
         let callback = block2::RcBlock::new(move |value: *mut AnyObject, error: *mut NSError| {
             // WebKit retains this block while JavaScript is pending. Keep the
             // permit even after the caller times out; never enqueue unbounded work.
             let guard = native_guard.lock().ok().and_then(|mut g| g.take());
             let result = (|| {
                 control.check_document(&navigation)?;
+                if download && Instant::now() >= deadline {
+                    return Err(ErrorCode::DeadlineExceeded);
+                }
                 if !error.is_null() || value.is_null() {
                     return Err(ErrorCode::OutcomeUnknown);
                 }
                 let string = unsafe { &*value }
                     .downcast_ref::<NSString>()
                     .ok_or(ErrorCode::OutcomeUnknown)?;
-                if string.length() > 65536 {
+                if string.length() > response_limit {
                     return Err(ErrorCode::ResourceExhausted);
                 }
                 let value = string.to_string();
-                if value.len() > 65536 {
+                if value.len() > response_limit {
                     return Err(ErrorCode::ResourceExhausted);
                 }
                 let value: Value =
@@ -250,6 +268,8 @@ fn execute(
         // snapshot references remain in the private content world.
         let script = if page_logs {
             "return globalThis.__lomiAgentPageLogsV1(payload);"
+        } else if download {
+            include_str!("agent-download.js")
         } else {
             include_str!("agent-dom.js")
         };
@@ -267,6 +287,45 @@ fn execute(
     receive
         .recv_timeout(deadline.saturating_duration_since(Instant::now()))
         .map_err(|_| ErrorCode::DeadlineExceeded)?
+}
+
+pub fn download(
+    app: &AppHandle,
+    control: Arc<BrowserControl>,
+    input: BrowserDownloadInput,
+    permit: lomi_control_core::broker::NativePermit,
+) -> Result<Vec<u8>, lomi_control_core::broker::BrowserDownloadFailure> {
+    use base64::Engine;
+    use lomi_control_core::broker::BrowserDownloadFailure;
+    let failure = |code, no_effect| BrowserDownloadFailure { code, no_effect };
+    let _guard = control.begin_dom().map_err(|code| failure(code, true))?;
+    let value = execute(
+        app,
+        control,
+        &input.navigation_id,
+        json!({"action":"download", "downloadUrl":input.url,"maxBytes":input.max_bytes}),
+        Some(permit),
+        Instant::now() + Duration::from_secs(5),
+    )
+    .map_err(|code| failure(code, false))?;
+    if let Some(code) = value.get("error") {
+        return Err(failure(
+            serde_json::from_value(code.clone()).unwrap_or(ErrorCode::OutcomeUnknown),
+            value["noEffect"] == true,
+        ));
+    }
+    let encoded = value["base64"]
+        .as_str()
+        .ok_or_else(|| failure(ErrorCode::OutcomeUnknown, false))?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .map_err(|_| failure(ErrorCode::OutcomeUnknown, false))?;
+    if bytes.len() > input.max_bytes as usize
+        || value["byteLength"].as_u64() != Some(bytes.len() as u64)
+    {
+        return Err(failure(ErrorCode::ArtifactTooLarge, false));
+    }
+    Ok(bytes)
 }
 
 pub fn interact(

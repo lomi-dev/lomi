@@ -64,8 +64,24 @@ still applies: a closed or human-taken browser/Android source cannot be exported
 Poll the operation to confirm completion; reuse the exact original request for
 retry. An uncertain outcome requires inspecting the destination before new work.
 
-These permissions do not grant upload to a website or download from a browser.
-The separate browser transfer adapter remains unfinished.
+These permissions do not grant upload to a website. Browser download requires
+the separate permission described below; upload remains unfinished.
+
+## Download a browser file
+
+When pairing, enable browser navigation/read and **Allow downloading page files
+as private artifacts**. Call `lomi_browser_download` with an owned panel's current
+generation/navigation ID, an exact URL on its current origin, `maxBytes` (1 through
+4194304), and the usual layout revision/retry fields. The isolated browser session
+supplies same-origin cookies. Other origins, URL credentials/fragments and redirects
+are refused. The bounded GET has a five-second deadline.
+
+Poll the operation for its artifact ID, byte length and SHA-256. Reading it returns
+metadata; saving its bytes uses the separately authorized artifact export above.
+Keep the browser source owned and open while accessing that artifact. Exact retry
+returns the original operation. A timeout/cancellation after dispatch can leave a
+server-side effect, so `outcome_unknown` must not be treated as a safe new request.
+This tool does not enable ordinary browser downloads or file pickers.
 
 ## Read browser logs
 

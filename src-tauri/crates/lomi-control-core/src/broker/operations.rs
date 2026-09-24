@@ -185,6 +185,7 @@ impl Broker {
             }
             UiAction::EditorEdits(_) => &["files.read", "editor.read", "editor.write"],
             UiAction::AndroidLaunch(_) => &["android.read", "android.control", "android.launch"],
+            UiAction::DownloadBrowser(_) => &["browser.read", "browser.download"],
             UiAction::ExportArtifact(_) => &[
                 "files.read",
                 "files.mutate",
@@ -663,6 +664,7 @@ impl Broker {
                     | UiAction::InteractBrowser(_)
                     | UiAction::AndroidInput(_)
                     | UiAction::ImportArtifact(_)
+                    | UiAction::DownloadBrowser(_)
             ) && state.projection.revision != work.command.domain_revision)
         {
             return Err(failure());
@@ -1441,6 +1443,7 @@ impl Broker {
             | OperationResult::AndroidManagement(_)
             | OperationResult::AndroidInstall(_)
             | OperationResult::ArtifactImported { .. }
+            | OperationResult::BrowserDownloaded(_)
             | OperationResult::AndroidInput(_)
             | OperationResult::AndroidControl(_)
             | OperationResult::AndroidRuntime(_)

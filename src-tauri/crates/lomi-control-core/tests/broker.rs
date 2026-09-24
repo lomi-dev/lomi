@@ -5,6 +5,8 @@ mod android_layout_tests;
 mod android_setup_tests;
 #[path = "support/artifact_files.rs"]
 mod artifact_files_tests;
+#[path = "support/browser_download.rs"]
+mod browser_download_tests;
 use lomi_control_core::{broker::Broker, client::Client};
 use lomi_control_protocol::{control::*, EmptyInput, ErrorCode};
 use std::{sync::Arc, time::Duration};

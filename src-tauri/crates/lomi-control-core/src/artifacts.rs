@@ -107,7 +107,10 @@ fn browser_source_valid(source: &BrowserArtifactSource) -> bool {
     ]
     .into_iter()
     .all(|s| valid_id(s))
-        && source.required_scope == "browser.capture_composite"
+        && matches!(
+            source.required_scope.as_str(),
+            "browser.capture_composite" | "browser.download"
+        )
         && lomi_control_protocol::browser::Origin::parse(&source.origin)
             .is_ok_and(|o| o.as_str() == source.origin)
 }
@@ -145,11 +148,13 @@ fn geometry_valid(g: &ImageGeometry) -> bool {
     }
 }
 fn classification_matches(source: &ArtifactSource, image: &ImageGeometry) -> bool {
-    matches!(
-        (source, image),
-        (ArtifactSource::Browser(_), ImageGeometry::Browser(_))
-            | (ArtifactSource::Android(_), ImageGeometry::Android(_))
-    )
+    match (source, image) {
+        (ArtifactSource::Browser(s), ImageGeometry::Browser(_)) => {
+            s.required_scope == "browser.capture_composite"
+        }
+        (ArtifactSource::Android(_), ImageGeometry::Android(_)) => true,
+        _ => false,
+    }
 }
 fn browser_geometry_valid(g: &BrowserImageGeometry) -> bool {
     g.captured_at_millis.parse::<u64>().is_ok()
@@ -276,6 +281,7 @@ impl Store {
         let class = match source {
             ArtifactSource::Project(s) if s.kind == ArtifactImportKind::AndroidApk => "apk",
             ArtifactSource::Project(_) => "file",
+            ArtifactSource::Browser(s) if s.required_scope == "browser.download" => "file",
             _ => "image",
         };
         let maximum = if class == "apk" {
@@ -520,6 +526,52 @@ impl Store {
         self.connection.execute("UPDATE artifacts SET state='ready',reserved_bytes=?2,metadata=?3 WHERE id=?1 AND state='reserved'",params![reservation.id,bytes.len() as i64,metadata])?;
         Ok(artifact)
     }
+    pub fn commit_browser_download(
+        &mut self,
+        reservation: &Reservation,
+        bytes: &[u8],
+        now: i64,
+    ) -> Result<Artifact> {
+        let row: Option<(String,i64,i64)> = self.connection.query_row("SELECT metadata,reserved_bytes,expires FROM artifacts WHERE id=?1 AND pairing=?2 AND project=?3 AND state='reserved' AND class='file'",params![reservation.id,reservation.owner,reservation.project],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional()?;
+        let (source, reserved, expires) = row.ok_or(Error::TargetNotFound)?;
+        let source: ArtifactSource =
+            serde_json::from_str(&source).map_err(|_| Error::StorageUnavailable)?;
+        if reservation.class != "file"
+            || bytes.len().max(1) > reserved as usize
+            || bytes.len() > 4 * 1024 * 1024
+            || !matches!(&source, ArtifactSource::Browser(s) if s.required_scope == "browser.download")
+            || !source_valid(&source)
+            || now < 0
+            || now >= expires
+        {
+            return Err(Error::InvalidInput);
+        }
+        let artifact = Artifact {
+            id: reservation.id.clone(),
+            media_type: "application/octet-stream".into(),
+            byte_length: bytes.len() as u32,
+            sha256: format!("{:x}", Sha256::digest(bytes)),
+            created_at_seconds: now.to_string(),
+            expires_at_seconds: expires.to_string(),
+            source,
+            image: None,
+        };
+        let path = self.blob_path(&reservation.id)?;
+        private(path.parent().unwrap(), true)?;
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+            .open(&path)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        drop(file);
+        fs::File::open(path.parent().unwrap())?.sync_all()?;
+        let metadata = serde_json::to_string(&artifact).map_err(|_| Error::InvalidInput)?;
+        self.connection.execute("UPDATE artifacts SET state='ready',reserved_bytes=?2,metadata=?3 WHERE id=?1 AND state='reserved'", params![reservation.id,bytes.len().max(1) as i64,metadata])?;
+        Ok(artifact)
+    }
     /// The broker must re-check the descriptor's source grant before reading bytes.
     pub fn artifact_metadata(
         &self,
@@ -537,6 +589,11 @@ impl Store {
                 artifact.media_type == source.kind.media_type()
                     && (source.kind.min_bytes()..=source.kind.max_bytes())
                         .contains(&u64::from(artifact.byte_length))
+            }
+            (ArtifactSource::Browser(source), None) => {
+                source.required_scope == "browser.download"
+                    && artifact.media_type == "application/octet-stream"
+                    && artifact.byte_length <= 4 * 1024 * 1024
             }
             (source, Some(image)) => {
                 geometry_valid(image)

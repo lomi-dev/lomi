@@ -1512,6 +1512,33 @@ pub async fn agent_control_decide_terminal(
 }
 
 #[tauri::command]
+pub async fn agent_browser_download(
+    window: Window,
+    operation_id: String,
+    nonce: String,
+) -> Result<(), String> {
+    crate::files::main_window(&window)?;
+    #[cfg(target_os = "macos")]
+    {
+        let app = window.app_handle().clone();
+        let broker = app.state::<Control>().required()?;
+        tauri::async_runtime::spawn_blocking(move || {
+            broker.execute_browser_download(&operation_id, &nonce, |control, input, permit| {
+                crate::browser::agent_dom::download(&app, control, input, permit)
+            })
+        })
+        .await
+        .map_err(|_| unavailable())?
+        .map_err(|_| unavailable())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (operation_id, nonce);
+        Err(unavailable())
+    }
+}
+
+#[tauri::command]
 pub async fn agent_artifact_import(
     window: Window,
     operation_id: String,

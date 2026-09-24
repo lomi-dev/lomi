@@ -205,32 +205,17 @@ impl Broker {
         if matches!(&artifact.source, ArtifactSource::Project(_)) {
             return self.disclose_project_artifact(&state, owner, workspace, artifact);
         }
-        let ArtifactSource::Browser(source) = &artifact.source else {
+        if !matches!(&artifact.source, ArtifactSource::Browser(_)) {
             return self.disclose_android_artifact(&state, owner, workspace, artifact);
-        };
-        let target = match Self::browser_target(
-            &state,
-            owner,
-            workspace,
-            &source.panel_id,
-            &source.browser_generation,
-            "browser.capture_composite",
-        ) {
-            Ok(t) => t,
-            Err(e) => return error(e),
-        };
-        let Some(session) = state.sessions.get(owner) else {
-            return error(ErrorCode::ControlRevoked);
-        };
-        if !target.control.authorized()
-            || session.grant.browser_profile.as_deref() != Some(source.profile_id.as_str())
-            || !session
-                .grant
-                .browser_origins
-                .iter()
-                .any(|o| o.as_str() == source.origin)
-        {
-            return error(ErrorCode::ControlRevoked);
+        }
+        if let Err(code) = Self::artifact_source_access(&state, owner, &artifact) {
+            return error(code);
+        }
+        if artifact.image.is_none() {
+            return Reply::ok(Data::Artifact {
+                artifact: Box::new(artifact),
+                image: None,
+            });
         }
         let Ok(store) = self.store.lock() else {
             return error(ErrorCode::StorageUnavailable);
@@ -240,8 +225,8 @@ impl Broker {
             Err(_) => return error(ErrorCode::StorageUnavailable),
         };
         let image = base64::engine::general_purpose::STANDARD.encode(bytes);
-        if !target.control.authorized() {
-            return error(ErrorCode::ControlRevoked);
+        if let Err(code) = Self::artifact_source_access(&state, owner, &artifact) {
+            return error(code);
         }
         Reply::ok(Data::Artifact {
             artifact: Box::new(artifact),

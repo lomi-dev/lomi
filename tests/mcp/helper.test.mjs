@@ -77,7 +77,7 @@ for (const version of ["2025-11-25", "2026-07-28"]) {
         assert.equal(result.cacheScope, "private");
       }
       const catalog = (await call("tools/list", {})).result.tools;
-      assert.equal(catalog.length, 72);
+      assert.equal(catalog.length, 73);
       assert.ok(
         JSON.stringify(catalog).length < 700_000,
         "Tool-specific output schemas must stay within the catalog budget",
@@ -726,6 +726,17 @@ for (const version of ["2025-11-25", "2026-07-28"]) {
               retryEpoch: "epoch",
               requestKey: "install",
             },
+            lomi_browser_download: {
+              workspaceId: "foreign",
+              panelId: "foreign",
+              browserGeneration: "foreign",
+              navigationId: "nav",
+              url: "http://localhost:3000/file",
+              maxBytes: 1024,
+              expectedRevision: "1",
+              retryEpoch: "epoch",
+              requestKey: "download",
+            },
             lomi_artifact_export: {
               workspaceId: "foreign",
               artifactId: "artifact",
@@ -862,6 +873,7 @@ for (const version of ["2025-11-25", "2026-07-28"]) {
             "lomi_android_install_apk",
             "lomi_artifact_import",
             "lomi_artifact_export",
+            "lomi_browser_download",
             "lomi_android_input",
             "lomi_android_start",
             "lomi_android_stop",

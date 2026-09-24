@@ -74,6 +74,7 @@ pub fn for_tool(tool: &str) -> Arc<Map<String, Value>> {
         | "lomi_android_input"
         | "lomi_artifact_import"
         | "lomi_artifact_export"
+        | "lomi_browser_download"
         | "lomi_android_install_apk"
         | "lomi_android_launch" => &["operation"],
         _ => panic!("Tool has no output contract: {tool}"),
@@ -120,6 +121,7 @@ pub fn for_tool(tool: &str) -> Arc<Map<String, Value>> {
             }
             "lomi_android_install_apk" => Some(&["android_install"]),
             "lomi_android_launch" => Some(&["android_launch"]),
+            "lomi_browser_download" => Some(&["browser_downloaded"]),
             "lomi_artifact_export" => Some(&["artifact_exported"]),
             "lomi_artifact_import" => Some(&["artifact_imported"]),
             "lomi_files_mutate" => Some(&["files_mutated"]),

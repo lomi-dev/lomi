@@ -128,7 +128,22 @@ Final broker tests add a full4MiB round trip and captured Android PNG export,
 including source revocation denial for new exports and stored receipts.
 Final broker65 and all-target MCP Clippy PASS; see QUALIFICATION.md for evidence.
 
-Next: scoped browser transfers, terminal qualification and P6. Full MCP is incomplete.
+File artifacts were committed and pushed to origin/main as
+`23422ddc9b70e646b344756f907a18fbca3521a9`; local and remote SHA verified.
+
+Bounded browser download is natively qualified on macOS ARM64: **PvUmgs PASS**,
+catalog73,12 checks, normal host/wrapper exit0 and private app-data removal.
+Same-origin cookies, opaque binary/empty/full4MiB bytes, exact hashes and project
+exports passed. Page-world fetch replacement did not alter private-world bytes.
+Redirect, foreign-origin/workspace, stale-document and oversize requests were
+refused; dispatched failures report uncertainty. Cancellation, exact retry and
+source closure passed. Every server route was requested once, including retries;
+the unapproved server received zero requests. The native permission screenshot
+was inspected. Core60, broker66, wire8, WebKit2, TypeScript, workspace check,
+all-target MCP and MCP-probe Clippy PASS. Opt-in core/full-disk tests remain ignored
+in this run, with their separate evidence retained. No native fixture remains running.
+
+Next: approved browser upload, terminal qualification and P6. Full MCP is incomplete.
 
 Chat AI milestone was committed and pushed to origin/main as
 `57b05cb46f8ed1896f2b26c3665826a401a96073`; remote SHA verified and the

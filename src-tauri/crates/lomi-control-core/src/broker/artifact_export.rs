@@ -22,7 +22,10 @@ impl Broker {
             ArtifactSource::Android(source) => Self::android_capture_access(state, owner, source)?
                 .check_generation(&source.generation),
             ArtifactSource::Browser(source) => {
-                if source.required_scope != "browser.capture_composite" {
+                if !matches!(
+                    source.required_scope.as_str(),
+                    "browser.capture_composite" | "browser.download"
+                ) {
                     return Err(ErrorCode::ScopeDenied);
                 }
                 let target = Self::browser_target(

@@ -265,6 +265,11 @@ impl Broker {
                 return error(ErrorCode::ScopeDenied);
             }
         }
+        if let Some(OperationResult::BrowserDownloaded(artifact)) = &receipt.result {
+            if let Err(code) = Self::artifact_source_access(state, owner, artifact) {
+                return error(code);
+            }
+        }
         if let Some(OperationResult::ArtifactExported(result)) = &receipt.result {
             if let Err(code) = Self::artifact_source_access(state, owner, &result.artifact) {
                 return error(code);

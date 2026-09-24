@@ -1,5 +1,30 @@
 # MCP requirements traceability
 
+## Bounded browser download contract (2026-09-24)
+
+`lomi_browser_download` is an explicit same-origin HTTP(S) GET from the owned
+main document into an opaque private artifact. Separate `browser.download` and
+`browser.read` permissions are required. Inputs bind workspace, panel, generation,
+navigation, exact URL, maximum1–4MiB, layout revision and durable retry key.
+No URL userinfo/fragment, other origin, redirect, arbitrary method, request body,
+header or file picker. The current isolated automation profile supplies its own
+same-origin credentials; cookies and response headers are never returned.
+
+The fixed private-world adapter uses same-origin mode, redirect:error, no-store,
+no-referrer and a five-second abort deadline. It bounds streamed bytes and chunk
+count before Base64 conversion. Native response capacity remains held through
+callback completion, including timeout. Quota is reserved before GET; only a
+complete private artifact is published. A request may affect a server even when
+body capture fails: receipts disclose uncertainty after dispatch and exact retry
+never repeats GET. The source classification retains profile/origin/generation;
+read and export still require its source authority. Page/service-worker content
+is untrusted. This is no network sandbox and does not enable ordinary downloads.
+
+Primary API references: [Fetch](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch)
+and [redirect mode](https://developer.mozilla.org/en-US/docs/Web/API/Request/redirect).
+Actual WebKit and native WKWebView passed on macOS ARM64 (PvUmgs,12 checks).
+Other engines/platforms remain unqualified. The catalog now contains73 tools.
+
 ## Scoped file artifact contract (2026-09-24)
 
 `lomi_artifact_import` adds `kind: file` for0–4MiB project files, guarded by
