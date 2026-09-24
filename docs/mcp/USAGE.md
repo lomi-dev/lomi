@@ -45,6 +45,28 @@ to that connection's grant. A project folder does not grant access to every exis
 workspace. Project closure requires a separate permission and access to all of its
 current workspaces; a new unapproved workspace blocks closure.
 
+## Import and export file artifacts
+
+Pair with **Allow reading project files** and **Allow importing project files as
+artifacts** to import an opaque file of0–4MiB using `lomi_artifact_import` with
+`kind: file`. Supply its exact byte length and SHA-256 plus the usual revision
+and retry fields. The completed private copy retains its original source
+classification; changing the source afterward does not change that copy.
+`lomi_artifact_read` returns its metadata, without exposing a private disk path.
+APK imports retain their separate permission, validation and512MiB limit.
+
+To save an artifact, also select **Allow creating project files and folders**
+and **Allow exporting artifacts to new project files**. Call
+`lomi_artifact_export` with the artifact ID/hash, a new project-relative path,
+the parent revision returned by `lomi_files_list`, and the revision/retry fields.
+The export limit is4MiB. Existing files and links are preserved. Source access
+still applies: a closed or human-taken browser/Android source cannot be exported.
+Poll the operation to confirm completion; reuse the exact original request for
+retry. An uncertain outcome requires inspecting the destination before new work.
+
+These permissions do not grant upload to a website or download from a browser.
+The separate browser transfer adapter remains unfinished.
+
 ## Read browser logs
 
 `lomi_browser_logs` requires the browser-read permission, the owned panel and its

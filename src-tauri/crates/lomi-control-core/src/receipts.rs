@@ -337,7 +337,7 @@ impl Store {
         )?;
         connection.busy_timeout(Duration::from_secs(2))?;
         let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-        if version > 4 {
+        if version > 5 {
             return Err(Error::StorageUnavailable);
         }
         connection.execute_batch("PRAGMA trusted_schema=OFF; PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA fullfsync=ON; PRAGMA checkpoint_fullfsync=ON; PRAGMA max_page_count=16384;")?;
@@ -366,6 +366,15 @@ impl Store {
             let transaction =
                 connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
             transaction.execute_batch("ALTER TABLE artifacts ADD COLUMN class TEXT NOT NULL DEFAULT 'image' CHECK(class IN ('image','apk')); PRAGMA user_version=4;")?;
+            transaction.commit()?;
+        }
+        if version < 5 {
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            transaction.execute_batch("CREATE TABLE artifacts_v5(id TEXT PRIMARY KEY, pairing TEXT NOT NULL, project TEXT NOT NULL, reserved_bytes INTEGER NOT NULL, state TEXT NOT NULL CHECK(state IN ('reserved','ready')), expires INTEGER NOT NULL, metadata TEXT, class TEXT NOT NULL DEFAULT 'image' CHECK(class IN ('image','apk','file')));
+                INSERT INTO artifacts_v5 SELECT id,pairing,project,reserved_bytes,state,expires,metadata,class FROM artifacts;
+                DROP TABLE artifacts; ALTER TABLE artifacts_v5 RENAME TO artifacts;
+                PRAGMA user_version=5;")?;
             transaction.commit()?;
         }
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -1106,7 +1115,7 @@ mod tests {
         assert!(Store::open(&root, 100).is_err());
         store
             .connection
-            .pragma_update(None, "user_version", 5)
+            .pragma_update(None, "user_version", 6)
             .unwrap();
         drop(store);
         let original = fs::read(root.join("control.sqlite3")).unwrap();

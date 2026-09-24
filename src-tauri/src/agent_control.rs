@@ -1097,6 +1097,34 @@ pub fn agent_control_file_trash_decide(
 }
 
 #[tauri::command]
+pub async fn agent_control_artifact_export(
+    window: Window,
+    state: State<'_, Control>,
+    operation_id: String,
+    nonce: String,
+) -> Result<lomi_control_protocol::artifact::ArtifactExported, lomi_control_protocol::ErrorCode> {
+    use lomi_control_protocol::ErrorCode;
+    crate::files::main_window(&window).map_err(|_| ErrorCode::ScopeDenied)?;
+    #[cfg(unix)]
+    {
+        let broker = state.required().map_err(|_| ErrorCode::ControlRevoked)?;
+        let app = window.app_handle().clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            crate::files::agent::with_writer(&app, || {
+                broker.commit_artifact_export(&operation_id, &nonce)
+            })
+        })
+        .await
+        .map_err(|_| ErrorCode::OutcomeUnknown)?
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (state, operation_id, nonce);
+        Err(ErrorCode::HostUnqualified)
+    }
+}
+
+#[tauri::command]
 pub async fn agent_control_files_mutate(
     window: Window,
     state: State<'_, Control>,

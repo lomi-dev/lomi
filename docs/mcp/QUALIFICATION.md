@@ -2,6 +2,32 @@
 
 Host: macOS 27.0 (26A428), Apple M3 ARM64. Baseline HEAD and local changes: IMPLEMENTATION-STATUS.md.
 
+## Scoped file artifact import/export (2026-09-24)
+
+**lVi0Ip PASS**,12 checks, catalog72, macOS ARM64. The real stdio helper,
+Settings enrollment, broker, main file-operation guard and native writer imported
+and exported binary Unicode/CRLF, empty content and an opaque file with an .apk
+extension. Rewriting each source after staging did not alter the exported bytes.
+Exact retries reused import/export receipts. Changed requests conflicted; existing
+files and symlinks remained intact. Stale parent revisions, foreign workspaces,
+secret paths and oversize imports were denied. Normal host/wrapper exit0 and
+private app-data removal are confirmed. Evidence: `/tmp/lomi-mcp-artifact-native.log`,
+`lomi-mcp-control-lVi0Ip/artifact-files.json`. The actual Settings permission
+screenshot and separate mocked-WebKit screenshot were inspected.
+
+Core60 PASS (one existing opt-in ignored), helper wire8, WebKit permission1,
+TypeScript and production workspace check PASS. The new schema5 migration test
+opens actual version4 image/APK metadata, preserves their bytes/classification
+and adds empty/opaque files. Final broker65 additionally includes a full4MiB
+import/export, APK-only grant refusal, native one-use/forged-ACK checks,
+cancellation and exported Android PNG source revocation, including receipt reads.
+All-target MCP and MCP-probe Clippy passed with warnings denied after removing
+one needless borrow. Final broker/lint logs use `/tmp/lomi-mcp-artifact-*-final.log`.
+
+This qualifies controlled project artifact import/export. It does not qualify
+browser upload/download, Android installation of arbitrary generic files,
+other platforms or the full P6 fault/performance matrix.
+
 ## Expanded native browser logs (2026-09-24)
 
 **a6K0Te PASS**,11 checks, catalog71, macOS ARM64. Real helper/Settings/broker/

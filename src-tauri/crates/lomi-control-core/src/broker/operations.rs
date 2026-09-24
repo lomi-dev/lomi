@@ -185,7 +185,16 @@ impl Broker {
             }
             UiAction::EditorEdits(_) => &["files.read", "editor.read", "editor.write"],
             UiAction::AndroidLaunch(_) => &["android.read", "android.control", "android.launch"],
-            UiAction::ImportArtifact(_) => &["files.read", "artifact.import"],
+            UiAction::ExportArtifact(_) => &[
+                "files.read",
+                "files.mutate",
+                "files.create",
+                "artifact.export",
+            ],
+            UiAction::ImportArtifact(input) => match input.kind {
+                ArtifactImportKind::AndroidApk => &["files.read", "artifact.import"],
+                ArtifactImportKind::File => &["files.read", "artifact.import_file"],
+            },
             UiAction::AndroidInput(_) | UiAction::AndroidInputControl(_) => {
                 &["android.read", "android.control", "android.interact"]
             }
@@ -1257,6 +1266,29 @@ impl Broker {
                     (OperationState::Succeeded, Effect::Complete)
                 }
             }
+            OperationResult::ArtifactExported(result) => {
+                let UiAction::ExportArtifact(command) = &work.command.action else {
+                    return Err(failure());
+                };
+                if !work.claimed || !work.native_committed {
+                    return Err(failure());
+                }
+                Self::validate_artifact_export(&state, &work.pairing, &command.input)
+                    .map_err(|_| failure())?;
+                Self::artifact_source_access(&state, &work.pairing, &result.artifact)
+                    .map_err(|_| failure())?;
+                let receipt = self
+                    .store
+                    .lock()
+                    .map_err(|_| failure())?
+                    .get(&work.pairing, &work.project, &ack.operation_id)
+                    .map_err(|_| failure())?;
+                if !matches!(receipt.result, Some(OperationResult::ArtifactExported(ref saved)) if saved == result)
+                {
+                    return Err(failure());
+                }
+                (OperationState::Succeeded, Effect::Complete)
+            }
             OperationResult::FilesMutated(result) => {
                 let UiAction::FilesMutate(command) = &work.command.action else {
                     return Err(failure());
@@ -1556,6 +1588,7 @@ impl Broker {
                 | UiAction::DraftChat(_)
                 | UiAction::SendChat(_)
                 | UiAction::FilesMutate(_)
+                | UiAction::ExportArtifact(_)
                 | UiAction::GitMutate(_)
                 | UiAction::OpenSettings(_)
                 | UiAction::UpdateSettings(_)
@@ -1567,6 +1600,7 @@ impl Broker {
             Some(
                 OperationResult::EditorSaved(_)
                     | OperationResult::FilesMutated(_)
+                    | OperationResult::ArtifactExported(_)
                     | OperationResult::GitMutated(_)
                     | OperationResult::SettingsOpened(_)
                     | OperationResult::ChatSent(_)

@@ -40,6 +40,8 @@ pub struct AndroidArtifactSource {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProjectArtifactSource {
+    #[serde(default)]
+    pub kind: ArtifactImportKind,
     pub workspace_id: String,
     pub relative_path: String,
     pub required_scope: String,
@@ -152,10 +154,66 @@ pub struct ArtifactImportInput {
     pub retry_epoch: String,
     pub request_key: String,
 }
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ArtifactImportKind {
+    #[default]
     AndroidApk,
+    File,
+}
+impl ArtifactImportKind {
+    pub fn scope(self) -> &'static str {
+        match self {
+            Self::AndroidApk => "artifact.import",
+            Self::File => "artifact.import_file",
+        }
+    }
+    pub fn max_bytes(self) -> u64 {
+        match self {
+            Self::AndroidApk => 512 * 1024 * 1024,
+            Self::File => 4 * 1024 * 1024,
+        }
+    }
+    pub fn min_bytes(self) -> u64 {
+        if self == Self::AndroidApk {
+            4
+        } else {
+            0
+        }
+    }
+    pub fn media_type(self) -> &'static str {
+        match self {
+            Self::AndroidApk => "application/vnd.android.package-archive",
+            Self::File => "application/octet-stream",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ArtifactExportInput {
+    pub workspace_id: String,
+    pub artifact_id: String,
+    pub expected_sha256: String,
+    pub relative_path: String,
+    pub expected_parent_revision: String,
+    pub expected_revision: String,
+    pub retry_epoch: String,
+    pub request_key: String,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ArtifactExportCommand {
+    pub workspace_id: String,
+    pub not_after_millis: String,
+    pub input: ArtifactExportInput,
+}
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ArtifactExported {
+    pub workspace_id: String,
+    pub relative_path: String,
+    pub artifact: Box<Artifact>,
 }
 
 #[cfg(test)]

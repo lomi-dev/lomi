@@ -69,7 +69,7 @@ impl StagedCopy {
         {
             return Err(ErrorCode::ScopeDenied);
         }
-        if !(4..=MAX_IMPORT_BYTES).contains(&expected_bytes)
+        if expected_bytes > MAX_IMPORT_BYTES
             || expected_hash.len() != 64
             || !expected_hash
                 .bytes()
@@ -171,8 +171,12 @@ impl StagedCopy {
     }
     /// Link only a verified copy to a broker-generated destination in this same
     /// directory. The caller commits its durable metadata afterward.
-    pub fn publish(&self) -> Result<(), ErrorCode> {
-        let destination = CString::new(format!("{}.apk", self.reservation_id)).map_err(storage)?;
+    pub fn publish(&self, extension: &str) -> Result<(), ErrorCode> {
+        if !matches!(extension, "apk" | "bin") {
+            return Err(ErrorCode::ScopeDenied);
+        }
+        let destination =
+            CString::new(format!("{}.{extension}", self.reservation_id)).map_err(storage)?;
         if unsafe {
             libc::linkat(
                 self.parent.as_raw_fd(),
@@ -245,7 +249,7 @@ mod tests {
         assert_eq!(bytes, b"APK bytes");
         assert!(read.write_all(b"write forbidden").is_err());
         assert_eq!(copy.sha256, hash);
-        copy.publish().unwrap();
+        copy.publish("apk").unwrap();
         drop(copy);
         assert_eq!(
             fs::read(folder.join("0123456789abcdef0123456789abcdef.apk")).unwrap(),

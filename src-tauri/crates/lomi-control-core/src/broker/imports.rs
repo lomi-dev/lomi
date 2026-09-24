@@ -1,8 +1,5 @@
 use super::*;
-use crate::{
-    project_files::ProjectDirectory,
-    staging::{StagedCopy, MAX_IMPORT_BYTES},
-};
+use crate::{project_files::ProjectDirectory, staging::StagedCopy};
 
 impl Broker {
     pub(super) fn project_file_access(
@@ -43,7 +40,8 @@ impl Broker {
         use operations::{storage_error, UiMutation};
         if !valid_id(&input.request_key)
             || input.expected_revision.parse::<u64>().is_err()
-            || !(4..=MAX_IMPORT_BYTES).contains(&input.expected_byte_length)
+            || !(input.kind.min_bytes()..=input.kind.max_bytes())
+                .contains(&input.expected_byte_length)
             || input.expected_sha256.len() != 64
             || !input
                 .expected_sha256
@@ -53,7 +51,8 @@ impl Broker {
             return error(ErrorCode::ResourceExhausted);
         }
         if crate::project_files::validate_relative(&input.relative_path).is_err()
-            || !input.relative_path.ends_with(".apk")
+            || (input.kind == ArtifactImportKind::AndroidApk
+                && !input.relative_path.ends_with(".apk"))
         {
             return error(ErrorCode::ScopeDenied);
         }
@@ -64,7 +63,7 @@ impl Broker {
             return error(code);
         }
         let session = &state.sessions[owner];
-        if !session.grant.scopes.contains("artifact.import") {
+        if !session.grant.scopes.contains(input.kind.scope()) {
             return error(ErrorCode::ScopeDenied);
         }
         if session.retry_epoch != input.retry_epoch {
@@ -126,7 +125,7 @@ impl Broker {
             let directory = Self::project_file_access(&state, &work.pairing, &input.workspace_id)
                 .map_err(|_| failure())?;
             let session = &state.sessions[&work.pairing];
-            if !session.grant.scopes.contains("artifact.import") {
+            if !session.grant.scopes.contains(input.kind.scope()) {
                 return Err(failure());
             }
             let tuple = (
@@ -152,8 +151,9 @@ impl Broker {
         };
         let result = (|| {
             check()?;
-            let source = directory.open_file(&input.relative_path, MAX_IMPORT_BYTES)?;
+            let source = directory.open_file(&input.relative_path, input.kind.max_bytes())?;
             let classification = ArtifactSource::Project(ProjectArtifactSource {
+                kind: input.kind,
                 workspace_id: input.workspace_id.clone(),
                 relative_path: input.relative_path.clone(),
                 required_scope: "files.read".into(),
@@ -168,7 +168,7 @@ impl Broker {
                         &owner,
                         &project,
                         &classification,
-                        input.expected_byte_length as usize,
+                        input.expected_byte_length.max(1) as usize,
                         now(),
                     )
                     .map_err(|e| match e {
@@ -192,7 +192,9 @@ impl Broker {
                     &input.expected_sha256,
                     check,
                 )?;
-                validate(&copy.file, &check)?;
+                if input.kind == ArtifactImportKind::AndroidApk {
+                    validate(&copy.file, &check)?;
+                }
                 check()?;
                 directory.check()?;
                 let state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;

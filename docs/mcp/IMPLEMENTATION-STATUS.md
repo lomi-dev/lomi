@@ -108,8 +108,27 @@ TypeScript, broker64, all-target MCP Clippy and MCP-probe Clippy passed.
 Native earlier DgBgy6/LWDj7U/r1BPLE failed fixture/trust assumptions and do not count
 as passes; the qualification record explains their corrected expectations.
 
-Next: scoped browser transfers, artifact export, terminal qualification and P6.
-Full MCP is incomplete.
+Expanded logs were committed and pushed to origin/main as
+`084a439c5a8cb1a47d1bed73f4e543ce44e510a0`; local and remote SHA verified.
+
+Generic file import and controlled artifact export are natively qualified on
+macOS ARM64: **lVi0Ip PASS**, catalog72,12 checks, normal host/wrapper exit0 and
+private app-data removal (`/tmp/lomi-mcp-artifact-native.log`). Binary Unicode/
+CRLF, empty files, opaque .apk classification, source rewrites, import/export
+retries, changed payloads, collision/symlink preservation, stale parents,
+foreign workspaces, secret paths and oversize refusal passed. Source is unfrozen.
+Both the WebKit and native Settings permission screenshots were inspected.
+
+Generic imports use an explicit new scope; schema5 retains earlier image/APK
+records. Export publishes one complete new file under the native writer lock,
+preserving original source authority and checking its hash/parent identity.
+Core60 (one opt-in ignored), broker65, helper wire8, WebKit permission1,
+TypeScript, production workspace check, all-target MCP and MCP-probe Clippy PASS.
+Final broker tests add a full4MiB round trip and captured Android PNG export,
+including source revocation denial for new exports and stored receipts.
+Final broker65 and all-target MCP Clippy PASS; see QUALIFICATION.md for evidence.
+
+Next: scoped browser transfers, terminal qualification and P6. Full MCP is incomplete.
 
 Chat AI milestone was committed and pushed to origin/main as
 `57b05cb46f8ed1896f2b26c3665826a401a96073`; remote SHA verified and the

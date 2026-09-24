@@ -269,6 +269,7 @@ interface UiCommand {
           | "agent-control";
       }
     | { type: "import_artifact"; workspaceId: string }
+    | { type: "export_artifact"; workspaceId: string; notAfterMillis: string }
     | {
         type: "android_launch";
         workspaceId: string;
@@ -1817,6 +1818,57 @@ export function useAgentControlBridge(
                   )
                     await ack({ kind: "failure", code });
                 }
+              }
+              return;
+            }
+            if (action.type === "export_artifact") {
+              let committed = false;
+              try {
+                const result = await domain.current.runFileOperation(
+                  async () => {
+                    if (!alive || domain.current.getCurrent() !== before)
+                      throw new Error("REVISION_CONFLICT");
+                    if (
+                      !Number.isSafeInteger(Number(action.notAfterMillis)) ||
+                      Date.now() >= Number(action.notAfterMillis)
+                    )
+                      throw new Error("DEADLINE_EXCEEDED");
+                    const result = await api<Record<string, unknown>>(
+                      "agent_control_artifact_export",
+                      {
+                        operationId: command.operationId,
+                        nonce: command.nonce,
+                      },
+                    );
+                    committed = true;
+                    if (result.workspaceId !== action.workspaceId)
+                      throw new Error("OUTCOME_UNKNOWN");
+                    return result;
+                  },
+                );
+                await send();
+                await ack({ kind: "artifact_exported", ...result });
+              } catch (e) {
+                if (committed) return;
+                const code =
+                  typeof e === "string"
+                    ? e
+                    : e instanceof Error
+                      ? e.message
+                      : "";
+                if (
+                  [
+                    "REVISION_CONFLICT",
+                    "DEADLINE_EXCEEDED",
+                    "TARGET_NOT_FOUND",
+                    "TARGET_BUSY",
+                    "SCOPE_DENIED",
+                    "CONTROL_REVOKED",
+                    "RESOURCE_EXHAUSTED",
+                    "STORAGE_UNAVAILABLE",
+                  ].includes(code)
+                )
+                  await ack({ kind: "failure", code });
               }
               return;
             }

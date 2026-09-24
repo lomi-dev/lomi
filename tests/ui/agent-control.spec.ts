@@ -483,6 +483,50 @@ test("Android metadata approval requires a selected device and grants only read 
   await expect(editPermission).toBeDisabled();
   await expect(editPermission).not.toBeChecked();
 
+  const importFiles = page.getByLabel(
+    "Allow importing project files as artifacts",
+  );
+  const exportArtifacts = page.getByLabel(
+    "Allow exporting artifacts to new project files",
+  );
+  await expect(importFiles).toBeDisabled();
+  await expect(exportArtifacts).toBeDisabled();
+  await filePermission.check();
+  await expect(importFiles).toBeEnabled();
+  await expect(exportArtifacts).toBeDisabled();
+  await importPermission.check();
+  await approve.click();
+  expect(
+    await page.evaluate(() => (window as any).__agentTest.approval.scopes),
+  ).not.toContain("artifact.import_file");
+  await importPermission.uncheck();
+  await importFiles.check();
+  await createPermission.check();
+  await exportArtifacts.check();
+  await approve.click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as any).__agentTest.approval.scopes),
+    )
+    .toEqual([
+      "workspace.read",
+      "files.read",
+      "files.mutate",
+      "files.create",
+      "artifact.import_file",
+      "artifact.export",
+    ]);
+  await exportArtifacts.scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: "test-results/agent-control-artifact-permissions.png",
+  });
+  await createPermission.uncheck();
+  await expect(exportArtifacts).not.toBeChecked();
+  await expect(exportArtifacts).toBeDisabled();
+  await filePermission.uncheck();
+  await expect(importFiles).not.toBeChecked();
+  await expect(importFiles).toBeDisabled();
+
   const gitPermission = page.getByLabel(
     "Allow reading Git information in this project",
   );

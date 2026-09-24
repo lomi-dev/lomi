@@ -281,6 +281,7 @@ pub fn run() {
                 agent_control::agent_control_preview_asset,
                 agent_control::agent_control_preview_release,
                 agent_control::agent_control_files_mutate,
+                agent_control::agent_control_artifact_export,
                 agent_control::agent_control_file_trash_prepare,
                 agent_control::agent_control_file_trash_decide,
                 agent_control::agent_control_file_trash_pending,

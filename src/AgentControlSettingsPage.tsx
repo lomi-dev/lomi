@@ -813,6 +813,8 @@ function Pairing({
   const [androidPackages, setAndroidPackages] = useState("");
   const [installApk, setInstallApk] = useState(false);
   const [importApk, setImportApk] = useState(false);
+  const [importFiles, setImportFiles] = useState(false);
+  const [exportArtifacts, setExportArtifacts] = useState(false);
   const [readFiles, setReadFiles] = useState(false);
   const [readGit, setReadGit] = useState(false);
   const [writeGit, setWriteGit] = useState(false);
@@ -1441,6 +1443,8 @@ function Pairing({
               setWriteBuffers(false);
               setSaveFiles(false);
               setImportApk(false);
+              setImportFiles(false);
+              setExportArtifacts(false);
               setInstallApk(false);
             }
           }}
@@ -1563,7 +1567,10 @@ function Pairing({
           type="checkbox"
           checked={createFiles}
           disabled={busy || !readFiles}
-          onChange={(event) => setCreateFiles(event.target.checked)}
+          onChange={(event) => {
+            setCreateFiles(event.target.checked);
+            if (!event.target.checked) setExportArtifacts(false);
+          }}
         />
         Allow creating project files and folders
       </label>
@@ -1648,6 +1655,34 @@ function Pairing({
       <p className="settings-help">
         Replace project files with the approved editor buffer after checking
         buffer and disk revisions.
+      </p>
+      <label>
+        <input
+          type="checkbox"
+          checked={importFiles}
+          disabled={busy || !readFiles}
+          onChange={(event) => setImportFiles(event.target.checked)}
+        />
+        Allow importing project files as artifacts
+      </label>
+      <p className="settings-help">
+        Make private copies of files up to 4 MiB, identified by their content
+        hash. Links and known secret paths are excluded. Upload and export
+        require separate permissions.
+      </p>
+      <label>
+        <input
+          type="checkbox"
+          checked={exportArtifacts}
+          disabled={busy || !readFiles || !createFiles}
+          onChange={(event) => setExportArtifacts(event.target.checked)}
+        />
+        Allow exporting artifacts to new project files
+      </label>
+      <p className="settings-help">
+        Save an accessible artifact of up to 4 MiB at an explicit project path.
+        Existing files are preserved. The original artifact permissions still
+        apply.
       </p>
       <label>
         <input
@@ -1763,6 +1798,12 @@ function Pairing({
                         ? ["files.mutate", "files.trash"]
                         : []),
                       ...(readFiles && importApk ? ["artifact.import"] : []),
+                      ...(readFiles && importFiles
+                        ? ["artifact.import_file"]
+                        : []),
+                      ...(readFiles && createFiles && exportArtifacts
+                        ? ["artifact.export"]
+                        : []),
                       ...(readFiles &&
                       importApk &&
                       readAndroid &&

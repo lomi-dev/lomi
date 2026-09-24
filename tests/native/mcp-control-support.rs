@@ -12,6 +12,8 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 mod android_layout_probe;
 #[path = "mcp-android-setup-support.rs"]
 mod android_setup_probe;
+#[path = "mcp-artifact-files-support.rs"]
+mod artifact_files_probe;
 #[path = "mcp-browser-frames-support.rs"]
 mod browser_frames_probe;
 #[path = "mcp-browser-logs-support.rs"]
@@ -2902,6 +2904,15 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
     evaluate(&settings,"(()=>{const e=[...document.querySelectorAll('.agent-control-request label')].find(e=>e.textContent.includes('Allow renaming and moving project files')).querySelector('input');if(!e.checked)e.click();return true;})()").await?;
     evaluate(&settings,"(()=>{const e=[...document.querySelectorAll('.agent-control-request label')].find(e=>e.textContent.includes('Allow moving project files and folders to Trash')).querySelector('input');if(!e.checked)e.click();return true;})()").await?;
     evaluate(&settings,"(()=>{const e=[...document.querySelectorAll('.agent-control-request label')].find(e=>e.textContent.includes('Allow importing APK files')).querySelector('input');if(!e.checked)e.click();return true;})()").await?;
+    if std::env::var_os("LOMI_MCP_ARTIFACT_FILES_ONLY").is_some() {
+        for label in [
+            "Allow importing project files as artifacts",
+            "Allow exporting artifacts to new project files",
+        ] {
+            evaluate(&settings, &format!("(()=>{{const e=[...document.querySelectorAll('.agent-control-request label')].find(e=>e.textContent.includes({})).querySelector('input');if(e.disabled)throw Error('Disabled artifact scope');if(!e.checked)e.click();e.scrollIntoView({{block:'center'}});return true;}})()",json!(label))).await?;
+        }
+        screenshot(&settings, directory.join("artifact-permissions.png")).await?;
+    }
     evaluate(&settings, "[...document.querySelectorAll('.agent-control-request label')].find(e=>e.textContent.includes('Allow opening and navigating isolated browser panels')).querySelector('input').click();true").await?;
     wait_for(
         &settings,
@@ -3033,6 +3044,21 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
         .await?;
     if connected["structuredContent"]["status"] != "ok" {
         return Err("Cannot select approved workspace".into());
+    }
+    if std::env::var_os("LOMI_MCP_ARTIFACT_FILES_ONLY").is_some() {
+        artifact_files_probe::qualify(
+            app,
+            &mut wire,
+            &main,
+            &workspace,
+            &connected["structuredContent"]["data"]["retryEpoch"],
+            directory,
+        )
+        .await?;
+        child.kill().await.map_err(|e| e.to_string())?;
+        return Ok(
+            json!({"profile":"artifact-files-only","catalogCount":catalog["result"]["tools"].as_array().map(Vec::len)}),
+        );
     }
     if std::env::var_os("LOMI_MCP_BROWSER_LOGS_ONLY").is_some() {
         browser_logs_probe::qualify(

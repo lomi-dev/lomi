@@ -3,7 +3,7 @@
 use crate::receipts::{private, Error, Store};
 use lomi_control_protocol::{
     artifact::{
-        AndroidImageGeometry, Artifact, ArtifactSource, BrowserArtifactSource,
+        AndroidImageGeometry, Artifact, ArtifactImportKind, ArtifactSource, BrowserArtifactSource,
         BrowserImageGeometry, ImageGeometry,
     },
     control::valid_id,
@@ -86,7 +86,7 @@ fn source_valid(source: &ArtifactSource) -> bool {
             valid_id(&s.workspace_id)
                 && s.required_scope == "files.read"
                 && crate::project_files::validate_relative(&s.relative_path).is_ok()
-                && s.relative_path.ends_with(".apk")
+                && (s.kind != ArtifactImportKind::AndroidApk || s.relative_path.ends_with(".apk"))
         }
         ArtifactSource::Android(s) => {
             valid_id(&s.workspace_id)
@@ -195,6 +195,7 @@ impl Store {
         let extension = match class.as_str() {
             "image" => "png",
             "apk" => "apk",
+            "file" => "bin",
             _ => return Err(Error::StorageUnavailable),
         };
         Ok(self
@@ -272,13 +273,15 @@ impl Store {
         max_bytes: usize,
         now: i64,
     ) -> Result<Reservation> {
-        let class = if matches!(source, ArtifactSource::Project(_)) {
-            "apk"
-        } else {
-            "image"
+        let class = match source {
+            ArtifactSource::Project(s) if s.kind == ArtifactImportKind::AndroidApk => "apk",
+            ArtifactSource::Project(_) => "file",
+            _ => "image",
         };
         let maximum = if class == "apk" {
             crate::staging::MAX_IMPORT_BYTES as usize
+        } else if class == "file" {
+            4 * 1024 * 1024
         } else {
             MAX_IMAGE_BYTES
         };
@@ -352,8 +355,8 @@ impl Store {
         })
     }
     pub fn staging_directory(&self, reservation: &Reservation) -> Result<fs::File> {
-        let valid: bool = self.connection.query_row("SELECT EXISTS(SELECT 1 FROM artifacts WHERE id=?1 AND pairing=?2 AND project=?3 AND state='reserved' AND class='apk')", params![reservation.id,reservation.owner,reservation.project], |r| r.get(0))?;
-        if !valid || reservation.class != "apk" {
+        let valid: bool = self.connection.query_row("SELECT EXISTS(SELECT 1 FROM artifacts WHERE id=?1 AND pairing=?2 AND project=?3 AND state='reserved' AND class IN ('apk','file'))", params![reservation.id,reservation.owner,reservation.project], |r| r.get(0))?;
+        if !valid || !matches!(reservation.class, "apk" | "file") {
             return Err(Error::TargetNotFound);
         }
         let path = self.root.join("artifacts");
@@ -369,13 +372,13 @@ impl Store {
         copy: crate::staging::StagedCopy,
         now: i64,
     ) -> Result<Artifact> {
-        let row: Option<(String, i64, i64)> = self.connection.query_row("SELECT metadata,reserved_bytes,expires FROM artifacts WHERE id=?1 AND pairing=?2 AND project=?3 AND state='reserved' AND class='apk'", params![reservation.id,reservation.owner,reservation.project], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional()?;
+        let row: Option<(String, i64, i64)> = self.connection.query_row("SELECT metadata,reserved_bytes,expires FROM artifacts WHERE id=?1 AND pairing=?2 AND project=?3 AND state='reserved' AND class IN ('apk','file')", params![reservation.id,reservation.owner,reservation.project], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional()?;
         let (source, reserved, expires) = row.ok_or(Error::TargetNotFound)?;
         let source: ArtifactSource =
             serde_json::from_str(&source).map_err(|_| Error::StorageUnavailable)?;
-        if reservation.class != "apk"
+        if !matches!(reservation.class, "apk" | "file")
             || copy.reservation_id() != reservation.id
-            || copy.byte_length != reserved as u64
+            || copy.byte_length.max(1) != reserved as u64
             || !source_valid(&source)
             || !matches!(source, ArtifactSource::Project(_))
             || now < 0
@@ -383,10 +386,24 @@ impl Store {
         {
             return Err(Error::InvalidInput);
         }
-        copy.publish().map_err(|_| Error::StorageUnavailable)?;
+        let ArtifactSource::Project(ref project_source) = source else {
+            return Err(Error::InvalidInput);
+        };
+        let kind = project_source.kind;
+        if (reservation.class == "apk") != (kind == ArtifactImportKind::AndroidApk)
+            || !(kind.min_bytes()..=kind.max_bytes()).contains(&copy.byte_length)
+        {
+            return Err(Error::InvalidInput);
+        }
+        copy.publish(if reservation.class == "apk" {
+            "apk"
+        } else {
+            "bin"
+        })
+        .map_err(|_| Error::StorageUnavailable)?;
         let artifact = Artifact {
             id: reservation.id.clone(),
-            media_type: "application/vnd.android.package-archive".into(),
+            media_type: kind.media_type().into(),
             byte_length: copy.byte_length as u32,
             sha256: copy.sha256.clone(),
             created_at_seconds: now.to_string(),
@@ -516,9 +533,9 @@ impl Store {
         let artifact: Artifact = serde_json::from_str(&metadata.ok_or(Error::TargetNotFound)?)
             .map_err(|_| Error::StorageUnavailable)?;
         let shape_valid = match (&artifact.source, &artifact.image) {
-            (ArtifactSource::Project(_), None) => {
-                artifact.media_type == "application/vnd.android.package-archive"
-                    && (4..=crate::staging::MAX_IMPORT_BYTES)
+            (ArtifactSource::Project(source), None) => {
+                artifact.media_type == source.kind.media_type()
+                    && (source.kind.min_bytes()..=source.kind.max_bytes())
                         .contains(&u64::from(artifact.byte_length))
             }
             (source, Some(image)) => {
@@ -608,10 +625,113 @@ mod tests {
     }
     fn apk_source() -> ArtifactSource {
         ArtifactSource::Project(lomi_control_protocol::artifact::ProjectArtifactSource {
+            kind: ArtifactImportKind::AndroidApk,
             workspace_id: "workspace".into(),
             relative_path: "build/app.apk".into(),
             required_scope: "files.read".into(),
         })
+    }
+    #[test]
+    fn schema_four_migration_preserves_legacy_images_apks_and_adds_empty_opaque_files() {
+        use crate::{project_files::ProjectDirectory, staging::StagedCopy};
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        let control = root.join("control");
+        let mut store = Store::open(&control, 100).unwrap();
+        let (bytes, geometry) = image();
+        let reservation = store
+            .reserve_artifact("owner", "project", &source(), bytes.len(), 100)
+            .unwrap();
+        let image = store
+            .commit_artifact(&reservation, &bytes, geometry, 101)
+            .unwrap();
+        drop(reservation);
+        fs::write(root.join("app.apk"), b"test APK").unwrap();
+        let project = ProjectDirectory::open(&root).unwrap();
+        let reservation = store
+            .reserve_artifact("owner", "project", &apk_source(), 8, 100)
+            .unwrap();
+        let copy = StagedCopy::copy(
+            project.open_file("app.apk", 100).unwrap(),
+            store.staging_directory(&reservation).unwrap(),
+            &reservation.id,
+            8,
+            &format!("{:x}", Sha256::digest(b"test APK")),
+            || Ok(()),
+        )
+        .unwrap();
+        let apk = store.commit_import(&reservation, copy, 101).unwrap();
+        drop(reservation);
+        let mut legacy = serde_json::to_value(&apk).unwrap();
+        legacy["source"].as_object_mut().unwrap().remove("kind");
+        store
+            .connection
+            .execute(
+                "UPDATE artifacts SET metadata=?2 WHERE id=?1",
+                params![apk.id, legacy.to_string()],
+            )
+            .unwrap();
+        store.connection.execute_batch("CREATE TABLE legacy(id TEXT PRIMARY KEY, pairing TEXT NOT NULL, project TEXT NOT NULL, reserved_bytes INTEGER NOT NULL, state TEXT NOT NULL CHECK(state IN ('reserved','ready')), expires INTEGER NOT NULL, metadata TEXT, class TEXT NOT NULL DEFAULT 'image' CHECK(class IN ('image','apk'))); INSERT INTO legacy SELECT * FROM artifacts; DROP TABLE artifacts; ALTER TABLE legacy RENAME TO artifacts; PRAGMA user_version=4;").unwrap();
+        drop(store);
+        let mut store = Store::open(&control, 102).unwrap();
+        assert_eq!(
+            store
+                .artifact_metadata("owner", "project", &apk.id, 102)
+                .unwrap(),
+            apk
+        );
+        assert_eq!(
+            store
+                .artifact_bytes(
+                    &store
+                        .artifact_metadata("owner", "project", &image.id, 102)
+                        .unwrap()
+                )
+                .unwrap(),
+            bytes
+        );
+        assert_eq!(
+            store
+                .connection
+                .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            5
+        );
+        for (name, content) in [("empty.bin", &b""[..]), ("opaque.apk", &b"not an APK"[..])] {
+            fs::write(root.join(name), content).unwrap();
+            let source =
+                ArtifactSource::Project(lomi_control_protocol::artifact::ProjectArtifactSource {
+                    kind: ArtifactImportKind::File,
+                    workspace_id: "workspace".into(),
+                    relative_path: name.into(),
+                    required_scope: "files.read".into(),
+                });
+            assert!(store
+                .reserve_artifact("owner", "project", &source, 4 * 1024 * 1024 + 1, 102)
+                .is_err());
+            let reservation = store
+                .reserve_artifact("owner", "project", &source, content.len().max(1), 102)
+                .unwrap();
+            let copy = StagedCopy::copy(
+                project.open_file(name, 100).unwrap(),
+                store.staging_directory(&reservation).unwrap(),
+                &reservation.id,
+                content.len() as u64,
+                &format!("{:x}", Sha256::digest(content)),
+                || Ok(()),
+            )
+            .unwrap();
+            let file = store.commit_import(&reservation, copy, 102).unwrap();
+            assert_eq!(file.media_type, "application/octet-stream");
+            assert!(store.artifact_bytes(&file).is_err());
+            let mut lease = store
+                .lease_artifact("owner", "project", &file.id, 102)
+                .unwrap();
+            lease.verify(|| Ok(())).unwrap();
+            let mut actual = Vec::new();
+            lease.file.read_to_end(&mut actual).unwrap();
+            assert_eq!(actual, content);
+        }
     }
     #[test]
     fn apk_copy_is_committed_once_and_active_lease_stays_in_the_expired_budget() {

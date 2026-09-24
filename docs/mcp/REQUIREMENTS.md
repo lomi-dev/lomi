@@ -1,5 +1,30 @@
 # MCP requirements traceability
 
+## Scoped file artifact contract (2026-09-24)
+
+`lomi_artifact_import` adds `kind: file` for0–4MiB project files, guarded by
+separate `artifact.import_file` and `files.read`. Existing APK permission and
+structural validation remain unchanged. Both use completed private copies,
+exact byte length/SHA-256, descriptor-pinned source checks, existing secret-path
+filters, shared reservations, cancellation and durable retry receipts. Generic
+files stay `application/octet-stream` and cannot become installable APKs by name.
+Schema5 preserves older image/APK records and receipts while adding a file class.
+
+`lomi_artifact_export` creates one new project-relative file from an owned
+artifact of at most4MiB. It binds artifact ID/hash, workspace/layout revision,
+expected parent-directory revision and retry key. It requires `artifact.export`,
+`files.read`, `files.mutate`, `files.create` plus the artifact's original source
+authority. Admission, native execution and receipt reads recheck that source.
+No overwrite, host path, directory creation, execution or cross-workspace copy.
+The native writer verifies complete immutable bytes and publishes them atomically
+under the shared file-write lock. Cancellation before publication has no effect;
+uncertainty after publication is explicit and never permits automatic replay.
+Native lVi0Ip12 passed on macOS ARM64: exact bytes, source rewrite, empty files,
+oversize refusal, opaque .apk classification, foreign workspace, stale parent,
+links, collisions and retries. Broker qualification additionally covers4MiB,
+APK-only grant separation, cancellation, forged ACKs and captured-image source
+revocation. The schema migration test retains actual legacy images and APKs.
+
 ## P5.7 expanded browser log contract (2026-09-24)
 
 `lomi_browser_logs` keeps its existing `browser.read` gate and adds optional
@@ -123,7 +148,8 @@ The source contracts remain normative. Native57 and earlier evidence predates th
 | `lomi_operation_cancel`      | 03 / P1–P5      | Protocol control.rs; broker.rs / broker/operations.rs                                                                                                                                                                                   | Core UDS, process schemas, native Settings/Codex                                                                                             | IN_PROGRESS                                                         |
 | `lomi_events_read`           | 03 / P1–P4/P5   | Protocol control.rs; broker/panels.rs, operations.rs and broker.rs; Workbench bridge                                                                                                                                                    | Native app/stdio and scoped core tests; full domain variants pending                                                                         | IN_PROGRESS                                                         |
 | `lomi_artifact_read`         | 03 / P1–P4/P5   | Immutable PNG source classification and native authority; protocol artifact.rs, broker/artifacts.rs and private Store                                                                                                                   | Native ggnnxP: exact bytes, geometry, owner/takeover; quota and recovery tests                                                               | IN_PROGRESS                                                         |
-| `lomi_artifact_import`       | 03 / 06 / P4    | ArtifactImportInput/ArtifactImported; files.read + artifact.import; immutable bounded APK staging via broker/imports.rs                                                                                                                 | Native55 Im0Xl9; hash/identity/quota/ownership/retry tests                                                                                   | IN_PROGRESS — broader artifact types pending                        |
+| `lomi_artifact_import`       | 03 / 06 / P4–P5 | Exact APK/file import with independent scopes, immutable staging, source classification and quotas                                                                                                                                      | Native lVi0Ip12 plus Im0Xl9 APK baseline; migration, source, limit and retry tests                                                           | QUALIFIED macOS ARM64; broader P6 remains                           |
+| `lomi_artifact_export`       | 03 / P5         | Source-authorized artifact to new project file; hash, parent/layout revisions, atomic native writer, durable retry                                                                                                                      | Native lVi0Ip12 and broker4MiB/PNG/revoke/ACK tests                                                                                          | QUALIFIED macOS ARM64; broader P6 remains                           |
 | `lomi_diagnostics`           | 03 / P1–P5      | Protocol control.rs; broker.rs / broker/operations.rs                                                                                                                                                                                   | Core UDS, process schemas, native Settings/Codex                                                                                             | IN_PROGRESS                                                         |
 | `lomi_terminal_create`       | 05 / P2         | Closed control.rs DTO; broker/terminals.rs, terminal_runs.rs, terminal_input.rs; native terminal.rs and retained terminal-runtime.ts                                                                                                    | Native app/stdio, input, targeted interrupt/cancel and core lease tests                                                                      | IN_PROGRESS                                                         |
 | `lomi_terminal_run`          | 05 / P2         | Closed control.rs DTO; broker/terminals.rs, terminal_runs.rs, terminal_input.rs; native terminal.rs and retained terminal-runtime.ts                                                                                                    | Native app/stdio, input, targeted interrupt/cancel and core lease tests                                                                      | IN_PROGRESS                                                         |

@@ -3,6 +3,8 @@
 mod android_layout_tests;
 #[path = "support/android_setup.rs"]
 mod android_setup_tests;
+#[path = "support/artifact_files.rs"]
+mod artifact_files_tests;
 use lomi_control_core::{broker::Broker, client::Client};
 use lomi_control_protocol::{control::*, EmptyInput, ErrorCode};
 use std::{sync::Arc, time::Duration};
@@ -5039,6 +5041,10 @@ async fn android_snapshot_checks_scope_identity_limits_and_revocation() {
             "android.control",
             "android.observe",
             "android.capture",
+            "files.read",
+            "files.create",
+            "files.mutate",
+            "artifact.export",
         ],
         &[DEVICE],
     )
@@ -5209,6 +5215,55 @@ async fn android_snapshot_checks_scope_identity_limits_and_revocation() {
             ..
         }
     ));
+    let directory = lomi_control_core::project_files::ProjectDirectory::open(
+        &root.path().canonicalize().unwrap(),
+    )
+    .unwrap();
+    let export = ArtifactExportInput {
+        workspace_id: "a".into(),
+        artifact_id: artifact.id.clone(),
+        expected_sha256: artifact.sha256.clone(),
+        relative_path: "captured.png".into(),
+        expected_parent_revision: directory.list("", || Ok(())).unwrap().revision,
+        expected_revision: "1".into(),
+        retry_epoch: retry_epoch.clone(),
+        request_key: "export-capture".into(),
+    };
+    let exported = client
+        .call(Request::ExportArtifact(export.clone()))
+        .await
+        .unwrap();
+    let Reply::Ok {
+        data: Data::Operation {
+            operation_id: export_id,
+            ..
+        },
+        ..
+    } = exported
+    else {
+        panic!("{exported:?}")
+    };
+    let command = commands.recv().await.unwrap();
+    broker
+        .claim_ui(&p.ui_epoch, &export_id, &command.nonce)
+        .unwrap();
+    let saved = broker
+        .commit_artifact_export(&export_id, &command.nonce)
+        .unwrap();
+    broker
+        .acknowledge_ui(UiAck {
+            operation_id: export_id.clone(),
+            nonce: command.nonce,
+            ui_epoch: p.ui_epoch.clone(),
+            result: OperationResult::ArtifactExported(Box::new(saved)),
+        })
+        .unwrap();
+    assert_eq!(
+        std::fs::read(root.path().join("captured.png")).unwrap(),
+        base64::engine::general_purpose::STANDARD
+            .decode(image.unwrap())
+            .unwrap()
+    );
     mode.store(1, Ordering::SeqCst);
     assert!(matches!(
         client
@@ -5235,6 +5290,32 @@ async fn android_snapshot_checks_scope_identity_limits_and_revocation() {
             ..
         }
     ));
+    let mut denied = export;
+    denied.request_key = "export-revoked-capture".into();
+    denied.relative_path = "revoked.png".into();
+    assert!(matches!(
+        client.call(Request::ExportArtifact(denied)).await.unwrap(),
+        Reply::Error {
+            code: ErrorCode::ControlRevoked,
+            ..
+        }
+    ));
+    assert!(matches!(
+        client
+            .call(Request::Operation(
+                OperationInput {
+                    operation_id: export_id
+                }
+                .into()
+            ))
+            .await
+            .unwrap(),
+        Reply::Error {
+            code: ErrorCode::ControlRevoked,
+            ..
+        }
+    ));
+    assert!(!root.path().join("revoked.png").exists());
     broker.shutdown().await;
 }
 

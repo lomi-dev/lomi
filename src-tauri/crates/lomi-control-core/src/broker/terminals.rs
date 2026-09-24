@@ -265,6 +265,20 @@ impl Broker {
                 return error(ErrorCode::ScopeDenied);
             }
         }
+        if let Some(OperationResult::ArtifactExported(result)) = &receipt.result {
+            if let Err(code) = Self::artifact_source_access(state, owner, &result.artifact) {
+                return error(code);
+            }
+            if Self::project_file_access(state, owner, &result.workspace_id).is_err() {
+                return error(ErrorCode::TargetNotFound);
+            }
+            if !["artifact.export", "files.mutate", "files.create"]
+                .iter()
+                .all(|scope| state.sessions[owner].grant.scopes.contains(*scope))
+            {
+                return error(ErrorCode::ScopeDenied);
+            }
+        }
         if let Some(OperationResult::FilesMutated(result)) = &receipt.result {
             if let Err(code) = Self::project_file_access(state, owner, &result.workspace_id) {
                 return error(code);

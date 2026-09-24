@@ -94,6 +94,7 @@ await new Promise((resolve) => portReservation.listen(0, "127.0.0.1", resolve));
 const serverPort = portReservation.address().port;
 await new Promise((resolve) => portReservation.close(resolve));
 const closeStressServer =
+  process.env.LOMI_MCP_ARTIFACT_FILES_ONLY ||
   process.env.LOMI_MCP_BROWSER_LOGS_ONLY ||
   process.env.LOMI_MCP_BROWSER_FRAMES_ONLY ||
   process.env.LOMI_MCP_ANDROID_LAYOUT_ONLY ||
@@ -258,7 +259,20 @@ try {
     }
   }
   if (!result) throw Error("Native control probe timed out");
-  if (result.stage === "passed" && process.env.LOMI_MCP_BROWSER_LOGS_ONLY) {
+  if (result.stage === "passed" && process.env.LOMI_MCP_ARTIFACT_FILES_ONLY) {
+    const proof = JSON.parse(
+      await readFile(join(directory, "artifact-files.json"), "utf8"),
+    );
+    if (
+      result.data?.profile !== "artifact-files-only" ||
+      result.data?.catalogCount !== 72 ||
+      proof.checks?.length !== 12
+    )
+      throw Error("Artifact qualification returned incomplete evidence");
+  } else if (
+    result.stage === "passed" &&
+    process.env.LOMI_MCP_BROWSER_LOGS_ONLY
+  ) {
     const proof = JSON.parse(
       await readFile(join(directory, "browser-expanded-logs.json"), "utf8"),
     );
@@ -293,7 +307,7 @@ try {
     if (
       deniedRequests !== 0 ||
       result.data?.profile !== "android-layout-only" ||
-      result.data?.catalogCount !== 71 ||
+      result.data?.catalogCount !== 72 ||
       proof.checks?.length !== 14 ||
       !proof.stopped ||
       !proof.originalDevicePreserved
@@ -309,7 +323,7 @@ try {
     if (
       deniedRequests !== 0 ||
       result.data?.profile !== "android-setup-only" ||
-      result.data?.catalogCount !== 71 ||
+      result.data?.catalogCount !== 72 ||
       proof.checks?.length !== 23 ||
       !proof.originalDevicePreserved ||
       !proof.fixtureDeviceRemoved
@@ -335,7 +349,7 @@ try {
             : process.env.LOMI_MCP_CHAT_OPEN_ONLY
               ? "chat-open-only"
               : "chat-read-only") ||
-      result.data?.catalogCount !== 71 ||
+      result.data?.catalogCount !== 72 ||
       proof.checks?.length !==
         (process.env.LOMI_MCP_CHAT_SEND_ONLY
           ? 54

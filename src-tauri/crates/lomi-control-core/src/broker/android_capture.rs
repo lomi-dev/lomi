@@ -24,7 +24,7 @@ impl Broker {
             .map_err(|_| failure())? = Some(dispatch);
         Ok(())
     }
-    fn android_capture_access(
+    pub(super) fn android_capture_access(
         state: &State,
         owner: &str,
         source: &AndroidArtifactSource,

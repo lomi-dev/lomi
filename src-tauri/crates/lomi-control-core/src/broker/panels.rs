@@ -65,6 +65,9 @@ impl Broker {
                 Self::validate_workspace_close(state, owner, command)?
             }
             UiAction::MovePanel(command) => Self::validate_panel_move(state, owner, command)?,
+            UiAction::ExportArtifact(command) => {
+                Self::validate_artifact_export(state, owner, &command.input)?;
+            }
             UiAction::FilesMutate(command) => {
                 Self::validate_files_mutate(state, owner, &command.input)?;
             }
