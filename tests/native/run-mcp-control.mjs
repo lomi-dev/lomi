@@ -21,6 +21,8 @@ if (process.platform !== "darwin" || process.arch !== "arm64")
 const root = resolve(import.meta.dirname, "../..");
 const directory = await mkdtemp(join(tmpdir(), "lomi-mcp-control-"));
 const androidRoot = process.env.LOMI_ANDROID_PRODUCT_DIRECTORY;
+if (process.env.LOMI_MCP_ROUTING_ONLY === "apk" && !androidRoot)
+  throw Error("APK routing requires the licensed isolated Android fixture.");
 if (androidRoot) {
   const metadata = JSON.parse(
     await readFile(join(androidRoot, "devices.json"), "utf8"),

@@ -5388,6 +5388,19 @@ async fn apk_import_binds_approved_root_copy_hash_retry_and_native_completion() 
         retry_epoch,
         request_key: "import-apk".into(),
     };
+    let mut wrong_revision = input.clone();
+    wrong_revision.expected_revision = "a".repeat(64);
+    let refused = client
+        .call(Request::ImportArtifact(wrong_revision))
+        .await
+        .unwrap();
+    assert!(
+        matches!(refused, Reply::Error { code: ErrorCode::RevisionConflict, ref message, .. } if message.contains("domainRevision from lomi_panel_list"))
+    );
+    assert!(
+        commands.try_recv().is_err(),
+        "Invalid revision dispatched an import"
+    );
     let readonly = approved(&broker, &["a"]).await;
     assert!(matches!(
         readonly

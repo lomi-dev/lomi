@@ -42,6 +42,8 @@ installer publication or private client-configuration writes.
 
 ## Current work
 
+The WAL recovery fix was pushed to origin/main as
+`c73058cd557ca424cbff1c4a2fab04eed563041c` and verified remotely.
 The final storage-fault audit found SQLite silently discarding a corrupted
 committed WAL suffix. A bounded read-only checksum preflight now refuses startup
 and preserves the original DB/WAL. The reproducer, read-only storage, valid WAL
@@ -49,7 +51,14 @@ reuse and the full core/broker suites pass (68 + 68). See QUALIFICATION.md for
 the actual failure and correction. Actual-model Android qualification is being
 rerun after fixing XML entity decoding in its independent native oracle;
 the first trace showed successful installation and one Unicode submission,
-but that failed oracle is not recorded as a complete pass.
+but that failed oracle is not recorded as a complete pass. Final APK trial
+SOE0wa passed with 39 actual-model MCP calls, exact build/import/install/launch,
+one Unicode submission, matching native device/panel/generation, screenshot
+and graceful cleanup. The intervening mePKbt trial exposed misleading import
+revision feedback; the contract/error and reproducing test were corrected.
+WFDYwx timed out with configured xhigh effort. The runner now pins and records
+medium for subsequent routing trials. All-target workspace probe Clippy and
+all 8 helper-wire tests passed. See QUALIFICATION.md for every attempt.
 
 Actual Codex routing milestone `42dfa9411676fba1a2e798b6614db881f9d26e75`
 was pushed to origin/main and verified. E01 subsequently passed in EFPfJF:

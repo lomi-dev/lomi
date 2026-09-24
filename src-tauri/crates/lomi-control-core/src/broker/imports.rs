@@ -38,8 +38,13 @@ impl Broker {
         input: ArtifactImportInput,
     ) -> Reply {
         use operations::{storage_error, UiMutation};
+        if input.expected_revision.parse::<u64>().is_err() {
+            return Reply::error(
+                ErrorCode::RevisionConflict,
+                "expectedRevision must be the decimal domainRevision from lomi_panel_list, not a file revision or content hash",
+            );
+        }
         if !valid_id(&input.request_key)
-            || input.expected_revision.parse::<u64>().is_err()
             || !(input.kind.min_bytes()..=input.kind.max_bytes())
                 .contains(&input.expected_byte_length)
             || input.expected_sha256.len() != 64

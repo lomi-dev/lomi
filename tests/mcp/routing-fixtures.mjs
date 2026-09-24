@@ -90,6 +90,24 @@ process.once('SIGINT', () => {
         "Check whether Lomi is available for this temporary project. If it is unavailable, report that clearly and stop without launching an alternative shell, browser or emulator.",
       expectedTools: ["lomi_status"],
     },
+    apk: {
+      prompt: `Build the disposable Android fixture by running ${quote(node)} build-mcp-apk.mjs in a separate Lomi terminal in the Visible workspace. Use its LOMI_APK_RESULT metadata to import and install that exact APK on the authorized MCP qualification Android device through Lomi. Open/start its Lomi panel, wait for any installation approval, and launch org.lomi.inputtest. Enter ROUTING Zażółć 🙂 into its editor, submit the Unicode form exactly once, verify Submitted: ROUTING Zażółć 🙂 and capture the screen. Leave the device running for native inspection. Use the managed device only.`,
+      expectedTools: [
+        "lomi_terminal_create",
+        "lomi_terminal_run",
+        "lomi_artifact_import",
+        "lomi_android_open",
+        "lomi_android_start",
+        "lomi_android_install_apk",
+        "lomi_android_launch",
+        "lomi_android_snapshot",
+        "lomi_android_input",
+        "lomi_android_screenshot",
+      ],
+      clientApprovedTools: ["lomi_panel_control", "lomi_panel_focus"],
+      maxToolActions: 90,
+      turnTimeoutMs: 360000,
+    },
   };
   cases["origin-server"] = { ...cases["dev-server"] };
   await writeFile(

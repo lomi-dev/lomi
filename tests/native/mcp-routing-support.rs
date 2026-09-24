@@ -1,5 +1,7 @@
 //! Model-selected MCP calls with independent native resource postconditions.
 use super::*;
+#[path = "mcp-routing-android.rs"]
+mod android;
 
 fn read_json(path: &Path) -> Result<Value, String> {
     serde_json::from_slice(&std::fs::read(path).map_err(|e| e.to_string())?)
@@ -17,6 +19,7 @@ async fn approve(
     workspace: &Value,
     origin: &Value,
     case: &str,
+    directory: &Path,
 ) -> Result<(), String> {
     let article = format!("[...document.querySelectorAll('.agent-control-request')].find(a=>[...a.querySelectorAll('code')].some(c=>c.textContent==={}))", json!(request));
     wait_for(settings, &format!("Boolean({article})")).await?;
@@ -33,7 +36,7 @@ async fn approve(
                 "Allow editing loaded buffers",
                 "Allow saving editor files",
             ]);
-        } else {
+        } else if case != "apk" {
             labels.extend([
                 "Allow opening and navigating isolated browser panels",
                 "Allow reading page text, form structure and browser logs",
@@ -50,7 +53,9 @@ async fn approve(
             )
             .await?;
         }
-        if case != "fix-test" {
+        if case == "apk" {
+            android::grant(settings, &article, directory).await?;
+        } else if case != "fix-test" {
             evaluate(settings,&format!("(()=>{{const e=({article}).querySelector('textarea');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,{origin});e.dispatchEvent(new Event('input',{{bubbles:true}}));return true;}})()")).await?;
         }
     }
@@ -120,6 +125,9 @@ async fn verify(
         .find(|r| r["terminalSessionId"].is_string())
         .ok_or("No completed model-created terminal")?;
     let terminal_native = javascript(&main,&format!("const m=await import('/src/terminal-runtime.ts');const r=m.runningTerminal({});if(!r||r.sessionId!=={})throw Error('Native terminal mismatch');const contexts=await window.__TAURI_INTERNALS__.invoke('terminal_contexts');return {{panelId:{},sessionId:r.sessionId,status:r.getSnapshot().status,context:contexts[r.sessionId],text:[...Array(r.terminal.buffer.active.length)].map((_,i)=>r.terminal.buffer.active.getLine(i)?.translateToString()).join('\\n')}};",terminal["panelId"],terminal["terminalSessionId"],terminal["panelId"])).await?;
+    if case == "apk" {
+        return android::verify(app, directory, report, &terminal_native).await;
+    }
     let origin_evidence = if case == "origin-server" {
         let origin = &report["origin"];
         if !origin["panelId"].is_string() || origin["panelId"] == terminal["panelId"] {
@@ -326,7 +334,7 @@ pub(super) async fn qualify(
     };
     write_json(
         &control_path,
-        &json!({"cwd":directory.join("project"),"helper":helper,"expectedWorkspaceId":workspace,"approvalReadyPath":ready_path,"resultPath":result_path,"postconditionsPath":postconditions_path,"expectUnavailable":case=="unavailable","prompt":task["prompt"],"expectedTools":task["expectedTools"],"clientApprovedTools":task["clientApprovedTools"],"origin":origin,"clientHome":std::env::var("HOME").map_err(|e|e.to_string())?}),
+        &json!({"cwd":directory.join("project"),"helper":helper,"expectedWorkspaceId":workspace,"approvalReadyPath":ready_path,"resultPath":result_path,"postconditionsPath":postconditions_path,"expectUnavailable":case=="unavailable","prompt":task["prompt"],"expectedTools":task["expectedTools"],"clientApprovedTools":task["clientApprovedTools"],"maxToolActions":task["maxToolActions"],"turnTimeoutMs":task["turnTimeoutMs"],"origin":origin,"clientHome":std::env::var("HOME").map_err(|e|e.to_string())?}),
     )?;
     let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/mcp/codex-routing.mjs");
     let mut child = if origin.is_null() {
@@ -352,7 +360,7 @@ pub(super) async fn qualify(
     };
     let start = std::time::Instant::now();
     let mut approved = case == "unavailable";
-    while start.elapsed() < Duration::from_secs(300) {
+    while start.elapsed() < Duration::from_secs(480) {
         if !approved && ready_path.exists() {
             let request = read_json(&ready_path)?;
             approve(
@@ -363,10 +371,14 @@ pub(super) async fn qualify(
                 workspace,
                 &fixture["origin"],
                 &case,
+                directory,
             )
             .await?;
             activate_main(app).await?;
             approved = true;
+        }
+        if approved && case == "apk" {
+            android::approve_install(app, settings, directory, workspace).await?;
         }
         if result_path.exists() {
             let report = read_json(&result_path)?;

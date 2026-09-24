@@ -31,9 +31,11 @@ public final class InputTest extends Activity {
         Button submit = new Button(this);
         submit.setText("Submit Unicode form");
         submit.setContentDescription("lomi-test-submit");
+        final int[] submissions = {0};
         submit.setOnClickListener(view -> {
             String value = editor.getText().toString();
             submitted.setText("Submitted: " + value);
+            submitted.setContentDescription("lomi-test-result:" + (++submissions[0]));
             android.util.Log.i("LomiInputTest", "MCP form submitted: " + value);
         });
         layout.addView(submit, new LinearLayout.LayoutParams(-1, -2));

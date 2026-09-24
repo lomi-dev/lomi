@@ -19,6 +19,18 @@ assert.equal(typeof control.prompt, "string");
 assert.ok(control.prompt.length > 0 && control.prompt.length <= 4000);
 assert.ok(Array.isArray(control.expectedTools));
 assert.ok(control.expectedTools.every((name) => /^lomi_[a-z_]+$/.test(name)));
+const maxToolActions = control.maxToolActions ?? 40;
+const turnTimeoutMs = control.turnTimeoutMs ?? 180000;
+assert.ok(
+  Number.isInteger(maxToolActions) &&
+    maxToolActions >= 1 &&
+    maxToolActions <= 100,
+);
+assert.ok(
+  Number.isInteger(turnTimeoutMs) &&
+    turnTimeoutMs >= 1000 &&
+    turnTimeoutMs <= 360000,
+);
 const clientApprovedTools = [
   ...new Set([
     ...control.expectedTools,
@@ -82,6 +94,8 @@ const child = spawn(
     "features.hooks=false",
     "-c",
     "notify=[]",
+    "-c",
+    'model_reasoning_effort="medium"',
     "app-server",
   ],
   { cwd: control.cwd, env: clientEnvironment, stdio: ["pipe", "pipe", "pipe"] },
@@ -141,11 +155,20 @@ createInterface({ input: child.stdout }).on("line", (line) => {
         ...bounded(item),
         qualificationTurnId: message.params.turnId,
       });
+    process.stdout.write(
+      JSON.stringify({
+        event: "item",
+        type: item.type,
+        tool: item.tool,
+        status: item.status,
+        code: item.result?.structuredContent?.code,
+      }) + "\n",
+    );
     if (
       items.filter(
         (item) =>
           item.type === "mcpToolCall" || item.type === "commandExecution",
-      ).length >= 40 &&
+      ).length >= maxToolActions &&
       !interrupted &&
       activeTurn
     ) {
@@ -192,6 +215,8 @@ let report = {
   modelTurns: 0,
   privateConfigWrites: 0,
   clientApprovedTools,
+  maxToolActions,
+  turnTimeoutMs,
   nativePostconditionsVerified: false,
   origin: control.origin ?? null,
   clientProcess: {
@@ -225,6 +250,8 @@ try {
         : ""),
   });
   const threadId = started.thread.id;
+  assert.equal(started.reasoningEffort, "medium");
+  report.reasoningEffort = started.reasoningEffort;
   const features = [];
   let featureCursor;
   do {
@@ -299,7 +326,7 @@ try {
   });
   activeTurn = turn.turn.id;
   report.modelTurns = 1;
-  const turnDeadline = Date.now() + 180000;
+  const turnDeadline = Date.now() + turnTimeoutMs;
   while (!completions.has(activeTurn) && Date.now() < turnDeadline)
     await new Promise((resolve) => setTimeout(resolve, 100));
   if (!completions.has(activeTurn)) {

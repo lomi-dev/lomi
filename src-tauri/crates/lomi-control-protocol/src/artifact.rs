@@ -150,6 +150,7 @@ pub struct ArtifactImportInput {
     pub kind: ArtifactImportKind,
     pub expected_byte_length: u64,
     pub expected_sha256: String,
+    /// Decimal domainRevision returned by lomi_panel_list. Not a file revision or content hash.
     pub expected_revision: String,
     pub retry_epoch: String,
     pub request_key: String,

@@ -58,6 +58,10 @@ pub(crate) fn record_close(value: Value) {
 }
 
 fn fixture_editor_text(xml: &str) -> Result<String, String> {
+    fixture_node_text(xml, "android.widget.EditText", "lomi-test-editor")
+}
+
+fn fixture_node_text(xml: &str, class: &str, description: &str) -> Result<String, String> {
     use quick_xml::{events::Event, Reader, XmlVersion};
     let mut reader = Reader::from_str(xml);
     let mut text = None;
@@ -76,18 +80,17 @@ fn fixture_editor_text(xml: &str) -> Result<String, String> {
                         ))
                     })
                     .collect::<Result<std::collections::BTreeMap<_, _>, String>>()?;
-                if attrs.get(b"class".as_slice()).map(String::as_str)
-                    == Some("android.widget.EditText")
+                if attrs.get(b"class".as_slice()).map(String::as_str) == Some(class)
                     && attrs.get(b"content-desc".as_slice()).map(String::as_str)
-                        == Some("lomi-test-editor")
+                        == Some(description)
                 {
                     if text.is_some() {
-                        return Err("Ambiguous guest fixture editor".into());
+                        return Err("Ambiguous guest fixture node".into());
                     }
                     text = attrs.get(b"text".as_slice()).cloned();
                 }
             }
-            Event::Eof => return text.ok_or_else(|| "Guest fixture editor is missing".into()),
+            Event::Eof => return text.ok_or_else(|| "Guest fixture node is missing".into()),
             Event::DocType(_) => return Err("Unexpected guest fixture XML DTD".into()),
             _ => {}
         }
@@ -6630,7 +6633,7 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
                 .as_array()
                 .is_some_and(|nodes| {
                     nodes.iter().any(|node| {
-                        node["description"] == "lomi-test-result"
+                        node["description"] == "lomi-test-result:1"
                             && node["text"] == "Submitted: MCP Zażółć gęślą jaźń 🙂"
                     })
                 })

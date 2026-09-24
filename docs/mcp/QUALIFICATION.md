@@ -40,6 +40,43 @@ all-target core Clippy with warnings denied passed. Logs:
 
 ## P6 actual Codex model routing — in progress (2026-09-24)
 
+**E04 actual-model APK workflow: SOE0wa passed.** Codex 0.156.1 / gpt-6-sol
+with recorded `medium` effort made 39 model-selected MCP calls. It built the
+APK in an owned Lomi PTY, imported the exact build hash, opened/started the
+licensed private device, received fixture-scoped Settings installation approval,
+installed and launched `org.lomi.inputtest`, entered `ROUTING Zażółć 🙂`,
+submitted once and captured the result. Native verification matched the
+installed hash/device/workspace/generation to the approval and live stream,
+matched input/screenshot panel IDs, and separately decoded the guest XML to
+confirm the exact editor value and submission counter 1. Native screenshot
+inspected. All required tools succeeded, model/native postconditions completed,
+no competing actions occurred, host exit 0/private app-data removal and graceful
+guest/private-ADB cleanup passed. Generation:
+`cca37120-6dce-4d4b-9915-085e2ade2fa8`; artifact directory
+`lomi-mcp-control-SOE0wa`; log `/tmp/lomi-mcp-routing-apk4.log`.
+
+The earlier attempts are retained as failures:
+
+- A77HIP completed the workflow, but its native oracle incorrectly searched
+  raw XML for an emoji serialized as a numeric entity. The oracle now decodes
+  XML attributes and saves the hierarchy/screenshot before assertions.
+- mePKbt exposed a real tool-contract usability problem: the model passed a
+  file hash as `expectedRevision` and received misleading `RESOURCE_EXHAUSTED`.
+  The schema and description now identify `lomi_panel_list.domainRevision`;
+  the broker returns a specific `REVISION_CONFLICT` explanation without dispatch.
+  The reproducing broker test and all 8 helper-wire tests pass.
+- WFDYwx passed import/install but exceeded its 360-second model-turn budget.
+  The configured client effort was `xhigh`; no completed workflow is claimed.
+  The runner now pins and asserts `medium` through subprocess options, records
+  it, and leaves private client configuration untouched. Earlier runs did not
+  record effective effort and do not count toward a new fixed-profile matrix.
+
+All three failed attempts cleaned the host and stopped the private guest/ADB
+without force. All-target workspace Clippy with `mcp-probe` and warnings denied
+passed (`/tmp/lomi-mcp-routing-apk-clippy.log`); final JS syntax/formatting passed.
+The APK fixture now publishes its actual submission count in accessibility
+metadata, and the default native form assertion expects count 1 as well.
+
 **E01 origin-terminal scenario: EFPfJF passed.** The actual Codex 0.156.1 /
 gpt-6-sol client ran beneath an ordinary Lomi Zsh PTY. Native verification
 matched shell PID 68162 → fixture Node PID 68165 → Codex app-server PID 68250
