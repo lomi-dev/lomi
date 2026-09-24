@@ -243,9 +243,10 @@ export default function Workbench() {
     : "";
   const [session, renderSession] = useState<Session>();
   const currentSession = useRef<Session>(undefined);
+  const workArea = useRef<HTMLDivElement>(null);
   const terminalLayout = useRef<HTMLDivElement>(null);
   const selected = session ? active(session) : undefined;
-  const renderPaneLayout = usePaneMotion(terminalLayout, selected?.tab.id);
+  const renderPaneLayout = usePaneMotion(workArea);
   const setSession = useCallback(
     (
       update: Session | ((state: Session | undefined) => Session | undefined),
@@ -262,21 +263,24 @@ export default function Workbench() {
       pluginHost.retainPanels(
         new Set(next ? pluginPanels(next).map((panel) => panel.id) : []),
       );
+      const previousSelection = previous ? active(previous) : undefined;
+      const nextSelection = next ? active(next) : undefined;
+      const sameWorkspace =
+        !!previousSelection &&
+        !!nextSelection &&
+        previousSelection.workspace.id === nextSelection.workspace.id;
       const sameTab =
-        !!previous &&
-        !!next &&
-        active(previous)?.tab.id === active(next)?.tab.id;
-      renderPaneLayout(
-        () => renderSession(next),
-        sameTab &&
-          (animate
+        sameWorkspace && previousSelection?.tab.id === nextSelection?.tab.id;
+      const motion =
+        sameTab && previous && next
+          ? animate
             ? "panes"
-            : !!previous.sidebar !== !!next.sidebar ||
-                !!previous.rightSidebar !== !!next.rightSidebar
+            : previous.sidebar !== next.sidebar ||
+                previous.rightSidebar !== next.rightSidebar
               ? "sidebars"
-              : false),
-        !sameTab,
-      );
+              : false
+          : false;
+      renderPaneLayout(() => renderSession(next), motion, !sameTab);
     },
     [renderPaneLayout],
   );
@@ -1675,7 +1679,7 @@ export default function Workbench() {
               <WindowControls onError={setError} />
             </header>
             {notice}
-            <div className="work-area">
+            <div className="work-area" ref={workArea}>
               {workspacePanel}
               <Welcome
                 busy={browsing}
@@ -2230,7 +2234,7 @@ export default function Workbench() {
             <WindowControls onError={setError} />
           </header>
           {notice}
-          <div className="work-area">
+          <div className="work-area" ref={workArea}>
             {workspacePanel}
             {pluginSidebars}
             {sidebarPanels.filter(sidebarOpen).map((panel) => {

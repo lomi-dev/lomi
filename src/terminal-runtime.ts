@@ -530,7 +530,7 @@ export class TerminalRuntime {
       )
         this.revealAnimation = this.host.animate(
           [{ opacity: 0 }, { opacity: 1 }],
-          { duration: 180, easing: "ease-out" },
+          { duration: 100, easing: "ease-out" },
         );
       this.revealed = true;
     });
@@ -559,6 +559,13 @@ export class TerminalRuntime {
     cancelAnimationFrame(this.frame);
     if (this.attached && this.rendererReady)
       this.frame = requestAnimationFrame(() => this.fit());
+  }
+
+  synchronizeLayoutFit() {
+    // Fit the final transaction geometry now so xterm can render on its next frame.
+    cancelAnimationFrame(this.frame);
+    this.frame = 0;
+    this.fit();
   }
 
   private fit() {
@@ -937,6 +944,23 @@ export function terminalFor(
   return runtime;
 }
 export const runningTerminal = (id: string) => runtimes.get(id);
+export function synchronizeVisibleTerminalFits(root: HTMLElement) {
+  for (const pane of root.querySelectorAll<HTMLElement>(
+    ".terminal-pane[data-pane-id]",
+  )) {
+    if (!pane.getClientRects().length) continue;
+    const id = pane.dataset.paneId;
+    if (!id) continue;
+    const runtime = runtimes.get(id);
+    if (
+      !runtime ||
+      !pane.contains(runtime.host) ||
+      !root.contains(runtime.host)
+    )
+      continue;
+    runtime.synchronizeLayoutFit();
+  }
+}
 export async function terminalsWithProcesses(ids?: readonly string[]) {
   const selected = [...runtimes.values()].filter(
     (runtime) => !ids || ids.includes(runtime.paneId),

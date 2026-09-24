@@ -35,6 +35,16 @@ async function move(
   await expect(menu).toHaveCount(0);
   await expect(sidebar(page, panel)).toHaveAttribute("data-side", side);
 }
+async function waitForLayoutMotion(page: Page) {
+  await page.evaluate(async () => {
+    const animations = document
+      .getAnimations()
+      .filter((animation) => animation.id === "lomi-layout-motion");
+    await Promise.all(
+      animations.map((animation) => animation.finished.catch(() => undefined)),
+    );
+  });
+}
 async function setup(page: Page, repository = true) {
   await mockDesktop(page, repository);
   await page.goto("/");
@@ -52,6 +62,7 @@ test("opposite panels stay open together, relocate their controls and preserve t
     (window as any).__sidebarTerminalHost = element;
   });
   await move(page, "git", "right");
+  await waitForLayoutMotion(page);
   await expect(sidebar(page, "files")).toBeVisible();
   await expect(sidebar(page, "git")).toBeVisible();
   const explorer = (await sidebar(page, "files").boundingBox())!;

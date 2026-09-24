@@ -2,6 +2,11 @@ import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { newPane, newProject, newSession, splitPane } from "../../src/model";
 import { buffer, mockDesktop } from "./desktop";
+import {
+  captureLayoutMotion,
+  finishLayoutMotion,
+  layoutMotionCount,
+} from "./layout-motion";
 
 async function setup(page: Page, withEditor = false) {
   const project = newProject("/project", "local:bash");
@@ -370,36 +375,39 @@ test("panel motion leaves the workbench still, streams output and resizes each P
     reducedMotion: "no-preference",
   });
   const { source, target } = await setup(page);
-  await page.evaluate(() => {
-    const state = ((window as any).__paneMotion = {
-      ready: false,
-      done: false,
-      animations: [] as Animation[],
-      calls: (window as any).__nativeTest.calls.length,
-    });
-    const start = document.startViewTransition.bind(document);
-    document.startViewTransition = (update) => {
-      const transition = start(update);
-      void transition.ready.then(() => {
-        state.animations = document
-          .getAnimations()
-          .filter((animation) =>
-            (animation.effect as KeyframeEffect).pseudoElement?.startsWith(
-              "::view-transition",
+  await captureLayoutMotion(page);
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const { runningTerminal } = await import("/src/terminal-runtime.ts");
+        const panes = [
+          ...document.querySelectorAll<HTMLElement>("[data-pane-id]"),
+        ];
+        if (
+          !panes.every(
+            (pane) =>
+              runningTerminal(pane.dataset.paneId!)?.getSnapshot().renderer ===
+              "WebGL",
+          )
+        )
+          return false;
+        (window as any).__paneMounts = panes.map((element) => ({
+          element,
+          runtime: runningTerminal(element.dataset.paneId!),
+          canvases: [
+            ...element.querySelectorAll(
+              ".xterm-screen > canvas:not(.xterm-link-layer)",
             ),
-          );
-        for (const animation of state.animations) {
-          animation.pause();
-          animation.currentTime = 90;
-        }
-        state.ready = true;
-      });
-      void transition.finished.then(() => {
-        state.done = true;
-      });
-      return transition;
-    };
-  });
+          ],
+        }));
+        return true;
+      }),
+    )
+    .toBe(true);
+  const callStart = await page.evaluate(
+    () => (window as any).__nativeTest.calls.length,
+  );
+  const motionStart = await layoutMotionCount(page);
   const stage = page.locator(".terminal-layout");
   const before = await stage.boundingBox();
   const area = (await page
@@ -410,28 +418,105 @@ test("panel motion leaves the workbench still, streams output and resizes each P
     steps: 8,
   });
   await page.mouse.up();
-  await expect
-    .poll(() => page.evaluate(() => (window as any).__paneMotion.ready))
-    .toBe(true);
-  const motion = await page.evaluate(() => {
-    const animations = (window as any).__paneMotion.animations as Animation[];
-    return animations.map((animation) => ({
-      pseudo: (animation.effect as KeyframeEffect).pseudoElement,
-      duration: animation.effect!.getTiming().duration,
+  await expect.poll(() => layoutMotionCount(page)).toBeGreaterThan(motionStart);
+  const motion = await page.evaluate((start) => {
+    const records = (window as any).__layoutMotion.records.slice(start);
+    const animations = records.map(({ animation, element, duration }: any) => {
+      const style = getComputedStyle(element);
+      const matrix =
+        style.transform === "none"
+          ? new DOMMatrixReadOnly()
+          : new DOMMatrixReadOnly(style.transform);
+      const frames = (animation.effect as KeyframeEffect).getKeyframes();
+      return {
+        id: animation.id,
+        duration,
+        currentTime: Number(animation.currentTime),
+        playState: animation.playState,
+        className: (element as HTMLElement).className,
+        opacity: style.opacity,
+        containsTerminalPane: [
+          ...document.querySelectorAll<HTMLElement>(
+            ".terminal-pane[data-pane-id]",
+          ),
+        ].some((pane) => element === pane || element.contains(pane)),
+        x: matrix.e,
+        y: matrix.f,
+        scaleX: Math.hypot(matrix.a, matrix.b),
+        scaleY: Math.hypot(matrix.c, matrix.d),
+        frames: frames.map((frame) => {
+          const transform = String(frame.transform ?? "none");
+          const frameMatrix =
+            transform === "none"
+              ? new DOMMatrixReadOnly()
+              : new DOMMatrixReadOnly(transform);
+          return {
+            hasScale: "scale" in frame || /scale\s*\(/i.test(transform),
+            opacity: String(frame.opacity),
+            x: frameMatrix.e,
+            y: frameMatrix.f,
+          };
+        }),
+      };
+    });
+    const geometry = [
+      ...document.querySelectorAll<HTMLElement>(".dock-pane-host"),
+    ].map((host) => ({
+      paneId: host.querySelector<HTMLElement>("[data-pane-id]")?.dataset.paneId,
+      left: host.offsetLeft,
+      top: host.offsetTop,
+      width: host.offsetWidth,
+      height: host.offsetHeight,
     }));
-  });
+    const terminalTargets = [
+      ...document.querySelectorAll<HTMLElement>(
+        ".dock-pane-host > .split-child",
+      ),
+    ]
+      .filter((element) =>
+        element.querySelector(".terminal-pane[data-pane-id]"),
+      )
+      .map((element) => ({
+        transform: getComputedStyle(element).transform,
+        motionCount: element
+          .getAnimations()
+          .filter((animation) => animation.id === "lomi-layout-motion").length,
+      }));
+    return { animations, geometry, terminalTargets };
+  }, motionStart);
+  expect(motion.animations.length).toBeGreaterThan(0);
   expect(
-    motion.filter(({ pseudo }) =>
-      pseudo?.startsWith("::view-transition-group("),
+    motion.animations.every((animation) => !animation.containsTerminalPane),
+  ).toBe(true);
+  expect(
+    motion.terminalTargets.every(
+      (target) => target.motionCount === 0 && target.transform === "none",
     ),
-  ).toHaveLength(4);
-  expect(motion.every(({ duration }) => duration === 180)).toBe(true);
-  await expect(page.locator("html")).toHaveClass(/moving-panes/);
-  expect(
-    await page
-      .locator("html")
-      .evaluate((element) => getComputedStyle(element).viewTransitionName),
-  ).toBe("none");
+  ).toBe(true);
+  for (const animation of motion.animations) {
+    expect(animation.id).toBe("lomi-layout-motion");
+    expect(animation.duration).toBeGreaterThan(0);
+    expect(animation.duration).toBeLessThanOrEqual(120);
+    expect(animation.currentTime).toBeCloseTo(animation.duration / 2, 0);
+    expect(animation.playState).toBe("paused");
+    expect(["split-child", "split-divider"]).toContain(animation.className);
+    if (animation.className === "split-child") {
+      expect(animation.opacity).toBe("1");
+      expect(animation.frames.every((frame) => frame.opacity === "1")).toBe(
+        true,
+      );
+    }
+    expect(animation.scaleX).toBeCloseTo(1, 2);
+    expect(animation.scaleY).toBeCloseTo(1, 2);
+    expect(Math.abs(animation.x)).toBeLessThanOrEqual(8.1);
+    expect(Math.abs(animation.y)).toBeLessThanOrEqual(8.1);
+    expect(animation.frames.length).toBeGreaterThanOrEqual(2);
+    expect(animation.frames.every((frame) => !frame.hasScale)).toBe(true);
+    for (const frame of animation.frames) {
+      expect(Math.abs(frame.x)).toBeLessThanOrEqual(8.1);
+      expect(Math.abs(frame.y)).toBeLessThanOrEqual(8.1);
+    }
+  }
   expect(await stage.boundingBox()).toEqual(before);
   await page.evaluate(async (source) => {
     const { runningTerminal } = await import("/src/terminal-runtime.ts");
@@ -446,36 +531,76 @@ test("panel motion leaves the workbench still, streams output and resizes each P
   await page.screenshot({
     path: testInfo.outputPath("pane-motion-midpoint.png"),
   });
-  await page.evaluate(() => {
-    for (const animation of (window as any).__paneMotion.animations)
-      animation.finish();
-  });
-  await expect(page.locator("html")).not.toHaveClass(/moving-panes/);
-  const resizes = await page.evaluate(() =>
-    (window as any).__nativeTest.calls
-      .slice((window as any).__paneMotion.calls)
-      .filter((call: any) => call.command === "resize_terminal")
-      .map((call: any) => call.args.id),
+  expect(
+    await page.evaluate(async () => {
+      const { runningTerminal } = await import("/src/terminal-runtime.ts");
+      return (window as any).__paneMounts.every(
+        ({ element, runtime, canvases }: any) =>
+          document.querySelector(
+            `[data-pane-id="${element.dataset.paneId}"]`,
+          ) === element &&
+          runningTerminal(element.dataset.paneId) === runtime &&
+          getComputedStyle(element).opacity === "1" &&
+          canvases.every(
+            (canvas: HTMLCanvasElement, index: number) =>
+              element.querySelectorAll(
+                ".xterm-screen > canvas:not(.xterm-link-layer)",
+              )[index] === canvas,
+          ),
+      );
+    }),
+  ).toBe(true);
+  await finishLayoutMotion(page, motionStart);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (start) =>
+          (window as any).__layoutMotion.records
+            .slice(start)
+            .every((record: any) => record.animation.playState === "idle"),
+        motionStart,
+      ),
+    )
+    .toBe(true);
+  expect(
+    await page.evaluate(
+      (expectedGeometry) =>
+        expectedGeometry.every((expected: any) => {
+          const host = [
+            ...document.querySelectorAll<HTMLElement>(".dock-pane-host"),
+          ].find(
+            (element) =>
+              element.querySelector<HTMLElement>("[data-pane-id]")?.dataset
+                .paneId === expected.paneId,
+          );
+          return (
+            host?.offsetLeft === expected.left &&
+            host?.offsetTop === expected.top &&
+            host?.offsetWidth === expected.width &&
+            host?.offsetHeight === expected.height
+          );
+        }),
+      motion.geometry,
+    ),
+  ).toBe(true);
+  const resizes = await page.evaluate(
+    (start) =>
+      (window as any).__nativeTest.calls
+        .slice(start)
+        .filter((call: any) => call.command === "resize_terminal")
+        .map((call: any) => call.args.id),
+    callStart,
   );
   expect(resizes.length).toBeGreaterThan(0);
   expect(resizes.length).toBeLessThanOrEqual(3);
   expect(new Set(resizes).size).toBe(resizes.length);
-  expect(
-    await page
-      .locator(".split-child")
-      .evaluateAll((elements) =>
-        elements.every(
-          (element) => !(element as HTMLElement).style.viewTransitionName,
-        ),
-      ),
-  ).toBe(true);
   await page.keyboard.up("Control");
 });
 
 for (const fallback of [
   "reduced-motion",
   "unsupported",
-  "skipped-transition",
+  "animation-error",
 ] as const) {
   test(`moving a panel still works with ${fallback}`, async ({ page }) => {
     const errors: string[] = [];
@@ -484,21 +609,24 @@ for (const fallback of [
       reducedMotion: fallback === "reduced-motion" ? "reduce" : "no-preference",
     });
     const { source, target } = await setup(page);
+    await captureLayoutMotion(page);
     await page.evaluate((fallback) => {
-      const start = document.startViewTransition.bind(document);
-      Object.defineProperty(document, "startViewTransition", {
-        configurable: true,
-        value:
-          fallback === "unsupported"
-            ? undefined
-            : (update: Parameters<Document["startViewTransition"]>[0]) => {
-                if (fallback === "reduced-motion")
-                  throw new Error("Reduced motion must skip animation");
-                const transition = start(update);
-                transition.skipTransition();
-                return transition;
-              },
-      });
+      const animate = Element.prototype.animate;
+      if (fallback === "unsupported")
+        Object.defineProperty(Element.prototype, "animate", {
+          configurable: true,
+          value: undefined,
+        });
+      if (fallback === "animation-error")
+        Element.prototype.animate = function (keyframes, options) {
+          if (
+            typeof options === "object" &&
+            options !== null &&
+            options.id === "lomi-layout-motion"
+          )
+            throw new Error("Animation creation failed");
+          return animate.call(this, keyframes, options);
+        };
     }, fallback);
     const area = (await page
       .locator(`[data-pane-id="${target}"]`)
@@ -519,7 +647,7 @@ for (const fallback of [
     await expect
       .poll(async () => (await savedTab(page))?.layout.second?.first?.id)
       .toBe(source);
-    await expect(page.locator("html")).not.toHaveClass(/moving-panes/);
+    expect(await layoutMotionCount(page)).toBe(0);
     expect(errors).toEqual([]);
   });
 }

@@ -83,7 +83,7 @@ export default function SplitView({
         : { width, height },
     );
   }, []);
-  // Commit sidebar size changes before the pane transition captures its final layout.
+  // Commit sidebar size changes before pane motion reads final geometry.
   useLayoutEffect(measure);
   useLayoutEffect(() => {
     const observer = new ResizeObserver(measure);

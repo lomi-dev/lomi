@@ -1020,63 +1020,6 @@ svg {
     transition: none;
   }
 }
-:root.moving-panes {
-  view-transition-name: none;
-}
-.moving-panes::view-transition {
-  pointer-events: none;
-}
-.moving-panes::view-transition-group(*) {
-  animation-duration: 180ms;
-  animation-timing-function: ease-out;
-}
-.moving-panes::view-transition-old(*),
-.moving-panes::view-transition-new(*) {
-  width: 100%;
-  height: 100%;
-  object-fit: none;
-  object-position: top left;
-  animation-duration: 180ms;
-  animation-timing-function: ease-out;
-  animation-name: none;
-  mix-blend-mode: normal;
-}
-/* Keep existing content opaque while the live terminal canvases refit. */
-.moving-panes::view-transition-new(*) {
-  opacity: 0;
-}
-.moving-panes::view-transition-old(*):only-child {
-  animation-name: pane-appear;
-  animation-direction: reverse;
-}
-.moving-panes::view-transition-new(*):only-child {
-  animation-name: pane-appear;
-  opacity: 1;
-}
-/* Reveal the live, reflowed contents before sidebar motion finishes. */
-.moving-sidebars::view-transition-old(*) {
-  animation: pane-disappear 90ms ease-out both;
-}
-.moving-sidebars::view-transition-new(*) {
-  opacity: 1;
-  animation: pane-appear 90ms ease-out both;
-}
-@keyframes pane-disappear {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-  }
-}
-@keyframes pane-appear {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
 .tab-navigation {
   display: flex;
   align-items: center;

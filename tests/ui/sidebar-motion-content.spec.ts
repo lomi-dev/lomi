@@ -2,6 +2,12 @@ import { expect, test, type Page } from "@playwright/test";
 import { newPane, newProject, newSession } from "../../src/model";
 import { buffer, mockDesktop } from "./desktop";
 import { defaultTerminalPreferences } from "../../src/terminal-preferences";
+import {
+  captureLayoutMotion,
+  finishLayoutMotion,
+  layoutMotionCount,
+  layoutMotionRecords,
+} from "./layout-motion";
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript((defaults) => {
@@ -69,7 +75,7 @@ async function prepare(page: Page, renderer = "WebGL") {
     await expect.poll(() => buffer(page, id)).toContain("bash $ ");
   await page.evaluate(async (ids) => {
     const { runningTerminal } = await import("/src/terminal-runtime.ts");
-    for (const [index, id] of ids.entries()) {
+    const panes = ids.map((id, index) => {
       const runtime = runningTerminal(id)!;
       runtime.terminal.options.cursorBlink = false;
       (window as any).__nativeTest.emit(
@@ -82,61 +88,26 @@ async function prepare(page: Page, renderer = "WebGL") {
           ).join("") +
           "LAST PROMPT> ",
       );
-    }
-    const state = ((window as any).__contentMotion = {
-      captures: [] as Animation[][],
-      starts: 0,
-      skips: 0,
-    });
-    const start = document.startViewTransition.bind(document);
-    document.startViewTransition = (update) => {
-      state.starts++;
-      const transition = start(update);
-      const skip = transition.skipTransition.bind(transition);
-      transition.skipTransition = () => {
-        state.skips++;
-        skip();
+      return {
+        id,
+        runtime,
+        element: document.querySelector(`[data-pane-id="${id}"]`),
+        canvases: [...runtime.host.querySelectorAll("canvas")],
       };
-      void transition.ready
-        .then(() => {
-          const animations = document
-            .getAnimations()
-            .filter((animation) =>
-              (animation.effect as KeyframeEffect).pseudoElement?.startsWith(
-                "::view-transition",
-              ),
-            );
-          for (const animation of animations) {
-            animation.pause();
-            animation.currentTime = 90;
-          }
-          state.captures.push(animations);
-        })
-        .catch(() => {});
-      return transition;
-    };
+    });
+    (window as any).__contentMotion = { panes };
   }, ids);
   for (const id of ids)
     await expect.poll(() => buffer(page, id)).toContain("LAST PROMPT>");
   await expect(page.locator(".terminal-title").first()).toHaveText(
     "Working terminal 1",
   );
+  await captureLayoutMotion(page);
   return ids;
 }
 
-async function waitMotion(page: Page, count: number) {
-  await expect
-    .poll(() =>
-      page.evaluate(() => (window as any).__contentMotion.captures.length),
-    )
-    .toBe(count);
-}
-
-async function finishMotion(page: Page) {
-  await page.evaluate(() => {
-    for (const animation of (window as any).__contentMotion.captures.at(-1))
-      animation.finish();
-  });
+async function waitMotion(page: Page, start: number) {
+  await expect.poll(() => layoutMotionCount(page)).toBeGreaterThan(start);
 }
 
 async function changedPixels(page: Page, before: Buffer, after: Buffer) {
@@ -172,39 +143,147 @@ async function changedPixels(page: Page, before: Buffer, after: Buffer) {
   );
 }
 
+async function titleCenters(page: Page) {
+  return page.locator(".terminal-title-box").evaluateAll((titles) =>
+    titles.map((title) => {
+      const pane = title.closest(".split-child") as HTMLElement;
+      const paneRect = pane.getBoundingClientRect();
+      const titleRect = title.getBoundingClientRect();
+      return {
+        pane: paneRect.left + paneRect.width / 2,
+        title: titleRect.left + titleRect.width / 2,
+      };
+    }),
+  );
+}
+
+async function paneDimensions(page: Page) {
+  return page.locator(".dock-pane-host > .split-child").evaluateAll((panes) =>
+    panes.map((pane) => {
+      const rect = pane.getBoundingClientRect();
+      return {
+        width: rect.width,
+        height: rect.height,
+        layoutWidth: (pane as HTMLElement).offsetWidth,
+        layoutHeight: (pane as HTMLElement).offsetHeight,
+      };
+    }),
+  );
+}
+
+async function finalFrameGeometry(page: Page, start: number) {
+  return page.evaluate((start) => {
+    const rect = (element: Element) => {
+      const box = element.getBoundingClientRect();
+      return { x: box.x, y: box.y, width: box.width, height: box.height };
+    };
+    const records = (window as any).__layoutMotion.records.slice(start);
+    const rows = [...document.querySelectorAll(".xterm-rows > div")].map(rect);
+    const effects = records.map(({ animation, element }: any) => {
+      const style = getComputedStyle(element);
+      const transform = new DOMMatrixReadOnly(style.transform);
+      return {
+        x: transform.m41,
+        y: transform.m42,
+        scaleX: Math.hypot(transform.m11, transform.m12),
+        scaleY: Math.hypot(transform.m21, transform.m22),
+        opacity: Number(style.opacity),
+        currentTime: animation.currentTime,
+      };
+    });
+    const terminalTargets = [
+      ...document.querySelectorAll<HTMLElement>(
+        ".dock-pane-host > .split-child",
+      ),
+    ]
+      .filter((element) =>
+        element.querySelector(".terminal-pane[data-pane-id]"),
+      )
+      .map((element) => ({
+        transform: getComputedStyle(element).transform,
+        motionCount: element
+          .getAnimations()
+          .filter((animation) => animation.id === "lomi-layout-motion").length,
+      }));
+    const retainedTargets = records.filter(({ element }: any) =>
+      (window as any).__contentMotion.panes.some(
+        (pane: any) =>
+          element === pane.element || element.contains(pane.element),
+      ),
+    ).length;
+    return { rows, effects, terminalTargets, retainedTargets };
+  }, start);
+}
+
+async function expectTitlesCentered(page: Page) {
+  for (const center of await titleCenters(page))
+    expect(Math.abs(center.pane - center.title)).toBeLessThan(1);
+}
+
 for (const renderer of ["WebGL", "DOM"]) {
-  test(`${renderer}: wrapped text stays live and titles stay centered through the last sidebar animation frame`, async ({
+  test(`${renderer}: wrapped terminal output stays live and titles stay centered through the final sidebar frame`, async ({
     page,
   }, info) => {
     const ids = await prepare(page, renderer);
     for (const [index, action] of ["open", "close"].entries()) {
+      const opening = action === "open";
+      const motionStart = await layoutMotionCount(page);
       await page
         .getByRole("button", { name: /^Toggle source control/ })
         .click();
       await page.mouse.move(10, 10);
-      await waitMotion(page, index + 1);
-      const centers = await page
-        .locator(".terminal-title-box")
-        .evaluateAll((titles) =>
-          titles.map((title) => {
-            const pane = title.closest(".split-child") as HTMLElement;
-            const center = (element: HTMLElement) => {
-              const style = getComputedStyle(
-                document.documentElement,
-                `::view-transition-group(${element.style.viewTransitionName})`,
-              );
-              return (
-                new DOMMatrixReadOnly(style.transform).m41 +
-                parseFloat(style.width) / 2
-              );
-            };
-            return { pane: center(pane), title: center(title as HTMLElement) };
-          }),
+      if (opening) await waitMotion(page, motionStart);
+      const records = await layoutMotionRecords(page, motionStart);
+      if (opening) expect(records.length).toBeGreaterThan(0);
+      expect(
+        records.every(
+          (record) => record.duration > 0 && record.duration <= 120,
+        ),
+      ).toBe(true);
+
+      const dimensionsDuring = await paneDimensions(page);
+      for (const pane of dimensionsDuring) {
+        expect(Math.abs(pane.width - pane.layoutWidth)).toBeLessThan(1);
+        expect(Math.abs(pane.height - pane.layoutHeight)).toBeLessThan(1);
+      }
+      const terminalMotion = await page.evaluate((start) => {
+        const panes = (window as any).__contentMotion.panes;
+        const records = (window as any).__layoutMotion.records.slice(start);
+        const terminalTargets = [
+          ...document.querySelectorAll<HTMLElement>(
+            ".dock-pane-host > .split-child",
+          ),
+        ].filter((element) =>
+          element.querySelector(".terminal-pane[data-pane-id]"),
         );
-      for (const center of centers)
-        expect(Math.abs(center.pane - center.title)).toBeLessThan(1);
+        return {
+          retainedTargets: records.filter(({ element }: any) =>
+            panes.some(
+              (pane: any) =>
+                element === pane.element || element.contains(pane.element),
+            ),
+          ).length,
+          terminalTargets: terminalTargets.map((element) => ({
+            transform: getComputedStyle(element).transform,
+            motionCount: element
+              .getAnimations()
+              .filter((animation) => animation.id === "lomi-layout-motion")
+              .length,
+          })),
+        };
+      }, motionStart);
+      expect(terminalMotion.retainedTargets).toBe(0);
+      expect(
+        terminalMotion.terminalTargets.every(
+          (target) => target.motionCount === 0 && target.transform === "none",
+        ),
+      ).toBe(true);
+      await expectTitlesCentered(page);
+
       const stage = page.locator(".terminal-layout");
-      const beforeOutput = await stage.screenshot();
+      const beforeOutput = await stage.screenshot({
+        path: info.outputPath(`${action}-midpoint.png`),
+      });
       await page.evaluate(async (ids) => {
         const { runningTerminal } = await import("/src/terminal-runtime.ts");
         for (const id of ids)
@@ -218,101 +297,188 @@ for (const renderer of ["WebGL", "DOM"]) {
           .poll(() => buffer(page, id))
           .toContain("LIVE OUTPUT DURING SIDEBAR MOTION");
       const afterOutput = await stage.screenshot({
-        path: info.outputPath(`${action}-live.png`),
+        path: info.outputPath(`${action}-live-output.png`),
       });
       expect(
         await changedPixels(page, beforeOutput, afterOutput),
       ).toBeGreaterThan(0.01);
-      await page.evaluate(() => {
-        for (const animation of (window as any).__contentMotion.captures.at(-1))
-          animation.currentTime = 179.999;
-      });
+      await expectTitlesCentered(page);
+
+      expect(
+        await page.evaluate(async () => {
+          const { runningTerminal } = await import("/src/terminal-runtime.ts");
+          return (window as any).__contentMotion.panes.every(
+            (pane: any) =>
+              runningTerminal(pane.id) === pane.runtime &&
+              document.querySelector(`[data-pane-id="${pane.id}"]`) ===
+                pane.element &&
+              pane.canvases.every(
+                (canvas: HTMLCanvasElement, canvasIndex: number) =>
+                  pane.runtime.host.querySelectorAll("canvas")[canvasIndex] ===
+                  canvas,
+              ),
+          );
+        }),
+      ).toBe(true);
+
+      await page.evaluate((start) => {
+        for (const { animation, duration } of (
+          window as any
+        ).__layoutMotion.records.slice(start))
+          animation.currentTime = duration - 0.001;
+      }, motionStart);
       const lastFrame = await stage.screenshot({
         path: info.outputPath(`${action}-last-frame.png`),
       });
-      await finishMotion(page);
-      await expect(page.locator("html")).not.toHaveClass(/moving-panes/);
+      const geometryAtLastFrame = await finalFrameGeometry(page, motionStart);
+      expect(geometryAtLastFrame.retainedTargets).toBe(0);
+      expect(
+        geometryAtLastFrame.terminalTargets.every(
+          (target) => target.motionCount === 0 && target.transform === "none",
+        ),
+      ).toBe(true);
+      for (const effect of geometryAtLastFrame.effects) {
+        expect(Math.abs(effect.x)).toBeLessThan(0.1);
+        expect(Math.abs(effect.y)).toBeLessThan(0.1);
+        expect(effect.scaleX).toBeCloseTo(1, 3);
+        expect(effect.scaleY).toBeCloseTo(1, 3);
+        expect(effect.opacity).toBeGreaterThan(0.99);
+      }
+      const recordCount = await layoutMotionCount(page);
+      await finishLayoutMotion(page, motionStart);
+      expect(await layoutMotionCount(page)).toBe(recordCount);
+      const geometryAfterFinish = await finalFrameGeometry(page, motionStart);
+      expect(geometryAfterFinish.retainedTargets).toBe(0);
+      expect(
+        geometryAfterFinish.terminalTargets.every(
+          (target) => target.motionCount === 0 && target.transform === "none",
+        ),
+      ).toBe(true);
+      if (renderer === "DOM") {
+        expect(geometryAtLastFrame.rows).toHaveLength(
+          geometryAfterFinish.rows.length,
+        );
+        for (const [rowIndex, row] of geometryAtLastFrame.rows.entries())
+          for (const dimension of ["x", "y", "width", "height"] as const)
+            expect(row[dimension]).toBeCloseTo(
+              geometryAfterFinish.rows[rowIndex][dimension],
+              1,
+            );
+      }
       const settled = await stage.screenshot({
         path: info.outputPath(`${action}-settled.png`),
       });
-      expect(await changedPixels(page, lastFrame, settled)).toBeLessThan(0.015);
+      if (renderer === "WebGL")
+        expect(await changedPixels(page, lastFrame, settled)).toBeLessThan(
+          0.015,
+        );
+      const dimensionsSettled = await paneDimensions(page);
+      for (const [paneIndex, pane] of dimensionsSettled.entries()) {
+        expect(pane.width).toBeCloseTo(dimensionsDuring[paneIndex].width, 1);
+        expect(pane.height).toBeCloseTo(dimensionsDuring[paneIndex].height, 1);
+      }
+      await expectTitlesCentered(page);
     }
   });
 }
 
-test("sidebar changes requested halfway through motion finish continuously and keep the latest target", async ({
+test("sidebar toggles update the target immediately, cancel paused effects, and do not queue work", async ({
   page,
 }) => {
   await prepare(page);
   const source = page.getByRole("button", { name: /^Toggle source control/ });
+
   await source.click();
-  await waitMotion(page, 1);
-  const before = await page.locator(".terminal-layout").screenshot();
-  await source.evaluate((button) => {
-    button.click();
-    button.click();
-    button.click();
-  });
-  const after = await page.locator(".terminal-layout").screenshot();
-  expect(await changedPixels(page, before, after)).toBeLessThan(0.001);
-  expect(
-    await page.evaluate(() => ({
-      starts: (window as any).__contentMotion.starts,
-      skips: (window as any).__contentMotion.skips,
-    })),
-  ).toEqual({ starts: 1, skips: 0 });
-  await finishMotion(page);
-  await waitMotion(page, 2);
-  await finishMotion(page);
-  await expect(page.locator("html")).not.toHaveClass(/moving-panes/);
+  await expect.poll(() => layoutMotionCount(page)).toBeGreaterThan(0);
+  await expect(
+    page.getByRole("complementary", { name: "Source Control", exact: true }),
+  ).toBeVisible();
+  const firstEnd = await layoutMotionCount(page);
+  const opened = await page.screenshot();
+
+  await source.click();
   await expect(
     page.getByRole("complementary", { name: "Source Control", exact: true }),
   ).toHaveCount(0);
-  await page.getByRole("button", { name: /^Toggle file explorer/ }).click();
-  await waitMotion(page, 3);
-  await finishMotion(page);
-  await expect(page.locator("html")).not.toHaveClass(/moving-panes/);
+  await expect.poll(() => layoutMotionCount(page)).toBeGreaterThan(firstEnd);
+  const secondEnd = await layoutMotionCount(page);
+  expect(
+    (await layoutMotionRecords(page, 0))
+      .slice(0, firstEnd)
+      .every((record) => record.playState === "idle"),
+  ).toBe(true);
+  const closed = await page.screenshot();
+  expect(await changedPixels(page, opened, closed)).toBeGreaterThan(0.01);
+
   await source.click();
   await expect(
     page.getByRole("complementary", { name: "Source Control", exact: true }),
   ).toBeVisible();
+  await expect.poll(() => layoutMotionCount(page)).toBeGreaterThan(secondEnd);
+  const latestEnd = await layoutMotionCount(page);
   expect(
-    await page.evaluate(() => (window as any).__contentMotion.starts),
-  ).toBe(3);
+    (await layoutMotionRecords(page, firstEnd))
+      .slice(0, secondEnd - firstEnd)
+      .every((record) => record.playState === "idle"),
+  ).toBe(true);
+
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
+  expect(await layoutMotionCount(page)).toBe(latestEnd);
+  await finishLayoutMotion(page, secondEnd);
+  await expect(
+    page.getByRole("complementary", { name: "Source Control", exact: true }),
+  ).toBeVisible();
 });
 
-test("switching tabs cancels pending sidebar motion without rendering the old tab again", async ({
+test("switching tabs cancels sidebar motion without restoring its prior target", async ({
   page,
 }) => {
   await prepare(page);
   const original = await page.getByRole("tab").getAttribute("id");
   const source = page.getByRole("button", { name: /^Toggle source control/ });
   await source.click();
-  await waitMotion(page, 1);
+  await expect.poll(() => layoutMotionCount(page)).toBeGreaterThan(0);
   await source.click();
+  await expect(
+    page.getByRole("complementary", { name: "Source Control", exact: true }),
+  ).toHaveCount(0);
+  const motionCount = await layoutMotionCount(page);
   await page.keyboard.press("Control+Shift+t");
   await expect(page.getByRole("tab")).toHaveCount(2);
   await expect(page.getByRole("tab", { selected: true })).not.toHaveAttribute(
     "id",
     original!,
   );
-  await expect(page.locator("html")).not.toHaveClass(/moving-panes/);
   await expect(page.locator(".xterm-screen")).toHaveCount(1);
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
   expect(
-    await page.evaluate(() => (window as any).__contentMotion.starts),
-  ).toBe(1);
+    (await layoutMotionRecords(page, 0)).every(
+      (record) => record.playState === "idle",
+    ),
+  ).toBe(true);
+  expect(await layoutMotionCount(page)).toBe(motionCount);
   await expect(
     page.getByRole("complementary", { name: "Source Control", exact: true }),
   ).toHaveCount(0);
 });
 
-test("a command finishing during sidebar motion hides its heading without interrupting the transition", async ({
+test("a command finishing during sidebar motion updates its heading and controls live", async ({
   page,
 }) => {
   const ids = await prepare(page);
   const pane = page.locator(`[data-pane-id="${ids[0]}"]`);
   await page.getByRole("button", { name: /^Toggle source control/ }).click();
-  await waitMotion(page, 1);
+  await expect.poll(() => layoutMotionCount(page)).toBeGreaterThan(0);
   await page.evaluate(async (id) => {
     const { runningTerminal } = await import("/src/terminal-runtime.ts");
     (window as any).__nativeTest.emit(
@@ -324,12 +490,5 @@ test("a command finishing during sidebar motion hides its heading without interr
   await expect(
     pane.getByRole("button", { name: "Maximize terminal" }),
   ).toHaveCount(0);
-  await expect(page.locator("html")).toHaveClass(/moving-sidebars/);
-  expect(
-    await pane
-      .locator(".terminal-title-box")
-      .evaluate((element) => element.style.viewTransitionName),
-  ).not.toBe("");
-  await finishMotion(page);
-  await expect(page.locator("html")).not.toHaveClass(/moving-panes/);
+  await finishLayoutMotion(page);
 });

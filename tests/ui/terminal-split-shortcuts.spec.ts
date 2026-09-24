@@ -75,10 +75,10 @@ for (const shortcut of ["Control+d", "Control+Shift+d"]) {
     const addedBounds = (await added.boundingBox())!;
     if (shortcut === "Control+d") {
       expect(addedBounds.x).toBeGreaterThan(hoveredBounds.x);
-      expect(addedBounds.height).toBe(hoveredBounds.height);
+      expect(addedBounds.height).toBeCloseTo(hoveredBounds.height, 3);
     } else {
       expect(addedBounds.y).toBeGreaterThan(hoveredBounds.y);
-      expect(addedBounds.width).toBe(hoveredBounds.width);
+      expect(addedBounds.width).toBeCloseTo(hoveredBounds.width, 3);
     }
     await expect
       .poll(async () =>

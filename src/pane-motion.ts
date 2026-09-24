@@ -1,25 +1,98 @@
 import { useCallback, useLayoutEffect, useRef } from "react";
 import { flushSync } from "react-dom";
 import type { RefObject } from "react";
+import { synchronizeVisibleTerminalFits } from "./terminal-runtime";
 
 type Motion = "panes" | "sidebars" | false;
+type PaneRect = Pick<DOMRect, "left" | "top" | "width" | "height">;
+type MotionTarget = { element: HTMLElement; rect: PaneRect };
+type MotionRun = {
+  animations: Set<Animation>;
+  willChange: Map<HTMLElement, string>;
+  cancelled: boolean;
+};
 
-export function usePaneMotion(
-  root: RefObject<HTMLDivElement | null>,
-  tabId: string | undefined,
-) {
-  const pending = useRef<(() => void) | null>(null);
-  const finishMotion = useRef<(() => void) | null>(null);
-  const queued = useRef<{ render: () => void; motion: Motion } | null>(null);
-  const sidebarMotion = useRef(false);
-  useLayoutEffect(() => () => finishMotion.current?.(), [tabId]);
-  useLayoutEffect(
-    () => () => {
-      pending.current = null;
-      queued.current = null;
-    },
-    [],
-  );
+const MOTION_ID = "lomi-layout-motion";
+const MOTION_DURATION = 120;
+const MOTION_EASING = "cubic-bezier(0.2, 0.7, 0.2, 1)";
+// Dockview measures its hosts to maintain split ratios; animate only their contents.
+const MOTION_TARGETS =
+  ".dock-pane-host > .split-child, .sidebar, .split-divider, .sidebar-divider";
+
+function collectTargets(root: HTMLElement): MotionTarget[] {
+  return [...root.querySelectorAll<HTMLElement>(MOTION_TARGETS)]
+    .filter(
+      (element) =>
+        !element.matches(".browser-pane") &&
+        !element.querySelector(".browser-pane"),
+    )
+    .map((element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        element,
+        rect: {
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+          height: rect.height,
+        },
+      };
+    });
+}
+
+function clamp(value: number, limit: number) {
+  return Math.max(-limit, Math.min(limit, value));
+}
+
+function retainedOffset(from: PaneRect, to: PaneRect) {
+  return {
+    x: clamp(from.left - to.left + (from.width - to.width) * 0.04, 8),
+    y: clamp(from.top - to.top + (from.height - to.height) * 0.04, 8),
+  };
+}
+
+function enteringOffset(element: HTMLElement) {
+  const sidebar = element.matches(".sidebar")
+    ? element
+    : element.previousElementSibling instanceof HTMLElement &&
+        element.previousElementSibling.matches(".sidebar")
+      ? element.previousElementSibling
+      : null;
+  if (sidebar)
+    return {
+      x: sidebar.dataset.side === "left" ? -6 : 6,
+      y: 0,
+    };
+  return { x: 0, y: 6 };
+}
+
+function translate(x: number, y: number) {
+  return `translate3d(${x}px, ${y}px, 0)`;
+}
+
+export function usePaneMotion(root: RefObject<HTMLDivElement | null>) {
+  const activeRun = useRef<MotionRun | null>(null);
+
+  const clearRun = useCallback((run: MotionRun) => {
+    if (activeRun.current === run) activeRun.current = null;
+    run.cancelled = true;
+    for (const animation of run.animations) {
+      animation.onfinish = null;
+      animation.oncancel = null;
+      animation.cancel();
+    }
+    run.animations.clear();
+    for (const [element, previous] of run.willChange)
+      element.style.willChange = previous;
+    run.willChange.clear();
+  }, []);
+
+  const cancelCurrent = useCallback(() => {
+    const run = activeRun.current;
+    if (run) clearRun(run);
+  }, [clearRun]);
+
+  useLayoutEffect(() => () => cancelCurrent(), [cancelCurrent]);
 
   return useCallback(
     function renderLayout(
@@ -27,92 +100,114 @@ export function usePaneMotion(
       motion: Motion = false,
       interrupt = false,
     ) {
-      // State changes remain synchronous; renders queued during capture use the latest state.
-      if (interrupt) {
-        queued.current = null;
-        finishMotion.current?.();
-      }
-      if (pending.current) {
-        pending.current = render;
+      if (interrupt) cancelCurrent();
+      if (!motion) {
+        render();
         return;
       }
-      // Complete sidebar motion before capturing another layout, keeping its visible
-      // geometry continuous. Only the latest requested layout needs to be rendered.
-      if (sidebarMotion.current && (motion || queued.current)) {
-        queued.current = { render, motion: motion || queued.current!.motion };
-        return;
-      }
+
       const container = root.current;
-      if (
-        !motion ||
-        !container ||
-        !document.startViewTransition ||
-        matchMedia("(prefers-reduced-motion: reduce)").matches
-      ) {
-        render();
+      const reducedMotion =
+        typeof matchMedia === "function" &&
+        matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (!container) {
+        cancelCurrent();
+        flushSync(render);
         return;
       }
-      finishMotion.current?.();
-      const selector =
-        ".dock-pane-host > .split-child, .split-container > .split-divider" +
-        (motion === "sidebars" ? ", .terminal-title-box" : "");
-      const panels = [...container.querySelectorAll<HTMLElement>(selector)];
-      if (!panels.length) {
-        render();
+      if (reducedMotion || typeof container.animate !== "function") {
+        cancelCurrent();
+        flushSync(render);
+        synchronizeVisibleTerminalFits(container);
         return;
       }
-      const names = panels.map((panel) => panel.style.viewTransitionName);
-      panels.forEach((panel, index) => {
-        panel.style.viewTransitionName = `terminal-pane-${index}`;
-      });
-      document.documentElement.classList.add("moving-panes");
-      sidebarMotion.current = motion === "sidebars";
-      document.documentElement.classList.toggle(
-        "moving-sidebars",
-        sidebarMotion.current,
+
+      const previousTargets = collectTargets(container);
+      const previousRects = new Map(
+        previousTargets.map(({ element, rect }) => [element, rect]),
       );
-      pending.current = render;
-      // Animate captured panels while xterm fits each live terminal only to its final size.
-      const transition = document.startViewTransition(() => {
-        const render = pending.current;
-        pending.current = null;
-        if (render) flushSync(render);
-        if (finishMotion.current !== cancel) return;
-        // New panels and dividers join the transition instead of appearing behind it.
-        for (const panel of container.querySelectorAll<HTMLElement>(selector)) {
-          if (panels.includes(panel)) continue;
-          names.push(panel.style.viewTransitionName);
-          panel.style.viewTransitionName = `terminal-pane-${panels.length}`;
-          panels.push(panel);
-        }
+      // A new request starts from the current visual geometry of the old motion.
+      cancelCurrent();
+      flushSync(render);
+
+      const nextTargets = collectTargets(container);
+      // Queue xterm's render for this frame before motion writes can change its glyph rasterization.
+      synchronizeVisibleTerminalFits(container);
+      const plans = nextTargets.flatMap(({ element, rect }) => {
+        const previous = previousRects.get(element);
+        if (
+          previous &&
+          element.matches(".dock-pane-host > .split-child") &&
+          element.querySelector(".terminal-pane[data-pane-id]")
+        )
+          return [];
+        const offset = previous
+          ? retainedOffset(previous, rect)
+          : enteringOffset(element);
+        if (previous && Math.abs(offset.x) < 0.1 && Math.abs(offset.y) < 0.1)
+          return [];
+        return [
+          {
+            element,
+            from: translate(offset.x, offset.y),
+            opacity: previous ? "1" : "0",
+          },
+        ];
       });
-      const clean = () => {
-        if (finishMotion.current !== cancel) return;
-        panels.forEach((panel, index) => {
-          panel.style.viewTransitionName = names[index];
-        });
-        document.documentElement.classList.remove(
-          "moving-panes",
-          "moving-sidebars",
-        );
-        sidebarMotion.current = false;
-        finishMotion.current = null;
+      if (!plans.length) return;
+
+      const run: MotionRun = {
+        animations: new Set(),
+        willChange: new Map(),
+        cancelled: false,
       };
-      const cancel = () => {
-        transition.skipTransition();
-        clean();
-      };
-      finishMotion.current = cancel;
-      void transition.ready.catch(() => {});
-      const finished = () => {
-        if (finishMotion.current !== cancel) return;
-        clean();
-        const next = queued.current;
-        queued.current = null;
-        if (next) renderLayout(next.render, next.motion);
-      };
-      void transition.finished.then(finished, finished);
+      activeRun.current = run;
+      for (const plan of plans) {
+        const { element } = plan;
+        const previousWillChange = element.style.willChange;
+        run.willChange.set(element, previousWillChange);
+        element.style.willChange = "transform, opacity";
+        let animation: Animation;
+        try {
+          animation = element.animate(
+            [
+              { transform: plan.from, opacity: plan.opacity },
+              { transform: translate(0, 0), opacity: "1" },
+            ],
+            {
+              id: MOTION_ID,
+              duration: MOTION_DURATION,
+              easing: MOTION_EASING,
+              fill: "both",
+            },
+          );
+        } catch {
+          element.style.willChange = previousWillChange;
+          run.willChange.delete(element);
+          continue;
+        }
+        run.animations.add(animation);
+        const finish = () => {
+          if (run.cancelled || activeRun.current !== run) return;
+          animation.onfinish = null;
+          animation.oncancel = null;
+          animation.cancel();
+          run.animations.delete(animation);
+          element.style.willChange = previousWillChange;
+          run.willChange.delete(element);
+          if (run.animations.size === 0) {
+            activeRun.current = null;
+            run.willChange.clear();
+          }
+        };
+        animation.onfinish = finish;
+        animation.oncancel = finish;
+      }
+      if (run.animations.size === 0) {
+        activeRun.current = null;
+        run.willChange.clear();
+      }
     },
-    [root],
+    [cancelCurrent, root],
   );
 }

@@ -17,9 +17,10 @@ for (const mode of ["WebGL", "DOM", "reduced motion"] as const) {
       HTMLElement.prototype.animate = function (...args) {
         const animation = animate.apply(this, args);
         if (this.classList.contains("terminal-host")) {
+          const duration = Number(animation.effect?.getTiming().duration ?? 0);
           animation.pause();
-          animation.currentTime = 90;
-          desktop.__entrances.push(animation);
+          animation.currentTime = duration / 2;
+          desktop.__entrances.push({ animation, duration });
         }
         return animation;
       };
@@ -75,6 +76,9 @@ for (const mode of ["WebGL", "DOM", "reduced motion"] as const) {
       await expect
         .poll(() => page.evaluate(() => (window as any).__entrances.length))
         .toBe(1);
+      expect(
+        await page.evaluate(() => (window as any).__entrances[0].duration),
+      ).toBeLessThanOrEqual(100);
       const opacity = Number(
         await host.evaluate((host) => getComputedStyle(host).opacity),
       );
@@ -83,7 +87,9 @@ for (const mode of ["WebGL", "DOM", "reduced motion"] as const) {
       await host.screenshot({
         path: testInfo.outputPath(`terminal-opening-${mode}.png`),
       });
-      await page.evaluate(() => (window as any).__entrances[0].finish());
+      await page.evaluate(() =>
+        (window as any).__entrances[0].animation.finish(),
+      );
       await expect(host).toHaveCSS("opacity", "1");
     }
     await page.evaluate(() => {
@@ -101,7 +107,7 @@ for (const mode of ["WebGL", "DOM", "reduced motion"] as const) {
       const runtime = runningTerminal(id)!;
       return {
         animations: (window as any).__entrances.filter(
-          (animation: Animation) =>
+          ({ animation }: { animation: Animation }) =>
             (animation.effect as KeyframeEffect).target === runtime.host,
         ).length,
         active: runtime.host.getAnimations().length,

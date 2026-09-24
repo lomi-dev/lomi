@@ -2,11 +2,16 @@ import { expect, test } from "@playwright/test";
 import { newId, newPane, newProject, newSession, panes } from "../../src/model";
 import type { Layout } from "../../src/model";
 import { buffer, mockDesktop } from "./desktop";
+import {
+  captureLayoutMotion,
+  finishLayoutMotion,
+  layoutMotionCount,
+} from "./layout-motion";
 
 test.use({ colorScheme: "dark" });
 
 for (const depth of [0, 3]) {
-  test(`splitting and closing animate ${2 ** depth + 1} terminals without replacing mounts or renderers`, async ({
+  test(`splitting and closing preserve ${2 ** depth + 1} terminal mounts and renderers`, async ({
     page,
   }, testInfo) => {
     await page.emulateMedia({ reducedMotion: "no-preference" });
@@ -86,24 +91,6 @@ for (const depth of [0, 3]) {
           ]),
         ),
       };
-      const start = document.startViewTransition.bind(document);
-      document.startViewTransition = (update) => {
-        const transition = start(update);
-        void transition.ready.then(() => {
-          desktop.__layoutTest.animations = document
-            .getAnimations()
-            .filter((animation) =>
-              (animation.effect as KeyframeEffect).pseudoElement?.startsWith(
-                "::view-transition",
-              ),
-            );
-          for (const animation of desktop.__layoutTest.animations) {
-            animation.pause();
-            animation.currentTime = 90;
-          }
-        });
-        return transition;
-      };
       for (const method of ["attach", "detach", "dispose"] as const) {
         const original = TerminalRuntime.prototype[method];
         TerminalRuntime.prototype[method] = function (...args: any[]) {
@@ -122,36 +109,128 @@ for (const depth of [0, 3]) {
         "\r\nPreserved output 🦀\r\n",
       );
     }, ids);
+    await captureLayoutMotion(page);
     await expect
       .poll(() => buffer(page, ids[1]))
       .toContain("Preserved output 🦀");
+    const closeStart = await layoutMotionCount(page);
     await page.keyboard.press("Control+w");
     await expect(page.locator("[data-pane-id]")).toHaveCount(ids.length - 1);
-    await expect
-      .poll(() =>
-        page.evaluate(
-          () => (window as any).__layoutTest.animations?.length ?? 0,
-        ),
-      )
-      .toBeGreaterThan(0);
-    const widths = await page.evaluate(() =>
-      [...(window as any).__layoutTest.panes].slice(1).map(([, pane]: any) => {
-        const panel = pane.element.parentElement;
-        const motion = getComputedStyle(
-          document.documentElement,
-          `::view-transition-group(${panel.style.viewTransitionName})`,
-        );
+    const closeMotion = await page.evaluate((start) => {
+      const state = (window as any).__layoutTest;
+      const geometry = [...state.panes].slice(1).map(([id, pane]: any) => {
+        const panel = pane.element.parentElement as HTMLElement;
         return {
-          before: pane.width,
-          during: parseFloat(motion.width),
-          after: panel.getBoundingClientRect().width,
+          id,
+          left: panel.offsetLeft,
+          top: panel.offsetTop,
+          width: panel.offsetWidth,
+          height: panel.offsetHeight,
+          opacity: getComputedStyle(pane.element).opacity,
         };
-      }),
-    );
-    for (const width of widths) {
-      expect(width.during).toBeGreaterThan(width.before);
-      expect(width.during).toBeLessThan(width.after);
+      });
+      const readTransform = (value: string) =>
+        value === "none"
+          ? new DOMMatrixReadOnly()
+          : new DOMMatrixReadOnly(value);
+      const animations = (window as any).__layoutMotion.records
+        .slice(start)
+        .map(({ animation }: { animation: Animation }) => {
+          const effect = animation.effect as KeyframeEffect;
+          const target = effect.target as HTMLElement;
+          const style = getComputedStyle(target);
+          const matrix = readTransform(style.transform);
+          const translate = style.translate
+            .split(/\s+/)
+            .filter(Boolean)
+            .map((value) => parseFloat(value) || 0);
+          const keyframes = effect.getKeyframes().map((frame) => {
+            const transform = readTransform(String(frame.transform ?? "none"));
+            const frameTranslate = String(frame.translate ?? "none")
+              .split(/\s+/)
+              .filter(Boolean)
+              .map((value) => parseFloat(value) || 0);
+            return {
+              hasScale: "scale" in frame,
+              transformText: String(frame.transform ?? ""),
+              opacity: String(frame.opacity),
+              x: transform.e + (frameTranslate[0] ?? 0),
+              y: transform.f + (frameTranslate[1] ?? 0),
+            };
+          });
+          return {
+            id: animation.id,
+            currentTime: Number(animation.currentTime),
+            playState: animation.playState,
+            duration: Number(effect.getTiming().duration),
+            targetContainsRetained: [...state.panes]
+              .slice(1)
+              .some(
+                ([, pane]: any) =>
+                  pane.element.isConnected &&
+                  (target === pane.element || target.contains(pane.element)),
+              ),
+            keyframes,
+            x: matrix.e + (translate[0] ?? 0),
+            y: matrix.f + (translate[1] ?? 0),
+            scaleX: Math.hypot(matrix.a, matrix.b),
+            scaleY: Math.hypot(matrix.c, matrix.d),
+          };
+        });
+      const terminalTargets = [
+        ...document.querySelectorAll<HTMLElement>(
+          ".dock-pane-host > .split-child",
+        ),
+      ]
+        .filter((element) =>
+          element.querySelector(".terminal-pane[data-pane-id]"),
+        )
+        .map((element) => ({
+          transform: getComputedStyle(element).transform,
+          motionCount: element
+            .getAnimations()
+            .filter((animation) => animation.id === "lomi-layout-motion")
+            .length,
+        }));
+      return { geometry, animations, terminalTargets };
+    }, closeStart);
+    expect(
+      closeMotion.animations.every(
+        (animation) => !animation.targetContainsRetained,
+      ),
+    ).toBe(true);
+    expect(
+      closeMotion.terminalTargets.every(
+        (target) => target.motionCount === 0 && target.transform === "none",
+      ),
+    ).toBe(true);
+    for (const animation of closeMotion.animations) {
+      expect(animation.id).toBe("lomi-layout-motion");
+      expect(animation.playState).toBe("paused");
+      expect(animation.currentTime).toBeCloseTo(animation.duration / 2, 0);
+      expect(animation.duration).toBeGreaterThan(0);
+      expect(animation.duration).toBeLessThanOrEqual(120);
+      expect(animation.keyframes.every((frame) => !frame.hasScale)).toBe(true);
+      expect(animation.keyframes.every((frame) => frame.opacity === "1")).toBe(
+        true,
+      );
+      expect(
+        animation.keyframes.every(
+          (frame) => !/scale\s*\(/i.test(frame.transformText),
+        ),
+      ).toBe(true);
+      expect(animation.scaleX).toBeCloseTo(1, 2);
+      expect(animation.scaleY).toBeCloseTo(1, 2);
+      expect(Math.abs(animation.x)).toBeLessThanOrEqual(8.1);
+      expect(Math.abs(animation.y)).toBeLessThanOrEqual(8.1);
+      for (const frame of animation.keyframes) {
+        expect(Math.abs(frame.x)).toBeLessThanOrEqual(8.1);
+        expect(Math.abs(frame.y)).toBeLessThanOrEqual(8.1);
+      }
     }
+    expect(closeMotion.geometry.every((pane) => pane.opacity === "1")).toBe(
+      true,
+    );
     await page.evaluate(() => {
       const state = (window as any).__layoutTest;
       const pane = [...state.panes.values()][1] as any;
@@ -166,13 +245,10 @@ for (const depth of [0, 3]) {
     await page.screenshot({
       path: testInfo.outputPath("terminal-close-midpoint.png"),
     });
-    await page.evaluate(() => {
-      for (const animation of (window as any).__layoutTest.animations)
-        animation.finish();
-    });
-    await expect(page.locator("html")).not.toHaveClass(/moving-panes/);
-    const closing = await page.evaluate(() => {
+    await finishLayoutMotion(page, closeStart);
+    const closing = await page.evaluate(async (expectedGeometry) => {
       const state = (window as any).__layoutTest;
+      const { runningTerminal } = await import("/src/terminal-runtime.ts");
       return {
         calls: state.calls,
         preserved: [...state.panes].slice(1).every(([id, pane]: any) => {
@@ -182,6 +258,7 @@ for (const depth of [0, 3]) {
           );
           return (
             pane.element === element &&
+            pane.runtime === runningTerminal(id) &&
             pane.canvases.length === canvases?.length &&
             pane.canvases.every(
               (canvas: HTMLCanvasElement, index: number) =>
@@ -189,9 +266,32 @@ for (const depth of [0, 3]) {
             )
           );
         }),
+        geometryStable: expectedGeometry.every((expected: any) => {
+          const panel = document.querySelector(
+            `[data-pane-id="${expected.id}"]`,
+          )?.parentElement as HTMLElement | null;
+          return (
+            panel?.offsetLeft === expected.left &&
+            panel?.offsetTop === expected.top &&
+            panel?.offsetWidth === expected.width &&
+            panel?.offsetHeight === expected.height
+          );
+        }),
       };
-    });
+    }, closeMotion.geometry);
     expect(closing.preserved).toBe(true);
+    expect(closing.geometryStable).toBe(true);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          (start) =>
+            (window as any).__layoutMotion.records
+              .slice(start)
+              .every((record: any) => record.animation.playState === "idle"),
+          closeStart,
+        ),
+      )
+      .toBe(true);
     expect(closing.calls.filter((call: any) => call.id !== closed.id)).toEqual(
       [],
     );
@@ -207,67 +307,143 @@ for (const depth of [0, 3]) {
       .toBe(1);
     await page.evaluate(() => {
       (window as any).__layoutTest.calls = [];
-      (window as any).__layoutTest.animations = [];
     });
+    const splitStart = await layoutMotionCount(page);
     await page.keyboard.press("Control+d");
     await expect(page.locator("[data-pane-id]")).toHaveCount(ids.length);
     await expect
-      .poll(() =>
-        page.evaluate(() => (window as any).__layoutTest.animations.length),
-      )
-      .toBeGreaterThan(0);
-    const entering = await page.evaluate(() => {
-      const panes = (window as any).__layoutTest.panes;
-      const panel = [
-        ...document.querySelectorAll<HTMLElement>("[data-pane-id]"),
-      ].find((pane) => !panes.has(pane.dataset.paneId))!.parentElement!;
-      return {
-        name: panel.style.viewTransitionName,
-        opacity: Number(
-          getComputedStyle(
-            document.documentElement,
-            `::view-transition-new(${panel.style.viewTransitionName})`,
-          ).opacity,
-        ),
-      };
-    });
-    expect(entering.name).not.toBe("");
-    expect(entering.opacity).toBeGreaterThan(0);
-    expect(entering.opacity).toBeLessThan(1);
-    const retained = await page.evaluate(() => {
+      .poll(() => layoutMotionCount(page))
+      .toBeGreaterThan(splitStart);
+    const opening = await page.evaluate((start) => {
       const state = (window as any).__layoutTest;
-      return [0, 45, 90, 135, 179].map((time) => {
-        for (const animation of state.animations) animation.currentTime = time;
-        return [...state.panes.values()].slice(1).map((pane: any) => {
-          const name = pane.element.parentElement.style.viewTransitionName;
-          const old = getComputedStyle(
-            document.documentElement,
-            `::view-transition-old(${name})`,
-          );
-          const next = getComputedStyle(
-            document.documentElement,
-            `::view-transition-new(${name})`,
-          );
-          return { opacity: old.opacity, replacement: next.opacity };
+      const panes = [
+        ...document.querySelectorAll<HTMLElement>("[data-pane-id]"),
+      ];
+      const entering = panes.find(
+        (pane) => !state.panes.has(pane.dataset.paneId),
+      );
+      if (!entering) throw new Error("Expected the new pane to be mounted");
+      const readTransform = (value: string) =>
+        value === "none"
+          ? new DOMMatrixReadOnly()
+          : new DOMMatrixReadOnly(value);
+      const animations = (window as any).__layoutMotion.records
+        .slice(start)
+        .map(({ animation }: { animation: Animation }) => {
+          const effect = animation.effect as KeyframeEffect;
+          const target = effect.target as HTMLElement;
+          const style = getComputedStyle(target);
+          const matrix = readTransform(style.transform);
+          const translate = style.translate
+            .split(/\s+/)
+            .filter(Boolean)
+            .map((value) => parseFloat(value) || 0);
+          const keyframes = effect.getKeyframes().map((frame) => {
+            const transform = readTransform(String(frame.transform ?? "none"));
+            const frameTranslate = String(frame.translate ?? "none")
+              .split(/\s+/)
+              .filter(Boolean)
+              .map((value) => parseFloat(value) || 0);
+            return {
+              hasScale:
+                "scale" in frame ||
+                /scale\s*\(/i.test(String(frame.transform ?? "")),
+              x: transform.e + (frameTranslate[0] ?? 0),
+              y: transform.f + (frameTranslate[1] ?? 0),
+            };
+          });
+          return {
+            id: animation.id,
+            currentTime: Number(animation.currentTime),
+            playState: animation.playState,
+            duration: Number(effect.getTiming().duration),
+            targetContainsEntering:
+              target === entering || target.contains(entering),
+            targetContainsRetained: [...state.panes.values()].some(
+              (pane: any) =>
+                pane.element.isConnected &&
+                (target === pane.element || target.contains(pane.element)),
+            ),
+            opacity: Number(style.opacity),
+            opacityFrames: effect
+              .getKeyframes()
+              .filter((frame) => frame.opacity !== undefined)
+              .map((frame) => Number(frame.opacity)),
+            hasScale: effect
+              .getKeyframes()
+              .some(
+                (frame) =>
+                  "scale" in frame ||
+                  /scale\s*\(/i.test(String(frame.transform ?? "")),
+              ),
+            x: matrix.e + (translate[0] ?? 0),
+            y: matrix.f + (translate[1] ?? 0),
+            scaleX: Math.hypot(matrix.a, matrix.b),
+            scaleY: Math.hypot(matrix.c, matrix.d),
+            keyframes,
+          };
         });
-      });
-    });
-    for (const frame of retained)
-      for (const pane of frame)
-        expect(pane).toEqual({ opacity: "1", replacement: "0" });
-    await page.evaluate(() => {
-      for (const animation of (window as any).__layoutTest.animations)
-        animation.currentTime = 90;
-    });
+      return {
+        animations,
+        geometry: [...state.panes]
+          .filter(([, pane]: any) => pane.element.isConnected)
+          .map(([id, pane]: any) => {
+            const panel = pane.element.parentElement as HTMLElement;
+            return {
+              id,
+              left: panel.offsetLeft,
+              top: panel.offsetTop,
+              width: panel.offsetWidth,
+              height: panel.offsetHeight,
+            };
+          }),
+        retainedOpacity: [...state.panes.values()]
+          .filter((pane: any) => pane.element.isConnected)
+          .map((pane: any) => getComputedStyle(pane.element).opacity),
+      };
+    }, splitStart);
+    const enteringAnimation = opening.animations.find(
+      (animation) =>
+        animation.targetContainsEntering &&
+        animation.opacityFrames[0] === 0 &&
+        animation.opacityFrames.at(-1) === 1,
+    );
+    expect(enteringAnimation).toBeDefined();
+    expect(enteringAnimation!.targetContainsRetained).toBe(false);
+    expect(enteringAnimation!.duration).toBeGreaterThan(0);
+    expect(enteringAnimation!.duration).toBeLessThanOrEqual(120);
+    expect(enteringAnimation!.opacity).toBeGreaterThan(0);
+    expect(enteringAnimation!.opacity).toBeLessThan(1);
+    expect(Math.abs(enteringAnimation!.x)).toBeLessThanOrEqual(8.1);
+    expect(Math.abs(enteringAnimation!.y)).toBeLessThanOrEqual(8.1);
+    expect(enteringAnimation!.hasScale).toBe(false);
+    expect(enteringAnimation!.scaleX).toBeCloseTo(1, 2);
+    expect(enteringAnimation!.scaleY).toBeCloseTo(1, 2);
+    for (const animation of opening.animations) {
+      expect(animation.id).toBe("lomi-layout-motion");
+      expect(animation.playState).toBe("paused");
+      expect(animation.currentTime).toBeCloseTo(animation.duration / 2, 0);
+      expect(animation.duration).toBeGreaterThan(0);
+      expect(animation.duration).toBeLessThanOrEqual(120);
+      expect(animation.hasScale).toBe(false);
+      expect(animation.scaleX).toBeCloseTo(1, 2);
+      expect(animation.scaleY).toBeCloseTo(1, 2);
+      expect(Math.abs(animation.x)).toBeLessThanOrEqual(8.1);
+      expect(Math.abs(animation.y)).toBeLessThanOrEqual(8.1);
+      for (const frame of animation.keyframes) {
+        expect(frame.hasScale).toBe(false);
+        expect(Math.abs(frame.x)).toBeLessThanOrEqual(8.1);
+        expect(Math.abs(frame.y)).toBeLessThanOrEqual(8.1);
+      }
+    }
+    expect(opening.retainedOpacity.every((opacity) => opacity === "1")).toBe(
+      true,
+    );
     await page.screenshot({
       path: testInfo.outputPath("terminal-open-midpoint.png"),
     });
-    await page.evaluate(() => {
-      for (const animation of (window as any).__layoutTest.animations)
-        animation.finish();
-    });
-    await expect(page.locator("html")).not.toHaveClass(/moving-panes/);
-    const splitting = await page.evaluate(() => {
+    await finishLayoutMotion(page, splitStart);
+    const splitting = await page.evaluate(async (expectedGeometry) => {
       const state = (window as any).__layoutTest;
       return {
         calls: state.calls,
@@ -285,9 +461,36 @@ for (const depth of [0, 3]) {
             )
           );
         }),
+        geometryStable: expectedGeometry.every((expected: any) => {
+          const panel = document.querySelector(
+            `[data-pane-id="${expected.id}"]`,
+          )?.parentElement as HTMLElement | null;
+          return (
+            panel?.offsetLeft === expected.left &&
+            panel?.offsetTop === expected.top &&
+            panel?.offsetWidth === expected.width &&
+            panel?.offsetHeight === expected.height
+          );
+        }),
+        retainedOpacity: [...state.panes.values()]
+          .filter((pane: any) => pane.element.isConnected)
+          .every((pane: any) => getComputedStyle(pane.element).opacity === "1"),
       };
-    });
+    }, opening.geometry);
     expect(splitting.preserved).toBe(true);
+    expect(splitting.geometryStable).toBe(true);
+    expect(splitting.retainedOpacity).toBe(true);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          (start) =>
+            (window as any).__layoutMotion.records
+              .slice(start)
+              .every((record: any) => record.animation.playState === "idle"),
+          splitStart,
+        ),
+      )
+      .toBe(true);
     expect(splitting.calls.some((call: any) => call.method === "attach")).toBe(
       true,
     );
@@ -309,6 +512,79 @@ for (const depth of [0, 3]) {
     await page.screenshot({
       path: testInfo.outputPath("terminal-layout-stable.png"),
     });
+
+    if (depth === 0) {
+      const retainedIds = ids.slice(1);
+      const expectedLayout = await page.evaluate(
+        () =>
+          JSON.parse(localStorage.getItem("test-session") ?? "null")
+            ?.projects[0].workspaces[0].tabs[0].layout,
+      );
+      const interruptStart = await layoutMotionCount(page);
+      await page.keyboard.press("Control+d");
+      await expect(page.locator("[data-pane-id]")).toHaveCount(ids.length + 1);
+      await expect
+        .poll(() => layoutMotionCount(page))
+        .toBeGreaterThan(interruptStart);
+      const interruptCloseStart = await layoutMotionCount(page);
+      await page.keyboard.press("Control+w");
+      await expect(page.locator("[data-pane-id]")).toHaveCount(ids.length);
+      expect(await layoutMotionCount(page)).toBe(interruptCloseStart);
+      await page.screenshot({
+        path: testInfo.outputPath("terminal-layout-interrupted-midpoint.png"),
+      });
+      await finishLayoutMotion(page, interruptStart);
+      await expect
+        .poll(() =>
+          page.evaluate(
+            (start) =>
+              (window as any).__layoutMotion.records
+                .slice(start)
+                .every((record: any) => record.animation.playState === "idle"),
+            interruptStart,
+          ),
+        )
+        .toBe(true);
+      expect(
+        await page.evaluate(async (retainedIds) => {
+          const { runningTerminal } = await import("/src/terminal-runtime.ts");
+          const state = (window as any).__layoutTest;
+          return retainedIds.every((id: string) => {
+            const pane = state.panes.get(id);
+            const element = document.querySelector(`[data-pane-id="${id}"]`);
+            const canvases = element?.querySelectorAll(
+              ".xterm-screen > canvas:not(.xterm-link-layer)",
+            );
+            return (
+              pane?.element === element &&
+              pane.runtime === runningTerminal(id) &&
+              pane.canvases.length === canvases?.length &&
+              pane.canvases.every(
+                (canvas: HTMLCanvasElement, index: number) =>
+                  canvas === canvases[index],
+              )
+            );
+          });
+        }, retainedIds),
+      ).toBe(true);
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () =>
+              (window as any).__nativeTest.calls.filter(
+                (call: any) => call.command === "close_terminal",
+              ).length,
+          ),
+        )
+        .toBe(2);
+      expect(
+        await page.evaluate(
+          () =>
+            JSON.parse(localStorage.getItem("test-session") ?? "null")
+              ?.projects[0].workspaces[0].tabs[0].layout,
+        ),
+      ).toEqual(expectedLayout);
+    }
   });
 }
 
