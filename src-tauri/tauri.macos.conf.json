@@ -37,6 +37,21 @@
   "bundle": {
     "macOS": {
       "hardenedRuntime": true,
+      "dmg": {
+        "background": "dmg/background.png",
+        "windowSize": {
+          "width": 720,
+          "height": 480
+        },
+        "appPosition": {
+          "x": 192,
+          "y": 312
+        },
+        "applicationFolderPosition": {
+          "x": 528,
+          "y": 312
+        }
+      },
       "files": {
         "Resources/Assets.car": "target/macos-icon/Assets.car"
       },

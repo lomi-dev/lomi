@@ -26,6 +26,7 @@
     "preview": "vite preview",
     "icon:macos": "node scripts/build-macos-icon.mjs",
     "icon:generate": "node scripts/generate-icons.mjs",
+    "dmg:background": "node scripts/generate-dmg-background.mjs",
     "release:check": "node scripts/check-release.mjs",
     "tauri": "tauri",
     "ai:prepare": "node scripts/prepare-ai-runtime.mjs",

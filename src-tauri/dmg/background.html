@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lomi disk image background</title>
+    <style>
+      @font-face {
+        font-family: Manrope;
+        src: url("../../public/fonts/manrope/Manrope.woff") format("woff");
+        font-style: normal;
+        font-weight: 200 800;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 720px;
+        height: 480px;
+        margin: 0;
+        overflow: hidden;
+      }
+
+      body {
+        position: relative;
+        color: #0b0d0c;
+        background: #f7f8f3;
+        font-family: Manrope, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .header {
+        position: absolute;
+        inset: 0 0 auto;
+        height: 208px;
+        background: #0b0d0c;
+      }
+
+      .wordmark {
+        position: absolute;
+        top: 22.83px;
+        left: 38.83px;
+        width: 132px;
+        height: auto;
+      }
+
+      .tagline {
+        position: absolute;
+        top: 104px;
+        left: 48px;
+        color: #f7f8f3;
+        font-size: 32px;
+        font-weight: 700;
+        line-height: 40px;
+      }
+
+      .instruction {
+        position: absolute;
+        top: 155px;
+        left: 48px;
+        color: #f7f8f3;
+        font-size: 16px;
+        font-weight: 400;
+        line-height: 24px;
+      }
+
+      .drop-arrow {
+        position: absolute;
+        top: 292px;
+        left: 328px;
+        display: grid;
+        width: 64px;
+        height: 40px;
+        place-items: center;
+        border-radius: 20px;
+        background: #c8ff3d;
+      }
+
+      .drop-arrow svg {
+        width: 24px;
+        height: 24px;
+        fill: none;
+        stroke: #0b0d0c;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 2;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="header">
+      <img
+        class="wordmark"
+        src="./lomi-primary-dark.svg"
+        alt=""
+        width="576"
+        height="282"
+      />
+      <div class="tagline">Create at your own pace.</div>
+      <div class="instruction">Drag Lomi to Applications.</div>
+    </header>
+    <div class="drop-arrow" aria-hidden="true">
+      <svg viewBox="0 0 24 24">
+        <path d="M4 12h15M13 5l7 7-7 7" />
+      </svg>
+    </div>
+  </body>
+</html>
