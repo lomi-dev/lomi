@@ -260,9 +260,22 @@ await writeFile(
   }),
 );
 console.log(`Native MCP control artifacts: ${directory}`);
+const prebuilt = process.env.LOMI_MCP_PREBUILT_SHA256;
+if (prebuilt && !batchIdentifier)
+  throw Error("Prebuilt reuse requires a disposable batch identity");
 const child = spawn(
-  "pnpm",
-  ["tauri", "dev", "--no-watch", "--features", "mcp-probe", "--config", config],
+  prebuilt ? process.execPath : "pnpm",
+  prebuilt
+    ? ["tests/native/start-prebuilt-mcp.mjs"]
+    : [
+        "tauri",
+        "dev",
+        "--no-watch",
+        "--features",
+        "mcp-probe",
+        "--config",
+        config,
+      ],
   {
     cwd: root,
     env: {

@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, writeFile, open } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { binaryFingerprint, sourceFingerprint } from "./routing-build.mjs";
 
 const cases = (process.argv[2] ?? "").split(",").filter(Boolean);
 const repeats = Number(process.argv[3] ?? 3);
@@ -19,6 +20,8 @@ const directory = await mkdtemp(join(tmpdir(), "lomi-mcp-routing-matrix-"));
 const identifier =
   "dev.lomi.mcp-control-batch-" + randomUUID().replaceAll("-", "");
 const root = resolve(import.meta.dirname, "../..");
+const sources = await sourceFingerprint(root);
+let binary;
 const results = [];
 console.log("Routing matrix artifacts: " + directory);
 const readJson = async (path) => {
@@ -31,6 +34,10 @@ const readJson = async (path) => {
 };
 for (const name of cases) {
   for (let repeat = 1; repeat <= repeats; repeat++) {
+    if ((await sourceFingerprint(root)) !== sources)
+      throw Error(
+        "Sources changed during the routing batch; start a fresh batch",
+      );
     console.log("Starting " + name + " " + repeat + "/" + repeats);
     const logPath = join(directory, name + "-" + repeat + ".log");
     const log = await open(logPath, "wx", 0o600);
@@ -43,6 +50,7 @@ for (const name of cases) {
           ...process.env,
           LOMI_MCP_ROUTING_ONLY: name,
           LOMI_MCP_BATCH_IDENTIFIER: identifier,
+          ...(binary ? { LOMI_MCP_PREBUILT_SHA256: binary } : {}),
         },
         stdio: ["ignore", log.fd, log.fd],
       },
@@ -83,7 +91,9 @@ for (const name of cases) {
         type: item.type,
         id: item.id,
       })),
-      silentFallback: competingActions.length ? null : false,
+      silentFallback:
+        report?.modelTurnCompleted && !competingActions.length ? false : null,
+      prebuilt: Boolean(binary),
       clientVersion: report?.version,
       model: report?.model,
       reasoningEffort: report?.reasoningEffort,
@@ -97,7 +107,11 @@ for (const name of cases) {
     results.push(row);
     await writeFile(
       join(directory, "results.json"),
-      JSON.stringify({ identifier, results }, null, 2),
+      JSON.stringify(
+        { identifier, sourceFingerprint: sources, results },
+        null,
+        2,
+      ),
       { mode: 0o600 },
     );
     console.log(
@@ -119,6 +133,7 @@ for (const name of cases) {
         "Cleanup must be reconciled before another native session: " +
           artifactDirectory,
       );
+    binary ??= await binaryFingerprint(root);
   }
 }
 process.exitCode = results.every((row) => row.passed) ? 0 : 1;

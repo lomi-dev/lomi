@@ -42,6 +42,14 @@ installer publication or private client-configuration writes.
 
 ## Current work
 
+Throughput milestone `a021adc192a6c797967fc4de6775f417656fd28e` was
+pushed to origin/main and verified. Fixed-profile unavailable-client routing
+passed 3/3 (pMc8pe, ccgHM8, Pm72d8), with explicitly reported unavailability,
+zero competing actions and normal cleanup. Exact-binary reuse with fresh
+app/client sessions was exercised in the latter two runs. Two of 20 matrix
+tasks now have all three executions; remaining tasks and final acceptance
+reconciliation are still open.
+
 Two-workspace milestone `877e3ec28aa9ad4af80374c9fc635bb5aa192d30` was
 pushed to origin/main and verified. The subsequent terminal throughput run
 fhyMJU passed 20 alternating measured pairs after three paired warmups:

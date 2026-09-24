@@ -13,4 +13,9 @@ See [usage](../../docs/mcp/USAGE.md) for pairing and client setup.
 
 The Android trial is described in `docs/mcp/ANDROID-FIXTURE-PLAN.md`. It requires actual provider consent recorded outside Git. Never substitute the user's SDK/AVD for its managed directory. The ignored `android::mcp_qualification::prepare_and_verify_isolated_mcp_device` test retains a stopped device and records its identity for reuse.
 
+The routing batch builds its first native instance, then reuses the exact
+SHA-256-checked executable with fresh app data, Vite and client processes.
+Changing relevant sources stops the batch before another trial. Do not run
+other native builds or edit fixture/product sources during a batch.
+
 See `docs/mcp/QUALIFICATION.md` for executed results, platform limits and pending acceptance gates. Successful fixture calls do not qualify model routing, authorization, the UI bridge or production adapters.

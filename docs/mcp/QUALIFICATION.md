@@ -5,6 +5,27 @@ their original failures and pending work; subsequent evidence supersedes only
 the specific checks it actually covers. The active task list is in
 [implementation status](IMPLEMENTATION-STATUS.md).
 
+## P6 fixed-profile unavailable-client trials (2026-09-24)
+
+**3/3 PASS:** pMc8pe, ccgHM8, Pm72d8; Codex 0.156.1 / gpt-6-sol /
+medium / prefer-Lomi. Each new model session called actual `lomi_status`,
+observed `app_unavailable` and explicitly reported that limitation. All
+three final answers were read and confirmed the stop without an alternative
+shell, browser or emulator. No competing action occurred; all native
+postconditions and normal host cleanup passed. Ledger:
+`lomi-mcp-routing-matrix-BXkMF5/results.json` in the host temporary directory.
+Together with the two-workspace series, two of 20 tasks have all three
+fixed-profile executions. Other earlier evidence remains separate.
+
+The batch now fingerprints relevant source files and its freshly compiled
+native executable. The second and third trials reused that exact executable,
+started a fresh Vite/native process, and retained exclusive creation/removal
+of the disposable application data. Source changes abort before another run;
+binary changes abort before native launch. Both reused launches passed without
+Cargo rebuilding. No client configuration, installer or distributable was
+created. A missing/incomplete model trace yields unknown fallback status in
+the ledger rather than a fabricated negative.
+
 ## P6 terminal delivery/parser throughput (2026-09-24)
 
 `lomi-mcp-control-fhyMJU` **PASS** on Apple M3/macOS 27.0 ARM64, AC power,
