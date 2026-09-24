@@ -1259,7 +1259,10 @@ test("All changes hides clean repositories and remembers independently collapsed
     name: "Repository scan details",
     exact: true,
   });
-  await scan.click();
+  // WebKit does not focus buttons on pointer activation. Exercise restoration
+  // from a keyboard trigger, which has focus before the native dialog opens.
+  await scan.focus();
+  await scan.press("Enter");
   await expect(
     page.getByRole("dialog", { name: "Repository scan", exact: true }),
   ).toContainText("Only part of this folder was scanned");

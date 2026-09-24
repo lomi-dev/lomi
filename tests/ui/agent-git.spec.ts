@@ -100,9 +100,11 @@ for (const kind of ["diff", "commit"] as const) {
       await expect(
         page.getByRole("heading", { name: "Scoped commit 🙂" }),
       ).toBeVisible();
-      await expect(page.getByRole("status")).toContainText(
-        "2 secret or unsupported file entries omitted",
-      );
+      await expect(
+        page
+          .getByRole("status")
+          .filter({ hasText: "2 secret or unsupported file entries omitted" }),
+      ).toBeVisible();
       await expect(
         page.getByText("Line statistics are unavailable for this view."),
       ).toBeVisible();

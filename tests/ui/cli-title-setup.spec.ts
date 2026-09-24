@@ -12,6 +12,9 @@ async function setup(page: Page) {
   await mockDesktop(page, false);
   await page.goto("/");
   await expect(page.locator(".xterm-screen")).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__nativeTest.sessions.size))
+    .toBeGreaterThan(0);
   await page.evaluate((config) => {
     (window as any).__nativeTest.cliTitleSetup = config;
   }, config);

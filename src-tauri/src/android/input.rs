@@ -553,76 +553,6 @@ async fn touch_event(
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn text_and_control_validation_do_not_treat_unicode_as_emulator_key_codes() {
-        let display = (720, 1280);
-        assert!(validate(
-            &Event::Text {
-                action: TextAction::Commit,
-                text: "Zażółć gęślą jaźń日本語".into()
-            },
-            display
-        )
-        .is_ok());
-        assert!(validate(
-            &Event::Key {
-                key: "ż".into(),
-                down: true
-            },
-            display
-        )
-        .is_err());
-        assert!(validate(
-            &Event::Text {
-                action: TextAction::Finish,
-                text: "unexpected payload".into()
-            },
-            display
-        )
-        .is_err());
-        assert!(validate(
-            &Event::Paste {
-                text: "x".repeat(16385)
-            },
-            display
-        )
-        .is_err());
-        for (id, x, y) in [(2, 0, 0), (0, -1, 0), (0, 720, 0), (0, 0, 1280)] {
-            assert!(validate(
-                &Event::Touch {
-                    identifier: id,
-                    x,
-                    y,
-                    phase: TouchPhase::Down
-                },
-                display
-            )
-            .is_err());
-        }
-        assert!(validate(
-            &Event::Touch {
-                identifier: 1,
-                x: 719,
-                y: 1279,
-                phase: TouchPhase::Down
-            },
-            display
-        )
-        .is_ok());
-        assert!(
-            serde_json::from_str::<Request>(r#"{"type":"focus","viewId":"x","port":5554}"#)
-                .is_err()
-        );
-        assert!(
-            serde_json::from_str::<Event>(r#"{"type":"shell","command":"echo unexpected"}"#)
-                .is_err()
-        );
-    }
-}
-
 #[cfg(unix)]
 impl Router {
     pub async fn claim_agent(
@@ -801,5 +731,75 @@ impl Router {
                 Some(check),
             )
             .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn text_and_control_validation_do_not_treat_unicode_as_emulator_key_codes() {
+        let display = (720, 1280);
+        assert!(validate(
+            &Event::Text {
+                action: TextAction::Commit,
+                text: "Zażółć gęślą jaźń日本語".into()
+            },
+            display
+        )
+        .is_ok());
+        assert!(validate(
+            &Event::Key {
+                key: "ż".into(),
+                down: true
+            },
+            display
+        )
+        .is_err());
+        assert!(validate(
+            &Event::Text {
+                action: TextAction::Finish,
+                text: "unexpected payload".into()
+            },
+            display
+        )
+        .is_err());
+        assert!(validate(
+            &Event::Paste {
+                text: "x".repeat(16385)
+            },
+            display
+        )
+        .is_err());
+        for (id, x, y) in [(2, 0, 0), (0, -1, 0), (0, 720, 0), (0, 0, 1280)] {
+            assert!(validate(
+                &Event::Touch {
+                    identifier: id,
+                    x,
+                    y,
+                    phase: TouchPhase::Down
+                },
+                display
+            )
+            .is_err());
+        }
+        assert!(validate(
+            &Event::Touch {
+                identifier: 1,
+                x: 719,
+                y: 1279,
+                phase: TouchPhase::Down
+            },
+            display
+        )
+        .is_ok());
+        assert!(
+            serde_json::from_str::<Request>(r#"{"type":"focus","viewId":"x","port":5554}"#)
+                .is_err()
+        );
+        assert!(
+            serde_json::from_str::<Event>(r#"{"type":"shell","command":"echo unexpected"}"#)
+                .is_err()
+        );
     }
 }

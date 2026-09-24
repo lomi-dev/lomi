@@ -161,10 +161,24 @@ test("JSON editor scrolls within the modal in both appearances at the minimum wi
   await page.setViewportSize({ width: 560, height: 420 });
   for (const appearance of ["dark", "light"] as const) {
     await page.emulateMedia({ colorScheme: appearance });
-    await expect(dialog.locator(".cm-editor")).toHaveCSS(
-      "color",
-      appearance === "dark" ? "rgb(224, 224, 224)" : "rgb(22, 22, 22)",
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-appearance",
+      appearance,
     );
+    await expect
+      .poll(() =>
+        dialog.locator(".cm-editor").evaluate((editor) => {
+          const reference = document.createElement("span");
+          reference.style.color = "var(--editor-foreground)";
+          editor.append(reference);
+          const matches =
+            getComputedStyle(editor).color ===
+            getComputedStyle(reference).color;
+          reference.remove();
+          return matches;
+        }),
+      )
+      .toBe(true);
     await expect(
       dialog.getByRole("button", { name: "Format JSON", exact: true }),
     ).toBeInViewport();

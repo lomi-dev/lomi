@@ -42,6 +42,26 @@ installer publication or private client-configuration writes.
 
 ## Current work
 
+P6 recovery and regression milestone is qualified locally. Restoring an older
+receipt database could previously label a queued row cancelled/none despite a
+later completed effect. Startup now conservatively marks every unfinished row
+outcome_unknown/unknown; a fresh instance still invalidates all old retry epochs.
+The reproducing restore test and corrupt-file preservation test pass. A real
+32 MiB APFS ENOSPC run now covers SQLite reservation failure, no partial receipt,
+preserved history, invalid old retry and recovery after freeing space, alongside
+atomic save/Trash preservation. Final artifacts: lomi-mcp-full-disk-ciGimO.
+
+Workspace Rust: 377 passed, 23 opt-in entries ignored before the recovery change;
+updated core 64 + broker 68 passed afterward. Model 179 + AI 17, wire 8,
+TypeScript and all-target workspace Clippy passed. WebKit full regression found
+stale Lomi-theme expectations, a terminal-start race and browser-specific focus
+assumptions. Those test fixtures were corrected without product UI changes. The
+second full run passed 499, skipped 1 and exposed two remaining test issues;
+the final complete terminal-title/agent-git files passed all 22 after correction.
+No unresolved assertion from either full run remains. This is combined evidence,
+not a claim that the final tree ran all UI cases in one pass. P6 performance,
+full native regression, dependency review and model-driven routing remain open.
+
 Browser upload was committed and pushed to origin/main as
 `da9a26e849a682432a8ac945840c115ccb18c5dd`; remote SHA verified.
 Terminal qualification is complete for the selected macOS ARM64 host:

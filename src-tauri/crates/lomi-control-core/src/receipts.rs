@@ -378,9 +378,10 @@ impl Store {
             transaction.commit()?;
         }
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        transaction.execute("INSERT INTO history SELECT id,CASE WHEN state IN ('queued','awaiting_user') THEN 'cancelled' ELSE 'outcome_unknown' END,CASE WHEN state IN ('queued','awaiting_user') THEN 'none' ELSE 'unknown' END,?1 FROM receipts WHERE state IN ('queued','awaiting_user','running','cancelling')", [now])?;
-        transaction.execute("UPDATE receipts SET state='cancelled',effect='none',completed=?1,retain_until=MAX(retain_until,?2) WHERE state IN ('queued','awaiting_user')", params![now, now.checked_add(DAY).ok_or(Error::InvalidInput)?])?;
-        transaction.execute("UPDATE receipts SET state='outcome_unknown',effect='unknown',completed=?1,retain_until=MAX(retain_until,?2) WHERE state IN ('running','cancelling')", params![now, now + DAY])?;
+        // An offline backup can predate dispatch even when its row is queued.
+        // Without an external freshness proof, recovery cannot promise no effect.
+        transaction.execute("INSERT INTO history SELECT id,'outcome_unknown','unknown',?1 FROM receipts WHERE state IN ('queued','awaiting_user','running','cancelling')", [now])?;
+        transaction.execute("UPDATE receipts SET state='outcome_unknown',effect='unknown',completed=?1,retain_until=MAX(retain_until,?2) WHERE state IN ('queued','awaiting_user','running','cancelling')", params![now, now.checked_add(DAY).ok_or(Error::InvalidInput)?])?;
         // Expired instances keep their receipts, but no retry epoch authorizes dispatch.
         transaction.commit()?;
         for name in [
@@ -1104,6 +1105,95 @@ mod tests {
         loop {
             std::thread::park();
         }
+    }
+
+    #[test]
+    fn corrupt_database_is_preserved_and_never_replaced_with_an_empty_store() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("control");
+        let mut store = Store::open(&root, 100).unwrap();
+        let epoch = store.issue_epoch("paired-client", 100).unwrap();
+        store.reserve(&key(&epoch), [1; 32], 101).unwrap();
+        drop(store);
+        let path = root.join("control.sqlite3");
+        let mut damaged = fs::read(&path).unwrap();
+        damaged[..16].copy_from_slice(b"damaged database");
+        fs::write(&path, &damaged).unwrap();
+        assert!(matches!(
+            Store::open(&root, 102),
+            Err(Error::StorageUnavailable)
+        ));
+        assert_eq!(fs::read(&path).unwrap(), damaged);
+        assert!(matches!(
+            Store::open(&root, 103),
+            Err(Error::StorageUnavailable)
+        ));
+        assert_eq!(fs::read(&path).unwrap(), damaged);
+    }
+
+    #[test]
+    fn restored_older_database_cannot_replay_a_pre_restore_retry_epoch() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("control");
+        let mut store = Store::open(&root, 100).unwrap();
+        let epoch = store.issue_epoch("paired-client", 100).unwrap();
+        let receipt = store.reserve(&key(&epoch), [1; 32], 101).unwrap().receipt;
+        store
+            .connection
+            .execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")
+            .unwrap();
+        let backup = fs::read(root.join("control.sqlite3")).unwrap();
+        store
+            .transition(
+                "paired-client",
+                "project-one",
+                &receipt.operation_id,
+                State::Running,
+                Effect::None,
+                102,
+            )
+            .unwrap();
+        store
+            .transition(
+                "paired-client",
+                "project-one",
+                &receipt.operation_id,
+                State::Succeeded,
+                Effect::Complete,
+                103,
+            )
+            .unwrap();
+        drop(store);
+        // Simulate an explicit restore of an older offline fixture backup.
+        // Its queued row predates the completed effect; opening must not replay it.
+        fs::write(root.join("control.sqlite3"), backup).unwrap();
+        let mut restored = Store::open(&root, 104).unwrap();
+        let recovered = restored
+            .get("paired-client", "project-one", &receipt.operation_id)
+            .unwrap();
+        assert_eq!(recovered.state, State::OutcomeUnknown);
+        assert_eq!(recovered.effect_state, Effect::Unknown);
+        assert_eq!(
+            restored.reserve(&key(&epoch), [1; 32], 105).unwrap_err(),
+            Error::RetryWindowExpired
+        );
+        assert_eq!(
+            restored
+                .transition(
+                    "paired-client",
+                    "project-one",
+                    &receipt.operation_id,
+                    State::Running,
+                    Effect::None,
+                    105
+                )
+                .unwrap_err(),
+            Error::InvalidTransition
+        );
+        let fresh = restored.issue_epoch("paired-client", 106).unwrap();
+        let next = restored.reserve(&key(&fresh), [1; 32], 107).unwrap();
+        assert!(next.created);
+        assert_ne!(next.receipt.operation_id, receipt.operation_id);
     }
 
     #[test]

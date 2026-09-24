@@ -576,6 +576,266 @@ impl Store {
     }
 }
 
+impl Store {
+    pub fn list(
+        &self,
+        query: &str,
+        workspace: Option<&str>,
+        project: Option<&str>,
+        offset: usize,
+    ) -> Result<Vec<Conversation>, String> {
+        if query.len() > 1024 {
+            return Err("Search text is too long.".into());
+        }
+        let search = if query.trim().is_empty() {
+            None
+        } else {
+            Some(format!("\"{}\"", query.replace('"', "\"\"")))
+        };
+        let mut statement=db(self.connection.prepare("SELECT id FROM conversations WHERE (?1 IS NULL OR id IN (SELECT conversation FROM chat_search WHERE chat_search MATCH ?1)) AND (?2 IS NULL OR json_extract(origin,'$.workspaceId')=?2) AND (?3 IS NULL OR json_extract(origin,'$.projectId')=?3) ORDER BY pinned DESC,updated_at DESC,id LIMIT 50 OFFSET ?4"))?;
+        let ids = db(db(statement.query_map(
+            params![search, workspace, project, offset.min(1000000) as i64],
+            |row| row.get(0),
+        ))?
+        .collect::<rusqlite::Result<Vec<String>>>())?;
+        ids.iter().map(|id| self.conversation(id)).collect()
+    }
+    pub fn rename(&mut self, id: &str, title: &str) -> Result<Conversation, String> {
+        if title.trim().is_empty() || title.len() > 256 {
+            return Err("Conversation names must contain 1–256 bytes.".into());
+        }
+        let tx = db(self.connection.transaction())?;
+        db(tx.execute(
+            "UPDATE conversations SET title=?1,updated_at=?2 WHERE id=?3",
+            params![title, now(), id],
+        ))?;
+        db(tx.execute(
+            "UPDATE chat_search SET content=?1 WHERE conversation=?2 AND message='title'",
+            params![title, id],
+        ))?;
+        db(tx.commit())?;
+        self.conversation(id)
+    }
+    pub fn pin(&mut self, id: &str, pinned: bool) -> Result<Conversation, String> {
+        db(self.connection.execute(
+            "UPDATE conversations SET pinned=?1 WHERE id=?2",
+            params![pinned, id],
+        ))?;
+        self.conversation(id)
+    }
+    pub fn delete(&mut self, id: &str) -> Result<(), String> {
+        self.idle(id)?;
+        let tx = db(self.connection.transaction())?;
+        db(tx.execute("DELETE FROM requests WHERE conversation_id=?1", [id]))?;
+        db(tx.execute("DELETE FROM chat_search WHERE conversation=?1", [id]))?;
+        db(tx.execute("DELETE FROM conversations WHERE id=?1", [id]))?;
+        db(tx.commit())
+    }
+    pub fn interrupt_orphan(&mut self, request: &str) -> Result<(), String> {
+        let tx = db(self.connection.transaction())?;
+        db(tx.execute("UPDATE messages SET status='interrupted' WHERE id=(SELECT assistant_id FROM requests WHERE id=?1 AND status='active')",[request]))?;
+        db(tx.execute(
+            "UPDATE requests SET status='interrupted' WHERE id=?1 AND status='active'",
+            [request],
+        ))?;
+        db(tx.commit())
+    }
+    pub fn attachment_meta(&self, id: &str) -> Result<Value, String> {
+        db(self.connection.query_row("SELECT name,mime,size FROM attachments WHERE id=?1",[id],|row| Ok(json!({"id":id,"name":row.get::<_,String>(0)?,"mime":row.get::<_,String>(1)?,"size":row.get::<_,i64>(2)?}))))
+    }
+    pub fn attachment_ids(&self, message: &str) -> Result<Vec<String>, String> {
+        let mut statement = db(self.connection.prepare(
+            "SELECT attachment_id FROM message_attachments WHERE message_id=?1 ORDER BY ordinal",
+        ))?;
+        let result = db(db(statement.query_map([message], |r| r.get(0)))?.collect());
+        result
+    }
+    pub fn remove_attachment(
+        &mut self,
+        conversation: &str,
+        id: &str,
+        expected: i64,
+    ) -> Result<Draft, String> {
+        let tx = db(self.connection.transaction())?;
+        if db(tx.execute(
+            "UPDATE drafts SET revision=revision+1 WHERE conversation_id=?1 AND revision=?2",
+            params![conversation, expected],
+        ))? != 1
+        {
+            return Err("conflict: The shared draft changed.".into());
+        }
+        db(tx.execute(
+            "DELETE FROM draft_attachments WHERE conversation_id=?1 AND attachment_id=?2",
+            params![conversation, id],
+        ))?;
+        db(tx.commit())?;
+        self.draft(conversation)
+    }
+}
+
+impl Store {
+    pub fn preview(&self, input: &Start) -> Result<Vec<(Message, Vec<String>)>, String> {
+        let conversation = self.conversation(&input.conversation_id)?;
+        if conversation.revision != input.expected_revision {
+            return Err("conflict: The active conversation changed.".into());
+        }
+        let draft = self.draft(&input.conversation_id)?;
+        let (leaf, new_user, attachments) = match input.action.as_str() {
+            "send" => {
+                if draft.revision != input.draft_revision || draft.text != input.text {
+                    return Err("conflict: The shared draft changed before Send.".into());
+                }
+                (conversation.active_leaf_id, true, draft.attachments)
+            }
+            "edit" => {
+                let target = self.message(
+                    &input.conversation_id,
+                    input.target_id.as_deref().ok_or("Missing edit target.")?,
+                )?;
+                if target.role != "user" {
+                    return Err("Choose a user message to edit.".into());
+                }
+                (target.parent_id, true, self.attachment_ids(&target.id)?)
+            }
+            "retry" => {
+                let target = self.message(
+                    &input.conversation_id,
+                    input.target_id.as_deref().ok_or("Missing retry target.")?,
+                )?;
+                let user = if target.role == "user" {
+                    target.id
+                } else {
+                    target.parent_id.ok_or("Missing user message.")?
+                };
+                (Some(user), false, vec![])
+            }
+            _ => return Err("Unknown generation action.".into()),
+        };
+        let (path, has_older) = self.path(&input.conversation_id, leaf.as_deref(), 2000, 0)?;
+        if has_older {
+            return Err(
+                "This conversation exceeds the supported context depth. Start a new conversation."
+                    .into(),
+            );
+        }
+        let mut path = path
+            .into_iter()
+            .map(|m| self.attachment_ids(&m.id).map(|ids| (m, ids)))
+            .collect::<Result<Vec<_>, _>>()?;
+        if new_user {
+            path.push((
+                Message {
+                    id: input.user_id.clone(),
+                    parent_id: leaf,
+                    role: "user".into(),
+                    parts_version: 1,
+                    parts: json!([{"type":"text","text":input.text}]),
+                    status: "completed".into(),
+                    metadata: json!({}),
+                    previous_variant: None,
+                    next_variant: None,
+                    attachments: attachments.clone(),
+                },
+                attachments,
+            ));
+        }
+        Ok(path)
+    }
+}
+
+impl Store {
+    pub fn export(&self, id: &str, format: &str) -> Result<Vec<u8>, String> {
+        let conversation = self.conversation(id)?;
+        let mut messages = if format == "markdown" {
+            let (messages, more) =
+                self.path(id, conversation.active_leaf_id.as_deref(), 100_000, 0)?;
+            if more {
+                return Err("This export exceeds the supported conversation depth.".into());
+            }
+            messages
+        } else {
+            let mut statement = db(self
+                .connection
+                .prepare("SELECT id FROM messages WHERE conversation_id=?1 ORDER BY rowid"))?;
+            let mut rows = db(statement.query([id]))?;
+            let mut messages = Vec::new();
+            let mut size = 0;
+            while let Some(row) = db(rows.next())? {
+                let message = self.message(id, &db(row.get::<_, String>(0))?)?;
+                size += serde_json::to_vec(&message)
+                    .map_err(|_| "Invalid message.")?
+                    .len();
+                if size > MAX_CONTEXT {
+                    return Err("The export exceeds the 40 MiB limit. Export the active variant as Markdown.".into());
+                }
+                messages.push(message);
+            }
+            messages
+        };
+        let mut attachments = Vec::new();
+        let draft = self.draft(id)?;
+        let mut ids = messages
+            .iter()
+            .flat_map(|m| m.attachments.clone())
+            .chain(draft.attachments.iter().cloned())
+            .collect::<Vec<_>>();
+        ids.sort();
+        ids.dedup();
+        for id in ids {
+            attachments.push(db(self.connection.query_row("SELECT name,mime,size FROM attachments WHERE id=?1",[&id],|row|Ok(json!({"id":id,"name":row.get::<_,String>(0)?,"mime":row.get::<_,String>(1)?,"size":row.get::<_,i64>(2)?}))))?);
+        }
+        // Export provider/model metadata, not local credential identities or origin paths.
+        for message in &mut messages {
+            if let Some(meta) = message.metadata.as_object_mut() {
+                meta.remove("connectionId");
+                meta.remove("credentialRevision");
+            }
+        }
+        if format == "markdown" {
+            let mut text = format!(
+                "# {}\n\nAttachment descriptions are included; binary files are not embedded.\n\n",
+                conversation.title
+            );
+            for message in messages {
+                text.push_str(&format!(
+                    "## {}\n\n",
+                    if message.role == "user" {
+                        "You"
+                    } else {
+                        "Assistant"
+                    }
+                ));
+                if message.role == "assistant" {
+                    text.push_str(&format!(
+                        "Model: {} · Status: {}\n\n",
+                        message.metadata["model"].as_str().unwrap_or("Unknown"),
+                        message.status
+                    ));
+                }
+                for part in message.parts.as_array().ok_or("Invalid message parts.")? {
+                    if matches!(part["type"].as_str(), Some("text" | "reasoning")) {
+                        text.push_str(part["text"].as_str().unwrap_or(""));
+                        text.push_str("\n\n");
+                    }
+                }
+                for id in message.attachments {
+                    if let Some(meta) = attachments.iter().find(|a| a["id"] == id) {
+                        text.push_str(&format!(
+                            "Attachment: {} ({}, {} bytes)\n\n",
+                            meta["name"].as_str().unwrap_or("File"),
+                            meta["mime"].as_str().unwrap_or(""),
+                            meta["size"]
+                        ));
+                    }
+                }
+            }
+            Ok(text.into_bytes())
+        } else {
+            serde_json::to_vec_pretty(&json!({"version":1,"conversation":{"id":id,"title":conversation.title,"activeLeafId":conversation.active_leaf_id,"system":conversation.config.system,"model":conversation.config.model},"messages":messages,"draft":draft,"attachments":attachments})).map_err(|_|"Cannot encode chat export.".into())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -858,265 +1118,5 @@ mod tests {
             )
             .unwrap();
         assert!(store.connection.execute("INSERT INTO messages(id,conversation_id,parent_id,role,parts,status) VALUES ('bad','other','user','user','[]','completed')",[]).is_err());
-    }
-}
-
-impl Store {
-    pub fn list(
-        &self,
-        query: &str,
-        workspace: Option<&str>,
-        project: Option<&str>,
-        offset: usize,
-    ) -> Result<Vec<Conversation>, String> {
-        if query.len() > 1024 {
-            return Err("Search text is too long.".into());
-        }
-        let search = if query.trim().is_empty() {
-            None
-        } else {
-            Some(format!("\"{}\"", query.replace('"', "\"\"")))
-        };
-        let mut statement=db(self.connection.prepare("SELECT id FROM conversations WHERE (?1 IS NULL OR id IN (SELECT conversation FROM chat_search WHERE chat_search MATCH ?1)) AND (?2 IS NULL OR json_extract(origin,'$.workspaceId')=?2) AND (?3 IS NULL OR json_extract(origin,'$.projectId')=?3) ORDER BY pinned DESC,updated_at DESC,id LIMIT 50 OFFSET ?4"))?;
-        let ids = db(db(statement.query_map(
-            params![search, workspace, project, offset.min(1000000) as i64],
-            |row| row.get(0),
-        ))?
-        .collect::<rusqlite::Result<Vec<String>>>())?;
-        ids.iter().map(|id| self.conversation(id)).collect()
-    }
-    pub fn rename(&mut self, id: &str, title: &str) -> Result<Conversation, String> {
-        if title.trim().is_empty() || title.len() > 256 {
-            return Err("Conversation names must contain 1–256 bytes.".into());
-        }
-        let tx = db(self.connection.transaction())?;
-        db(tx.execute(
-            "UPDATE conversations SET title=?1,updated_at=?2 WHERE id=?3",
-            params![title, now(), id],
-        ))?;
-        db(tx.execute(
-            "UPDATE chat_search SET content=?1 WHERE conversation=?2 AND message='title'",
-            params![title, id],
-        ))?;
-        db(tx.commit())?;
-        self.conversation(id)
-    }
-    pub fn pin(&mut self, id: &str, pinned: bool) -> Result<Conversation, String> {
-        db(self.connection.execute(
-            "UPDATE conversations SET pinned=?1 WHERE id=?2",
-            params![pinned, id],
-        ))?;
-        self.conversation(id)
-    }
-    pub fn delete(&mut self, id: &str) -> Result<(), String> {
-        self.idle(id)?;
-        let tx = db(self.connection.transaction())?;
-        db(tx.execute("DELETE FROM requests WHERE conversation_id=?1", [id]))?;
-        db(tx.execute("DELETE FROM chat_search WHERE conversation=?1", [id]))?;
-        db(tx.execute("DELETE FROM conversations WHERE id=?1", [id]))?;
-        db(tx.commit())
-    }
-    pub fn interrupt_orphan(&mut self, request: &str) -> Result<(), String> {
-        let tx = db(self.connection.transaction())?;
-        db(tx.execute("UPDATE messages SET status='interrupted' WHERE id=(SELECT assistant_id FROM requests WHERE id=?1 AND status='active')",[request]))?;
-        db(tx.execute(
-            "UPDATE requests SET status='interrupted' WHERE id=?1 AND status='active'",
-            [request],
-        ))?;
-        db(tx.commit())
-    }
-    pub fn attachment_meta(&self, id: &str) -> Result<Value, String> {
-        db(self.connection.query_row("SELECT name,mime,size FROM attachments WHERE id=?1",[id],|row| Ok(json!({"id":id,"name":row.get::<_,String>(0)?,"mime":row.get::<_,String>(1)?,"size":row.get::<_,i64>(2)?}))))
-    }
-    pub fn attachment_ids(&self, message: &str) -> Result<Vec<String>, String> {
-        let mut statement = db(self.connection.prepare(
-            "SELECT attachment_id FROM message_attachments WHERE message_id=?1 ORDER BY ordinal",
-        ))?;
-        let result = db(db(statement.query_map([message], |r| r.get(0)))?.collect());
-        result
-    }
-    pub fn remove_attachment(
-        &mut self,
-        conversation: &str,
-        id: &str,
-        expected: i64,
-    ) -> Result<Draft, String> {
-        let tx = db(self.connection.transaction())?;
-        if db(tx.execute(
-            "UPDATE drafts SET revision=revision+1 WHERE conversation_id=?1 AND revision=?2",
-            params![conversation, expected],
-        ))? != 1
-        {
-            return Err("conflict: The shared draft changed.".into());
-        }
-        db(tx.execute(
-            "DELETE FROM draft_attachments WHERE conversation_id=?1 AND attachment_id=?2",
-            params![conversation, id],
-        ))?;
-        db(tx.commit())?;
-        self.draft(conversation)
-    }
-}
-
-impl Store {
-    pub fn preview(&self, input: &Start) -> Result<Vec<(Message, Vec<String>)>, String> {
-        let conversation = self.conversation(&input.conversation_id)?;
-        if conversation.revision != input.expected_revision {
-            return Err("conflict: The active conversation changed.".into());
-        }
-        let draft = self.draft(&input.conversation_id)?;
-        let (leaf, new_user, attachments) = match input.action.as_str() {
-            "send" => {
-                if draft.revision != input.draft_revision || draft.text != input.text {
-                    return Err("conflict: The shared draft changed before Send.".into());
-                }
-                (conversation.active_leaf_id, true, draft.attachments)
-            }
-            "edit" => {
-                let target = self.message(
-                    &input.conversation_id,
-                    input.target_id.as_deref().ok_or("Missing edit target.")?,
-                )?;
-                if target.role != "user" {
-                    return Err("Choose a user message to edit.".into());
-                }
-                (target.parent_id, true, self.attachment_ids(&target.id)?)
-            }
-            "retry" => {
-                let target = self.message(
-                    &input.conversation_id,
-                    input.target_id.as_deref().ok_or("Missing retry target.")?,
-                )?;
-                let user = if target.role == "user" {
-                    target.id
-                } else {
-                    target.parent_id.ok_or("Missing user message.")?
-                };
-                (Some(user), false, vec![])
-            }
-            _ => return Err("Unknown generation action.".into()),
-        };
-        let (path, has_older) = self.path(&input.conversation_id, leaf.as_deref(), 2000, 0)?;
-        if has_older {
-            return Err(
-                "This conversation exceeds the supported context depth. Start a new conversation."
-                    .into(),
-            );
-        }
-        let mut path = path
-            .into_iter()
-            .map(|m| self.attachment_ids(&m.id).map(|ids| (m, ids)))
-            .collect::<Result<Vec<_>, _>>()?;
-        if new_user {
-            path.push((
-                Message {
-                    id: input.user_id.clone(),
-                    parent_id: leaf,
-                    role: "user".into(),
-                    parts_version: 1,
-                    parts: json!([{"type":"text","text":input.text}]),
-                    status: "completed".into(),
-                    metadata: json!({}),
-                    previous_variant: None,
-                    next_variant: None,
-                    attachments: attachments.clone(),
-                },
-                attachments,
-            ));
-        }
-        Ok(path)
-    }
-}
-
-impl Store {
-    pub fn export(&self, id: &str, format: &str) -> Result<Vec<u8>, String> {
-        let conversation = self.conversation(id)?;
-        let mut messages = if format == "markdown" {
-            let (messages, more) =
-                self.path(id, conversation.active_leaf_id.as_deref(), 100_000, 0)?;
-            if more {
-                return Err("This export exceeds the supported conversation depth.".into());
-            }
-            messages
-        } else {
-            let mut statement = db(self
-                .connection
-                .prepare("SELECT id FROM messages WHERE conversation_id=?1 ORDER BY rowid"))?;
-            let mut rows = db(statement.query([id]))?;
-            let mut messages = Vec::new();
-            let mut size = 0;
-            while let Some(row) = db(rows.next())? {
-                let message = self.message(id, &db(row.get::<_, String>(0))?)?;
-                size += serde_json::to_vec(&message)
-                    .map_err(|_| "Invalid message.")?
-                    .len();
-                if size > MAX_CONTEXT {
-                    return Err("The export exceeds the 40 MiB limit. Export the active variant as Markdown.".into());
-                }
-                messages.push(message);
-            }
-            messages
-        };
-        let mut attachments = Vec::new();
-        let draft = self.draft(id)?;
-        let mut ids = messages
-            .iter()
-            .flat_map(|m| m.attachments.clone())
-            .chain(draft.attachments.iter().cloned())
-            .collect::<Vec<_>>();
-        ids.sort();
-        ids.dedup();
-        for id in ids {
-            attachments.push(db(self.connection.query_row("SELECT name,mime,size FROM attachments WHERE id=?1",[&id],|row|Ok(json!({"id":id,"name":row.get::<_,String>(0)?,"mime":row.get::<_,String>(1)?,"size":row.get::<_,i64>(2)?}))))?);
-        }
-        // Export provider/model metadata, not local credential identities or origin paths.
-        for message in &mut messages {
-            if let Some(meta) = message.metadata.as_object_mut() {
-                meta.remove("connectionId");
-                meta.remove("credentialRevision");
-            }
-        }
-        if format == "markdown" {
-            let mut text = format!(
-                "# {}\n\nAttachment descriptions are included; binary files are not embedded.\n\n",
-                conversation.title
-            );
-            for message in messages {
-                text.push_str(&format!(
-                    "## {}\n\n",
-                    if message.role == "user" {
-                        "You"
-                    } else {
-                        "Assistant"
-                    }
-                ));
-                if message.role == "assistant" {
-                    text.push_str(&format!(
-                        "Model: {} · Status: {}\n\n",
-                        message.metadata["model"].as_str().unwrap_or("Unknown"),
-                        message.status
-                    ));
-                }
-                for part in message.parts.as_array().ok_or("Invalid message parts.")? {
-                    if matches!(part["type"].as_str(), Some("text" | "reasoning")) {
-                        text.push_str(part["text"].as_str().unwrap_or(""));
-                        text.push_str("\n\n");
-                    }
-                }
-                for id in message.attachments {
-                    if let Some(meta) = attachments.iter().find(|a| a["id"] == id) {
-                        text.push_str(&format!(
-                            "Attachment: {} ({}, {} bytes)\n\n",
-                            meta["name"].as_str().unwrap_or("File"),
-                            meta["mime"].as_str().unwrap_or(""),
-                            meta["size"]
-                        ));
-                    }
-                }
-            }
-            Ok(text.into_bytes())
-        } else {
-            serde_json::to_vec_pretty(&json!({"version":1,"conversation":{"id":id,"title":conversation.title,"activeLeafId":conversation.active_leaf_id,"system":conversation.config.system,"model":conversation.config.model},"messages":messages,"draft":draft,"attachments":attachments})).map_err(|_|"Cannot encode chat export.".into())
-        }
     }
 }

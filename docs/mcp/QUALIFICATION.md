@@ -1395,3 +1395,47 @@ separate from the passing workspace test suite.
 
 MCP real-process/wire tests5 PASS (/tmp/lomi-mcp-milestone-wire.log), including
 closed schemas/catalog limits, discovery versions and oversized-line rejection.
+
+## P6 recovery and broad regression — 2026-09-24
+
+**VERIFIED on macOS ARM64:** conservative receipt recovery after an older offline
+backup, corrupt database preservation, and actual SQLite ENOSPC refusal. The
+restore regression first failed because the old queued record became
+cancelled/none although the newer database had recorded success. Recovery now
+marks all unfinished records outcome_unknown/unknown. It does not dispatch them,
+re-enable old retry epochs or infer a rollback. Newly authorized requests use a
+fresh epoch. A damaged SQLite header remains byte-for-byte unchanged across two
+failed open attempts. Existing SIGKILL/WAL recovery still passes.
+
+The isolated 32 MiB APFS volume filled after 31,502,336 filler bytes. The first
+new SQLite reservation returned StorageUnavailable; after space was freed, no
+partial receipt existed. Reopening preserved the earlier running receipt as
+unknown, rejected the old epoch and accepted a fresh authorized reservation.
+Atomic save and Trash also refused before changing original bytes/inode and
+succeeded after space recovery. Final run **ciGimO PASS**, mounted volume detached
+and owned disk image removed. Fixture compile failure XFHzQh was corrected before
+the passing Ru99VP and final ciGimO runs; it is not counted as ENOSPC evidence.
+
+Validation:
+
+- `cargo test --workspace --locked`: 377 passed, 23 opt-in entries ignored before
+  the recovery change (`/tmp/lomi-mcp-p6-rust-full.log`). After the change,
+  `-p lomi-control-core`: 64 core + 68 broker passed; two separate opt-in entries
+  ignored (`/tmp/lomi-mcp-p6-core-recovery.log`).
+- `node tests/native/run-mcp-full-disk.mjs`: PASS, final log
+  `/tmp/lomi-mcp-p6-full-disk-final.log`; artifacts under the host temporary
+  directory `lomi-mcp-full-disk-ciGimO`.
+- `pnpm test`: model 179/179 and AI runtime 17/17 passed; `pnpm check` passed.
+- `pnpm test:mcp`: 8/8 independent helper wire cases passed.
+- Workspace all-target Clippy with warnings denied passed after fixing nine
+  test-only lints. Test module relocation preserves production code; updater
+  fixture now reads a bounded complete request before replying.
+- WebKit full runs: first 496 passed / 5 failed / 1 skipped; second 499 passed /
+  2 failed / 1 skipped. Corrections use current theme tokens/layout, wait for an
+  actual mock PTY before CLI detection, activate the scan dialog by keyboard to
+  verify native focus restoration, and disambiguate a status while a diff loads.
+  Final complete terminal-title and agent-git files: 22/22 passed
+  (`/tmp/lomi-mcp-p6-ui-title-git.log`). No failed assertion from the full runs
+  remains unresolved. The final scoped commit screenshot was visually inspected.
+
+These checks do not complete native performance or model-driven client routing.

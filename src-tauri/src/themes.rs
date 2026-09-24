@@ -1384,11 +1384,11 @@ mod tests {
         let original = bundle(root.path(), "sample").unwrap();
         let raw = r#"{ // preserve this comment
  "version":2,"name":"Raw","common":{"layout":{"tabs":"below"}},}"#;
-        save_manifest(root.path(), "sample", &original.revision, &raw).unwrap();
+        save_manifest(root.path(), "sample", &original.revision, raw).unwrap();
         assert_eq!(fs::read_to_string(folder.join("theme.jsonc")).unwrap(), raw);
         assert_eq!(fs::read(folder.join("theme.json")).unwrap(), legacy);
         assert!(
-            save_manifest(root.path(), "sample", &original.revision, &raw)
+            save_manifest(root.path(), "sample", &original.revision, raw)
                 .unwrap_err()
                 .contains("changed on disk")
         );
@@ -1407,13 +1407,13 @@ mod tests {
             use std::os::unix::fs::PermissionsExt;
             let path = folder.join("theme.jsonc");
             fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
-            save_manifest(root.path(), "sample", &next.revision, &raw).unwrap();
+            save_manifest(root.path(), "sample", &next.revision, raw).unwrap();
             assert_eq!(
                 fs::metadata(&path).unwrap().permissions().mode() & 0o777,
                 0o640
             );
             fs::set_permissions(&path, fs::Permissions::from_mode(0o440)).unwrap();
-            assert!(save_manifest(root.path(), "sample", &next.revision, &raw)
+            assert!(save_manifest(root.path(), "sample", &next.revision, raw)
                 .unwrap_err()
                 .contains("read-only"));
         }

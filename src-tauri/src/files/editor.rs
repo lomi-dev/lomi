@@ -668,7 +668,7 @@ mod tests {
             saved.file.path
         );
         assert_eq!(
-            write_new(&path, "replacement", &[saved.location.clone()])
+            write_new(&path, "replacement", std::slice::from_ref(&saved.location))
                 .unwrap_err()
                 .kind,
             "openFile"

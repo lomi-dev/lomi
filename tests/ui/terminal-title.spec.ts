@@ -204,8 +204,16 @@ test("CLI titles overlay the terminal and disappear at the prompt without resizi
   expect(await mount.boundingBox()).toEqual(before);
   expect(await dimensions()).toEqual(size);
   const heading = (await pane.locator(".terminal-title-box").boundingBox())!;
-  expect(heading.y).toBeLessThan(before!.y + 8);
-  await page.mouse.click(before!.x + 12, heading.y + heading.height / 2);
+  const titlePadding = await pane
+    .locator(".terminal-heading")
+    .evaluate((element) =>
+      Number.parseFloat(getComputedStyle(element).paddingTop),
+    );
+  expect(Math.abs(heading.y - before!.y - titlePadding)).toBeLessThan(1);
+  await page.mouse.click(
+    before!.x + before!.width - 24,
+    heading.y + heading.height / 2,
+  );
   await expect(pane.locator(".xterm-helper-textarea")).toBeFocused();
   await page.keyboard.press("Control+Shift+f");
   const search = pane.getByRole("textbox", { name: "Search terminal output" });

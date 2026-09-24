@@ -230,11 +230,10 @@ test("Lua files detect their language, highlight syntax, indent, comment, and sa
     token(text)
       .first()
       .evaluate((element) => getComputedStyle(element).color);
-  expect(
-    new Set(
-      await Promise.all([color("local"), color("42"), color('"Zażółć 🦀"')]),
-    ).size,
-  ).toBe(3);
+  // Lomi intentionally shares the info color between keywords and numbers;
+  // keyword weight still distinguishes them, while strings use success green.
+  expect(await color("local")).toBe(await color("42"));
+  expect(await color("42")).not.toBe(await color('"Zażółć 🦀"'));
   expect(await color("long string")).toBe(await color('"Zażółć 🦀"'));
   await page.screenshot({ path: testInfo.outputPath("lua-editor.png") });
 

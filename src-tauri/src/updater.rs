@@ -132,7 +132,19 @@ mod tests {
                 .set_read_timeout(Some(Duration::from_secs(5)))
                 .unwrap();
             let mut request = [0; 4096];
-            socket.read(&mut request).unwrap();
+            let mut received = 0;
+            while !request[..received]
+                .windows(4)
+                .any(|bytes| bytes == b"\r\n\r\n")
+            {
+                assert!(
+                    received < request.len(),
+                    "Fixture request headers exceeded 4 KiB"
+                );
+                let count = socket.read(&mut request[received..]).unwrap();
+                assert!(count > 0, "Fixture request ended before its headers");
+                received += count;
+            }
             write!(
                 socket,
                 "HTTP/1.1 200 OK\r\nContent-Length: {chunks}\r\n\r\n"

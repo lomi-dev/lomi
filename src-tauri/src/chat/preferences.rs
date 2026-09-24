@@ -347,6 +347,48 @@ impl<S: Secrets> Settings<S> {
     }
 }
 
+impl<S: Secrets> Settings<S> {
+    pub fn record_result(
+        &mut self,
+        id: &str,
+        revision: u64,
+        model: &str,
+        operation: &str,
+        result: &serde_json::Value,
+    ) -> Result<(), String> {
+        let mut desired = self.data.clone();
+        let Some(connection) = desired
+            .connections
+            .iter_mut()
+            .find(|c| c.id == id && c.credential_revision == revision)
+        else {
+            return Ok(());
+        };
+        if operation == "list-models" {
+            if let Some(models) = result["models"].as_array() {
+                // Keep manually added and previously available IDs when a
+                // provider returns a partial or changed catalog.
+                for model in models.iter().filter_map(|value| value.as_str()) {
+                    if connection.models.len() >= 1000 {
+                        break;
+                    }
+                    if !connection.models.iter().any(|existing| existing == model) {
+                        connection.models.push(model.to_owned());
+                    }
+                }
+            }
+        } else {
+            connection.tested_model = Some(model.into());
+            connection.test_status = Some(result["status"].as_str().unwrap_or("failed").into());
+        }
+        desired.revision += 1;
+        desired.validate()?;
+        storage::atomic(&self.path, &serde_json::to_vec_pretty(&desired).unwrap())?;
+        self.data = desired;
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -570,47 +612,5 @@ mod tests {
         .unwrap();
         Settings::open(root.path().join("prefs.json"), root.path(), secrets.clone()).unwrap();
         assert!(secrets.0.borrow().is_empty());
-    }
-}
-
-impl<S: Secrets> Settings<S> {
-    pub fn record_result(
-        &mut self,
-        id: &str,
-        revision: u64,
-        model: &str,
-        operation: &str,
-        result: &serde_json::Value,
-    ) -> Result<(), String> {
-        let mut desired = self.data.clone();
-        let Some(connection) = desired
-            .connections
-            .iter_mut()
-            .find(|c| c.id == id && c.credential_revision == revision)
-        else {
-            return Ok(());
-        };
-        if operation == "list-models" {
-            if let Some(models) = result["models"].as_array() {
-                // Keep manually added and previously available IDs when a
-                // provider returns a partial or changed catalog.
-                for model in models.iter().filter_map(|value| value.as_str()) {
-                    if connection.models.len() >= 1000 {
-                        break;
-                    }
-                    if !connection.models.iter().any(|existing| existing == model) {
-                        connection.models.push(model.to_owned());
-                    }
-                }
-            }
-        } else {
-            connection.tested_model = Some(model.into());
-            connection.test_status = Some(result["status"].as_str().unwrap_or("failed").into());
-        }
-        desired.revision += 1;
-        desired.validate()?;
-        storage::atomic(&self.path, &serde_json::to_vec_pretty(&desired).unwrap())?;
-        self.data = desired;
-        Ok(())
     }
 }
