@@ -2,6 +2,44 @@
 
 Host: macOS 27.0 (26A428), Apple M3 ARM64. Baseline HEAD and local changes: IMPLEMENTATION-STATUS.md.
 
+## Approved native browser upload (2026-09-24)
+
+**vuDLZZ PASS**,12 checks, catalog74, macOS ARM64. Real helper, broker,
+Settings approval, WKContentWorld, file input events and local receiving server
+confirmed binary5 bytes, empty, Unicode17 bytes and full4194304-byte artifacts.
+Four server POSTs matched exact SHA-256; retries, denial, MCP cancellation and
+input replacement produced no extra POST. Rewriting project sources after staging
+did not change the uploaded copies. Main and same-origin child fields worked
+despite page-world File/DataTransfer replacements. Events remained synthetic.
+Foreign workspace, wrong hash and path filenames were denied. Snapshots omitted
+selected filenames/content; closed destination denied stored upload results.
+Normal host/wrapper exit0 and isolated app-data removal passed. The native
+permission and exact destination/hash approval screenshots were inspected.
+Evidence: `/tmp/lomi-mcp-browser-upload-native3.log`,
+`lomi-mcp-control-vuDLZZ/browser-uploads.json`, `browser-upload-requests.json`
+and `cleanup.json`.
+
+Core60, broker67, helper wire8, WebKit adapter/frame6 and Settings2, TypeScript,
+production workspace check and frontend build PASS. Core includes missing scope,
+unclaimed/unprepared/reused approval, cancellation, immutable bytes, known
+no-effect versus uncertain failure, stale snapshot and revoked destination.
+The first core run found receipt access after manual takeover; the missing live
+destination check was added and targeted/full reruns passed. Two opt-in
+core/full-disk entries were ignored in this run and retain separate evidence.
+
+Native9eaJeL failed a fixture condition returning an element instead of Boolean
+true. YINphg passed the four actual transfers but its test waiter treated
+awaiting_user as final during the asynchronous decision. The upload fixture now
+waits through that state after clicking a decision and waits for the previous
+approval card to disappear. Both earlier runs cleaned up normally and are not
+counted as full passes. This qualifies attachment and synthetic event dispatch;
+server acceptance is asserted only by this local fixture, not promised by the
+public tool. Other engines/platforms and P6 remain separate work.
+Final helper wire8, all-target MCP and MCP-probe Clippy PASS with warnings denied
+(`browser-upload-wire-final`, `browser-upload-clippy-final2`,
+`browser-upload-probe-clippy-final` logs in `/tmp/lomi-mcp-*`). Formatting and
+diff checks passed. No native fixture remains running.
+
 ## Bounded native browser download (2026-09-24)
 
 **PvUmgs PASS**,12 checks, catalog73, macOS ARM64. The actual helper/broker/

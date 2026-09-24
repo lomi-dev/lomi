@@ -64,8 +64,30 @@ still applies: a closed or human-taken browser/Android source cannot be exported
 Poll the operation to confirm completion; reuse the exact original request for
 retry. An uncertain outcome requires inspecting the destination before new work.
 
-These permissions do not grant upload to a website. Browser download requires
-the separate permission described below; upload remains unfinished.
+Browser upload and download require their separate permissions described below.
+
+## Upload a file to a page
+
+Enable browser navigation/read/interact and **Allow requesting file uploads to
+pages** when pairing. Import the exact file as a private artifact, then use
+`lomi_browser_snapshot` to find a visible `file_input` and its frame ID.
+`lomi_browser_upload` takes that element/frame/snapshot/navigation, the owned
+browser's generation and lease, the artifact ID/hash, a filename without path
+components, and the usual layout revision/retry fields. The limit is4MiB.
+
+Review the **Browser upload requests** card in Settings. It shows the exact
+destination document/origin/input, filename, size and SHA-256. **Upload this file**
+allows that page to read and send those bytes immediately. **Deny upload** or
+MCP cancellation before approval leaves the input unchanged. Page text is
+untrusted; check the destination and file identity. Snapshot references expire
+after60 seconds and also become invalid after navigation or a new snapshot.
+
+Poll the operation for completion. Success confirms synthetic attachment and
+input/change events; it does not confirm the server accepted a submission.
+Reusing the original retry key never uploads again. A dispatched operation with
+an uncertain outcome requires checking the page before starting a new request.
+Only same-origin frames are supported. File pickers and arbitrary local paths
+are excluded; a changed source file cannot replace the already staged copy.
 
 ## Download a browser file
 

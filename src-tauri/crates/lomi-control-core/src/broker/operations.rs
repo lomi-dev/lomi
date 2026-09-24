@@ -9,6 +9,7 @@ pub(super) struct Work {
     pub(super) chat_draft_rejection: Option<ErrorCode>,
     pub(super) project_open: Option<super::project_open::Approval>,
     pub(super) settings_update: Option<super::settings_update::SettingsPlan>,
+    pub(super) browser_upload: Option<super::browser_upload::BrowserUploadApproval>,
     pub(super) android_input: Option<Arc<crate::android_input::InputLease>>,
     pub(super) pairing: String,
     pub(super) project: String,
@@ -185,6 +186,7 @@ impl Broker {
             }
             UiAction::EditorEdits(_) => &["files.read", "editor.read", "editor.write"],
             UiAction::AndroidLaunch(_) => &["android.read", "android.control", "android.launch"],
+            UiAction::UploadBrowser(_) => &["browser.read", "browser.interact", "browser.upload"],
             UiAction::DownloadBrowser(_) => &["browser.read", "browser.download"],
             UiAction::ExportArtifact(_) => &[
                 "files.read",
@@ -302,6 +304,7 @@ impl Broker {
                     UiAction::GitMutate(_)
                         | UiAction::OpenProject(_)
                         | UiAction::UpdateSettings(_)
+                        | UiAction::UploadBrowser(_)
                         | UiAction::SendChat(_)
                 ))
                 && !work.native_committed;
@@ -578,6 +581,7 @@ impl Broker {
                     | UiAction::CloseProject(_)
                     | UiAction::OpenProject(_)
                     | UiAction::UpdateSettings(_)
+                    | UiAction::UploadBrowser(_)
                     | UiAction::SendChat(_)
             ) {
             Duration::from_secs(120)
@@ -600,6 +604,7 @@ impl Broker {
                 chat_draft_rejection: None,
                 project_open,
                 settings_update: None,
+                browser_upload: None,
                 android_input: input_lease,
                 pairing: id.into(),
                 project: input.project.clone(),
@@ -708,7 +713,9 @@ impl Broker {
                     operation,
                     if matches!(
                         work.command.action,
-                        UiAction::OpenProject(_) | UiAction::UpdateSettings(_)
+                        UiAction::OpenProject(_)
+                            | UiAction::UpdateSettings(_)
+                            | UiAction::UploadBrowser(_)
                     ) {
                         OperationState::AwaitingUser
                     } else {
@@ -1444,6 +1451,7 @@ impl Broker {
             | OperationResult::AndroidInstall(_)
             | OperationResult::ArtifactImported { .. }
             | OperationResult::BrowserDownloaded(_)
+            | OperationResult::BrowserUploaded(_)
             | OperationResult::AndroidInput(_)
             | OperationResult::AndroidControl(_)
             | OperationResult::AndroidRuntime(_)
@@ -1542,8 +1550,10 @@ impl Broker {
         // for approval, but record_result intentionally excludes awaiting_user.
         // Return only this uncommitted failure to queued before recording it;
         // success still requires Settings approval and a native stored result.
-        if matches!(work.command.action, UiAction::UpdateSettings(_))
-            && !work.native_committed
+        if matches!(
+            work.command.action,
+            UiAction::UpdateSettings(_) | UiAction::UploadBrowser(_)
+        ) && !work.native_committed
             && matches!(ack.result, OperationResult::Failure { .. })
             && store
                 .get(&work.pairing, &work.project, &ack.operation_id)

@@ -11104,3 +11104,6 @@ async fn project_open_requires_exact_settings_approval_and_verified_publication(
         broker.shutdown().await;
     }
 }
+
+#[path = "support/browser_upload.rs"]
+mod browser_upload_tests;

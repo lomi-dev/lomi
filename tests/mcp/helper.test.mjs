@@ -77,7 +77,7 @@ for (const version of ["2025-11-25", "2026-07-28"]) {
         assert.equal(result.cacheScope, "private");
       }
       const catalog = (await call("tools/list", {})).result.tools;
-      assert.equal(catalog.length, 73);
+      assert.equal(catalog.length, 74);
       assert.ok(
         JSON.stringify(catalog).length < 700_000,
         "Tool-specific output schemas must stay within the catalog budget",
@@ -726,6 +726,22 @@ for (const version of ["2025-11-25", "2026-07-28"]) {
               retryEpoch: "epoch",
               requestKey: "install",
             },
+            lomi_browser_upload: {
+              workspaceId: "foreign",
+              panelId: "foreign",
+              browserGeneration: "foreign",
+              navigationId: "nav",
+              snapshotId: "snapshot",
+              elementRef: "main-e1",
+              frameId: "main",
+              leaseId: "lease",
+              artifactId: "artifact",
+              expectedSha256: "a".repeat(64),
+              fileName: "file.bin",
+              expectedRevision: "1",
+              retryEpoch: "epoch",
+              requestKey: "upload",
+            },
             lomi_browser_download: {
               workspaceId: "foreign",
               panelId: "foreign",
@@ -852,7 +868,13 @@ for (const version of ["2025-11-25", "2026-07-28"]) {
           arguments: { ...args, approved: true },
         });
         assert.equal(invalid.error.code, -32602);
-        if (["lomi_workspace_update", "lomi_project_close"].includes(tool.name))
+        if (
+          [
+            "lomi_workspace_update",
+            "lomi_project_close",
+            "lomi_browser_upload",
+          ].includes(tool.name)
+        )
           assert.equal(tool.annotations.destructiveHint, true);
         assert.equal(
           tool.annotations.readOnlyHint,
@@ -874,6 +896,7 @@ for (const version of ["2025-11-25", "2026-07-28"]) {
             "lomi_artifact_import",
             "lomi_artifact_export",
             "lomi_browser_download",
+            "lomi_browser_upload",
             "lomi_android_input",
             "lomi_android_start",
             "lomi_android_stop",

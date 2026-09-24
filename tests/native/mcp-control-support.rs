@@ -1,4 +1,6 @@
 //! Native enrollment/stdio qualification. Compiled only with mcp-probe.
+#[path = "mcp-browser-upload-support.rs"]
+mod browser_upload_probe;
 use crate::mcp_browser_probe::{evaluate, screenshot, wait_for};
 use serde_json::{json, Value};
 use std::{
@@ -2908,6 +2910,7 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
     evaluate(&settings,"(()=>{const e=[...document.querySelectorAll('.agent-control-request label')].find(e=>e.textContent.includes('Allow importing APK files')).querySelector('input');if(!e.checked)e.click();return true;})()").await?;
     if std::env::var_os("LOMI_MCP_ARTIFACT_FILES_ONLY").is_some()
         || std::env::var_os("LOMI_MCP_BROWSER_DOWNLOAD_ONLY").is_some()
+        || std::env::var_os("LOMI_MCP_BROWSER_UPLOAD_ONLY").is_some()
     {
         for label in [
             "Allow importing project files as artifacts",
@@ -2927,6 +2930,10 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
     evaluate(&settings, "[...document.querySelectorAll('.agent-control-request label')].find(e=>e.textContent.includes('Allow reading page text, form structure and browser logs')).querySelector('input').click();true").await?;
     evaluate(&settings, "[...document.querySelectorAll('.agent-control-request label')].find(e=>e.textContent.includes('Allow clicking, typing and scrolling in pages')).querySelector('input').click();true").await?;
     evaluate(&settings,"[...document.querySelectorAll('.agent-control-request label')].find(e=>e.textContent.includes('Allow screenshots of pages')).querySelector('input').click();true").await?;
+    if std::env::var_os("LOMI_MCP_BROWSER_UPLOAD_ONLY").is_some() {
+        evaluate(&settings,"(()=>{const e=[...document.querySelectorAll('.agent-control-request label')].find(e=>e.textContent.includes('Allow requesting file uploads')).querySelector('input');if(e.disabled)throw Error('Upload permission unavailable');e.click();e.scrollIntoView({block:'center'});return true;})()").await?;
+        screenshot(&settings, directory.join("browser-upload-permission.png")).await?;
+    }
     if std::env::var_os("LOMI_MCP_BROWSER_DOWNLOAD_ONLY").is_some() {
         evaluate(&settings,"(()=>{const e=[...document.querySelectorAll('.agent-control-request label')].find(e=>e.textContent.includes('Allow downloading page files')).querySelector('input');if(e.disabled)throw Error('Download permission unavailable');e.click();e.scrollIntoView({block:'center'});return true;})()").await?;
         screenshot(&settings, directory.join("browser-download-permission.png")).await?;
@@ -3053,6 +3060,22 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
         .await?;
     if connected["structuredContent"]["status"] != "ok" {
         return Err("Cannot select approved workspace".into());
+    }
+    if std::env::var_os("LOMI_MCP_BROWSER_UPLOAD_ONLY").is_some() {
+        browser_upload_probe::qualify(
+            app,
+            &mut wire,
+            &main,
+            &workspace,
+            &connected["structuredContent"]["data"]["retryEpoch"],
+            directory,
+            &browser_fixture,
+        )
+        .await?;
+        child.kill().await.map_err(|e| e.to_string())?;
+        return Ok(
+            json!({"profile":"browser-upload-only","catalogCount":catalog["result"]["tools"].as_array().map(Vec::len)}),
+        );
     }
     if std::env::var_os("LOMI_MCP_BROWSER_DOWNLOAD_ONLY").is_some() {
         browser_download_probe::qualify(

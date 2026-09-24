@@ -135,6 +135,23 @@ export interface ControlState {
       secondsRemaining: number;
     }[];
     pendingAndroidManagement?: AndroidManagementApproval[];
+    pendingBrowserUploads?: {
+      operationId: string;
+      clientLabel: string;
+      workspaceId: string;
+      panelId: string;
+      elementRef: string;
+      target: {
+        frameId: string;
+        origin: string;
+        documentUrl: string;
+        label: string;
+      };
+      fileName: string;
+      byteLength: number;
+      sha256: string;
+      secondsRemaining: number;
+    }[];
     pendingInstalls: {
       operationId: string;
       clientLabel: string;
@@ -270,6 +287,7 @@ interface UiCommand {
       }
     | { type: "import_artifact"; workspaceId: string }
     | { type: "download_browser"; workspaceId: string }
+    | { type: "upload_browser"; workspaceId: string }
     | { type: "export_artifact"; workspaceId: string; notAfterMillis: string }
     | {
         type: "android_launch";
@@ -2676,6 +2694,36 @@ export function useAgentControlBridge(
                 operationId: command.operationId,
                 nonce: command.nonce,
               }).catch(() => {});
+            } else if (action.type === "upload_browser") {
+              try {
+                await api("agent_browser_upload_prepare", {
+                  operationId: command.operationId,
+                  nonce: command.nonce,
+                });
+              } catch (error) {
+                const code = error instanceof Error ? error.message : error;
+                await ack({
+                  kind: "failure",
+                  code:
+                    typeof code === "string" &&
+                    [
+                      "CONTROL_REVOKED",
+                      "SCOPE_DENIED",
+                      "TARGET_NOT_FOUND",
+                      "STALE_GENERATION",
+                      "STALE_SNAPSHOT",
+                      "PANEL_NOT_RENDERABLE",
+                      "REVISION_CONFLICT",
+                      "UNSUPPORTED_CAPABILITY",
+                      "STORAGE_UNAVAILABLE",
+                      "UI_NOT_READY",
+                      "RESOURCE_EXHAUSTED",
+                      "DEADLINE_EXCEEDED",
+                    ].includes(code)
+                      ? code
+                      : "OUTCOME_UNKNOWN",
+                });
+              }
             } else if (
               action.type === "import_artifact" ||
               action.type === "download_browser"

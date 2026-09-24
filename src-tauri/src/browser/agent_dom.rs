@@ -135,10 +135,26 @@ fn execute(
     app: &AppHandle,
     control: Arc<BrowserControl>,
     navigation: &str,
-    mut arguments: Value,
+    arguments: Value,
     permit: Option<lomi_control_core::broker::NativePermit>,
     deadline: Instant,
 ) -> Result<Value, ErrorCode> {
+    execute_guarded(app, control, navigation, arguments, permit, deadline, None)
+}
+struct UploadDispatch {
+    check: Arc<dyn Fn() -> Result<(), ErrorCode> + Send + Sync>,
+    producer: lomi_control_core::artifacts::ProducerPermit,
+}
+fn execute_guarded(
+    app: &AppHandle,
+    control: Arc<BrowserControl>,
+    navigation: &str,
+    mut arguments: Value,
+    permit: Option<lomi_control_core::broker::NativePermit>,
+    deadline: Instant,
+    upload: Option<UploadDispatch>,
+) -> Result<Value, ErrorCode> {
+    let source_check = upload.as_ref().map(|u| u.check.clone());
     let page_logs = arguments["action"] == "page_logs";
     let download = arguments["action"] == "download";
     let response_limit = if download {
@@ -150,7 +166,9 @@ fn execute(
     } else {
         65536
     };
-    let transfer_guard = if download {
+    let transfer_guard = if let Some(upload) = upload {
+        Some(upload.producer)
+    } else if download {
         Some(lomi_control_core::artifacts::ProducerPermit::acquire()?)
     } else {
         None
@@ -188,8 +206,14 @@ fn execute(
             if let Some(permit) = &permit {
                 permit.check()?;
             }
+            if let Some(check) = &source_check {
+                check()?;
+            }
             control.check_document(&navigation)?;
-            if arguments["action"] == "interact" {
+            if matches!(
+                arguments["action"].as_str(),
+                Some("interact" | "upload" | "upload_prepare")
+            ) {
                 control.require_renderable()?;
                 use objc2_app_kit::NSView;
                 let native_view: &NSView = native;
@@ -399,4 +423,98 @@ pub(super) fn geometry(
         return Err(serde_json::from_value(error.clone()).unwrap_or(ErrorCode::OutcomeUnknown));
     }
     serde_json::from_value(value).map_err(|_| ErrorCode::OutcomeUnknown)
+}
+
+pub fn prepare_upload(
+    app: &AppHandle,
+    control: Arc<BrowserControl>,
+    input: &BrowserUploadInput,
+    permit: lomi_control_core::broker::NativePermit,
+) -> Result<BrowserUploadTarget, ErrorCode> {
+    let _guard = control.begin_dom()?;
+    control.check_snapshot(&input.snapshot_id, &input.navigation_id)?;
+    let mut arguments = serde_json::to_value(input).map_err(|_| ErrorCode::AppUnavailable)?;
+    arguments["action"] = "upload_prepare".into();
+    arguments["interaction"] = json!({"type":"upload"});
+    let result = execute(
+        app,
+        control,
+        &input.navigation_id,
+        arguments,
+        Some(permit),
+        Instant::now() + Duration::from_secs(3),
+    )?;
+    if let Some(error) = result.get("error") {
+        return Err(serde_json::from_value(error.clone()).unwrap_or(ErrorCode::OutcomeUnknown));
+    }
+    serde_json::from_value(result).map_err(|_| ErrorCode::OutcomeUnknown)
+}
+
+pub fn upload(
+    app: &AppHandle,
+    mut approval: lomi_control_core::broker::BrowserUploadApproval,
+) -> Result<(), lomi_control_core::broker::BrowserDownloadFailure> {
+    use base64::Engine;
+    use lomi_control_core::{artifacts::ProducerPermit, broker::BrowserDownloadFailure};
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    let failure = |code, no_effect| BrowserDownloadFailure { code, no_effect };
+    (approval.check)().map_err(|code| failure(code, true))?;
+    let producer = ProducerPermit::acquire().map_err(|code| failure(code, true))?;
+    let _guard = approval
+        .control
+        .begin_dom()
+        .map_err(|code| failure(code, true))?;
+    approval
+        .file
+        .verify(|| (approval.check)())
+        .map_err(|code| failure(code, true))?;
+    let artifact = &approval.file.artifact;
+    let mut bytes = Vec::with_capacity(artifact.byte_length as usize);
+    approval
+        .file
+        .file
+        .take(u64::from(artifact.byte_length) + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| failure(ErrorCode::StorageUnavailable, true))?;
+    if bytes.len() != artifact.byte_length as usize
+        || format!("{:x}", Sha256::digest(&bytes)) != artifact.sha256
+    {
+        return Err(failure(ErrorCode::StorageUnavailable, true));
+    }
+    (approval.check)().map_err(|code| failure(code, true))?;
+    let mut arguments = serde_json::to_value(&approval.input)
+        .map_err(|_| failure(ErrorCode::AppUnavailable, true))?;
+    arguments["action"] = "upload".into();
+    arguments["interaction"] = json!({"type":"upload"});
+    arguments["documentUrl"] = approval.target.document_url.into();
+    arguments["byteLength"] = artifact.byte_length.into();
+    arguments["mediaType"] = artifact.media_type.clone().into();
+    arguments["base64"] = base64::engine::general_purpose::STANDARD
+        .encode(&bytes)
+        .into();
+    drop(bytes);
+    let result = execute_guarded(
+        app,
+        approval.control,
+        &approval.input.navigation_id,
+        arguments,
+        Some(approval.permit),
+        Instant::now() + Duration::from_secs(3),
+        Some(UploadDispatch {
+            check: approval.check,
+            producer,
+        }),
+    )
+    .map_err(|code| failure(code, false))?;
+    if let Some(error) = result.get("error") {
+        return Err(failure(
+            serde_json::from_value(error.clone()).unwrap_or(ErrorCode::OutcomeUnknown),
+            result["noEffect"] == true,
+        ));
+    }
+    if result["dispatched"] != true || result["frameId"] != approval.input.frame_id {
+        return Err(failure(ErrorCode::OutcomeUnknown, false));
+    }
+    Ok(())
 }

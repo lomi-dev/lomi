@@ -265,6 +265,25 @@ impl Broker {
                 return error(ErrorCode::ScopeDenied);
             }
         }
+        if let Some(OperationResult::BrowserUploaded(result)) = &receipt.result {
+            if let Err(code) = Self::artifact_source_access(state, owner, &result.artifact) {
+                return error(code);
+            }
+            match Self::browser_target(
+                state,
+                owner,
+                &result.workspace_id,
+                &result.panel_id,
+                &result.browser_generation,
+                "browser.upload",
+            ) {
+                Err(code) => return error(code),
+                Ok(target) if !target.control.authorized() => {
+                    return error(ErrorCode::ControlRevoked)
+                }
+                Ok(_) => {}
+            }
+        }
         if let Some(OperationResult::BrowserDownloaded(artifact)) = &receipt.result {
             if let Err(code) = Self::artifact_source_access(state, owner, artifact) {
                 return error(code);

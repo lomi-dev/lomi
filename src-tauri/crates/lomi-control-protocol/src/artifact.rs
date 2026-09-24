@@ -234,6 +234,48 @@ fn default_download_bytes() -> u32 {
     4 * 1024 * 1024
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowserUploadInput {
+    pub workspace_id: String,
+    pub panel_id: String,
+    pub browser_generation: String,
+    pub lease_id: String,
+    pub navigation_id: String,
+    pub snapshot_id: String,
+    pub element_ref: String,
+    pub frame_id: String,
+    pub artifact_id: String,
+    pub expected_sha256: String,
+    pub file_name: String,
+    pub expected_revision: String,
+    pub retry_epoch: String,
+    pub request_key: String,
+}
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowserUploadTarget {
+    pub frame_id: String,
+    pub origin: String,
+    pub document_url: String,
+    pub label: String,
+}
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowserUploaded {
+    pub workspace_id: String,
+    pub panel_id: String,
+    pub browser_generation: String,
+    pub navigation_id: String,
+    pub snapshot_id: String,
+    pub element_ref: String,
+    pub target: BrowserUploadTarget,
+    pub file_name: String,
+    pub artifact: Box<Artifact>,
+    pub input_mode: String,
+    pub dispatched: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

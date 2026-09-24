@@ -10,6 +10,7 @@ import { tmpdir, homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
+import { uploadFixture } from "../mcp/browser-upload-server.mjs";
 import { downloadFixture } from "../mcp/browser-download-server.mjs";
 import { browserFramePage } from "../mcp/browser-frame-pages.mjs";
 import { newSession, newProject } from "../../src/model.ts";
@@ -97,7 +98,9 @@ await new Promise((resolve) => portReservation.close(resolve));
 const downloads = downloadFixture(
   `http://127.0.0.1:${blockedServer.address().port}`,
 );
+const uploads = uploadFixture();
 const closeStressServer =
+  process.env.LOMI_MCP_BROWSER_UPLOAD_ONLY ||
   process.env.LOMI_MCP_BROWSER_DOWNLOAD_ONLY ||
   process.env.LOMI_MCP_ARTIFACT_FILES_ONLY ||
   process.env.LOMI_MCP_BROWSER_LOGS_ONLY ||
@@ -118,14 +121,16 @@ const closeStressServer =
   process.env.LOMI_MCP_CLOSE_STRESS_ONLY ||
   process.env.LOMI_MCP_PROJECT_CLOSE_ONLY
     ? createServer((_request, response) =>
-        process.env.LOMI_MCP_BROWSER_DOWNLOAD_ONLY
-          ? downloads.serve(_request, response)
-          : response.end(
-              process.env.LOMI_MCP_BROWSER_FRAMES_ONLY ||
-                process.env.LOMI_MCP_BROWSER_LOGS_ONLY
-                ? browserFramePage(_request.url ?? "/frames")
-                : "<!doctype html><title>Close fixture</title><p>Owned page</p>",
-            ),
+        process.env.LOMI_MCP_BROWSER_UPLOAD_ONLY
+          ? uploads.serve(_request, response)
+          : process.env.LOMI_MCP_BROWSER_DOWNLOAD_ONLY
+            ? downloads.serve(_request, response)
+            : response.end(
+                process.env.LOMI_MCP_BROWSER_FRAMES_ONLY ||
+                  process.env.LOMI_MCP_BROWSER_LOGS_ONLY
+                  ? browserFramePage(_request.url ?? "/frames")
+                  : "<!doctype html><title>Close fixture</title><p>Owned page</p>",
+              ),
       )
     : null;
 if (closeStressServer)
@@ -266,7 +271,37 @@ try {
     }
   }
   if (!result) throw Error("Native control probe timed out");
-  if (result.stage === "passed" && process.env.LOMI_MCP_BROWSER_DOWNLOAD_ONLY) {
+  if (result.stage === "passed" && process.env.LOMI_MCP_BROWSER_UPLOAD_ONLY) {
+    const proof = JSON.parse(
+      await readFile(join(directory, "browser-uploads.json"), "utf8"),
+    );
+    await writeFile(
+      join(directory, "browser-upload-requests.json"),
+      JSON.stringify(uploads.received, null, 2),
+    );
+    if (
+      deniedRequests !== 0 ||
+      result.data?.profile !== "browser-upload-only" ||
+      result.data?.catalogCount !== 74 ||
+      proof.checks?.length !== 12 ||
+      uploads.received.length !== 4 ||
+      proof.closed?.structuredContent?.data?.state !== "succeeded"
+    )
+      throw Error("Browser upload qualification returned incomplete evidence");
+    for (const expected of proof.uploads) {
+      if (
+        !uploads.received.some(
+          (item) =>
+            item.sha256 === expected.sha256 &&
+            item.length === expected.byteLength,
+        )
+      )
+        throw Error("Native uploaded bytes did not reach fixture server");
+    }
+  } else if (
+    result.stage === "passed" &&
+    process.env.LOMI_MCP_BROWSER_DOWNLOAD_ONLY
+  ) {
     const proof = JSON.parse(
       await readFile(join(directory, "browser-downloads.json"), "utf8"),
     );
@@ -277,7 +312,7 @@ try {
     if (
       deniedRequests !== 0 ||
       result.data?.profile !== "browser-download-only" ||
-      result.data?.catalogCount !== 73 ||
+      result.data?.catalogCount !== 74 ||
       proof.checks?.length !== 12 ||
       downloads.counts["/download/counted"] !== 1 ||
       proof.closed?.structuredContent?.data?.state !== "succeeded"
@@ -294,7 +329,7 @@ try {
     );
     if (
       result.data?.profile !== "artifact-files-only" ||
-      result.data?.catalogCount !== 73 ||
+      result.data?.catalogCount !== 74 ||
       proof.checks?.length !== 12
     )
       throw Error("Artifact qualification returned incomplete evidence");
@@ -336,7 +371,7 @@ try {
     if (
       deniedRequests !== 0 ||
       result.data?.profile !== "android-layout-only" ||
-      result.data?.catalogCount !== 73 ||
+      result.data?.catalogCount !== 74 ||
       proof.checks?.length !== 14 ||
       !proof.stopped ||
       !proof.originalDevicePreserved
@@ -352,7 +387,7 @@ try {
     if (
       deniedRequests !== 0 ||
       result.data?.profile !== "android-setup-only" ||
-      result.data?.catalogCount !== 73 ||
+      result.data?.catalogCount !== 74 ||
       proof.checks?.length !== 23 ||
       !proof.originalDevicePreserved ||
       !proof.fixtureDeviceRemoved
@@ -378,7 +413,7 @@ try {
             : process.env.LOMI_MCP_CHAT_OPEN_ONLY
               ? "chat-open-only"
               : "chat-read-only") ||
-      result.data?.catalogCount !== 73 ||
+      result.data?.catalogCount !== 74 ||
       proof.checks?.length !==
         (process.env.LOMI_MCP_CHAT_SEND_ONLY
           ? 54

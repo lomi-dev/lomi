@@ -143,7 +143,27 @@ was inspected. Core60, broker66, wire8, WebKit2, TypeScript, workspace check,
 all-target MCP and MCP-probe Clippy PASS. Opt-in core/full-disk tests remain ignored
 in this run, with their separate evidence retained. No native fixture remains running.
 
-Next: approved browser upload, terminal qualification and P6. Full MCP is incomplete.
+Downloads were committed and pushed to origin/main as
+`df810b7f26e5f8822e7466bf1c9bd5d575cb73fd`; local and remote SHA verified.
+
+Approved browser upload is natively qualified on macOS ARM64: **vuDLZZ PASS**,
+catalog74,12 checks, normal host/wrapper exit0 and isolated app-data removal.
+Native Settings approval binds the actual same-origin document/frame/input and
+an immutable artifact's filename/size/hash. Actual main/child file inputs and
+the test server received binary, empty, Unicode and full4MiB copies; exactly four
+POSTs matched their hashes. Source rewrites, page-world File/DataTransfer
+replacement, retry, denial, MCP cancel, replaced input and closed destination
+were exercised. Denied/cancelled/stale requests produced no extra POST.
+Permission and exact-approval screenshots were inspected. Core60/broker67,
+wire8, WebKit adapter/frame6 + Settings2, TypeScript and frontend build PASS.
+The first core receipt-revocation assertion found and fixed a missing live
+destination check; the complete broker67 suite passes after the fix.
+Native9eaJeL andYINphg failed test-harness readiness/waiting assumptions, each
+with normal cleanup; neither is a full qualification pass.
+Final helper wire8, all-target MCP and MCP-probe Clippy PASS with warnings denied;
+formatting/diff checks passed. No native fixture remains running.
+
+Next: Bash/Zsh terminal qualification and P6. Full MCP is incomplete.
 
 Chat AI milestone was committed and pushed to origin/main as
 `57b05cb46f8ed1896f2b26c3665826a401a96073`; remote SHA verified and the

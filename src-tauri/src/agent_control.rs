@@ -1512,6 +1512,77 @@ pub async fn agent_control_decide_terminal(
 }
 
 #[tauri::command]
+pub async fn agent_browser_upload_prepare(
+    window: Window,
+    operation_id: String,
+    nonce: String,
+) -> Result<(), String> {
+    crate::files::main_window(&window)?;
+    #[cfg(target_os = "macos")]
+    {
+        let app = window.app_handle().clone();
+        let broker = app.state::<Control>().required()?;
+        let native = app.clone();
+        let permit = tauri::async_runtime::spawn_blocking(move || {
+            broker.prepare_browser_upload(&operation_id, &nonce, |control, input, permit| {
+                crate::browser::agent_dom::prepare_upload(&native, control, input, permit)
+            })
+        })
+        .await
+        .map_err(|_| "OUTCOME_UNKNOWN".to_string())?
+        .map_err(|code| {
+            serde_json::to_value(code)
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .to_string()
+        })?;
+        crate::settings_window::request_checked(&app, Some("agent-control".into()), || {
+            permit.check().map_err(|_| "CONTROL_REVOKED".into())
+        })
+        .await
+        .map_err(|_| "OUTCOME_UNKNOWN".into())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (operation_id, nonce);
+        Err("HOST_UNQUALIFIED".into())
+    }
+}
+#[tauri::command]
+pub async fn agent_browser_upload_decide(
+    window: Window,
+    operation_id: String,
+    approve: bool,
+) -> Result<(), String> {
+    settings(&window)?;
+    #[cfg(target_os = "macos")]
+    {
+        let app = window.app_handle().clone();
+        let broker = app.state::<Control>().required()?;
+        tauri::async_runtime::spawn_blocking(move || {
+            broker.decide_browser_upload(&operation_id, approve, |approval| {
+                crate::browser::agent_dom::upload(&app, approval)
+            })
+        })
+        .await
+        .map_err(|_| "OUTCOME_UNKNOWN".to_string())?
+        .map_err(|code| {
+            serde_json::to_value(code)
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .to_string()
+        })
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (operation_id, approve);
+        Err("HOST_UNQUALIFIED".into())
+    }
+}
+
+#[tauri::command]
 pub async fn agent_browser_download(
     window: Window,
     operation_id: String,

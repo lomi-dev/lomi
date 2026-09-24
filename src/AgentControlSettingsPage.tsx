@@ -1,3 +1,4 @@
+import { AgentBrowserUploadApproval } from "./AgentBrowserUploadApproval";
 import { AgentAndroidApproval } from "./AgentAndroidApproval";
 import { AgentChatPermission } from "./AgentChatPermission";
 import { Fragment, useCallback, useEffect, useState } from "react";
@@ -581,6 +582,11 @@ export default function AgentControlSettingsPage() {
               ))}
             </section>
           )}
+          <AgentBrowserUploadApproval
+            requests={broker.pendingBrowserUploads ?? []}
+            busy={busy}
+            run={run}
+          />
           {!!broker.pendingInstalls?.length && (
             <section
               className="keybindings-group"
@@ -803,6 +809,7 @@ function Pairing({
   const [interactBrowser, setInteractBrowser] = useState(false);
   const [readBrowser, setReadBrowser] = useState(false);
   const [downloadBrowser, setDownloadBrowser] = useState(false);
+  const [uploadBrowser, setUploadBrowser] = useState(false);
   const [readAndroid, setReadAndroid] = useState(false);
   const [setupAndroid, setSetupAndroid] = useState(false);
   const [manageAndroid, setManageAndroid] = useState(false);
@@ -1204,7 +1211,10 @@ function Pairing({
           disabled={busy}
           onChange={(event) => {
             setNavigateBrowser(event.target.checked);
-            if (!event.target.checked) setDownloadBrowser(false);
+            if (!event.target.checked) {
+              setDownloadBrowser(false);
+              setUploadBrowser(false);
+            }
           }}
         />{" "}
         Allow opening and navigating isolated browser panels
@@ -1216,7 +1226,10 @@ function Pairing({
           disabled={busy || !navigateBrowser}
           onChange={(event) => {
             setReadBrowser(event.target.checked);
-            if (!event.target.checked) setDownloadBrowser(false);
+            if (!event.target.checked) {
+              setDownloadBrowser(false);
+              setUploadBrowser(false);
+            }
           }}
         />{" "}
         Allow reading page text, form structure and browser logs
@@ -1226,7 +1239,10 @@ function Pairing({
           type="checkbox"
           checked={interactBrowser}
           disabled={busy || !navigateBrowser || !readBrowser}
-          onChange={(event) => setInteractBrowser(event.target.checked)}
+          onChange={(event) => {
+            setInteractBrowser(event.target.checked);
+            if (!event.target.checked) setUploadBrowser(false);
+          }}
         />{" "}
         Allow clicking, typing and scrolling in pages
       </label>
@@ -1252,6 +1268,22 @@ function Pairing({
         Fetch an explicit URL from the current page's origin, using its browser
         session. Transfers are limited to 4 MiB and block redirects. Export to a
         project file requires separate permission.
+      </p>
+      <label>
+        <input
+          type="checkbox"
+          checked={uploadBrowser}
+          disabled={
+            busy || !navigateBrowser || !readBrowser || !interactBrowser
+          }
+          onChange={(event) => setUploadBrowser(event.target.checked)}
+        />{" "}
+        Allow requesting file uploads to pages
+      </label>
+      <p className="settings-help">
+        Each upload needs your approval of the destination, filename, size and
+        SHA-256 in Settings. Attaching the private copy lets the page read and
+        send its bytes immediately. Files are limited to 4 MiB.
       </p>
       {navigateBrowser && (
         <>
@@ -1889,7 +1921,12 @@ function Pairing({
                                     ? ["browser.download"]
                                     : []),
                                   ...(interactBrowser
-                                    ? ["browser.interact"]
+                                    ? [
+                                        "browser.interact",
+                                        ...(uploadBrowser
+                                          ? ["browser.upload"]
+                                          : []),
+                                      ]
                                     : []),
                                 ]
                               : []),

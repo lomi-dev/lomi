@@ -1,5 +1,29 @@
 # MCP requirements traceability
 
+## Approved browser upload contract (2026-09-24)
+
+`lomi_browser_upload` attaches one immutable artifact (at most4MiB) to one
+visible file input in the current owned browser. A separate `browser.upload`
+permission requires browser read/interact. Inputs bind workspace/panel/generation,
+lease, navigation/snapshot/element/frame, artifact/hash, a basename, layout
+revision and retry key. No host path, file picker, arbitrary script or caller bytes.
+
+Native preflight resolves the exact same-origin frame/input and pins the private
+artifact. Settings shows the client, destination origin/document/frame/input,
+filename, byte count and SHA-256 for one-use approval. Granting the scope alone
+never uploads. Approval/cancel/revoke/expiry use the existing durable operation
+and bounded UI work queue. Dispatch rechecks the source authority, hash, lease,
+document/ref/frame and native visibility, then assigns File/DataTransfer bytes
+and emits synthetic input/change in the isolated world. The page receives those
+bytes and may send them immediately. Success confirms attachment/event dispatch,
+not server acceptance. Uncertain post-dispatch failures are never replayed.
+
+Primary API references: [DataTransfer](https://developer.mozilla.org/en-US/docs/Web/API/DataTransfer/DataTransfer)
+and [file inputs](https://developer.mozilla.org/en-US/docs/Web/API/HTMLInputElement/files).
+Actual WebKit/WKWebView tests determine support; no other engine is qualified.
+Native **vuDLZZ PASS**,12 checks, catalog74, qualifies this contract on macOS
+ARM64. Source and destination authority also guard completed upload receipts.
+
 ## Bounded browser download contract (2026-09-24)
 
 `lomi_browser_download` is an explicit same-origin HTTP(S) GET from the owned

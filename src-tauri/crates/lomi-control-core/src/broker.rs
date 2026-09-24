@@ -42,7 +42,9 @@ mod android_layout;
 pub use android_layout::{AndroidCloseDispatch, AndroidCloseTarget};
 mod artifact_export;
 mod browser_download;
+mod browser_upload;
 pub use browser_download::BrowserDownloadFailure;
+pub use browser_upload::{BrowserUploadApproval, PendingBrowserUpload};
 mod editor;
 mod editor_edits;
 mod editor_open;
@@ -178,6 +180,7 @@ pub struct Overview {
     pub pending_project_opens: Vec<PendingProjectOpenView>,
     pub pending_settings_updates: Vec<PendingSettingsUpdate>,
     pub pending_installs: Vec<PendingInstallView>,
+    pub pending_browser_uploads: Vec<PendingBrowserUpload>,
     pub pending_android_management: Vec<PendingAndroidManagement>,
     pub sessions: Vec<SessionView>,
 }
@@ -835,6 +838,7 @@ impl Broker {
             terminal_profile: state.projection.terminal_profile.clone(),
             pending_project_opens: Self::pending_project_opens(&state, authorized),
             pending_settings_updates: Self::pending_settings_updates(&state, authorized),
+            pending_browser_uploads: Self::pending_browser_uploads(&state, authorized),
             pending_android_management: Self::pending_android_management(&state, authorized),
             pending_installs: state
                 .installs
@@ -999,6 +1003,10 @@ impl Broker {
                     "artifact.import" | "artifact.import_file" | "artifact.export"
                 )
             }) && !scopes.iter().any(|s| s == "files.read"))
+            || (scopes.iter().any(|s| s == "browser.upload")
+                && !["browser.read", "browser.interact"]
+                    .iter()
+                    .all(|s| scopes.iter().any(|v| v == s)))
             || (scopes.iter().any(|s| s == "browser.download")
                 && !scopes.iter().any(|s| s == "browser.read"))
             || (scopes.iter().any(|s| s == "artifact.export")
@@ -1119,6 +1127,7 @@ impl Broker {
                         | "browser.interact"
                         | "browser.capture_composite"
                         | "browser.download"
+                        | "browser.upload"
                 )
             })
         {
@@ -1511,6 +1520,7 @@ impl Broker {
             Request::ImportArtifact(input) => return self.import_artifact(id, input),
             Request::ExportArtifact(input) => return self.export_artifact(id, input),
             Request::DownloadBrowser(input) => return self.download_browser(id, input),
+            Request::UploadBrowser(input) => return self.upload_browser(id, input),
             Request::ReadArtifact(input) => return self.read_artifact(id, input),
             Request::WaitBrowser(input) => return self.wait_browser(id, input),
             Request::KeyBrowser(input) => {
@@ -1577,7 +1587,7 @@ impl Broker {
         let ready = !projection.ui_epoch.is_empty() && projection.revision != "0";
         let visible = |w: &&Workspace| session.grant.permits(w);
         match request {
-            Request::Status(_)=>Reply::ok(Data::Status {connection:"connected".into(),pairing_request_id:None,instance_id:Some(self.endpoint.instance_id.clone()),ui_ready:ready,platform:std::env::consts::OS.into(),capabilities:["android.setup","android.manage","chat.export","chat.stop","chat.send","chat.draft","chat.read","chat.open","chat.create","settings.write","settings.read","settings.open","git.pull","git.discard","git.push","git.network","git.write","git.execute","git.read","files.trash","files.rename","files.create","files.mutate","editor.write","editor.read","android.logs","android.launch","android.install","files.read","artifact.import","artifact.import_file","artifact.export","android.capture","android.observe","android.interact","android.control","android.read","project.open", "project.close","workspace.close","workspace.read","workspace.write","panel.move","panel.focus","panel.close","panel.create","terminal.execute","terminal.read","browser.navigate","browser.read","browser.interact","browser.capture_composite","browser.download"].into_iter().map(|name|Capability {name:name.into(),available:true,authorized:session.grant.scopes.contains(name),qualified:cfg!(all(target_os="macos",target_arch="aarch64"))}).collect(),limitations:vec!["Session-only pairing; authorization is shared by the process using this stdio channel".into(),"Shell cwd and browser origins are not OS or network sandboxes".into()]}),
+            Request::Status(_)=>Reply::ok(Data::Status {connection:"connected".into(),pairing_request_id:None,instance_id:Some(self.endpoint.instance_id.clone()),ui_ready:ready,platform:std::env::consts::OS.into(),capabilities:["android.setup","android.manage","chat.export","chat.stop","chat.send","chat.draft","chat.read","chat.open","chat.create","settings.write","settings.read","settings.open","git.pull","git.discard","git.push","git.network","git.write","git.execute","git.read","files.trash","files.rename","files.create","files.mutate","editor.write","editor.read","android.logs","android.launch","android.install","files.read","artifact.import","artifact.import_file","artifact.export","android.capture","android.observe","android.interact","android.control","android.read","project.open", "project.close","workspace.close","workspace.read","workspace.write","panel.move","panel.focus","panel.close","panel.create","terminal.execute","terminal.read","browser.navigate","browser.read","browser.interact","browser.capture_composite","browser.download","browser.upload"].into_iter().map(|name|Capability {name:name.into(),available:true,authorized:session.grant.scopes.contains(name),qualified:cfg!(all(target_os="macos",target_arch="aarch64"))}).collect(),limitations:vec!["Session-only pairing; authorization is shared by the process using this stdio channel".into(),"Shell cwd and browser origins are not OS or network sandboxes".into()]}),
             Request::Diagnostics(_)=>Reply::ok(Data::Diagnostics {connection:"connected".into(),ui_ready:ready,next_step:if ready{"List workspaces, then connect to an approved workspace"}else{"Wait for the main workspace window"}.into()}),
             Request::Connect(input)=>{
                 if !ready{return error(ErrorCode::UiNotReady);}
@@ -1627,7 +1637,7 @@ impl Broker {
                     _=>error(ErrorCode::StorageUnavailable),
                 }
             }
-            Request::AndroidSetupPlan(_)|Request::AndroidSetupApply(_)|Request::AndroidDeviceManage(_)|Request::ChatExport(_)|Request::ChatStop(_)|Request::ChatSend(_)|Request::ChatDraft(_)|Request::ChatOpen(_)|Request::ChatList(_)|Request::ChatRead(_)|Request::UpdateSettings(_)|Request::ReadSettings(_)|Request::OpenSettings(_)|Request::OpenProject(_)|Request::CloseProject(_)|Request::GitMutate(_)|Request::GitDiff(_)|Request::GitHistory(_)|Request::GitCommit(_)|Request::GitRemotes(_)|Request::GitOpen(_)|Request::GitStatus(_)|Request::FilesMutate(_)|Request::EditorSave(_)|Request::EditorOpen(_)|Request::EditorEdits(_)|Request::EditorRead(_)|Request::FilesSearch(_)|Request::FilesList(_)|Request::FilesRead(_)|Request::AndroidLogcat(_)|Request::AndroidLaunch(_)|Request::AndroidInstall(_)|Request::ImportArtifact(_)|Request::ExportArtifact(_)|Request::DownloadBrowser(_)|Request::AndroidScreenshot(_)|Request::AndroidSnapshot(_)|Request::AndroidInput(_)|Request::AndroidStart(_)|Request::AndroidStop(_)|Request::AndroidOpen(_)|Request::AndroidList(_)|Request::BrowserLogs(_)|Request::ScreenshotBrowser(_)|Request::ReadArtifact(_)|Request::WaitBrowser(_)|Request::KeyBrowser(_)|Request::ScrollBrowser(_)|Request::ClickBrowser(_)|Request::FillBrowser(_)|Request::SnapshotBrowser(_)|Request::NavigateBrowser(_)|Request::OpenBrowser(_)|Request::RenameWorkspace(_)|Request::CreateWorkspace(_)|Request::CreateTerminal(_)|Request::ReadTerminal(_)|Request::RunTerminal(_)|Request::InterruptTerminal(_)|Request::InputTerminal(_)|Request::Panels(_)|Request::MovePanel(_)|Request::FocusPanel(_)|Request::ControlPanel(_)|Request::ClosePanel(_)|Request::Events(_)|Request::CancelOperation(_)=>unreachable!(),
+            Request::AndroidSetupPlan(_)|Request::AndroidSetupApply(_)|Request::AndroidDeviceManage(_)|Request::ChatExport(_)|Request::ChatStop(_)|Request::ChatSend(_)|Request::ChatDraft(_)|Request::ChatOpen(_)|Request::ChatList(_)|Request::ChatRead(_)|Request::UpdateSettings(_)|Request::ReadSettings(_)|Request::OpenSettings(_)|Request::OpenProject(_)|Request::CloseProject(_)|Request::GitMutate(_)|Request::GitDiff(_)|Request::GitHistory(_)|Request::GitCommit(_)|Request::GitRemotes(_)|Request::GitOpen(_)|Request::GitStatus(_)|Request::FilesMutate(_)|Request::EditorSave(_)|Request::EditorOpen(_)|Request::EditorEdits(_)|Request::EditorRead(_)|Request::FilesSearch(_)|Request::FilesList(_)|Request::FilesRead(_)|Request::AndroidLogcat(_)|Request::AndroidLaunch(_)|Request::AndroidInstall(_)|Request::ImportArtifact(_)|Request::ExportArtifact(_)|Request::DownloadBrowser(_) | Request::UploadBrowser(_)|Request::AndroidScreenshot(_)|Request::AndroidSnapshot(_)|Request::AndroidInput(_)|Request::AndroidStart(_)|Request::AndroidStop(_)|Request::AndroidOpen(_)|Request::AndroidList(_)|Request::BrowserLogs(_)|Request::ScreenshotBrowser(_)|Request::ReadArtifact(_)|Request::WaitBrowser(_)|Request::KeyBrowser(_)|Request::ScrollBrowser(_)|Request::ClickBrowser(_)|Request::FillBrowser(_)|Request::SnapshotBrowser(_)|Request::NavigateBrowser(_)|Request::OpenBrowser(_)|Request::RenameWorkspace(_)|Request::CreateWorkspace(_)|Request::CreateTerminal(_)|Request::ReadTerminal(_)|Request::RunTerminal(_)|Request::InterruptTerminal(_)|Request::InputTerminal(_)|Request::Panels(_)|Request::MovePanel(_)|Request::FocusPanel(_)|Request::ControlPanel(_)|Request::ClosePanel(_)|Request::Events(_)|Request::CancelOperation(_)=>unreachable!(),
         }
     }
 }

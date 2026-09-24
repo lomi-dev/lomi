@@ -291,6 +291,8 @@ pub fn run() {
                 agent_control::agent_control_ui_ack,
                 agent_control::agent_artifact_import,
                 agent_control::agent_browser_download,
+                agent_control::agent_browser_upload_prepare,
+                agent_control::agent_browser_upload_decide,
                 agent_control::agent_control_decide_install,
                 agent_control::agent_control_decide_android_management,
                 android::commands::android_state,

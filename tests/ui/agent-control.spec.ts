@@ -552,6 +552,27 @@ test("Android metadata approval requires a selected device and grants only read 
   expect(
     await page.evaluate(() => (window as any).__agentTest.approval.scopes),
   ).toContain("browser.download");
+  const uploadBrowser = page.getByLabel(
+    "Allow requesting file uploads to pages",
+  );
+  const interactBrowser = page.getByLabel(
+    "Allow clicking, typing and scrolling in pages",
+  );
+  await expect(uploadBrowser).toBeDisabled();
+  await expect(uploadBrowser).not.toBeChecked();
+  await interactBrowser.check();
+  await approve.click();
+  expect(
+    await page.evaluate(() => (window as any).__agentTest.approval.scopes),
+  ).not.toContain("browser.upload");
+  await uploadBrowser.check();
+  await approve.click();
+  expect(
+    await page.evaluate(() => (window as any).__agentTest.approval.scopes),
+  ).toContain("browser.upload");
+  await interactBrowser.uncheck();
+  await expect(uploadBrowser).not.toBeChecked();
+  await expect(uploadBrowser).toBeDisabled();
   await readBrowser.uncheck();
   await expect(downloadBrowser).not.toBeChecked();
   await expect(downloadBrowser).toBeDisabled();

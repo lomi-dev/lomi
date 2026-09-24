@@ -65,6 +65,9 @@ impl Broker {
                 Self::validate_workspace_close(state, owner, command)?
             }
             UiAction::MovePanel(command) => Self::validate_panel_move(state, owner, command)?,
+            UiAction::UploadBrowser(input) => {
+                Self::upload_access(state, owner, input)?;
+            }
             UiAction::DownloadBrowser(input) => {
                 Self::download_access(state, owner, input)?;
             }

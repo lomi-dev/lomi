@@ -215,6 +215,7 @@ if (q.action === "snapshot") {
                 button: "button",
                 submit: "button",
                 reset: "button",
+                file: "file_input",
               }[el.type] || "textbox",
             TEXTAREA: "textbox",
             SELECT: "combobox",
@@ -269,7 +270,7 @@ if (q.action === "snapshot") {
   if (bytes(result) > q.maxBytes) return fail("RESOURCE_EXHAUSTED");
   return JSON.stringify(result);
 }
-if (q.action === "interact") {
+if (["interact", "upload_prepare", "upload"].includes(q.action)) {
   const state = globalThis.__lomiAgentDomV1;
   const current = () =>
     !expired() &&
@@ -387,13 +388,49 @@ if (q.action === "interact") {
     el.getAttribute("aria-disabled") === "true"
   )
     return fail("TARGET_BUSY");
-  if (el.matches("input[type=file], input[type=hidden], a[download]"))
-    return fail("UNSUPPORTED_CAPABILITY");
   const actionable = () => {
     const point = hitPoint(el, doc, win);
     return stillCurrent() && point && ancestorsVisible(point);
   };
   if (!actionable()) return fail("PANEL_NOT_RENDERABLE");
+  if (q.action === "upload_prepare" || q.action === "upload") {
+    if (!el.matches("input[type=file]") || context.frameId !== q.frameId)
+      return fail("UNSUPPORTED_CAPABILITY");
+    const target = {
+      frameId: context.frameId,
+      origin: win.location.origin,
+      documentUrl: context.url,
+      label: (el.getAttribute("aria-label") || (el.labels?.length ? text(el.labels[0]) : "")).slice(0, 512),
+    };
+    if (q.action === "upload_prepare") return JSON.stringify(target);
+    if (target.documentUrl !== q.documentUrl)
+      return fail("STALE_SNAPSHOT");
+    if (
+      typeof q.fileName !== "string" || !q.fileName || q.fileName.length > 255 ||
+      /[\x00-\x1f\x7f/\\]/.test(q.fileName) ||
+      !Number.isInteger(q.byteLength) || q.byteLength < 0 || q.byteLength > 4194304 ||
+      typeof q.base64 !== "string" || q.base64.length > 5592408
+    ) return fail("RESOURCE_EXHAUSTED");
+    const binary = atob(q.base64);
+    if (binary.length !== q.byteLength) return fail("REVISION_CONFLICT");
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const transfer = new win.DataTransfer();
+    transfer.items.add(new win.File([bytes], q.fileName, {type: q.mediaType, lastModified: 0}));
+    const setter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, "files")?.set;
+    if (!setter || !stillCurrent() || !actionable()) return fail("STALE_SNAPSHOT");
+    effectMayHaveStarted = true;
+    setter.call(el, transfer.files);
+    for (const type of ["input", "change"]) {
+      if (!stillCurrent() || !el.isConnected || el.ownerDocument !== doc || el.type !== "file")
+        return fail("OUTCOME_UNKNOWN");
+      el.dispatchEvent(new win.Event(type, {bubbles: true}));
+    }
+    if (!stillCurrent()) return fail("OUTCOME_UNKNOWN");
+    return JSON.stringify({dispatched: true, frameId: context.frameId});
+  }
+  if (el.matches("input[type=file], input[type=hidden], a[download]"))
+    return fail("UNSUPPORTED_CAPABILITY");
   let length = null;
   if (q.interaction.type === "key") {
     if (doc.activeElement !== el || el.getRootNode() !== doc)
