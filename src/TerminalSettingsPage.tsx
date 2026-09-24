@@ -1,10 +1,8 @@
 import { DisclosureSummary } from "./ui";
 import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import Select from "./Select";
 import { RotateCcw } from "./icons";
-import { Terminal } from "@xterm/xterm";
-import { FitAddon } from "@xterm/addon-fit";
-import "@xterm/xterm/css/xterm.css";
 import { api, errorMessage, native, windows } from "./api";
 import { useTerminalPreferences } from "./TerminalPreferencesProvider";
 import {
@@ -16,11 +14,18 @@ import type { TerminalPreferences } from "./terminal-preferences";
 import { terminalColors, terminalEnums, terminalNumbers } from "./theme/format";
 import type { ThemeTerminal } from "./theme/format";
 import {
-  loadTerminalFonts,
   terminalAppearance,
   terminalPalette,
   themeAppliedEvent,
 } from "./theme/runtime";
+
+const jetBrainsFont = '"JetBrains Mono", monospace';
+type FontChoice = "theme" | "jetbrains" | "custom";
+
+function fontChoice(fontFamily?: string): FontChoice {
+  if (!fontFamily) return "theme";
+  return fontFamily === jetBrainsFont ? "jetbrains" : "custom";
+}
 
 const labels: Record<string, string> = {
   alwaysShowTitles: "Always show terminal titles",
@@ -28,7 +33,6 @@ const labels: Record<string, string> = {
   windowsShell: "Default shell",
   powershell: "PowerShell",
   cmd: "CMD",
-  fontFamily: "Font family",
   fontSize: "Font size",
   fontWeight: "Font weight",
   fontWeightBold: "Bold font weight",
@@ -54,12 +58,12 @@ const labels: Record<string, string> = {
   scrollback: "Scrollback lines",
   scrollSensitivity: "Scroll speed",
   fastScrollSensitivity: "Fast scroll speed (Alt)",
-  smoothScrollDuration: "Smooth scrolling (ms)",
-  tabStopWidth: "Tab stop width",
+  smoothScrollDuration: "Scroll animation time",
+  tabStopWidth: "Tab width",
   scrollOnUserInput: "Scroll to bottom on input",
   scrollOnEraseInDisplay: "Keep cleared screen in scrollback",
   altClickMovesCursor: "Alt-click moves cursor",
-  rightClickSelectsWord: "Right-click selects word",
+  rightClickSelectsWord: "Right-click selects a word",
   macOptionIsMeta: "Use Option as Meta (macOS)",
   macOptionClickForcesSelection: "Option-click forces selection (macOS)",
   screenReaderMode: "Screen reader support",
@@ -68,15 +72,11 @@ const labels: Record<string, string> = {
   wordSeparator: "Word separators",
 };
 const help: Record<string, string> = {
-  alwaysShowTitles:
-    "When off, press Control to show titles for 5 seconds. Hold Control for more than 1 second to show them until you release it.",
+  alwaysShowTitles: "When off, hold Control to reveal a title.",
   agentNotifications:
-    "Notify when Claude Code finishes responding or needs your input while Lomi is in the background. Configure Claude Code once below.",
-  windowsShell:
-    "Used for new terminal tabs and workspaces. Existing terminals keep their shell, including when split or restored. PowerShell uses version 7 when installed, otherwise Windows PowerShell.",
-  fontFamily:
-    "Use an installed font or a comma-separated fallback list. JetBrains Mono and fallback symbol fonts are bundled.",
-  fontSize: "6–72 px.",
+    "Show Claude Code alerts while Lomi is in the background.",
+  windowsShell: "Used for new terminals. Existing terminals keep their shell.",
+  fontSize: "The size of terminal text, in pixels.",
   lineHeight: "1–3 times the font height.",
   letterSpacing: "−2 to 20 px between characters.",
   cursorWidth: "1–10 px; applies to the bar cursor.",
@@ -86,7 +86,7 @@ const help: Record<string, string> = {
     "0–100,000 lines per terminal. Lowering this discards older output; it cannot be restored.",
   smoothScrollDuration: "0 disables animation; up to 1,000 ms.",
   tabStopWidth:
-    "1–32 columns. Changes terminal tab stops, not shell completion or editor indentation.",
+    "Sets the number of spaces in a terminal tab stop. It does not change shell completion or editor indentation.",
   wordSeparator:
     "Characters that separate words when you double-click. Spaces count too.",
   customGlyphs: "Used by the accelerated renderer.",
@@ -105,6 +105,7 @@ function Setting({
   choices,
   range,
   reset,
+  resetKind = "theme",
   change,
   color = false,
 }: {
@@ -114,6 +115,7 @@ function Setting({
   choices?: readonly string[];
   range?: readonly [number, number];
   reset?: () => void;
+  resetKind?: "theme" | "behavior";
   change: (value: string | number | boolean) => void;
   color?: boolean;
 }) {
@@ -121,8 +123,14 @@ function Setting({
   useEffect(() => setText(String(value)), [value, disabled]);
   const label = labelFor(name);
   const id = `terminal-setting-${name}`;
+  const resetLabel =
+    resetKind === "theme"
+      ? `Restore theme default for ${label}`
+      : `Restore default behavior for ${label}`;
   return (
-    <div className="terminal-setting-row">
+    <div
+      className={`terminal-setting-row${typeof value === "boolean" ? " terminal-setting-toggle-row" : ""}`}
+    >
       <div className="keybinding-label">
         <label htmlFor={id}>{label}</label>
         {help[name] && <small id={`${id}-help`}>{help[name]}</small>}
@@ -189,9 +197,6 @@ function Setting({
               maxLength={color ? 9 : name === "wordSeparator" ? 200 : 500}
               placeholder={color ? "Automatic" : undefined}
               spellCheck={false}
-              list={
-                name === "fontFamily" ? "terminal-font-families" : undefined
-              }
               onChange={(event) => setText(event.target.value)}
               onBlur={(event) => {
                 if (text !== String(value)) {
@@ -210,80 +215,24 @@ function Setting({
             />
           </>
         )}
-        <button
-          type="button"
-          className="icon-button"
-          aria-label={`Reset ${label}`}
-          title="Restore default"
-          disabled={disabled || !reset}
-          onClick={reset}
-        >
-          <RotateCcw size={14} />
-        </button>
+        {reset ? (
+          <button
+            type="button"
+            className="icon-button"
+            aria-label={resetLabel}
+            title={resetLabel}
+            disabled={disabled}
+            onClick={reset}
+          >
+            <RotateCcw size={14} />
+          </button>
+        ) : typeof value !== "boolean" ? (
+          <span
+            className="terminal-setting-reset-placeholder"
+            aria-hidden="true"
+          />
+        ) : null}
       </div>
-    </div>
-  );
-}
-
-function TerminalPreview() {
-  const host = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const terminal = new Terminal({
-      ...terminalAppearance(),
-      disableStdin: true,
-      allowTransparency: true,
-      rows: 6,
-      cols: 60,
-      scrollback: 0,
-    });
-    const fit = new FitAddon();
-    terminal.loadAddon(fit);
-    terminal.open(host.current!);
-    const render = () => {
-      fit.fit();
-      const width = terminal.cols - 1;
-      const lines = [
-        "lomi ~/project".slice(0, width),
-        "$ echo 'Your terminal, your style'".slice(0, width),
-        `\x1b[1mBold\x1b[0m  \x1b[3mItalic\x1b[0m${width >= 32 ? "  Zażółć  0O 1Il" : ""}`,
-        Array.from(
-          { length: Math.min(16, Math.floor(width / 3)) },
-          (_, index) => `\x1b[${index < 8 ? 30 + index : 90 + index - 8}m██ `,
-        ).join("") + "\x1b[0m",
-        "$ ",
-      ];
-      terminal.write(
-        "\x1b[2J\x1b[H" + lines.slice(0, terminal.rows).join("\r\n"),
-      );
-    };
-    let revision = 0;
-    const update = () => {
-      const request = ++revision;
-      const options = terminalAppearance();
-      void loadTerminalFonts(options).then(() => {
-        if (request !== revision) return;
-        terminal.options.fontFamily = `${options.fontFamily} `;
-        terminal.options = { ...options, scrollback: 0 };
-        render();
-      });
-    };
-    const observer = new ResizeObserver(render);
-    observer.observe(host.current!);
-    window.addEventListener(themeAppliedEvent, update);
-    update();
-    return () => {
-      ++revision;
-      observer.disconnect();
-      window.removeEventListener(themeAppliedEvent, update);
-      terminal.dispose();
-    };
-  }, []);
-  return (
-    <div
-      className="terminal-pane terminal-preview"
-      aria-label="Terminal preview"
-    >
-      <div className="terminal-host" ref={host} />
     </div>
   );
 }
@@ -295,7 +244,15 @@ export default function TerminalSettingsPage() {
   const [status, setStatus] = useState("");
   const [appearance, setAppearance] = useState(terminalAppearance);
   const [palette, setPalette] = useState(terminalPalette);
+  const [fontMode, setFontMode] = useState<FontChoice>(() =>
+    fontChoice(preferences.value.appearance.fontFamily),
+  );
+  const [fontDraft, setFontDraft] = useState(
+    preferences.value.appearance.fontFamily ?? "",
+  );
   const saving = useRef(false);
+  const fontFamilyOverride = preferences.value.appearance.fontFamily;
+
   useEffect(() => {
     const update = () => {
       setAppearance(terminalAppearance());
@@ -305,8 +262,16 @@ export default function TerminalSettingsPage() {
     update();
     return () => window.removeEventListener(themeAppliedEvent, update);
   }, []);
+
+  useEffect(() => {
+    setFontMode(fontChoice(fontFamilyOverride));
+    setFontDraft(
+      fontChoice(fontFamilyOverride) === "custom" ? fontFamilyOverride! : "",
+    );
+  }, [fontFamilyOverride]);
+
   const persist = async (value: TerminalPreferences) => {
-    if (saving.current) return;
+    if (saving.current) return false;
     saving.current = true;
     setBusy(true);
     setError("");
@@ -314,23 +279,25 @@ export default function TerminalSettingsPage() {
     try {
       await preferences.save(value);
       setStatus("Saved");
+      return true;
     } catch (error) {
       setError(errorMessage(error));
       setStatus("");
+      return false;
     } finally {
       saving.current = false;
       setBusy(false);
     }
   };
   const disabled = !preferences.ready || busy || !!preferences.error;
-  const setAppearanceValue = (
+  const setAppearanceValue = async (
     key: keyof ThemeTerminal,
     value?: string | number | boolean,
   ) => {
     const next = { ...preferences.value.appearance };
     if (value === undefined) delete next[key];
     else Object.assign(next, { [key]: value });
-    void persist({ ...preferences.value, appearance: next });
+    return persist({ ...preferences.value, appearance: next });
   };
   const appearanceSetting = (key: Exclude<keyof ThemeTerminal, "colors">) => (
     <Setting
@@ -356,13 +323,14 @@ export default function TerminalSettingsPage() {
             ]
           : terminalEnums[key as keyof typeof terminalEnums]
       }
+      resetKind="theme"
       reset={
         preferences.value.appearance[key] === undefined
           ? undefined
-          : () => setAppearanceValue(key)
+          : () => void setAppearanceValue(key)
       }
       change={(value) =>
-        setAppearanceValue(
+        void setAppearanceValue(
           key,
           (key === "fontWeight" || key === "fontWeightBold") &&
             !["normal", "bold"].includes(String(value))
@@ -388,6 +356,7 @@ export default function TerminalSettingsPage() {
       color
       disabled={disabled}
       value={preferences.value.appearance.colors?.[key] ?? palette[key] ?? ""}
+      resetKind="theme"
       reset={
         preferences.value.appearance.colors?.[key] === undefined
           ? undefined
@@ -396,32 +365,118 @@ export default function TerminalSettingsPage() {
       change={(value) => setColor(key, String(value))}
     />
   );
+  const behaviorSetting = (key: keyof TerminalPreferences["behavior"]) => (
+    <Setting
+      key={key}
+      name={key}
+      disabled={disabled}
+      value={preferences.value.behavior[key]}
+      range={
+        terminalBehaviorNumbers[key as keyof typeof terminalBehaviorNumbers]
+      }
+      resetKind="behavior"
+      change={(value) =>
+        void persist({
+          ...preferences.value,
+          behavior: { ...preferences.value.behavior, [key]: value },
+        })
+      }
+      reset={
+        preferences.value.behavior[key] === terminalBehaviorDefaults[key]
+          ? undefined
+          : () =>
+              void persist({
+                ...preferences.value,
+                behavior: {
+                  ...preferences.value.behavior,
+                  [key]: terminalBehaviorDefaults[key],
+                },
+              })
+      }
+    />
+  );
+
+  const changeFontChoice = async (choice: string) => {
+    const next = choice as FontChoice;
+    const current = fontChoice(fontFamilyOverride);
+    if (next === "custom") {
+      setFontMode("custom");
+      setFontDraft(current === "custom" ? (fontFamilyOverride ?? "") : "");
+      return;
+    }
+    setFontMode(next);
+    const saved = await setAppearanceValue(
+      "fontFamily",
+      next === "theme" ? undefined : jetBrainsFont,
+    );
+    if (!saved) {
+      setFontMode(current);
+      setFontDraft(current === "custom" ? (fontFamilyOverride ?? "") : "");
+    }
+  };
+  const saveCustomFont = async () => {
+    if (!fontDraft.trim()) {
+      setFontDraft(
+        fontChoice(fontFamilyOverride) === "custom"
+          ? (fontFamilyOverride ?? "")
+          : "",
+      );
+      return;
+    }
+    if (fontDraft === fontFamilyOverride) return;
+    const saved = await setAppearanceValue("fontFamily", fontDraft);
+    if (!saved) setFontDraft(fontFamilyOverride ?? "");
+  };
+  const resetFont = () => void changeFontChoice("theme");
+
+  const theme = appearance.theme as Record<string, string | undefined>;
+  const previewStyle: CSSProperties = {
+    backgroundColor:
+      palette.background ?? theme.background ?? "var(--color-surface)",
+    color:
+      palette.foreground ?? theme.foreground ?? "var(--color-surface-text)",
+    fontFamily: appearance.fontFamily,
+    fontSize: `${appearance.fontSize}px`,
+    fontWeight: appearance.fontWeight,
+    lineHeight: appearance.lineHeight,
+    letterSpacing: `${appearance.letterSpacing}px`,
+  };
+  const cursorColor = palette.cursor ?? theme.cursor ?? theme.foreground;
+  const cursorAccent = palette.cursorAccent ?? theme.cursorAccent;
+  const cursorStyle = appearance.cursorStyle;
+  const cursorWidth = `${appearance.cursorWidth}px`;
+  const cursorGlyphWidth = `max(1px, calc(1ch + ${appearance.letterSpacing}px))`;
+  const cursorShapeStyle: CSSProperties = {
+    backgroundColor: cursorColor,
+    color: cursorAccent ?? previewStyle.backgroundColor,
+    width: cursorStyle === "bar" ? cursorWidth : cursorGlyphWidth,
+    height: cursorStyle === "underline" ? "2px" : "1em",
+    alignSelf: cursorStyle === "underline" ? "end" : "stretch",
+  };
+
   return (
     <main className="terminal-settings-page">
       <header className="settings-page-heading">
-        <div>
+        <div className="terminal-settings-heading-copy">
           <h1>Terminal</h1>
-          <p>Make every terminal feel like yours.</p>
+          <p>
+            Make your terminal comfortable to read. Changes save automatically.
+          </p>
         </div>
-        <button
-          className="button"
-          disabled={!preferences.ready || busy}
-          onClick={() => void persist(defaultTerminalPreferences)}
-        >
-          <RotateCcw size={14} /> Reset defaults
-        </button>
+        <div className="terminal-settings-header-actions">
+          <span className="keybindings-status" role="status">
+            {!preferences.ready ? "Loading…" : busy ? "Saving…" : status || " "}
+          </span>
+        </div>
       </header>
-      <p className="settings-help">
-        Changes save automatically. Appearance and behavior apply to open
-        terminals. Appearance follows your theme until you override a setting.
-        Reset restores theme defaults.
-      </p>
+
       {(error || preferences.error) && (
-        <div className="keybindings-error" role="alert">
+        <div className="keybindings-error terminal-settings-error" role="alert">
           <span>{preferences.error || error}</span>
-          {preferences.error && (
+          {preferences.error ? (
             <button
               className="text-button"
+              disabled={!preferences.ready || busy}
               onClick={() => {
                 setError("");
                 void preferences.reload();
@@ -429,18 +484,123 @@ export default function TerminalSettingsPage() {
             >
               Retry loading
             </button>
+          ) : (
+            <button className="text-button" onClick={() => setError("")}>
+              Dismiss
+            </button>
           )}
         </div>
       )}
-      <div className="keybindings-status" role="status">
-        {!preferences.ready ? "Loading terminal settings…" : status}
-      </div>
-      <section className="keybindings-group" aria-label="Titles">
-        <h2>Titles</h2>
+
+      <section
+        className="terminal-settings-section terminal-settings-preview"
+        aria-labelledby="terminal-preview-title"
+      >
+        <h2 id="terminal-preview-title">Preview</h2>
+        <div
+          className="terminal-preview-surface"
+          role="img"
+          aria-label="Terminal preview showing Welcome to Lomi and a prompt"
+          style={previewStyle}
+        >
+          <div className="terminal-preview-content">
+            <div className="terminal-preview-line">Welcome to Lomi</div>
+            <div className="terminal-preview-line terminal-preview-prompt">
+              <span aria-hidden="true">$ </span>
+              <span
+                className="terminal-preview-cursor"
+                style={cursorShapeStyle}
+              >
+                &nbsp;
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="terminal-settings-section" aria-label="Text & cursor">
+        <h2>Text &amp; cursor</h2>
+        <div className="terminal-setting-row">
+          <div className="keybinding-label">
+            <label htmlFor="terminal-setting-font">Font</label>
+            <small id="terminal-setting-font-help">
+              Choose a font or keep the theme default.
+            </small>
+          </div>
+          <div className="terminal-setting-controls">
+            <Select
+              id="terminal-setting-font"
+              value={fontMode}
+              disabled={disabled}
+              aria-describedby="terminal-setting-font-help"
+              onChange={(value) => void changeFontChoice(value)}
+              options={[
+                { value: "theme", label: "Theme default" },
+                { value: "jetbrains", label: "JetBrains Mono" },
+                { value: "custom", label: "Custom font…" },
+              ]}
+            />
+            <span
+              className="terminal-setting-reset-placeholder"
+              aria-hidden="true"
+            />
+          </div>
+        </div>
+        {fontMode === "custom" && (
+          <div className="terminal-setting-row terminal-font-family-row">
+            <div className="keybinding-label">
+              <label htmlFor="terminal-setting-font-family">Font family</label>
+              <small id="terminal-setting-font-family-help">
+                Use an installed font. Advanced users can enter comma-separated
+                fallback families.
+              </small>
+            </div>
+            <div className="terminal-setting-controls">
+              <input
+                id="terminal-setting-font-family"
+                type="text"
+                value={fontDraft}
+                disabled={disabled}
+                aria-describedby="terminal-setting-font-family-help"
+                maxLength={500}
+                placeholder="e.g. Iosevka"
+                spellCheck={false}
+                autoComplete="off"
+                onChange={(event) => setFontDraft(event.target.value)}
+                onBlur={() => void saveCustomFont()}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") event.currentTarget.blur();
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    setFontDraft(fontFamilyOverride ?? "");
+                  }
+                }}
+              />
+              {fontFamilyOverride !== undefined && (
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label="Restore theme default for Font family"
+                  title="Restore theme default"
+                  disabled={disabled}
+                  onClick={resetFont}
+                >
+                  <RotateCcw size={14} />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+        {(["fontSize", "cursorStyle"] as const).map(appearanceSetting)}
+      </section>
+
+      <section className="terminal-settings-section" aria-label="Everyday use">
+        <h2>Everyday use</h2>
         <Setting
           name="alwaysShowTitles"
           value={preferences.value.alwaysShowTitles}
           disabled={disabled}
+          resetKind="behavior"
           change={(value) =>
             void persist({
               ...preferences.value,
@@ -457,13 +617,11 @@ export default function TerminalSettingsPage() {
               : undefined
           }
         />
-      </section>
-      <section className="keybindings-group" aria-label="Notifications">
-        <h2>Notifications</h2>
         <Setting
           name="agentNotifications"
           value={preferences.value.agentNotifications}
           disabled={disabled}
+          resetKind="behavior"
           change={(value) =>
             void persist({
               ...preferences.value,
@@ -480,12 +638,12 @@ export default function TerminalSettingsPage() {
                   })
           }
         />
-        <div className="terminal-setting-row">
+        <div className="terminal-setting-row terminal-settings-helper-action">
           <div className="keybinding-label">
-            <span>Claude Code integration</span>
+            <span>Claude Code setup</span>
             <small>
-              Review and approve the configuration in the main window. Existing
-              settings are preserved with a backup.
+              Set up alerts in the main window. Lomi asks before changing Claude
+              Code settings.
             </small>
           </div>
           <button
@@ -505,118 +663,137 @@ export default function TerminalSettingsPage() {
           </button>
         </div>
       </section>
-      {windows && (
-        <section className="keybindings-group" aria-label="Shell">
-          <h2>Shell</h2>
-          <Setting
-            name="windowsShell"
-            value={preferences.value.windowsShell}
-            choices={["powershell", "cmd"]}
-            disabled={disabled}
-            change={(value) =>
-              void persist({
-                ...preferences.value,
-                windowsShell: value as TerminalPreferences["windowsShell"],
-              })
-            }
-            reset={
-              preferences.value.windowsShell === "powershell"
-                ? undefined
-                : () =>
-                    void persist({
-                      ...preferences.value,
-                      windowsShell: "powershell",
-                    })
-            }
-          />
-        </section>
-      )}
-      {preferences.ready && <TerminalPreview />}
-      <datalist id="terminal-font-families">
-        <option value='"JetBrains Mono", monospace' />
-        <option value="monospace" />
-        <option value='"Fira Code", monospace' />
-        <option value='"Cascadia Code", monospace' />
-        <option value='"DejaVu Sans Mono", monospace' />
-        <option value='"Liberation Mono", monospace' />
-      </datalist>
-      <section className="keybindings-group" aria-label="Font">
-        <h2>Font</h2>
-        {(
-          [
-            "fontFamily",
-            "fontSize",
-            "fontWeight",
-            "fontWeightBold",
-            "lineHeight",
-            "letterSpacing",
-          ] as const
-        ).map(appearanceSetting)}
-      </section>
-      <section className="keybindings-group" aria-label="Cursor">
-        <h2>Cursor</h2>
-        {(
-          [
-            "cursorStyle",
-            "cursorInactiveStyle",
-            "cursorBlink",
-            "cursorWidth",
-          ] as const
-        ).map(appearanceSetting)}
-      </section>
-      <section className="keybindings-group" aria-label="Colors">
-        <h2>Colors</h2>
+
+      <details className="terminal-settings-details terminal-settings-disclosure">
+        <DisclosureSummary>Customize colors</DisclosureSummary>
         <p className="settings-help">
-          Choose a color or enter #RRGGBB / #RRGGBBAA, including opacity. Custom
-          colors stay the same in light and dark mode.
+          Terminal colors follow your theme until you change them. Custom colors
+          stay the same in light and dark mode. Enter #RRGGBB or #RRGGBBAA for
+          opacity.
         </p>
         {terminalColors.slice(0, 7).map(colorSetting)}
-        <details className="terminal-settings-details">
+        <details className="terminal-settings-details terminal-settings-nested">
           <DisclosureSummary>ANSI palette and search colors</DisclosureSummary>
           {terminalColors.slice(7).map(colorSetting)}
         </details>
-      </section>
-      <details className="terminal-settings-details">
-        <DisclosureSummary>Advanced</DisclosureSummary>
-        {(["minimumContrastRatio", "drawBoldTextInBrightColors"] as const).map(
-          appearanceSetting,
-        )}
-        {(
-          Object.keys(
-            terminalBehaviorDefaults,
-          ) as (keyof TerminalPreferences["behavior"])[]
-        ).map((key) => (
-          <Setting
-            key={key}
-            name={key}
-            disabled={disabled}
-            value={preferences.value.behavior[key]}
-            range={
-              terminalBehaviorNumbers[
-                key as keyof typeof terminalBehaviorNumbers
-              ]
-            }
-            change={(value) =>
-              void persist({
-                ...preferences.value,
-                behavior: { ...preferences.value.behavior, [key]: value },
-              })
-            }
-            reset={
-              preferences.value.behavior[key] === terminalBehaviorDefaults[key]
-                ? undefined
-                : () =>
-                    void persist({
-                      ...preferences.value,
-                      behavior: {
-                        ...preferences.value.behavior,
-                        [key]: terminalBehaviorDefaults[key],
-                      },
-                    })
-            }
-          />
-        ))}
       </details>
+
+      <details className="terminal-settings-details terminal-settings-disclosure">
+        <DisclosureSummary>Advanced settings</DisclosureSummary>
+        <section
+          className="terminal-settings-advanced-group"
+          aria-label="Text and cursor details"
+        >
+          <h3>Text and cursor details</h3>
+          {(
+            [
+              "fontWeight",
+              "fontWeightBold",
+              "lineHeight",
+              "letterSpacing",
+              "cursorInactiveStyle",
+              "cursorBlink",
+              "cursorWidth",
+            ] as const
+          ).map(appearanceSetting)}
+        </section>
+        <section
+          className="terminal-settings-advanced-group"
+          aria-label="Scrolling"
+        >
+          <h3>Scrolling</h3>
+          {(
+            [
+              "scrollback",
+              "scrollSensitivity",
+              "fastScrollSensitivity",
+              "smoothScrollDuration",
+              "scrollOnUserInput",
+              "scrollOnEraseInDisplay",
+            ] as const
+          ).map(behaviorSetting)}
+        </section>
+        <section
+          className="terminal-settings-advanced-group"
+          aria-label="Keyboard and selection"
+        >
+          <h3>Keyboard and selection</h3>
+          {windows && (
+            <Setting
+              name="windowsShell"
+              value={preferences.value.windowsShell}
+              choices={["powershell", "cmd"]}
+              disabled={disabled}
+              resetKind="behavior"
+              change={(value) =>
+                void persist({
+                  ...preferences.value,
+                  windowsShell: value as TerminalPreferences["windowsShell"],
+                })
+              }
+              reset={
+                preferences.value.windowsShell === "powershell"
+                  ? undefined
+                  : () =>
+                      void persist({
+                        ...preferences.value,
+                        windowsShell: "powershell",
+                      })
+              }
+            />
+          )}
+          {(
+            [
+              "tabStopWidth",
+              "altClickMovesCursor",
+              "rightClickSelectsWord",
+              "macOptionIsMeta",
+              "macOptionClickForcesSelection",
+              "wordSeparator",
+            ] as const
+          ).map(behaviorSetting)}
+        </section>
+        <section
+          className="terminal-settings-advanced-group"
+          aria-label="Accessibility and rendering"
+        >
+          <h3>Accessibility and rendering</h3>
+          {(
+            ["minimumContrastRatio", "drawBoldTextInBrightColors"] as const
+          ).map(appearanceSetting)}
+          {(
+            [
+              "screenReaderMode",
+              "customGlyphs",
+              "rescaleOverlappingGlyphs",
+            ] as const
+          ).map(behaviorSetting)}
+        </section>
+      </details>
+
+      <footer className="terminal-settings-footer">
+        <div>
+          <strong>Reset defaults</strong>
+          <p>
+            Restore all terminal text, colors, and behavior to their defaults.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="text-button terminal-settings-reset"
+          disabled={!preferences.ready || busy}
+          onClick={() => {
+            void persist(defaultTerminalPreferences).then((saved) => {
+              if (saved) {
+                setFontMode("theme");
+                setFontDraft("");
+              }
+            });
+          }}
+        >
+          <RotateCcw size={14} /> Reset defaults
+        </button>
+      </footer>
     </main>
   );
 }

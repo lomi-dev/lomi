@@ -28,6 +28,7 @@ test("Windows shell preference syncs to new tabs while existing and restored pan
   const settings = await context.newPage();
   await mockDesktop(settings, false, undefined, undefined, {}, "windows");
   await settings.goto("/?window=settings&page=terminal");
+  await settings.getByText("Advanced settings", { exact: true }).click();
   const shell = settings.getByLabel("Default shell", { exact: true });
   await expect(shell).toHaveText("PowerShell");
   await chooseOption(shell, "CMD");
@@ -63,9 +64,11 @@ test("Windows shell preference syncs to new tabs while existing and restored pan
     )
     .toBe("split");
   await settings.reload();
+  await settings.getByText("Advanced settings", { exact: true }).click();
   await expect(
     settings.getByLabel("Default shell", { exact: true }),
   ).toHaveText("CMD");
+  await settings.getByText("Advanced settings", { exact: true }).click();
   await page.reload();
   await expect
     .poll(() => startedProfiles(page))
@@ -98,7 +101,10 @@ test("Windows shell preference syncs to new tabs while existing and restored pan
   await settings.setViewportSize({ width: 560, height: 420 });
   expect(
     await settings.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
+      () =>
+        document.documentElement.scrollWidth <= innerWidth &&
+        document.querySelector(".terminal-settings-page")!.scrollWidth <=
+          document.querySelector(".terminal-settings-page")!.clientWidth,
     ),
   ).toBe(true);
   await settings.screenshot({
