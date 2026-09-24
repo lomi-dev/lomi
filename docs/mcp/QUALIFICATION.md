@@ -5,6 +5,79 @@ their original failures and pending work; subsequent evidence supersedes only
 the specific checks it actually covers. The active task list is in
 [implementation status](IMPLEMENTATION-STATUS.md).
 
+## P6 additional routing fixtures — in progress (2026-09-24)
+
+The first expanded batch `lomi-mcp-routing-matrix-zdsHFu` passed
+`terminal-exit` (xzIItt, one actual exit 7 reported without retry) and
+`files-search` (5bDpgC, exact path/Unicode content read). Both model final
+answers were checked; no competing actions occurred and cleanup was normal.
+
+`browser-select` sESJtj completed its model/native task: exactly one submitted
+`{"color":"violet","alerts":true}` and the actual page confirmation. Its
+wrapper failed because the prebuilt fixture required SIGTERM after the
+three-second graceful-exit wait (exit 143). This is not a complete PASS.
+The next run records native/Vite exit events, captures a native stack sample
+if still alive after three seconds, and allows a further bounded grace period
+before the existing forced cleanup. The shutdown cause is not yet resolved.
+
+`external-playwright` Mjejft initially could not locate Chromium under the
+private shell HOME. The model explicitly reported that failure, found an
+already-installed browser, and reran through Lomi with a process-only cache
+path. It produced the external screenshot and accurately explained that it
+was Playwright's headless Chromium, not a Lomi browser panel. However the
+native oracle did not recognize the lowercase `chrome-headless-shell`
+executable, and the wrapper again exited 143. The browser/shell exited, but
+Node PID 98399 remained because of signal handling. Its exact fixture cwd and
+script argv were independently checked before SIGTERM; all three recorded
+PIDs were then absent (`external-cleanup-reconciled.json`). This failed run
+is not counted as a completed workflow.
+
+The corrected fixture resolves the existing Chromium executable before
+entering the private shell home, handles SIGHUP/TERM, accepts the actual
+headless executable in its process oracle, and checks all recorded external
+PIDs after exit. Batch continuation refuses unreaped external processes.
+The runner's model action budget now excludes direct bootstrap calls, and
+its bounded trace capacity covers the larger APK action budget. Latest
+all-target probe Clippy passed (`/tmp/lomi-mcp-routing-extra-fixes-clippy.log`).
+
+The follow-up batch `lomi-mcp-routing-matrix-dDmUCN` passed `scope-denied`
+Nh2EEe: actual SCOPE_DENIED, explicit final refusal, no command or competing
+action, normal cleanup. Browser/Playwright follow-ups remain in progress.
+Unexecuted fixture definitions do not fill qualification-matrix cells.
+
+### Corrected cleanup and completed negative-scope row
+
+The dDmUCN follow-ups Oa0cbP and 8np8fE passed task observations but still
+required forced host termination. Native stack sampling showed a normal AppKit
+loop: the existing application close guard was waiting on fixture servers left
+running in terminals. No production close behavior was bypassed or changed.
+External Node 2296 disappeared after the first cleanup check, before any manual
+signal; all recorded processes were subsequently confirmed absent. Its timing
+is not qualified, and 8np8fE is not a complete PASS.
+
+After the model exits and native postconditions have been observed, fixture
+cleanup now verifies each model-created terminal's exact panel/session identity,
+preserves the client origin, sends ordinary Ctrl+C only to a running fixture
+command, and waits for the real shell's atPrompt state. A retained promptEnd
+alone is not readiness. The q55ZPa batch completed scope-denied sL1uSU; its
+source fingerprint then deliberately stopped continuation when that readiness
+predicate was corrected. No browser run used the incomplete correction.
+
+Final batch fwGw6L passed scope-denied oCvt22, browser-select nAUFba and
+external-playwright m7oy2s. The preferences form submitted exactly once with
+Violet and Alerts; its native screenshot was inspected. External Playwright
+used independently identified Chromium PID 7718 from Node 7717 and shell 7666;
+the model explicitly attributed verification and its inspected screenshot to
+that external browser. Native exits were code 0, with 132 ms and 207 ms cleanup
+waits respectively, followed by Vite shutdown. All three external PIDs were
+absent. No competing actions occurred. Latest all-target workspace probe Clippy
+passed (`/tmp/lomi-mcp-routing-cleanup-final-clippy.log`).
+
+Scope-denied Nh2EEe, sL1uSU and oCvt22 are now **3/3 PASS**, each with explicit
+SCOPE_DENIED, no execution, no alternative environment and normal cleanup.
+This is the third complete row of the fixed gpt-6-sol/medium/prefer-Lomi matrix.
+The remaining matrix and acceptance audit remain open.
+
 ## P6 fixed-profile unavailable-client trials (2026-09-24)
 
 **3/3 PASS:** pMc8pe, ccgHM8, Pm72d8; Codex 0.156.1 / gpt-6-sol /

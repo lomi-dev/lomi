@@ -74,6 +74,9 @@ for (const name of cases) {
     const android = await readJson(
       join(artifactDirectory, "android-cleanup-after.json"),
     );
+    const external = await readJson(
+      join(artifactDirectory, "external-cleanup.json"),
+    );
     const competingActions = report?.competingActions ?? [];
     const row = {
       task: name,
@@ -103,6 +106,7 @@ for (const name of cases) {
       error: report?.error ?? native?.error ?? null,
       cleanup,
       androidCleanup: android,
+      externalCleanup: external,
     };
     results.push(row);
     await writeFile(
@@ -126,6 +130,7 @@ for (const name of cases) {
     if (
       !cleanup?.hostExited ||
       !cleanup?.appDataRemoved ||
+      (external && external.remainingPids.length !== 0) ||
       (android &&
         (android.processAlive !== false || android.privateAdbStopped !== true))
     )

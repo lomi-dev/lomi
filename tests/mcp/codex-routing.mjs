@@ -150,7 +150,7 @@ createInterface({ input: child.stdout }).on("line", (line) => {
     });
   } else if (message.method === "item/completed") {
     const item = message.params.item;
-    if (items.length < 200)
+    if (items.length < maxToolActions * 8 + 64)
       items.push({
         ...bounded(item),
         qualificationTurnId: message.params.turnId,
@@ -167,7 +167,8 @@ createInterface({ input: child.stdout }).on("line", (line) => {
     if (
       items.filter(
         (item) =>
-          item.type === "mcpToolCall" || item.type === "commandExecution",
+          item.qualificationTurnId === activeTurn &&
+          (item.type === "mcpToolCall" || item.type === "commandExecution"),
       ).length >= maxToolActions &&
       !interrupted &&
       activeTurn

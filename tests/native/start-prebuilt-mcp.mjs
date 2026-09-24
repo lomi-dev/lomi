@@ -1,6 +1,6 @@
 // Sequential qualification reuse; never an installer or release entry point.
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile, rename } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 import { createServer } from "vite";
@@ -23,6 +23,19 @@ const server = await createServer({
   server: { host: "127.0.0.1", port: 1444, strictPort: true },
 });
 let app;
+const events = [];
+const record = async (event, fields = {}) => {
+  events.push({ event, at: Date.now(), ...fields });
+  const path = resolve(
+    process.env.LOMI_MCP_CONTROL_PROBE_DIRECTORY,
+    "prebuilt-process.json",
+  );
+  await writeFile(
+    path + ".tmp",
+    JSON.stringify({ sha256: actual, events }, null, 2),
+  );
+  await rename(path + ".tmp", path);
+};
 process.on("SIGTERM", () => app?.kill("SIGTERM"));
 try {
   await server.listen();
@@ -31,11 +44,15 @@ try {
     env: process.env,
     stdio: "inherit",
   });
-  const code = await new Promise((resolve, reject) => {
+  const closed = new Promise((resolve, reject) => {
     app.once("error", reject);
     app.once("close", resolve);
   });
+  await record("native-start", { pid: app.pid });
+  const code = await closed;
+  await record("native-close", { code, signal: app.signalCode });
   process.exitCode = code ?? 1;
 } finally {
   await server.close();
+  await record("vite-closed");
 }

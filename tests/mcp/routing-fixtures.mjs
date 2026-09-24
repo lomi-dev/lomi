@@ -1,14 +1,24 @@
 // Controlled tasks for model-driven routing; these files contain no user data.
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { prepareExtraRoutingFixtures } from "./routing-extra-fixtures.mjs";
 
 export async function prepareRoutingFixture(folder, origin, node) {
   const port = new URL(origin).port;
   const server = `import { createServer } from 'node:http';
 import { writeFileSync } from 'node:fs';
-const state = { submissions: 0, value: null, pid: process.pid, parentPid: process.ppid };
+const state = { submissions: 0, value: null, preferences: 0, preferenceValue: null, drafts: 0, draftValue: null, details: 0, pid: process.pid, parentPid: process.ppid };
 const record = () => writeFileSync('routing-server-state.json', JSON.stringify(state));
 const server = createServer((req, res) => {
+  if (req.method === 'POST' && ['/preferences','/draft'].includes(req.url)) {
+    let body='';req.on('data',data=>{body+=data;if(body.length>1024)req.destroy()});
+    req.on('end',()=>{
+      if(req.url==='/preferences'){state.preferences++;state.preferenceValue=body;}
+      else {state.drafts++;state.draftValue=body;}
+      record();res.setHeader('content-type','text/plain; charset=utf-8');res.end('Saved: '+body);
+    });return;
+  }
+  if(req.url==='/details'){state.details++;record();res.setHeader('content-type','text/html; charset=utf-8');res.end('<!doctype html><title>Routing details</title><h1>Details</h1><a href="/">Home</a>');return;}
   if (req.method === 'POST' && req.url === '/submit') {
     let body = '';
     req.on('data', data => { body += data; if (body.length > 1024) req.destroy(); });
@@ -23,11 +33,16 @@ const server = createServer((req, res) => {
   res.end(\`<!doctype html><html><head><title>Routing fixture</title></head>
 <body><h1>Lomi routing fixture</h1><form><label>Name <input name="name" required></label>
 <button type="submit">Save name</button></form><p role="status">No submission</p>
+<section><h2>Preferences</h2><label>Color <select id="color"><option value="cyan">Cyan</option><option value="violet">Violet</option></select></label><label><input id="alerts" type="checkbox">Alerts</label><button id="save-preferences">Save preferences</button><p id="preferences-result"></p></section>
+<section><h2>Draft</h2><div contenteditable="true" role="textbox" aria-label="Draft"></div><button id="save-draft">Save draft</button><p id="draft-result"></p></section><a href="/details">Details</a>
 <script>document.querySelector('form').addEventListener('submit',async event=>{
   event.preventDefault();
   const reply=await fetch('/submit',{method:'POST',body:document.querySelector('input').value});
   document.querySelector('[role=status]').textContent=await reply.text();
-});</script></body></html>\`);
+});
+document.querySelector('#save-preferences').onclick=async()=>{const body=JSON.stringify({color:document.querySelector('#color').value,alerts:document.querySelector('#alerts').checked});const r=await fetch('/preferences',{method:'POST',body});document.querySelector('#preferences-result').textContent=await r.text()};
+document.querySelector('#save-draft').onclick=async()=>{const r=await fetch('/draft',{method:'POST',body:document.querySelector('[contenteditable]').textContent});document.querySelector('#draft-result').textContent=await r.text()};
+</script></body></html>\`);
 });
 server.listen(${JSON.stringify(Number(port))}, '127.0.0.1', () => {
   record(); console.log('ROUTING_READY ${origin}');
@@ -121,6 +136,12 @@ process.once('SIGINT', () => {
     },
   };
   cases["origin-server"] = { ...cases["dev-server"] };
+  const extra = await prepareExtraRoutingFixtures(folder, origin, node);
+  Object.assign(cases, extra.cases);
+  await writeFile(
+    join(folder, "../routing-extra-baseline.json"),
+    JSON.stringify({ gitHead: extra.gitHead }),
+  );
   await writeFile(
     join(folder, "routing-cases.json"),
     JSON.stringify(cases, null, 2),

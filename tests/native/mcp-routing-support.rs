@@ -2,6 +2,8 @@
 use super::*;
 #[path = "mcp-routing-android.rs"]
 mod android;
+#[path = "mcp-routing-extra.rs"]
+mod extra;
 #[path = "mcp-routing-workspaces.rs"]
 mod workspaces;
 
@@ -27,10 +29,25 @@ async fn approve(
     wait_for(settings, &format!("Boolean({article})")).await?;
     evaluate(settings, &format!("(()=>{{const e=({article}).querySelector('select');e.value={workspace};e.dispatchEvent(new Event('change',{{bubbles:true}}));return true;}})()")).await?;
     if case != "scope-denied" {
-        let mut labels = vec![
-            "Allow terminal creation, command execution and output reads",
-            "Allow selecting and closing panels",
-        ];
+        let files_only = case.starts_with("files-") || case == "git-review";
+        let terminal_only = case.starts_with("terminal-") || case == "external-playwright";
+        let mut labels = if files_only {
+            vec![]
+        } else {
+            vec![
+                "Allow terminal creation, command execution and output reads",
+                "Allow selecting and closing panels",
+            ]
+        };
+        if case.starts_with("files-") || case == "git-review" {
+            labels.push("Allow reading project files");
+        }
+        if case == "files-rename" {
+            labels.push("Allow renaming and moving project files and folders");
+        }
+        if case == "git-review" {
+            labels.push("Allow reading Git information in this project");
+        }
         if case == "two-workspaces" {
             labels.push("Allow workspace creation, renaming and selection");
         }
@@ -41,7 +58,7 @@ async fn approve(
                 "Allow editing loaded buffers",
                 "Allow saving editor files",
             ]);
-        } else if !matches!(case, "apk" | "two-workspaces") {
+        } else if !matches!(case, "apk" | "two-workspaces") && !files_only && !terminal_only {
             labels.extend([
                 "Allow opening and navigating isolated browser panels",
                 "Allow reading page text, form structure and browser logs",
@@ -60,7 +77,7 @@ async fn approve(
         }
         if case == "apk" {
             android::grant(settings, &article, directory).await?;
-        } else if !matches!(case, "fix-test" | "two-workspaces") {
+        } else if !matches!(case, "fix-test" | "two-workspaces") && !files_only && !terminal_only {
             evaluate(settings,&format!("(()=>{{const e=({article}).querySelector('textarea');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,{origin});e.dispatchEvent(new Event('input',{{bubbles:true}}));return true;}})()")).await?;
         }
     }
@@ -122,6 +139,9 @@ async fn verify(
     }
     if case == "two-workspaces" {
         return workspaces::verify(app, directory, report).await;
+    }
+    if case.starts_with("files-") || case == "git-review" {
+        return extra::files(directory, case, report).await;
     }
     let main = app.get_webview("main").ok_or("Missing main")?;
     let resources: Vec<_> = calls
@@ -190,6 +210,9 @@ async fn verify(
     } else {
         Value::Null
     };
+    if case.starts_with("terminal-") || case == "external-playwright" {
+        return extra::terminal(app, directory, case, report, terminal, &terminal_native).await;
+    }
     if case == "fix-test" {
         let expected = "import assert from 'node:assert/strict';\nimport { test } from 'node:test';\nimport { add } from './math.mjs';\ntest('addition', () => { assert.equal(add(2, 3), 5); assert.equal(add(-2, 3), 1); });\n";
         if std::fs::read_to_string(directory.join("project/math.test.mjs"))
@@ -248,6 +271,9 @@ async fn verify(
         return Err(format!("Wrong native page: {page}"));
     }
     let state = read_json(&directory.join("project/routing-server-state.json"))?;
+    if case.starts_with("browser-") {
+        extra::browser(case, report, &page, &state)?;
+    }
     if case == "form"
         && (state["submissions"] != 1
             || state["value"] != "Zażółć 🙂"
@@ -273,6 +299,43 @@ async fn verify(
 
 async fn origin_screen(main: &Webview, origin: &Value) -> Result<Value, String> {
     javascript(main, &format!("const m=await import('/src/terminal-runtime.ts');const r=m.runningTerminal({});if(!r||r.sessionId!=={})throw Error('Origin terminal was replaced');return [...Array(r.terminal.buffer.active.length)].map((_,i)=>r.terminal.buffer.active.getLine(i)?.translateToString()).join('\\n');", origin["panelId"], origin["terminalSessionId"])).await
+}
+
+async fn stop_fixture_commands(app: &tauri::AppHandle, report: &Value) -> Result<Value, String> {
+    let main = app.get_webview("main").ok_or("Missing main")?;
+    let mut targets = std::collections::BTreeMap::new();
+    for item in report["items"].as_array().ok_or("Missing model trace")? {
+        let result = &item["result"]["structuredContent"]["data"]["result"];
+        if item["type"] == "mcpToolCall"
+            && item["server"] == "lomi_probe"
+            && result["terminalSessionId"].is_string()
+        {
+            if result["panelId"] == report["origin"]["panelId"] {
+                return Err("Fixture cleanup must preserve the client origin".into());
+            }
+            targets.insert(result["panelId"].to_string(), result.clone());
+        }
+    }
+    let mut stopped = Vec::new();
+    for target in targets.values() {
+        let ready = javascript(&main,&format!("const m=await import('/src/terminal-runtime.ts');const r=m.runningTerminal({});if(!r||r.sessionId!=={})throw Error('Fixture cleanup target changed');return Boolean(r.atPrompt&&!r.activeBlock);",target["panelId"],target["terminalSessionId"])).await?;
+        if ready != true {
+            // Model/native observations are complete and its client has exited.
+            // Stop only its verified fixture command through the ordinary human
+            // input path before the application's existing busy-close guard.
+            javascript(&main,&format!("await window.__TAURI_INTERNALS__.invoke('write_terminal',{{id:{},data:'\\u0003'}});return true;",target["terminalSessionId"])).await?;
+            let mut ready = false;
+            for _ in 0..100 {
+                if javascript(&main,&format!("const m=await import('/src/terminal-runtime.ts');return Boolean(m.runningTerminal({})?.atPrompt);",target["panelId"])).await? == true { ready = true; break; }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+            if !ready {
+                return Err("Fixture command did not stop before native exit".into());
+            }
+            stopped.push(target.clone());
+        }
+    }
+    Ok(json!({"stopped":stopped,"originUntouched":true}))
 }
 
 pub(super) async fn prepare_origin(
@@ -303,7 +366,7 @@ pub(super) async fn prepare_origin(
             if panel["ownership"] != "human_or_unassigned" {
                 return Err("Origin terminal was silently assigned to a client".into());
             }
-            let ready = javascript(&main, &format!("const m=await import('/src/terminal-runtime.ts');return Boolean(m.runningTerminal({})?.promptEnd);", panel["id"])).await?;
+            let ready = javascript(&main, &format!("const m=await import('/src/terminal-runtime.ts');return Boolean(m.runningTerminal({})?.atPrompt);", panel["id"])).await?;
             if ready == true {
                 return Ok(
                     json!({"panelId":panel["id"],"terminalSessionId":panel["terminalSessionId"]}),
@@ -398,13 +461,17 @@ pub(super) async fn qualify(
                     Err(error) => json!({"passed":false,"error":error}),
                 },
             )?;
-            evidence?;
+            let observation = evidence;
             if let Some(child) = &mut child {
                 let exit = tokio::time::timeout(Duration::from_secs(10), child.wait())
                     .await
                     .map_err(|_| "Routing client did not exit")?
                     .map_err(|e| e.to_string())?;
                 if !exit.success() {
+                    write_json(
+                        &directory.join("routing-command-cleanup.json"),
+                        &stop_fixture_commands(app, &report).await?,
+                    )?;
                     return Err("Routing client failed after native checks".into());
                 }
             } else {
@@ -429,6 +496,11 @@ pub(super) async fn qualify(
                     );
                 }
             }
+            write_json(
+                &directory.join("routing-command-cleanup.json"),
+                &stop_fixture_commands(app, &report).await?,
+            )?;
+            observation?;
             return read_json(&result_path);
         }
         if let Some(child) = &mut child {

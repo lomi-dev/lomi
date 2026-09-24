@@ -42,6 +42,18 @@ installer publication or private client-configuration writes.
 
 ## Current work
 
+Expanded routing trials now pass terminal-exit, files-search, browser-select
+and external-playwright with independent native postconditions. Scope-denied
+has three fixed-profile passes (Nh2EEe, sL1uSU, oCvt22), making three complete
+rows of the required 20×3 matrix. The preferences and external-browser cleanup
+failures were fixture commands left active at the existing busy-close guard;
+verified fixture-only Ctrl+C after model observation now permits normal exit.
+Final browser-select nAUFba and external-playwright m7oy2s exited 0, with all
+recorded external processes absent. Both screenshots and model explanations
+were reviewed. See QUALIFICATION.md for failed attempts and corrective evidence.
+Nineteen task fixtures are defined; manual reconnect remains to implement.
+Unexecuted definitions and historical failures do not count as matrix passes.
+
 Throughput milestone `a021adc192a6c797967fc4de6775f417656fd28e` was
 pushed to origin/main and verified. Fixed-profile unavailable-client routing
 passed 3/3 (pMc8pe, ccgHM8, Pm72d8), with explicitly reported unavailability,

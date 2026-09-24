@@ -8,7 +8,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir, homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:http";
 import { uploadFixture } from "../mcp/browser-upload-server.mjs";
 import { downloadFixture } from "../mcp/browser-download-server.mjs";
@@ -750,7 +750,39 @@ try {
   closeStressServer?.close();
   // The native fixture publishes its report before app.exit has finished.
   // Await its process tree before removing paths that a terminal may still write.
+  const cleanupStarted = Date.now();
   await waitForExit(3000);
+  if (!childClosed && prebuilt) {
+    let trace = { events: [] };
+    try {
+      trace = JSON.parse(
+        await readFile(join(directory, "prebuilt-process.json"), "utf8"),
+      );
+    } catch (error) {
+      await writeFile(
+        join(directory, "prebuilt-exit-diagnostic-error.txt"),
+        String(error),
+      );
+    }
+    const pid = trace.events.find((e) => e.event === "native-start")?.pid;
+    if (
+      Number.isSafeInteger(pid) &&
+      !trace.events.some((e) => e.event === "native-close")
+    ) {
+      spawnSync(
+        "/usr/bin/sample",
+        [
+          String(pid),
+          "1",
+          "1",
+          "-file",
+          join(directory, "native-exit-sample.txt"),
+        ],
+        { timeout: 5000, stdio: "ignore" },
+      );
+    }
+    await waitForExit(7000);
+  }
   if (!childClosed) {
     try {
       process.kill(-child.pid, "SIGTERM");
@@ -781,11 +813,46 @@ try {
         appDataRemoved: Boolean(result),
         exitCode: child.exitCode,
         signal: child.signalCode,
+        exitWaitMs: Date.now() - cleanupStarted,
       },
       null,
       2,
     ),
   );
+  if (process.env.LOMI_MCP_ROUTING_ONLY === "external-playwright") {
+    let external;
+    try {
+      external = JSON.parse(
+        await readFile(join(folder, "routing-external-result.json"), "utf8"),
+      );
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    const alive = () =>
+      external
+        ? [external.pid, external.browserPid, external.parentPid].filter(
+            (pid) =>
+              Number.isSafeInteger(pid) &&
+              spawnSync("/bin/ps", ["-p", String(pid)], { stdio: "ignore" })
+                .status === 0,
+          )
+        : [];
+    let remainingPids = alive();
+    const deadline = Date.now() + 3000;
+    while (remainingPids.length && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      remainingPids = alive();
+    }
+    await writeFile(
+      join(directory, "external-cleanup.json"),
+      JSON.stringify({ metadataPresent: Boolean(external), remainingPids }),
+    );
+    if (remainingPids.length)
+      throw Error(
+        "External fixture processes remain after native exit: " +
+          remainingPids.join(","),
+      );
+  }
   if (
     result?.stage === "passed" &&
     (child.exitCode !== 0 || child.signalCode !== null)
