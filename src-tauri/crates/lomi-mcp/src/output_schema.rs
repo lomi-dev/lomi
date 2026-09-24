@@ -39,6 +39,8 @@ pub fn for_tool(tool: &str) -> Arc<Map<String, Value>> {
         "lomi_browser_snapshot" => &["browser_snapshot"],
         "lomi_browser_wait" => &["browser_wait"],
         "lomi_browser_logs" => &["browser_logs"],
+        "lomi_android_setup_plan" => &["android_setup"],
+        "lomi_android_setup_apply" | "lomi_android_device_manage" => &["operation"],
         "lomi_android_list" => &["android_devices"],
         "lomi_android_snapshot" => &["android_snapshot"],
         "lomi_android_logcat" => &["android_logcat"],
@@ -112,6 +114,9 @@ pub fn for_tool(tool: &str) -> Arc<Map<String, Value>> {
             "lomi_android_open" => Some(&["android_panel"]),
             "lomi_android_start" | "lomi_android_stop" => Some(&["android_runtime"]),
             "lomi_android_input" => Some(&["android_input"]),
+            "lomi_android_setup_apply" | "lomi_android_device_manage" => {
+                Some(&["android_management"])
+            }
             "lomi_android_install_apk" => Some(&["android_install"]),
             "lomi_android_launch" => Some(&["android_launch"]),
             "lomi_artifact_import" => Some(&["artifact_imported"]),

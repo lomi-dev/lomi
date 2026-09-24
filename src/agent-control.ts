@@ -1,3 +1,4 @@
+import type { AndroidManagementApproval } from "./AgentAndroidApproval";
 import {
   openAgentChat,
   type ChatOpenCommand,
@@ -133,6 +134,7 @@ export interface ControlState {
       };
       secondsRemaining: number;
     }[];
+    pendingAndroidManagement?: AndroidManagementApproval[];
     pendingInstalls: {
       operationId: string;
       clientLabel: string;

@@ -1,4 +1,5 @@
 pub mod android;
+pub mod android_setup;
 pub mod artifact;
 pub mod browser;
 pub mod browser_dom;

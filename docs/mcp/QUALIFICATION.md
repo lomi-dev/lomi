@@ -2,6 +2,40 @@
 
 Host: macOS 27.0 (26A428), Apple M3 ARM64. Baseline HEAD and local changes: IMPLEMENTATION-STATUS.md.
 
+## Android management selected module (2026-09-24)
+
+Native **7dOf1P PASS** (`/tmp/lomi-mcp-android-setup-native2.log`): catalog71,
+23 checks, normal host/wrapper exit0 and isolated app-data cleanup. The real
+stdio helper enrolled through Settings and used the existing licensed private
+SDK. Inventory/catalog/plan revision checks, main-caller refusal and exact
+provider consent preceded actual Platform-Tools37.0.1 installation. Only terms
+whose digests matched the previously accepted private-SDK record were approved.
+No fresh Java bootstrap is claimed from this run.
+
+The fixture created a real AVD, modified desired hardware, wiped its owned
+sentinel, deleted the AVD and verified that the previous qualification device
+was unchanged. Exact retries reused receipts. Wipe/delete required separately
+typed Settings confirmation. Native tool rollback, removal and reinstall also
+passed. Removing an image used by the original device was refused. Malformed
+preferences were restored from a valid backup and reset only after typed
+confirmation; immutable copies preserved the corrupt originals. The original
+preference-file baseline was restored. Recovery/owned-cache cleanup passed.
+The approval screenshot was inspected. Earlier OzbXGl passed19 before the
+additional maintenance scenarios.
+
+Core2 covers foreign plans/devices, empty initial setup grants, exact terms,
+revision conflicts, creator-only grants, preflight-before-replay regressions,
+decline, active cancellation and workspace removal. Native preflight/guard2
+covers name/generation checks, metadata fingerprints, recovery digest changes
+and a refusal while holding the actual manager mutation gate. Full broker61,
+Android units75 (17 opt-in tests ignored), WebKit UI2, TypeScript and frontend
+build, workspace/probe Clippy and wire5 passed. The later error-mapping-only
+change passed native3: actual disk-space refusal maps to RESOURCE_EXHAUSTED,
+busy mutation exclusion to TARGET_BUSY, and revocation retains its typed error.
+All device mutations currently require a stopped target. Device metadata
+requires a valid backup and cannot reset; preference metadata can reset.
+These results do not qualify remaining Android mixed-layout or broader P6 tests.
+
 ## Chat AI selected module (2026-09-24)
 
 Native **iyLq7U PASS** (`/tmp/lomi-mcp-chat-close-native2.log`): 68-tool catalog,

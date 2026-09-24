@@ -77,7 +77,7 @@ for (const version of ["2025-11-25", "2026-07-28"]) {
         assert.equal(result.cacheScope, "private");
       }
       const catalog = (await call("tools/list", {})).result.tools;
-      assert.equal(catalog.length, 68);
+      assert.equal(catalog.length, 71);
       assert.ok(
         JSON.stringify(catalog).length < 700_000,
         "Tool-specific output schemas must stay within the catalog budget",
@@ -537,6 +537,23 @@ for (const version of ["2025-11-25", "2026-07-28"]) {
               retryEpoch: "foreign",
               requestKey: "android-open",
             },
+            lomi_android_setup_plan: {
+              workspaceId: "foreign",
+              action: { type: "inventory" },
+            },
+            lomi_android_setup_apply: {
+              workspaceId: "foreign",
+              planId: "plan",
+              planRevision: "a".repeat(64),
+              retryEpoch: "foreign",
+              requestKey: "setup",
+            },
+            lomi_android_device_manage: {
+              workspaceId: "foreign",
+              action: { type: "cleanup" },
+              retryEpoch: "foreign",
+              requestKey: "manage",
+            },
             lomi_android_list: { workspaceId: "foreign" },
             lomi_workspace_create: workspaceMutation,
             lomi_workspace_update: workspaceMutation,
@@ -819,6 +836,8 @@ for (const version of ["2025-11-25", "2026-07-28"]) {
         assert.equal(
           tool.annotations.readOnlyHint,
           ![
+            "lomi_android_setup_apply",
+            "lomi_android_device_manage",
             "lomi_chat_stop",
             "lomi_chat_send",
             "lomi_chat_draft",

@@ -287,6 +287,16 @@ impl Installer {
         id: &str,
         accepted: Vec<String>,
     ) -> Result<Progress, String> {
+        self.start_guarded(manager, id, accepted, &|| Ok(()))
+    }
+
+    pub(super) fn start_guarded(
+        &self,
+        manager: &Arc<Manager>,
+        id: &str,
+        accepted: Vec<String>,
+        guard: &dyn Fn() -> Result<(), String>,
+    ) -> Result<Progress, String> {
         let mut state = self.state.lock().map_err(|_| "Android installer failed")?;
         let pending = state
             .plan
@@ -324,6 +334,7 @@ impl Installer {
             }
             directory.root.clone()
         };
+        guard()?;
         let pending = state.plan.take().unwrap();
         let progress = Progress {
             operation_id: lease.id.clone(),
@@ -406,9 +417,39 @@ impl Installer {
         self.operation(manager, Work::Maintenance(action))
     }
 
+    #[cfg(unix)]
+    pub(super) fn manage_guarded(
+        &self,
+        manager: &Arc<Manager>,
+        action: super::devices::Action,
+        guard: &dyn Fn() -> Result<(), String>,
+    ) -> Result<Progress, String> {
+        self.operation_guarded(manager, Work::Device(action), guard)
+    }
+    #[cfg(unix)]
+    pub(super) fn maintain_guarded(
+        &self,
+        manager: &Arc<Manager>,
+        action: super::maintenance::Action,
+        guard: &dyn Fn() -> Result<(), String>,
+    ) -> Result<Progress, String> {
+        self.operation_guarded(manager, Work::Maintenance(action), guard)
+    }
     fn operation(&self, manager: &Arc<Manager>, work: Work) -> Result<Progress, String> {
+        self.operation_guarded(manager, work, &|| Ok(()))
+    }
+    fn operation_guarded(
+        &self,
+        manager: &Arc<Manager>,
+        work: Work,
+        guard: &dyn Fn() -> Result<(), String>,
+    ) -> Result<Progress, String> {
         let mut state = self.state.lock().map_err(|_| "Android installer failed")?;
-        let lease = manager.begin_mutation(matches!(work, Work::Maintenance(_)))?;
+        let lease = manager.begin_mutation(
+            matches!(work, Work::Maintenance(_))
+                || matches!(work, Work::Device(super::devices::Action::Recover)),
+        )?;
+        guard()?;
         let progress = Progress {
             operation_id: lease.id.clone(),
             package_ids: Vec::new(),
@@ -482,6 +523,33 @@ impl Installer {
             operation.notify();
         }
         Ok(())
+    }
+
+    #[cfg(unix)]
+    pub(super) async fn wait_owned(
+        &self,
+        id: &str,
+        permit: &lomi_control_core::broker::NativePermit,
+    ) -> Result<Progress, String> {
+        let operation = self
+            .state
+            .lock()
+            .map_err(|_| "Android installer failed")?
+            .operation
+            .clone()
+            .ok_or("Android operation is unavailable")?;
+        if operation.progress.borrow().operation_id != id {
+            return Err("Android operation changed".into());
+        }
+        let mut interval = tokio::time::interval(Duration::from_millis(50));
+        loop {
+            tokio::select! {
+                result = operation.wait() => return Ok(result),
+                _ = interval.tick() => {
+                    if permit.check().is_err() { operation.cancel.send_replace(true); }
+                }
+            }
+        }
     }
 
     pub async fn settle(&self, cancel: bool) -> Result<(), String> {

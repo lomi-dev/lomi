@@ -1,3 +1,4 @@
+import { AgentAndroidApproval } from "./AgentAndroidApproval";
 import { AgentChatPermission } from "./AgentChatPermission";
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
@@ -564,6 +565,22 @@ export default function AgentControlSettingsPage() {
               ))}
             </section>
           )}
+          {!!broker.pendingAndroidManagement?.length && (
+            <section
+              className="keybindings-group"
+              aria-label="Android setup and device requests"
+            >
+              <h2>Android setup and device requests</h2>
+              {broker.pendingAndroidManagement.map((request) => (
+                <AgentAndroidApproval
+                  key={`${request.operationId}:${request.plan.revision}`}
+                  request={request}
+                  busy={busy}
+                  run={run}
+                />
+              ))}
+            </section>
+          )}
           {!!broker.pendingInstalls?.length && (
             <section
               className="keybindings-group"
@@ -786,6 +803,8 @@ function Pairing({
   const [interactBrowser, setInteractBrowser] = useState(false);
   const [readBrowser, setReadBrowser] = useState(false);
   const [readAndroid, setReadAndroid] = useState(false);
+  const [setupAndroid, setSetupAndroid] = useState(false);
+  const [manageAndroid, setManageAndroid] = useState(false);
   const [controlAndroid, setControlAndroid] = useState(false);
   const [interactAndroid, setInteractAndroid] = useState(false);
   const [observeAndroid, setObserveAndroid] = useState(false);
@@ -1241,6 +1260,8 @@ function Pairing({
             setReadAndroid(event.target.checked);
             if (!event.target.checked) {
               setControlAndroid(false);
+              setSetupAndroid(false);
+              setManageAndroid(false);
               setLaunchAndroid(false);
               setLogsAndroid(false);
               setInteractAndroid(false);
@@ -1254,6 +1275,29 @@ function Pairing({
       </label>
       {readAndroid && (
         <>
+          <label>
+            <input
+              type="checkbox"
+              checked={setupAndroid}
+              disabled={busy}
+              onChange={(event) => setSetupAndroid(event.target.checked)}
+            />{" "}
+            Allow Android SDK setup, recovery and cache cleanup requests
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={manageAndroid}
+              disabled={busy}
+              onChange={(event) => setManageAndroid(event.target.checked)}
+            />{" "}
+            Allow creating devices and changing the selected device
+          </label>
+          <p className="settings-help">
+            Setup and device changes each require a separate approval here.
+            Provider licenses and erasing data always require your decision. New
+            devices become visible only to the client that created them.
+          </p>
           <label htmlFor={`control-android-${request.id}`}>
             Managed Android device
           </label>
@@ -1642,7 +1686,10 @@ function Pairing({
             busy ||
             !valid ||
             (readChat && chatConversations.length === 0 && !createChat) ||
-            (readAndroid && !androidDevices.some((d) => d.id === androidDevice))
+            (readAndroid &&
+              !setupAndroid &&
+              !manageAndroid &&
+              !androidDevices.some((d) => d.id === androidDevice))
           }
           onClick={() =>
             void run(
@@ -1724,6 +1771,10 @@ function Pairing({
                         ? ["android.install"]
                         : []),
                       ...(readAndroid ? ["android.read"] : []),
+                      ...(readAndroid && setupAndroid ? ["android.setup"] : []),
+                      ...(readAndroid && manageAndroid
+                        ? ["android.manage"]
+                        : []),
                       ...(readAndroid && controlAndroid
                         ? ["android.control"]
                         : []),
@@ -1788,7 +1839,8 @@ function Pairing({
                         : []),
                     ]),
                   ],
-                  androidDevices: readAndroid ? [androidDevice] : [],
+                  androidDevices:
+                    readAndroid && androidDevice ? [androidDevice] : [],
                   chatConversations: readChat ? chatConversations : [],
                   androidPackages:
                     readAndroid &&

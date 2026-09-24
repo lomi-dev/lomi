@@ -290,6 +290,7 @@ pub fn run() {
                 agent_control::agent_control_ui_ack,
                 agent_control::agent_artifact_import,
                 agent_control::agent_control_decide_install,
+                agent_control::agent_control_decide_android_management,
                 android::commands::android_state,
                 android::commands::android_prepare_setup,
                 android::commands::android_setup_context,

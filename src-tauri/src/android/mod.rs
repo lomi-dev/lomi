@@ -8,6 +8,8 @@ pub(crate) mod agent_capture;
 #[cfg(unix)]
 pub(crate) mod agent_install;
 #[cfg(unix)]
+pub(crate) mod agent_setup;
+#[cfg(unix)]
 mod apk_manifest;
 mod artifact;
 mod auth;

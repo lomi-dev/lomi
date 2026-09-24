@@ -1,4 +1,6 @@
 #![cfg(unix)]
+#[path = "support/android_setup.rs"]
+mod android_setup_tests;
 use lomi_control_core::{broker::Broker, client::Client};
 use lomi_control_protocol::{control::*, EmptyInput, ErrorCode};
 use std::{sync::Arc, time::Duration};

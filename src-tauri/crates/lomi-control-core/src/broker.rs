@@ -56,6 +56,11 @@ pub use editor::EditorReadDispatch;
 mod files_search;
 pub use files::{DecodedFile, FilesReadDispatch};
 pub use files_search::{FileSearchBatch, FilesSearchDispatch};
+mod android_setup;
+pub use android_setup::{
+    AndroidManagementApply, AndroidManagementPlan, AndroidManagementRequest, AndroidPrepareInput,
+    AndroidSetupDispatch, AndroidSetupRead, AndroidTerms, PendingAndroidManagement,
+};
 mod android_logs;
 pub use android_logs::{AndroidLogBatch, AndroidLogcatDispatch};
 mod android_launch;
@@ -168,6 +173,7 @@ pub struct Overview {
     pub pending_project_opens: Vec<PendingProjectOpenView>,
     pub pending_settings_updates: Vec<PendingSettingsUpdate>,
     pub pending_installs: Vec<PendingInstallView>,
+    pub pending_android_management: Vec<PendingAndroidManagement>,
     pub sessions: Vec<SessionView>,
 }
 
@@ -263,6 +269,8 @@ struct State {
     runs: HashMap<String, terminal_runs::Run>,
     claims: HashMap<String, panel_control::Claim>,
     installs: HashMap<String, android_install::InstallJob>,
+    android_plans: HashMap<String, android_setup::SavedAndroidPlan>,
+    android_management: HashMap<String, android_setup::AndroidManagementJob>,
     android_logs: HashMap<String, android_logs::CachedLogs>,
     file_searches: HashMap<String, files_search::CachedSearch>,
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
@@ -314,6 +322,7 @@ pub struct Broker {
     editor_read_dispatch: Mutex<Option<EditorReadDispatch>>,
     editor_reads: Mutex<HashMap<String, editor::PendingRead>>,
     android_list_dispatch: Mutex<Option<AndroidListDispatch>>,
+    android_setup_dispatch: Mutex<Option<AndroidSetupDispatch>>,
     android_logcat_dispatch: Mutex<Option<AndroidLogcatDispatch>>,
     android_snapshot_dispatch: Mutex<Option<AndroidSnapshotDispatch>>,
     android_capture_dispatch: Mutex<Option<AndroidCaptureDispatch>>,
@@ -432,6 +441,7 @@ impl Broker {
             editor_read_dispatch: Mutex::new(None),
             editor_reads: Mutex::new(HashMap::new()),
             android_list_dispatch: Mutex::new(None),
+            android_setup_dispatch: Mutex::new(None),
             android_logcat_dispatch: Mutex::new(None),
             android_snapshot_dispatch: Mutex::new(None),
             android_capture_dispatch: Mutex::new(None),
@@ -788,6 +798,7 @@ impl Broker {
         state
             .git_panels
             .retain(|id, _| projection.panels.iter().any(|p| &p.id == id));
+        self.reconcile_android_management(&mut state, &projection);
         state.projection = projection;
         Ok(())
     }
@@ -806,6 +817,7 @@ impl Broker {
             terminal_profile: state.projection.terminal_profile.clone(),
             pending_project_opens: Self::pending_project_opens(&state, authorized),
             pending_settings_updates: Self::pending_settings_updates(&state, authorized),
+            pending_android_management: Self::pending_android_management(&state, authorized),
             pending_installs: state
                 .installs
                 .iter()
@@ -932,7 +944,12 @@ impl Broker {
         }
         let android_enabled = scopes.iter().any(|s| s.starts_with("android."));
         if android_devices.len() > 16
-            || android_enabled == android_devices.is_empty()
+            || (!android_enabled && !android_devices.is_empty())
+            || (android_enabled
+                && android_devices.is_empty()
+                && !scopes
+                    .iter()
+                    .any(|s| matches!(s.as_str(), "android.setup" | "android.manage")))
             || android_devices
                 .iter()
                 .any(|id| !lomi_control_protocol::android::valid_device_id(id))
@@ -952,6 +969,10 @@ impl Broker {
                     | "android.install"
             )
         }) && !scopes.iter().any(|s| s == "android.control"))
+            || (scopes
+                .iter()
+                .any(|s| matches!(s.as_str(), "android.setup" | "android.manage"))
+                && !scopes.iter().any(|s| s == "android.read"))
             || (scopes.iter().any(|s| s == "android.control")
                 && !scopes.iter().any(|s| s == "android.read"))
             || (scopes.iter().any(|s| s == "artifact.import")
@@ -1050,6 +1071,8 @@ impl Broker {
                         | "android.interact"
                         | "android.control"
                         | "android.read"
+                        | "android.setup"
+                        | "android.manage"
                         | "workspace.read"
                         | "workspace.close"
                         | "project.open"
@@ -1447,6 +1470,9 @@ impl Broker {
             }
             Request::AndroidOpen(input) => return self.android_open(id, input),
             Request::AndroidList(input) => return self.android_list(id, input),
+            Request::AndroidSetupPlan(input) => return self.android_setup_plan(id, input),
+            Request::AndroidSetupApply(input) => return self.android_setup_apply(id, input),
+            Request::AndroidDeviceManage(input) => return self.android_device_manage(id, input),
             Request::BrowserLogs(input) => return self.browser_logs(id, input),
             Request::ScreenshotBrowser(input) => return self.screenshot_browser(id, input),
             Request::AndroidLaunch(input) => return self.android_launch(id, input),
@@ -1518,7 +1544,7 @@ impl Broker {
         let ready = !projection.ui_epoch.is_empty() && projection.revision != "0";
         let visible = |w: &&Workspace| session.grant.permits(w);
         match request {
-            Request::Status(_)=>Reply::ok(Data::Status {connection:"connected".into(),pairing_request_id:None,instance_id:Some(self.endpoint.instance_id.clone()),ui_ready:ready,platform:std::env::consts::OS.into(),capabilities:["chat.export","chat.stop","chat.send","chat.draft","chat.read","chat.open","chat.create","settings.write","settings.read","settings.open","git.pull","git.discard","git.push","git.network","git.write","git.execute","git.read","files.trash","files.rename","files.create","files.mutate","editor.write","editor.read","android.logs","android.launch","android.install","files.read","artifact.import","android.capture","android.observe","android.interact","android.control","android.read","project.open", "project.close","workspace.close","workspace.read","workspace.write","panel.move","panel.focus","panel.close","panel.create","terminal.execute","terminal.read","browser.navigate","browser.read","browser.interact","browser.capture_composite"].into_iter().map(|name|Capability {name:name.into(),available:true,authorized:session.grant.scopes.contains(name),qualified:cfg!(all(target_os="macos",target_arch="aarch64"))}).collect(),limitations:vec!["Session-only pairing; authorization is shared by the process using this stdio channel".into(),"Shell cwd and browser origins are not OS or network sandboxes".into()]}),
+            Request::Status(_)=>Reply::ok(Data::Status {connection:"connected".into(),pairing_request_id:None,instance_id:Some(self.endpoint.instance_id.clone()),ui_ready:ready,platform:std::env::consts::OS.into(),capabilities:["android.setup","android.manage","chat.export","chat.stop","chat.send","chat.draft","chat.read","chat.open","chat.create","settings.write","settings.read","settings.open","git.pull","git.discard","git.push","git.network","git.write","git.execute","git.read","files.trash","files.rename","files.create","files.mutate","editor.write","editor.read","android.logs","android.launch","android.install","files.read","artifact.import","android.capture","android.observe","android.interact","android.control","android.read","project.open", "project.close","workspace.close","workspace.read","workspace.write","panel.move","panel.focus","panel.close","panel.create","terminal.execute","terminal.read","browser.navigate","browser.read","browser.interact","browser.capture_composite"].into_iter().map(|name|Capability {name:name.into(),available:true,authorized:session.grant.scopes.contains(name),qualified:cfg!(all(target_os="macos",target_arch="aarch64"))}).collect(),limitations:vec!["Session-only pairing; authorization is shared by the process using this stdio channel".into(),"Shell cwd and browser origins are not OS or network sandboxes".into()]}),
             Request::Diagnostics(_)=>Reply::ok(Data::Diagnostics {connection:"connected".into(),ui_ready:ready,next_step:if ready{"List workspaces, then connect to an approved workspace"}else{"Wait for the main workspace window"}.into()}),
             Request::Connect(input)=>{
                 if !ready{return error(ErrorCode::UiNotReady);}
@@ -1568,7 +1594,7 @@ impl Broker {
                     _=>error(ErrorCode::StorageUnavailable),
                 }
             }
-            Request::ChatExport(_)|Request::ChatStop(_)|Request::ChatSend(_)|Request::ChatDraft(_)|Request::ChatOpen(_)|Request::ChatList(_)|Request::ChatRead(_)|Request::UpdateSettings(_)|Request::ReadSettings(_)|Request::OpenSettings(_)|Request::OpenProject(_)|Request::CloseProject(_)|Request::GitMutate(_)|Request::GitDiff(_)|Request::GitHistory(_)|Request::GitCommit(_)|Request::GitRemotes(_)|Request::GitOpen(_)|Request::GitStatus(_)|Request::FilesMutate(_)|Request::EditorSave(_)|Request::EditorOpen(_)|Request::EditorEdits(_)|Request::EditorRead(_)|Request::FilesSearch(_)|Request::FilesList(_)|Request::FilesRead(_)|Request::AndroidLogcat(_)|Request::AndroidLaunch(_)|Request::AndroidInstall(_)|Request::ImportArtifact(_)|Request::AndroidScreenshot(_)|Request::AndroidSnapshot(_)|Request::AndroidInput(_)|Request::AndroidStart(_)|Request::AndroidStop(_)|Request::AndroidOpen(_)|Request::AndroidList(_)|Request::BrowserLogs(_)|Request::ScreenshotBrowser(_)|Request::ReadArtifact(_)|Request::WaitBrowser(_)|Request::KeyBrowser(_)|Request::ScrollBrowser(_)|Request::ClickBrowser(_)|Request::FillBrowser(_)|Request::SnapshotBrowser(_)|Request::NavigateBrowser(_)|Request::OpenBrowser(_)|Request::RenameWorkspace(_)|Request::CreateWorkspace(_)|Request::CreateTerminal(_)|Request::ReadTerminal(_)|Request::RunTerminal(_)|Request::InterruptTerminal(_)|Request::InputTerminal(_)|Request::Panels(_)|Request::MovePanel(_)|Request::FocusPanel(_)|Request::ControlPanel(_)|Request::ClosePanel(_)|Request::Events(_)|Request::CancelOperation(_)=>unreachable!(),
+            Request::AndroidSetupPlan(_)|Request::AndroidSetupApply(_)|Request::AndroidDeviceManage(_)|Request::ChatExport(_)|Request::ChatStop(_)|Request::ChatSend(_)|Request::ChatDraft(_)|Request::ChatOpen(_)|Request::ChatList(_)|Request::ChatRead(_)|Request::UpdateSettings(_)|Request::ReadSettings(_)|Request::OpenSettings(_)|Request::OpenProject(_)|Request::CloseProject(_)|Request::GitMutate(_)|Request::GitDiff(_)|Request::GitHistory(_)|Request::GitCommit(_)|Request::GitRemotes(_)|Request::GitOpen(_)|Request::GitStatus(_)|Request::FilesMutate(_)|Request::EditorSave(_)|Request::EditorOpen(_)|Request::EditorEdits(_)|Request::EditorRead(_)|Request::FilesSearch(_)|Request::FilesList(_)|Request::FilesRead(_)|Request::AndroidLogcat(_)|Request::AndroidLaunch(_)|Request::AndroidInstall(_)|Request::ImportArtifact(_)|Request::AndroidScreenshot(_)|Request::AndroidSnapshot(_)|Request::AndroidInput(_)|Request::AndroidStart(_)|Request::AndroidStop(_)|Request::AndroidOpen(_)|Request::AndroidList(_)|Request::BrowserLogs(_)|Request::ScreenshotBrowser(_)|Request::ReadArtifact(_)|Request::WaitBrowser(_)|Request::KeyBrowser(_)|Request::ScrollBrowser(_)|Request::ClickBrowser(_)|Request::FillBrowser(_)|Request::SnapshotBrowser(_)|Request::NavigateBrowser(_)|Request::OpenBrowser(_)|Request::RenameWorkspace(_)|Request::CreateWorkspace(_)|Request::CreateTerminal(_)|Request::ReadTerminal(_)|Request::RunTerminal(_)|Request::InterruptTerminal(_)|Request::InputTerminal(_)|Request::Panels(_)|Request::MovePanel(_)|Request::FocusPanel(_)|Request::ControlPanel(_)|Request::ClosePanel(_)|Request::Events(_)|Request::CancelOperation(_)=>unreachable!(),
         }
     }
 }

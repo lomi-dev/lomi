@@ -250,6 +250,7 @@ impl Broker {
             .retain(|_, batch| pairing.is_some_and(|p| p != batch.owner));
         self.end_claims(state, pairing);
         self.end_installs(state, pairing);
+        self.end_android_management(state, pairing);
         state.browsers.retain(|_, browser| {
             if pairing.is_none_or(|p| browser.owner == p) {
                 browser.control.revoke();
@@ -1397,6 +1398,7 @@ impl Broker {
             }
             OperationResult::ChatStopped(_)
             | OperationResult::AndroidLaunch(_)
+            | OperationResult::AndroidManagement(_)
             | OperationResult::AndroidInstall(_)
             | OperationResult::ArtifactImported { .. }
             | OperationResult::AndroidInput(_)
@@ -1685,6 +1687,9 @@ impl Broker {
         };
         match store.transition(id, &project, &input.operation_id, next, effect, now()) {
             Ok(receipt) => {
+                if let Some(job) = state.android_management.get(&input.operation_id) {
+                    job.permit.revoke();
+                }
                 if let Some(job) = state.installs.get(&input.operation_id) {
                     job.permit.revoke();
                 }
@@ -1707,6 +1712,7 @@ impl Broker {
                 }
                 if next == OperationState::Cancelled {
                     state.installs.remove(&input.operation_id);
+                    state.android_management.remove(&input.operation_id);
                     state.runs.remove(&input.operation_id);
                     state.work.remove(&input.operation_id);
                     state.claims.remove(&input.operation_id);

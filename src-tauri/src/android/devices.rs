@@ -150,6 +150,11 @@ fn installed_api(properties: &BTreeMap<String, String>) -> Result<(u32, u32), St
     Ok((api, minor))
 }
 
+#[cfg(unix)]
+pub(super) fn validate_agent_device(directory: &Directory, device: &Device) -> Result<(), String> {
+    profile(directory, device).map(|_| ())
+}
+
 fn profile(directory: &Directory, device: &Device) -> Result<catalog::Profile, String> {
     device.validate()?;
     let image = directory

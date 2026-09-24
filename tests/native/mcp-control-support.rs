@@ -8,6 +8,8 @@ use std::{
 use tauri::{Emitter, Listener, Manager, Webview};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
+#[path = "mcp-android-setup-support.rs"]
+mod android_setup_probe;
 #[path = "mcp-chat-support.rs"]
 mod chat_probe;
 #[path = "mcp-settings-support.rs"]
@@ -1355,6 +1357,28 @@ async fn clean_android_fixture(
     if status.process_alive {
         return Err("The isolated Android fixture did not exit".into());
     }
+    if stage == "after" && std::env::var_os("LOMI_MCP_ANDROID_SETUP_ONLY").is_some() {
+        let name = format!(
+            "MCP setup {}",
+            directory.file_name().unwrap().to_string_lossy()
+        );
+        let metadata = manager
+            .directory
+            .lock()
+            .map_err(|_| "Fixture metadata unavailable")?
+            .devices()?;
+        if let Some(device) = metadata.devices.iter().find(|d| d.name == name) {
+            manager.stop(&device.id, false).await?;
+            let action=serde_json::from_value(json!({"type":"delete","expectedRevision":metadata.revision,"deviceId":device.id,"confirmation":name})).map_err(|e|e.to_string())?;
+            manager.installer.manage(&manager, action)?;
+            manager.installer.settle(false).await?;
+            let result =
+                serde_json::to_value(manager.installer.progress()).map_err(|e| e.to_string())?;
+            if result["phase"] != "succeeded" {
+                return Err(format!("Cannot clean owned management fixture: {result}"));
+            }
+        }
+    }
     let cleanup = manager.clone();
     tauri::async_runtime::spawn_blocking(move || cleanup.stop_private_adb_fixture())
         .await
@@ -2671,6 +2695,11 @@ struct Wire {
 }
 impl Wire {
     async fn call(&mut self, method: &str, params: Value) -> Result<Value, String> {
+        let response_timeout = if params["name"] == "lomi_android_setup_plan" {
+            50
+        } else {
+            10
+        };
         self.id += 1;
         let frame = format!(
             "{}\n",
@@ -2681,10 +2710,13 @@ impl Wire {
             .await
             .map_err(|e| e.to_string())?;
         let mut line = String::new();
-        tokio::time::timeout(Duration::from_secs(10), self.output.read_line(&mut line))
-            .await
-            .map_err(|_| "Helper timed out")?
-            .map_err(|e| e.to_string())?;
+        tokio::time::timeout(
+            Duration::from_secs(response_timeout),
+            self.output.read_line(&mut line),
+        )
+        .await
+        .map_err(|_| "Helper timed out")?
+        .map_err(|e| e.to_string())?;
         if line.len() > 1024 * 1024 {
             return Err("Helper response too large".into());
         }
@@ -2873,6 +2905,14 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
     if let Some(device) = &android_fixture {
         evaluate(&settings, "[...document.querySelectorAll('.agent-control-request label')].find(e=>e.textContent.includes('Allow reading selected Android device status')).querySelector('input').click();true").await?;
 
+        if std::env::var_os("LOMI_MCP_ANDROID_SETUP_ONLY").is_some() {
+            for text in [
+                "Allow Android SDK setup, recovery and cache cleanup requests",
+                "Allow creating devices and changing the selected device",
+            ] {
+                evaluate(&settings,&format!("[...document.querySelectorAll('.agent-control-request label')].find(e=>e.textContent.includes({})).querySelector('input').click();true",json!(text))).await?;
+            }
+        }
         let selector = "document.querySelector('select[id^=control-android-]')";
         wait_for(
             &settings,
@@ -2976,6 +3016,22 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
         .await?;
     if connected["structuredContent"]["status"] != "ok" {
         return Err("Cannot select approved workspace".into());
+    }
+    if std::env::var_os("LOMI_MCP_ANDROID_SETUP_ONLY").is_some() {
+        android_setup_probe::qualify(
+            app,
+            &mut wire,
+            &main,
+            &settings,
+            &workspace,
+            &connected["structuredContent"]["data"]["retryEpoch"],
+            directory,
+        )
+        .await?;
+        child.kill().await.map_err(|e| e.to_string())?;
+        return Ok(
+            json!({"profile":"android-setup-only","catalogCount":catalog["result"]["tools"].as_array().map(Vec::len)}),
+        );
     }
     if std::env::var_os("LOMI_MCP_CHAT_READ_ONLY").is_some()
         || (std::env::var_os("LOMI_MCP_CHAT_OPEN_ONLY").is_some()

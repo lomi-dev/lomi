@@ -1,4 +1,5 @@
 pub use crate::android::*;
+pub use crate::android_setup::*;
 pub use crate::artifact::*;
 pub use crate::browser_dom::*;
 pub use crate::browser_logs::*;
@@ -238,6 +239,7 @@ pub enum OperationResult {
     EditorEdited(Box<EditorEdited>),
     AndroidLaunch(AndroidLaunchResult),
     AndroidInstall(Box<AndroidInstallResult>),
+    AndroidManagement(Box<AndroidManagementResult>),
     ArtifactImported {
         workspace_id: String,
         artifact_id: String,
@@ -720,6 +722,12 @@ pub enum Request {
     AndroidOpen(AndroidOpenInput),
     #[serde(rename = "lomi_android_list")]
     AndroidList(AndroidListInput),
+    #[serde(rename = "lomi_android_setup_plan")]
+    AndroidSetupPlan(AndroidSetupPlanInput),
+    #[serde(rename = "lomi_android_setup_apply")]
+    AndroidSetupApply(AndroidSetupApplyInput),
+    #[serde(rename = "lomi_android_device_manage")]
+    AndroidDeviceManage(AndroidDeviceManageInput),
     #[serde(rename = "lomi_browser_screenshot")]
     ScreenshotBrowser(BrowserScreenshotInput),
     #[serde(rename = "lomi_browser_logs")]
@@ -854,6 +862,7 @@ pub enum Data {
         devices: AndroidDevices,
     },
     AndroidLogcat(Box<AndroidLogcat>),
+    AndroidSetup(Box<AndroidSetupView>),
     AndroidSnapshot(Box<AndroidSnapshot>),
     Artifact {
         artifact: Box<Artifact>,

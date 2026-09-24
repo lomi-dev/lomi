@@ -138,6 +138,48 @@ Client routing and functional/safety/performance tests remain in the selected
 scope. Installer distribution, packaged upgrades and release publication are
 excluded from this delivery. Use the local development commands above.
 
+## Set up and manage Android
+
+In Agent control, enable Android reads and either setup or device management.
+These permissions can start with no selected device. Existing devices still
+need explicit selection; creating a device adds only that creator's new ID.
+Runtime, input, APK installation and screenshot scopes remain separate.
+
+- `lomi_android_setup_plan` with `action.type=inventory` reports installed
+  packages, supported profiles, granted device configurations and recovery choices.
+  `catalog` pages use `offset`, `limit` (1–32) and `expectedCatalogRevision` after
+  page one; `refresh=true` is allowed only at offset0.
+- `prepare` uses that `catalogRevision`, exact `packages:[{id,revision}]` and
+  `prepareTools`. It returns a plan ID/revision, component sources/checksums,
+  download sizes and required license digests. No SDK archive is downloaded yet.
+- `lomi_android_setup_apply` takes that `planId`/`planRevision`, workspace,
+  retry epoch and request key. Settings opens with the exact plan and full terms.
+  Check each license yourself and approve. The original operation continues;
+  poll `lomi_operation_get`, retaining the same key after uncertain completion.
+
+`lomi_android_device_manage` uses a closed action: `create`, `modify`, `wipe`,
+`delete`, `recover`, `cleanup`, `restore_metadata`, `remove_package` or
+`rollback_package`. Each action requires its own Settings approval. Device
+changes bind `expectedDevicesRevision` and, for an existing device, its exact ID
+and `generation` (including null when none exists). Stop that device first.
+Create/modify select an installed profile and bounded hardware configuration.
+Modify preserves the image and data-partition size; changed hardware applies on
+the next start. Changing the image requires a new device.
+
+Wipe/delete include the exact device name in `confirmation`; you must separately
+type it in Settings. SDK setup/recovery/cleanup/package maintenance need
+`android.setup`; device changes need `android.manage`, all with `android.read`.
+Recovery uses the inventory's exact malformed-file digest. Device metadata
+requires a valid backup. Only preferences support reset, with typed
+`RESET PREFERENCES` confirmation. The corrupt original is preserved. Package
+maintenance uses `expectedManifestRevision` and refuses images used by any AVD.
+
+Prepared download plans expire after30 minutes; Settings decisions expire after
+10 minutes. Approved native work has a two-hour bound. Closing Settings does not
+cancel it. Cancelling the MCP operation, revoking access or closing its workspace
+invalidates only its own native work. Uncertain or partial completion is never
+replayed automatically. Native progress remains visible in Android settings.
+
 ## Control selected Chat AI conversations
 
 In **Settings → Agent control**, enable history access and select the exact

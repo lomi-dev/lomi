@@ -34,13 +34,41 @@ installer publication or private client-configuration writes.
 | P5.2  | IN_PROGRESS     | Git reads/views and all seven bounded mutations; qualification active                                     |
 | P5.3  | IN_PROGRESS     | Project open/moves and Chat closure verified; Android descendants pending; plugins excluded               |
 | P5.4  | VERIFIED_SLICES | Settings open/read/editor/terminal/shortcut writes verified; further themes/plugins EXCLUDED_BY_USER      |
-| P5.5  | TODO            | Android management                                                                                        |
+| P5.5  | QUALIFIED       | Android setup, device management and protected recovery                                                   |
 | P5.6  | QUALIFIED       | Seven Chat AI tools and selected layout integration; all final checks passed                              |
 | P5.7  | TODO            | Advanced browser/PTY; application lifecycle tools EXCLUDED_BY_USER                                        |
 | P6    | TODO            | Functional/safety/performance and client-routing tests; distribution/installers/releases EXCLUDED_BY_USER |
 | P7    | NOT_SELECTED    | No optional extension selected by this request                                                            |
 
 ## Current work
+
+Chat AI milestone was committed and pushed to origin/main as
+`57b05cb46f8ed1896f2b26c3665826a401a96073`; remote SHA verified and the
+worktree was clean before Android management work started.
+
+Android management is natively QUALIFIED on macOS ARM64 (catalog71): setup
+inventory/catalog/prepare, exact plan apply, create/modify/wipe/delete,
+interrupted-operation recovery, metadata recovery, owned-cache cleanup and
+package removal/rollback. Native **7dOf1P PASS**, 23 checks, includes actual
+Platform-Tools37.0.1 install/reinstall, AVD create/modify/wipe/delete, tool
+rollback/removal, malformed preference recovery and typed reset. Original
+qualification device and preference-file baseline were preserved. Host/wrapper
+exit0 and isolated app-data cleanup confirmed; the approval screenshot was
+inspected. Earlier OzbXGl also passed19 before extending maintenance coverage.
+
+Every mutation requires native Settings approval; license acceptance and typed
+confirmation are not MCP inputs. The agent supplies the target's exact name for
+wipe/delete, and Settings independently requires typing it. Plans bind native
+metadata/runtime identities and revisions. Device metadata cannot reset: it
+requires a valid backup, matching the existing recovery policy. Cancellation
+and workspace removal invalidate only the operation's permit. Full broker61,
+Android units75 (17 opt-in tests ignored), WebKit approval/permission2,
+TypeScript, frontend build, workspace/probe Clippy and helper wire5 passed. A
+subsequent error-mapping-only change passed native3, including actual disk-space
+and mutation-gate errors. Android management is ready for its milestone push.
+Android layout remains a separate outstanding part of the selected delivery.
+
+### Completed Chat module
 
 Streaming renderer repair was committed and pushed to origin/main as
 `12af2935eed70f12563c98b03091b71df37119f8`; remote SHA verified. A trailing

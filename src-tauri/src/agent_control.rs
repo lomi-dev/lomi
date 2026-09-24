@@ -373,6 +373,12 @@ pub async fn agent_control_enable(
                         },
                     ))
                     .map_err(|_| unavailable())?;
+                let setup_app = app.clone();
+                broker
+                    .set_android_setup_dispatch(Arc::new(move |input, devices, check| {
+                        crate::android::agent_setup::prepare(&setup_app, input, devices, check)
+                    }))
+                    .map_err(|_| unavailable())?;
                 let android_app = app.clone();
                 broker
                     .set_android_list_dispatch(Arc::new(move |request| {
@@ -1491,6 +1497,47 @@ pub async fn agent_artifact_import(
     #[cfg(not(unix))]
     {
         let _ = (operation_id, nonce);
+        Err(unavailable())
+    }
+}
+
+#[tauri::command]
+pub async fn agent_control_decide_android_management(
+    window: Window,
+    state: State<'_, Control>,
+    operation_id: String,
+    revision: String,
+    approve: bool,
+    accepted: Vec<String>,
+    confirmation: Option<String>,
+) -> Result<(), String> {
+    settings(&window)?;
+    #[cfg(unix)]
+    {
+        let broker = state.required()?;
+        tauri::async_runtime::spawn_blocking(move || {
+            broker.decide_android_management(
+                &operation_id,
+                &revision,
+                approve,
+                accepted,
+                confirmation,
+            )
+        })
+        .await
+        .map_err(|_| unavailable())?
+        .map_err(|_| "The Android request changed or is no longer available.".into())
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (
+            state,
+            operation_id,
+            revision,
+            approve,
+            accepted,
+            confirmation,
+        );
         Err(unavailable())
     }
 }

@@ -93,6 +93,7 @@ await new Promise((resolve) => portReservation.listen(0, "127.0.0.1", resolve));
 const serverPort = portReservation.address().port;
 await new Promise((resolve) => portReservation.close(resolve));
 const closeStressServer =
+  process.env.LOMI_MCP_ANDROID_SETUP_ONLY ||
   process.env.LOMI_MCP_CHAT_SEND_ONLY ||
   process.env.LOMI_MCP_CHAT_DRAFT_ONLY ||
   process.env.LOMI_MCP_CHAT_OPEN_ONLY ||
@@ -247,7 +248,20 @@ try {
     }
   }
   if (!result) throw Error("Native control probe timed out");
-  if (
+  if (result.stage === "passed" && process.env.LOMI_MCP_ANDROID_SETUP_ONLY) {
+    const proof = JSON.parse(
+      await readFile(join(directory, "android-setup.json"), "utf8"),
+    );
+    if (
+      deniedRequests !== 0 ||
+      result.data?.profile !== "android-setup-only" ||
+      result.data?.catalogCount !== 71 ||
+      proof.checks?.length !== 23 ||
+      !proof.originalDevicePreserved ||
+      !proof.fixtureDeviceRemoved
+    )
+      throw Error("Android setup qualification returned incomplete evidence");
+  } else if (
     result.stage === "passed" &&
     (process.env.LOMI_MCP_CHAT_READ_ONLY ||
       process.env.LOMI_MCP_CHAT_OPEN_ONLY ||
@@ -267,7 +281,7 @@ try {
             : process.env.LOMI_MCP_CHAT_OPEN_ONLY
               ? "chat-open-only"
               : "chat-read-only") ||
-      result.data?.catalogCount !== 68 ||
+      result.data?.catalogCount !== 71 ||
       proof.checks?.length !==
         (process.env.LOMI_MCP_CHAT_SEND_ONLY
           ? 54
