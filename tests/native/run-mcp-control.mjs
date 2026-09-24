@@ -145,6 +145,7 @@ const downloads = downloadFixture(
 );
 const uploads = uploadFixture();
 const closeStressServer =
+  process.env.LOMI_MCP_THROUGHPUT_ONLY ||
   process.env.LOMI_MCP_PERFORMANCE_ONLY ||
   process.env.LOMI_MCP_TERMINAL_ONLY ||
   process.env.LOMI_MCP_BROWSER_UPLOAD_ONLY ||
@@ -332,7 +333,21 @@ try {
     )
       throw Error("Android latency returned incomplete measurement evidence");
   }
-  if (result.stage === "passed" && process.env.LOMI_MCP_ROUTING_ONLY) {
+  if (result.stage === "passed" && process.env.LOMI_MCP_THROUGHPUT_ONLY) {
+    const proof = JSON.parse(
+      await readFile(join(directory, "terminal-throughput.json"), "utf8"),
+    );
+    if (
+      proof.measuredPairs !== 20 ||
+      proof.samples?.length !== 46 ||
+      !Number.isFinite(proof.medianRatio) ||
+      proof.medianRatio > 1.1 ||
+      result.data?.profile !== "throughput-only"
+    )
+      throw Error(
+        "Terminal throughput returned incomplete measurement evidence",
+      );
+  } else if (result.stage === "passed" && process.env.LOMI_MCP_ROUTING_ONLY) {
     const proof = JSON.parse(
       await readFile(join(directory, "routing-result.json"), "utf8"),
     );

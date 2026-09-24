@@ -5,6 +5,36 @@ their original failures and pending work; subsequent evidence supersedes only
 the specific checks it actually covers. The active task list is in
 [implementation status](IMPLEMENTATION-STATUS.md).
 
+## P6 terminal delivery/parser throughput (2026-09-24)
+
+`lomi-mcp-control-fhyMJU` **PASS** on Apple M3/macOS 27.0 ARM64, AC power,
+development build. Two actual retained Zsh PTYs used the same Node producer,
+2 MiB of identical output, 80×24 xterm geometry and hidden terminal views.
+One was an ordinary UI-created terminal without an MCP observer; the other
+was created and commanded through MCP. Native session IDs and the respective
+`agentControlled=false/true` states were checked. Their snapshots both named
+the WebGL renderer, but hidden views did not perform visible rendering.
+
+OSC start/end handlers timed the actual xterm parser around the payload,
+including PTY/channel delivery, existing backpressure and parser work.
+Command admission and Node startup were outside the measured interval.
+Handlers were disposed afterward; production ACKs and flow control were
+unchanged. Three paired warmups preceded 20 measured pairs with alternating
+order. Both paths returned to their parsed shell prompt with exit 0.
+
+| Path | Median | p95 | Maximum |
+| --- | --- | --- | --- |
+| Ordinary PTY | 238.5 ms | 246 ms | 279 ms |
+| MCP-observed PTY | 248 ms | 258 ms | 259 ms |
+
+Observed/ordinary median ratio was **1.0398** (+3.98%), below the fixture's
+predeclared 1.10 regression threshold. This is a same-build comparison of
+observer overhead, not a claim about a historical pre-MCP build, full-screen
+rendering, every output distribution or other hardware. No concurrent model
+trial, Android device or build ran during sampling. Raw 46 samples, geometry
+and endpoint: `terminal-throughput.json`. Normal host exit 0 and private
+app-data removal: `cleanup.json`. Log: `/tmp/lomi-mcp-throughput.log`.
+
 ## P6 fixed-profile two-workspace model trials (2026-09-24)
 
 **3/3 PASS:** u7KQSR, IemlCy, YitjKG, fresh native app data and Codex

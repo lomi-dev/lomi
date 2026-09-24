@@ -7,6 +7,8 @@ mod performance_probe;
 mod routing_probe;
 #[path = "mcp-terminal-control-support.rs"]
 mod terminal_probe;
+#[path = "mcp-throughput-support.rs"]
+mod throughput_probe;
 use crate::mcp_browser_probe::{evaluate, screenshot, wait_for};
 use serde_json::{json, Value};
 use std::{
@@ -3091,6 +3093,18 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
         return Ok(
             json!({"profile":"routing-only","catalogCount":catalog["result"]["tools"].as_array().map(Vec::len)}),
         );
+    }
+    if std::env::var_os("LOMI_MCP_THROUGHPUT_ONLY").is_some() {
+        throughput_probe::qualify(
+            app,
+            &mut wire,
+            &workspace,
+            &connected["structuredContent"]["data"]["retryEpoch"],
+            directory,
+        )
+        .await?;
+        child.kill().await.map_err(|e| e.to_string())?;
+        return Ok(json!({"profile":"throughput-only"}));
     }
     if std::env::var_os("LOMI_MCP_PERFORMANCE_ONLY").is_some() {
         performance_probe::qualify(

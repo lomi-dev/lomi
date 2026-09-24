@@ -42,6 +42,14 @@ installer publication or private client-configuration writes.
 
 ## Current work
 
+Two-workspace milestone `877e3ec28aa9ad4af80374c9fc635bb5aa192d30` was
+pushed to origin/main and verified. The subsequent terminal throughput run
+fhyMJU passed 20 alternating measured pairs after three paired warmups:
+ordinary median 238.5 ms, MCP-observed median 248 ms (+3.98%, threshold 10%).
+Both parsed the identical 2 MiB payload through retained real PTYs/xterm and
+returned to the shell. Cleanup passed. The complete fixed-profile model
+matrix and final acceptance reconciliation remain open.
+
 Android latency milestone `7091bcbeb957a99e40813346f1591442d6ccc9e3`
 was pushed to origin/main and verified. Two-workspace actual-model routing
 then passed 3/3 (u7KQSR, IemlCy, YitjKG), with gpt-6-sol and medium effort

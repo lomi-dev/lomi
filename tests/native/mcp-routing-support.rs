@@ -275,7 +275,7 @@ async fn origin_screen(main: &Webview, origin: &Value) -> Result<Value, String> 
     javascript(main, &format!("const m=await import('/src/terminal-runtime.ts');const r=m.runningTerminal({});if(!r||r.sessionId!=={})throw Error('Origin terminal was replaced');return [...Array(r.terminal.buffer.active.length)].map((_,i)=>r.terminal.buffer.active.getLine(i)?.translateToString()).join('\\n');", origin["panelId"], origin["terminalSessionId"])).await
 }
 
-async fn prepare_origin(
+pub(super) async fn prepare_origin(
     app: &tauri::AppHandle,
     wire: &mut Wire,
     workspace: &Value,
