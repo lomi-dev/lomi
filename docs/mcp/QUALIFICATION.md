@@ -1439,3 +1439,36 @@ Validation:
   remains unresolved. The final scoped commit screenshot was visually inspected.
 
 These checks do not complete native performance or model-driven client routing.
+
+## P6 dependency inventory — 2026-09-24
+
+`cargo-audit 0.22.2` checked the locked workspace against 1,267 advisories at
+RustSec commit `1931a145168d457fd79b321277b25b0e51777157` (updated September 23).
+It reported **zero vulnerabilities**, seven unmaintained dependency warnings
+(paste, proc-macro-error, and five unic crates), and the existing
+`glib 0.18.5` unsoundness warning RUSTSEC-2024-0429. The latter belongs to the
+Linux GTK graph and is absent from the selected aarch64-apple-darwin normal
+dependency closure. This does not qualify Linux or remove those maintenance
+warnings. Report: `/tmp/lomi-mcp-p6-cargo-audit.json`.
+
+`pnpm audit --prod --json` reported **one low advisory**, esbuild 0.27.4 via the
+plugin SDK's tsup build dependencies. The upstream
+[GHSA-g7r4-m6w7-qqqr advisory](https://github.com/evanw/esbuild/security/advisories/GHSA-g7r4-m6w7-qqqr)
+affects the esbuild development file server on Windows. Lomi's application uses
+the SDK's pure runtime exports; its `./build` entry imports tsup only for plugin
+builds. The host and AI-runtime sources do not import that build entry or call
+esbuild's server. The macOS MCP process has no esbuild dependency. Therefore this
+advisory is not reachable in the qualified macOS MCP runtime; the dependency
+inventory is not described as warning-free. No SDK or lockfile upgrade was made
+as part of the excluded further plugin scope. Report:
+`/tmp/lomi-mcp-p6-pnpm-audit.json`.
+
+`pnpm licenses list --prod --json` completed successfully. A platform-filtered
+Cargo metadata walk from lomi and lomi-mcp through normal dependency edges found
+404 packages, all with declared SPDX license metadata or a license file. The
+inventory includes compile-time macro dependencies and is not a list of all
+bundled binaries. Existing AI-runtime build preparation emits third-party notices
+from the actual esbuild input graph; its build tool is not a runtime dependency.
+Reports: `/tmp/lomi-mcp-p6-pnpm-licenses.json` and
+`/tmp/lomi-mcp-p6-runtime-licenses.json`. Installer/signing/distribution review is
+NOT_SELECTED per the user's scope.
