@@ -42,6 +42,15 @@ installer publication or private client-configuration writes.
 
 ## Current work
 
+File mutation now identifies an invalid domain revision as REVISION_CONFLICT
+and describes its decimal workspace source in the tool/schema. Actual-model
+rename trials passed 3/3, including recovery from the originally mistaken hash.
+Core/broker/protocol/helper and independent wire checks passed in the final
+recorded run; all-target probe Clippy passed. Four routing rows have complete
+3/3 passes. REPL has three successful task observations, but the third fixture
+exit required termination and remains a separate cleanup failure. The exact
+cause will be diagnosed before counting that whole trial as passed.
+
 Manual reconnect N8154I passed two fresh actual-client sessions with a single
 preserved file effect, distinct approvals and denial of the old receipt.
 The expanded batch additionally passed terminal interrupt/binary output,

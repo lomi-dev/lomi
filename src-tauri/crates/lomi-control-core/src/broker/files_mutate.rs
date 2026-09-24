@@ -213,8 +213,11 @@ impl Broker {
         Ok(())
     }
     pub(super) fn files_mutate(self: &Arc<Self>, owner: &str, input: FilesMutateInput) -> Reply {
-        if !valid_id(&input.request_key) || input.expected_revision.parse::<u64>().is_err() {
+        if !valid_id(&input.request_key) {
             return error(ErrorCode::ResourceExhausted);
+        }
+        if input.expected_revision.parse::<u64>().is_err() {
+            return error(ErrorCode::RevisionConflict);
         }
         let expected_parent_revision = input.operation.expected_parent_revision();
         if !valid_hash(expected_parent_revision) {

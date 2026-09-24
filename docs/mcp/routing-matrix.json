@@ -39,8 +39,8 @@
     },
     {
       "task": "apk",
-      "executions": 0,
-      "completePasses": 0
+      "executions": 1,
+      "completePasses": 1
     },
     {
       "task": "origin-server",
@@ -59,8 +59,8 @@
     },
     {
       "task": "terminal-repl",
-      "executions": 1,
-      "completePasses": 0
+      "executions": 4,
+      "completePasses": 2
     },
     {
       "task": "terminal-interrupt",
@@ -99,8 +99,8 @@
     },
     {
       "task": "files-rename",
-      "executions": 1,
-      "completePasses": 0
+      "executions": 4,
+      "completePasses": 3
     },
     {
       "task": "git-review",
@@ -709,14 +709,187 @@
       "batch": "LfdIzQ",
       "artifact": "lomi-mcp-control-sivenL",
       "sourceFingerprint": "0cb47c08681530729a6bd2c563995661892acb01dbf8f2b3ff186072188f19f2"
+    },
+    {
+      "task": "files-rename",
+      "repeat": 1,
+      "passed": true,
+      "taskCompleted": true,
+      "modelTurnCompleted": true,
+      "selectedLomi": true,
+      "competingActions": [],
+      "silentFallback": false,
+      "toolCalls": 11,
+      "error": null,
+      "cleanup": {
+        "hostExited": true,
+        "appDataRemoved": true,
+        "exitCode": 0,
+        "signal": null,
+        "exitWaitMs": 44
+      },
+      "externalCleanup": null,
+      "androidCleanup": null,
+      "batch": "qATQPE",
+      "artifact": "lomi-mcp-control-hdyUBf",
+      "sourceFingerprint": "c62bb1b48aa3ac52940ec42b33dfca2c340a15122b21c3857327974f4943bfc9"
+    },
+    {
+      "task": "files-rename",
+      "repeat": 2,
+      "passed": true,
+      "taskCompleted": true,
+      "modelTurnCompleted": true,
+      "selectedLomi": true,
+      "competingActions": [],
+      "silentFallback": false,
+      "toolCalls": 10,
+      "error": null,
+      "cleanup": {
+        "hostExited": true,
+        "appDataRemoved": true,
+        "exitCode": 0,
+        "signal": null,
+        "exitWaitMs": 79
+      },
+      "externalCleanup": null,
+      "androidCleanup": null,
+      "batch": "qATQPE",
+      "artifact": "lomi-mcp-control-Nzkg07",
+      "sourceFingerprint": "c62bb1b48aa3ac52940ec42b33dfca2c340a15122b21c3857327974f4943bfc9"
+    },
+    {
+      "task": "files-rename",
+      "repeat": 3,
+      "passed": true,
+      "taskCompleted": true,
+      "modelTurnCompleted": true,
+      "selectedLomi": true,
+      "competingActions": [],
+      "silentFallback": false,
+      "toolCalls": 12,
+      "error": null,
+      "cleanup": {
+        "hostExited": true,
+        "appDataRemoved": true,
+        "exitCode": 0,
+        "signal": null,
+        "exitWaitMs": 328
+      },
+      "externalCleanup": null,
+      "androidCleanup": null,
+      "batch": "qATQPE",
+      "artifact": "lomi-mcp-control-LBLkKN",
+      "sourceFingerprint": "c62bb1b48aa3ac52940ec42b33dfca2c340a15122b21c3857327974f4943bfc9"
+    },
+    {
+      "task": "terminal-repl",
+      "repeat": 1,
+      "passed": true,
+      "taskCompleted": true,
+      "modelTurnCompleted": true,
+      "selectedLomi": true,
+      "competingActions": [],
+      "silentFallback": false,
+      "toolCalls": 16,
+      "error": null,
+      "cleanup": {
+        "hostExited": true,
+        "appDataRemoved": true,
+        "exitCode": 0,
+        "signal": null,
+        "exitWaitMs": 144
+      },
+      "externalCleanup": null,
+      "androidCleanup": null,
+      "batch": "qATQPE",
+      "artifact": "lomi-mcp-control-PHQVAd",
+      "sourceFingerprint": "c62bb1b48aa3ac52940ec42b33dfca2c340a15122b21c3857327974f4943bfc9"
+    },
+    {
+      "task": "terminal-repl",
+      "repeat": 2,
+      "passed": true,
+      "taskCompleted": true,
+      "modelTurnCompleted": true,
+      "selectedLomi": true,
+      "competingActions": [],
+      "silentFallback": false,
+      "toolCalls": 17,
+      "error": null,
+      "cleanup": {
+        "hostExited": true,
+        "appDataRemoved": true,
+        "exitCode": 0,
+        "signal": null,
+        "exitWaitMs": 12
+      },
+      "externalCleanup": null,
+      "androidCleanup": null,
+      "batch": "qATQPE",
+      "artifact": "lomi-mcp-control-vgeyLn",
+      "sourceFingerprint": "c62bb1b48aa3ac52940ec42b33dfca2c340a15122b21c3857327974f4943bfc9"
+    },
+    {
+      "task": "terminal-repl",
+      "repeat": 3,
+      "passed": false,
+      "taskCompleted": true,
+      "modelTurnCompleted": true,
+      "selectedLomi": true,
+      "competingActions": [],
+      "silentFallback": false,
+      "toolCalls": 16,
+      "error": null,
+      "cleanup": {
+        "hostExited": true,
+        "appDataRemoved": true,
+        "exitCode": 143,
+        "signal": null,
+        "exitWaitMs": 12356
+      },
+      "externalCleanup": null,
+      "androidCleanup": null,
+      "batch": "qATQPE",
+      "artifact": "lomi-mcp-control-0KCGWi",
+      "sourceFingerprint": "c62bb1b48aa3ac52940ec42b33dfca2c340a15122b21c3857327974f4943bfc9"
+    },
+    {
+      "task": "apk",
+      "repeat": 1,
+      "passed": true,
+      "taskCompleted": true,
+      "modelTurnCompleted": true,
+      "selectedLomi": true,
+      "competingActions": [],
+      "silentFallback": false,
+      "toolCalls": 39,
+      "error": null,
+      "cleanup": {
+        "hostExited": true,
+        "appDataRemoved": true,
+        "exitCode": 0,
+        "signal": null
+      },
+      "androidCleanup": {
+        "deviceId": "c38f8ddd-0b24-4cae-81a1-fd9fcdd1e2e2",
+        "processAlive": false,
+        "forced": false,
+        "privateAdbStopped": true
+      },
+      "externalCleanup": null,
+      "batch": "pre-pin-effective-profile-verified",
+      "artifact": "lomi-mcp-control-SOE0wa",
+      "sourceFingerprint": null,
+      "provenance": "Effective profile compared with hdyUBf: same CLI/model/provider/medium/profile/features/instruction sources/74-tool set; before explicit model pin, recorded in milestone 42ed05a."
     }
   ],
   "notes": [
     "Includes failed fixed-profile attempts, not only successful retries.",
-    "Earlier unpinned or unrecorded effort runs are historical evidence outside this ledger.",
-    "APK SOE0wa reported the same effective profile but predates explicit pinning; retained as separate evidence.",
+    "Earlier runs with unrecorded or different effective effort remain outside this ledger.",
+    "APK SOE0wa predates the explicit model pin, but its complete recorded effective profile was checked and matches; included with provenance.",
     "taskCompleted is the native-postcondition flag; fixture failures may prevent observing a task the model actually performed.",
-    "REPL TKT6O3 omitted terminal_run but used a valid terminal_input path; its overstrict fixture expectation needs correction and a fresh run.",
+    "REPL TKT6O3 omitted terminal_run but used a valid terminal_input path; its overstrict fixture expectation was corrected; fresh native reruns are recorded separately.",
     "Reconciled external process cleanup of failed Mjejft and 8np8fE is documented in QUALIFICATION.md; original failure rows are preserved."
   ]
 }

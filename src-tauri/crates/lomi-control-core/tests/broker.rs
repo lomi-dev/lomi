@@ -6319,6 +6319,22 @@ async fn file_move_replays_after_source_disappears_and_requires_separate_scope()
             ..
         }
     ));
+    // A directory hash in the domain field must identify a revision error
+    // before reserving this request key or dispatching any native file work.
+    for revision in [
+        directory.list("", || Ok(())).unwrap().revision,
+        "18446744073709551616".into(),
+    ] {
+        let mut wrong_domain = input.clone();
+        wrong_domain.expected_revision = revision;
+        assert!(matches!(
+            client.call(Request::FilesMutate(wrong_domain)).await.unwrap(),
+            Reply::Error { code: ErrorCode::RevisionConflict, .. }
+        ));
+        assert!(commands.try_recv().is_err());
+        assert_eq!(std::fs::read(project.join("source.txt")).unwrap(), b"original");
+        assert!(!project.join("renamed.txt").exists());
+    }
     let reply = client
         .call(Request::FilesMutate(input.clone()))
         .await

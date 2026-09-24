@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 pub struct FilesMutateInput {
     pub workspace_id: String,
     pub operation: FileMutation,
+    /// Decimal domainRevision from lomi_workspace_list or lomi_panel_list.
+    /// File and directory hashes belong to the operation's separate revision fields.
     pub expected_revision: String,
     pub retry_epoch: String,
     pub request_key: String,

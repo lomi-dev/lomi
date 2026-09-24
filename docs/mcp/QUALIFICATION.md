@@ -5,6 +5,43 @@ their original failures and pending work; subsequent evidence supersedes only
 the specific checks it actually covers. The active task list is in
 [implementation status](IMPLEMENTATION-STATUS.md).
 
+## File mutation revision correction and native reruns (2026-09-24)
+
+The file rename failure hRw3ID supplied a directory hash in expectedRevision.
+That field requires the decimal workspace domainRevision. The broker now
+returns REVISION_CONFLICT for an invalid domain revision instead of misleading
+RESOURCE_EXHAUSTED. Both the tool description and generated field schema name
+the correct source; directory and file hashes retain their separate fields.
+The broker regression verifies that a hash or overflowing integer causes no
+native dispatch or disk change and does not consume the valid request key.
+
+Fresh fixed-profile files-rename trials hdyUBf, Nzkg07 and LBLkKN passed **3/3**:
+exact renamed bytes, CRLF/Unicode, successful model read and old path absent.
+LBLkKN initially repeated the original parameter mistake, then used the new
+REVISION_CONFLICT response to refresh the workspace revision and complete the
+rename. That observed recovery exercises the actual correction. All three
+model final answers were reviewed; no competing action occurred and cleanup
+was normal. REPL expected-tools now permits its valid terminal_input launch;
+PHQVAd and vgeyLn passed with normal cleanup. 0KCGWi also passed all model
+and independent native REPL assertions, but host cleanup required SIGTERM
+(exit 143 after 12.356 s). Its retained shell was ready, finished exit 0, and
+fixture-command cleanup had nothing to stop. The native sample shows a normal
+AppKit loop, not a blocked broker. The precise exit cause needs a post-exit UI
+diagnostic; this remains an overall fixture failure, not a third complete pass.
+All three final model answers were reviewed.
+
+Validation: final serial selected-package run passed core 68, broker 68,
+protocol 13 and helper 2 tests, with three explicit opt-in entries ignored.
+Independent helper wire tests passed 8/8. Workspace all-target mcp-probe Clippy
+with warnings denied passed. Logs: `/tmp/lomi-mcp-file-revision-{serial,wire,clippy}.log`.
+The first parallel run failed the existing Git hook cancellation wall-clock
+assertion and eight later tests inherited its poisoned test mutex. The exact
+Git test passed unchanged in isolation (4.36 s for the whole multi-case test),
+and the complete serial rerun passed. The initial failure is retained in
+`/tmp/lomi-mcp-file-revision-tests.log`; no timeout or assertion was relaxed.
+An intervening partial-name --exact invocation selected zero tests and is not
+validation evidence.
+
 ## P6 manual reconnect and additional task observations (2026-09-24)
 
 Reconnect N8154I passed two actual gpt-6-sol/medium client sessions in one
@@ -40,7 +77,12 @@ will permit the valid input path and a fresh run must verify native state.
 
 The [machine-readable routing ledger](routing-matrix.json) records the selected
 fixed-profile attempts, including failures, and separates native completion,
-Lomi selection and fallback observations. Unexecuted cells remain open.
+Lomi selection and fallback observations. Unexecuted cells remain open. APK SOE0wa was subsequently compared with the
+current profile: same Codex 0.156.1, model/provider, medium effort, prefer-Lomi,
+effective feature flags, instruction sources and 74-tool set. It predates the
+explicit model pin but records the matching effective profile, so the ledger
+includes it with explicit provenance. No other unbatched run matched that
+complete recorded model/effort profile.
 
 ## P6 additional routing fixtures — in progress (2026-09-24)
 

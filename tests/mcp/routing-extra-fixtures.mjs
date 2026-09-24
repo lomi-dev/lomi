@@ -100,7 +100,11 @@ for(const signal of ['SIGHUP','SIGTERM'])process.on(signal,async()=>{
       },
       "terminal-repl": {
         prompt: `Start the interactive Node REPL using ${quote(node)} -i in a new Lomi terminal. Use terminal input to evaluate JSON.stringify({sum:19+23,text:'Zażółć 🙂'}), read the actual answer, then exit the REPL with .exit and verify that the shell prompt has returned.`,
-        expectedTools: [...terminal, "lomi_terminal_input"],
+        expectedTools: [
+          "lomi_terminal_create",
+          "lomi_terminal_read",
+          "lomi_terminal_input",
+        ],
       },
       "terminal-interrupt": {
         prompt: `Run ${command("console.log('ROUTING_LONG_READY');setInterval(()=>{},1000)")} in a new Lomi terminal. After reading ROUTING_LONG_READY, interrupt that exact command using Lomi and verify the original shell is ready again. Do not close or replace the terminal.`,
