@@ -1,5 +1,63 @@
 # MCP qualification
 
+## P6 native latency and idle resources (2026-09-24)
+
+**VERIFIED for the measured macOS ARM64 scope.** Apple M3, macOS 27.0
+(26A428), AC power, debug `mcp-probe` host with Vite; catalog 74. This does
+not qualify other platforms or optimized release-build performance.
+
+Native run `lomi-mcp-control-VzCKYx` completed 1,805.09 seconds after a
+120-second idle warmup. The first 600.75 seconds had no MCP requests; the
+remaining 20 minutes repeated status, panel enumeration, DOM snapshots and
+screenshots through the production stdio helper. The controlled page had 200
+visible buttons and fewer than 500 DOM nodes. Its actual MCP PNG was inspected:
+1280 × 848 pixels, a viewport crop of 1190 × 789 CSS pixels.
+
+| Operation                | Samples after warmup |        p95 |   Budget |
+| ------------------------ | -------------------: | ---------: | -------: |
+| Status                   |                   60 |   2.805 ms |   200 ms |
+| Panel list               |                   60 |   0.957 ms |   200 ms |
+| Long-operation admission |                   20 |  10.522 ms |   500 ms |
+| DOM snapshot             |                   60 |  17.065 ms | 1,000 ms |
+| Browser PNG              |                   30 | 195.574 ms | 1,500 ms |
+
+All latency budgets passed. Three initial samples of each operation were
+discarded. Admission measured actual owned-terminal `sleep 0.1` commands;
+their durable receipts subsequently reported observed exit 0.
+
+Resource samples cover the **native app and helper only**, excluding WebKit
+renderer processes, emulator, model and Vite. Combined app/helper idle CPU was
+0.856% of one core. Native RSS fell from 356.14 MiB to 190.36 MiB; its final
+10-minute range was 178.19–206.33 MiB (median 191.02 MiB), with recurring falls
+after peaks rather than sustained growth. Helper RSS was 22.08 MiB initially
+and a constant 21.81 MiB throughout the final 10 minutes. This is bounded
+observational evidence for these processes, not a whole-desktop memory claim.
+`result.json` reports passed, and `cleanup.json` confirms normal host exit 0
+and removal of private app data. No Android process ran in this measurement.
+
+A separate ignored integration test, `idle_resources.rs`, measured the
+production broker plus its authenticated IPC client in one isolated process.
+After 10 seconds warmup, the same connection remained usable after 600.001
+seconds idle. CPU consumption was 0.000694 seconds, or **0.000116% of one
+core**, below the 1% broker budget. Report:
+`/tmp/lomi-mcp-p6-idle-resources.json`; command:
+`LOMI_MCP_IDLE_REPORT=/tmp/lomi-mcp-p6-idle-resources.json cargo test --manifest-path src-tauri/Cargo.toml --locked -p lomi-control-core --test idle_resources -- --ignored --nocapture --test-threads=1`.
+
+The earlier 60-second diagnostic `e7Q6tF` passed latency checks but failed an
+incorrect combined-app CPU assertion (1.390% over 20 seconds after only two
+seconds warmup). It is not counted as a qualification pass. The final fixture
+separates broker CPU qualification from the broader app observation and uses
+the required 10-minute/30-minute intervals. All native control profiles now
+use private fixture shell homes; production shell behavior is unchanged.
+
+Artifacts: `performance.json`, `performance-progress.json`,
+`performance-browser.png`, `result.json`, `cleanup.json` under the native run;
+log `/tmp/lomi-mcp-p6-performance-full.log`. Workspace all-target Clippy with
+`mcp-probe` and warnings denied, Rust formatting and changed-file formatting
+passed. Terminal throughput comparison,
+Android input latency, final full native regression and model-driven routing
+remain separate open P6 checks.
+
 Host: macOS 27.0 (26A428), Apple M3 ARM64. Baseline HEAD and local changes: IMPLEMENTATION-STATUS.md.
 
 ## Approved Bash and Zsh terminals (2026-09-24)

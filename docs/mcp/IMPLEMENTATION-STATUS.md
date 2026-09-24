@@ -42,7 +42,10 @@ installer publication or private client-configuration writes.
 
 ## Current work
 
-P6 recovery and regression milestone is qualified locally. Restoring an older
+P6 recovery and regression milestone was pushed to origin/main as
+`6ca72bf4cf71e47d0ab64ac9f990abb04d5b8b1b`; the dependency audit followed as
+`6b6330df50d970f3a34764f7b5bd6d09ce338f54`. Both remote SHAs were verified.
+Restoring an older
 receipt database could previously label a queued row cancelled/none despite a
 later completed effect. Startup now conservatively marks every unfinished row
 outcome_unknown/unknown; a fresh instance still invalidates all old retry epochs.
@@ -59,8 +62,28 @@ assumptions. Those test fixtures were corrected without product UI changes. The
 second full run passed 499, skipped 1 and exposed two remaining test issues;
 the final complete terminal-title/agent-git files passed all 22 after correction.
 No unresolved assertion from either full run remains. This is combined evidence,
-not a claim that the final tree ran all UI cases in one pass. P6 performance,
-full native regression, dependency review and model-driven routing remain open.
+not a claim that the final tree ran all UI cases in one pass. The dependency
+audit is recorded in QUALIFICATION.md, including remaining advisory warnings.
+P6 performance, full native regression and model-driven routing remain open.
+
+The isolated production broker completed a 600-second authenticated idle
+connection test: 0.000116% of one CPU core, below the 1% budget, with the same
+connection still usable afterward. The separate native 30-minute run
+`lomi-mcp-control-VzCKYx` passed: status/panels/admission/snapshot/PNG p95
+2.805/0.957/10.522/17.065/195.574 ms; normal exit 0 and private app-data
+cleanup confirmed. Native app/helper RSS showed no sustained growth in the
+recorded run; its exact scope excludes renderer/emulator/model processes.
+See QUALIFICATION.md for samples, budgets, the earlier failed short diagnostic
+and remaining throughput/Android-latency checks. Source is unfrozen.
+`tests/mcp/codex-routing.mjs` is an unqualified actual-model runner;
+the first unavailable-app case passed at
+`/tmp/lomi-mcp-routing-unavailable-shg1rw`: Codex 0.156.1 / gpt-6-sol
+selected lomi_status, observed app_unavailable and stopped without competing
+actions. Shell/unified execution remained enabled; hooks/apps/delegation were
+disabled. This single case is not reliable-routing qualification. The native
+routing fixture is prepared but has not been compiled or executed. The intended
+profile is prefer-Lomi, with private client configuration unchanged and hooks,
+notifications, other MCP servers, apps and delegation disabled for the subprocess.
 
 Browser upload was committed and pushed to origin/main as
 `da9a26e849a682432a8ac945840c115ccb18c5dd`; remote SHA verified.

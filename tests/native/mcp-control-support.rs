@@ -1,6 +1,8 @@
 //! Native enrollment/stdio qualification. Compiled only with mcp-probe.
 #[path = "mcp-browser-upload-support.rs"]
 mod browser_upload_probe;
+#[path = "mcp-performance-support.rs"]
+mod performance_probe;
 #[path = "mcp-terminal-control-support.rs"]
 mod terminal_probe;
 use crate::mcp_browser_probe::{evaluate, screenshot, wait_for};
@@ -3066,6 +3068,22 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
         .await?;
     if connected["structuredContent"]["status"] != "ok" {
         return Err("Cannot select approved workspace".into());
+    }
+    if std::env::var_os("LOMI_MCP_PERFORMANCE_ONLY").is_some() {
+        performance_probe::qualify(
+            app,
+            &mut wire,
+            &workspace,
+            &connected["structuredContent"]["data"]["retryEpoch"],
+            directory,
+            &browser_fixture,
+            child.id().ok_or("Missing helper PID")?,
+        )
+        .await?;
+        child.kill().await.map_err(|e| e.to_string())?;
+        return Ok(
+            json!({"profile":"performance-only","catalogCount":catalog["result"]["tools"].as_array().map(Vec::len)}),
+        );
     }
     if std::env::var_os("LOMI_MCP_TERMINAL_ONLY").is_some() {
         terminal_probe::qualify(

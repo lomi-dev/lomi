@@ -38,6 +38,8 @@ await mkdir(folder);
 if (process.env.LOMI_MCP_TERMINAL_ONLY) {
   if (!["bash", "zsh"].includes(process.env.LOMI_MCP_TERMINAL_ONLY))
     throw Error("Choose bash or zsh for terminal qualification.");
+}
+{
   const shellHome = join(directory, "shell-home");
   await mkdir(shellHome);
   await writeFile(
@@ -118,6 +120,7 @@ const downloads = downloadFixture(
 );
 const uploads = uploadFixture();
 const closeStressServer =
+  process.env.LOMI_MCP_PERFORMANCE_ONLY ||
   process.env.LOMI_MCP_TERMINAL_ONLY ||
   process.env.LOMI_MCP_BROWSER_UPLOAD_ONLY ||
   process.env.LOMI_MCP_BROWSER_DOWNLOAD_ONLY ||
@@ -273,7 +276,8 @@ let result;
 try {
   // This budget includes a cold native build and the growing full-domain
   // regression. Per-operation/renderer deadlines remain unchanged.
-  const deadline = Date.now() + 600_000;
+  const deadline =
+    Date.now() + (process.env.LOMI_MCP_PERFORMANCE_ONLY ? 2_700_000 : 600_000);
   while (!result && Date.now() < deadline) {
     try {
       result = JSON.parse(
@@ -290,7 +294,18 @@ try {
     }
   }
   if (!result) throw Error("Native control probe timed out");
-  if (result.stage === "passed" && process.env.LOMI_MCP_TERMINAL_ONLY) {
+  if (result.stage === "passed" && process.env.LOMI_MCP_PERFORMANCE_ONLY) {
+    const proof = JSON.parse(
+      await readFile(join(directory, "performance.json"), "utf8"),
+    );
+    if (
+      result.data?.profile !== "performance-only" ||
+      result.data?.catalogCount !== 74 ||
+      !proof.latencyPassed ||
+      proof.processSamples.length < 10
+    )
+      throw Error("Performance qualification returned incomplete evidence");
+  } else if (result.stage === "passed" && process.env.LOMI_MCP_TERMINAL_ONLY) {
     const proof = JSON.parse(
       await readFile(join(directory, "terminals.json"), "utf8"),
     );
