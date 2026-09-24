@@ -730,7 +730,14 @@ impl Broker {
         if !session.alive.load(Ordering::SeqCst) {
             return Err(failure());
         }
+        let yolo_project_open =
+            session.grant.yolo && matches!(work.command.action, UiAction::OpenProject(_));
         state.work.get_mut(operation).unwrap().claimed = true;
+        drop(state);
+        if yolo_project_open {
+            self.decide_project_open(operation, true)
+                .map_err(|_| failure())?;
+        }
         Ok(())
     }
     pub fn acknowledge_ui(&self, mut ack: UiAck) -> io::Result<()> {
@@ -869,8 +876,7 @@ impl Broker {
                     || result.created != command.create
                     || !state.sessions[&work.pairing]
                         .grant
-                        .chat_conversations
-                        .contains(&command.conversation_id)
+                        .permits_chat_conversation(&command.conversation_id)
                     || !state.projection.panels.iter().any(|p| {
                         p.id == result.panel_id
                             && p.workspace_id == result.workspace_id
@@ -924,7 +930,7 @@ impl Broker {
                     || workspace_id != expected_workspace
                     || panel_id != expected_panel
                     || device_id != expected_device
-                    || !session.grant.android_devices.contains(device_id)
+                    || !session.grant.permits_android_device(device_id)
                     || !state.projection.panels.iter().any(|p| {
                         p.id == *panel_id
                             && p.workspace_id == *workspace_id
@@ -1686,15 +1692,33 @@ impl Broker {
         }
         if let Some(project) = opened_project {
             let session = state.sessions.get_mut(&opened_owner).ok_or_else(failure)?;
-            session.view.project_ids.push(project.project_id.clone());
-            session
-                .view
-                .workspace_ids
-                .extend(project.workspaces.iter().cloned());
-            session
-                .grant
-                .projects
-                .insert(project.project_id.clone(), project);
+            if !session.view.project_ids.contains(&project.project_id) {
+                session.view.project_ids.push(project.project_id.clone());
+            }
+            for workspace in &project.workspaces {
+                if !session.view.workspace_ids.contains(workspace) {
+                    session.view.workspace_ids.push(workspace.clone());
+                }
+            }
+            if session.grant.yolo {
+                let current = session
+                    .grant
+                    .projects
+                    .get_mut(&project.project_id)
+                    .ok_or_else(failure)?;
+                if current.project_path != project.project_path {
+                    return Err(failure());
+                }
+                if current.project_directory.is_none() {
+                    current.project_directory = project.project_directory.clone();
+                }
+                current.workspaces.extend(project.workspaces);
+            } else {
+                session
+                    .grant
+                    .projects
+                    .insert(project.project_id.clone(), project);
+            }
         }
         if let Some((pairing, project, workspace)) = created {
             let session = state.sessions.get_mut(&pairing).ok_or_else(failure)?;

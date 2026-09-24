@@ -60,6 +60,7 @@ pub(super) struct AndroidManagementJob {
     project: String,
     workspace: String,
     action: Option<AndroidDeviceAction>,
+    existing_devices: HashSet<String>,
     plan: AndroidManagementPlan,
     pub(super) permit: NativePermit,
     started: Arc<AtomicBool>,
@@ -102,11 +103,12 @@ impl Broker {
         if !permitted
             || action
                 .and_then(AndroidDeviceAction::device_id)
-                .is_some_and(|id| !grant.android_devices.contains(id))
+                .is_some_and(|id| !grant.permits_android_device(id))
         {
             return Err(ErrorCode::ScopeDenied);
         }
-        if matches!(action, Some(AndroidDeviceAction::Create { .. }))
+        if !grant.yolo
+            && matches!(action, Some(AndroidDeviceAction::Create { .. }))
             && grant.android_devices.len() >= 16
         {
             return Err(ErrorCode::ResourceExhausted);
@@ -395,6 +397,9 @@ impl Broker {
             Err(e) => return storage_error(e),
         };
         let deadline = Instant::now() + Duration::from_secs(600);
+        let yolo = state.sessions[owner].grant.yolo;
+        let existing_devices = state.sessions[owner].grant.android_devices.clone();
+        let project_id = project.clone();
         if let Some((id, _)) = saved {
             state.android_plans.remove(id);
         }
@@ -405,6 +410,7 @@ impl Broker {
                 project,
                 workspace: workspace.into(),
                 action,
+                existing_devices,
                 plan,
                 permit: NativePermit::until(deadline),
                 started: Arc::new(AtomicBool::new(false)),
@@ -415,11 +421,45 @@ impl Broker {
         let job = &state.android_management[&op];
         let present = job.plan.present.clone();
         let permit = job.permit.clone();
+        let revision = job.plan.view.revision.clone();
+        let accepted = job
+            .plan
+            .licenses
+            .iter()
+            .map(|license| license.digest.clone())
+            .collect();
+        let confirmation = job
+            .action
+            .as_ref()
+            .and_then(AndroidDeviceAction::destructive_confirmation)
+            .map(str::to_owned);
         drop(store);
         drop(state);
-        present(permit);
-        self.expire_android_management(op, Duration::from_secs(600));
+        self.expire_android_management(op.clone(), Duration::from_secs(600));
+        if yolo {
+            if self
+                .decide_android_management(&op, &revision, true, accepted, confirmation)
+                .is_err()
+            {
+                self.cancel_automatic_android_management(&op);
+            }
+            if let Ok(store) = self.store.lock() {
+                if let Ok(current) = store.get(owner, &project_id, &op) {
+                    return Self::operation_reply(current);
+                }
+            }
+            return error(ErrorCode::TargetBusy);
+        } else {
+            present(permit);
+        }
         Self::operation_reply(receipt)
+    }
+    fn cancel_automatic_android_management(&self, operation: &str) {
+        if let Ok(mut state) = self.lock_state() {
+            if let Some(job) = state.android_management.remove(operation) {
+                self.settle_android_management(operation, &job);
+            }
+        }
     }
     pub(super) fn pending_android_management(
         state: &State,
@@ -670,12 +710,9 @@ impl Broker {
                 || match &job.action {
                     Some(AndroidDeviceAction::Create { .. }) => {
                         r.device_id.is_none()
-                            || r.device_id.as_ref().is_some_and(|id| {
-                                state.sessions[&job.owner]
-                                    .grant
-                                    .android_devices
-                                    .contains(id)
-                            })
+                            || r.device_id
+                                .as_ref()
+                                .is_some_and(|id| job.existing_devices.contains(id))
                     }
                     Some(a) if a.device_id().is_some() => r.device_id.as_deref() != a.device_id(),
                     _ => r.device_id.is_some(),
@@ -722,8 +759,14 @@ impl Broker {
         drop(store);
         if let Some(id) = created {
             let session = state.sessions.get_mut(&owner).ok_or_else(failure)?;
-            session.grant.android_devices.insert(id.clone());
-            session.view.android_device_ids.push(id);
+            if session.grant.android_devices.len() < 16 {
+                session.grant.android_devices.insert(id.clone());
+                if session.view.android_device_ids.len() < 16
+                    && !session.view.android_device_ids.contains(&id)
+                {
+                    session.view.android_device_ids.push(id);
+                }
+            }
         }
         state.android_management.remove(operation);
         Ok(())

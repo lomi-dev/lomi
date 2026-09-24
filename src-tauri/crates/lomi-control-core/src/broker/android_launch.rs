@@ -20,7 +20,7 @@ impl Broker {
     ) -> Result<Arc<crate::android::AndroidControl>, ErrorCode> {
         Self::android_runtime_access(state, owner, workspace, panel, device, Some(generation))?;
         let grant = &state.sessions[owner].grant;
-        if !grant.scopes.contains(scope) || !grant.android_packages.contains(package) {
+        if !grant.scopes.contains(scope) || !grant.permits_android_package(package) {
             return Err(ErrorCode::ScopeDenied);
         }
         Ok(state.android[device].control.clone())
@@ -48,7 +48,7 @@ impl Broker {
         }
         let session = &state.sessions[owner];
         if !session.grant.scopes.contains("android.launch")
-            || !session.grant.android_packages.contains(&input.package_name)
+            || !session.grant.permits_android_package(&input.package_name)
         {
             return error(ErrorCode::ScopeDenied);
         }

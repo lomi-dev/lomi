@@ -39,7 +39,7 @@ impl Broker {
         let project = Self::chat_access(state, owner, &input.workspace_id)?;
         let grant = &state.sessions[owner].grant;
         if !grant.scopes.contains("chat.send")
-            || !grant.chat_conversations.contains(&input.conversation_id)
+            || !grant.permits_chat_conversation(&input.conversation_id)
         {
             return Err(ErrorCode::ScopeDenied);
         }

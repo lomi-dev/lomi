@@ -1,4 +1,5 @@
 import { useAgentControlBridge } from "./agent-control";
+import AgentControlStartup from "./AgentControlStartup";
 import { useAgentChatApproval } from "./AgentChatApproval";
 import { useAgentGitApproval } from "./AgentGitApproval";
 import {
@@ -1711,6 +1712,7 @@ export default function Workbench() {
             {chatApproval.dialog}
             {cliTitles.dialog}
             {agentNotifications.dialog}
+            <AgentControlStartup />
           </div>
         </SlotProvider>
       </HostContext.Provider>
@@ -2785,6 +2787,7 @@ export default function Workbench() {
           )}
           {cliTitles.dialog}
           {agentNotifications.dialog}
+          <AgentControlStartup />
         </div>
       </SlotProvider>
     </HostContext.Provider>

@@ -76,11 +76,7 @@ impl Broker {
         if !["panel.create", "browser.navigate"]
             .iter()
             .all(|s| session.grant.scopes.contains(*s))
-            || !session
-                .grant
-                .browser_origins
-                .iter()
-                .any(|o| o.permits(&url))
+            || !session.grant.permits_browser_address(&input.url)
         {
             return error(ErrorCode::ScopeDenied);
         }
@@ -194,6 +190,7 @@ impl Broker {
                 request.panel.into(),
                 request.profile.into(),
                 session.grant.browser_origins.clone(),
+                session.grant.yolo,
                 self.authorization.clone(),
                 state.policy_revision,
                 session.alive.clone(),

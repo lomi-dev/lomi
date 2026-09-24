@@ -129,6 +129,35 @@ export async function mockDesktop(
         agentNotificationSetupError: "",
         agentNotificationPermission: true,
         agentNotificationPermissionDelay: 0,
+        agentControlState: {
+          supported: false,
+          helperPath: null,
+          broker: null,
+        },
+        agentControlStateReads: 0,
+        agentControlStartup: (() => {
+          const saved = JSON.parse(
+            localStorage.getItem("test-agent-control-startup") ??
+              JSON.stringify({
+                supported: false,
+                autoStart: false,
+                yoloMode: false,
+                error: null,
+              }),
+          );
+          return { yoloMode: false, ...saved };
+        })(),
+        agentControlStartupCalls: [] as { enabled: boolean }[],
+        failAgentControlStartupSave: false,
+        agentControlStartupSaveError: "Disk is full",
+        agentControlStartupSaveDelay: 0,
+        failAgentControlStartupSettingSave: false,
+        agentControlStartupSettingSaveError: "Settings are unavailable",
+        agentControlStartupSettingSaveDelay: 0,
+        failAgentControlYoloModeSave: false,
+        agentControlYoloModeSaveError: "YOLO mode settings are unavailable",
+        agentControlYoloModeSaveDelay: 0,
+        agentControlStartupStartError: "",
         windowFocused: false,
         agentNotifications: [] as unknown[],
         emit,
@@ -209,6 +238,92 @@ export async function mockDesktop(
         async invoke(command: string, args: Record<string, any> = {}) {
           calls.push({ command, args: JSON.parse(JSON.stringify(args)) });
           if (command === "agent_control_ui_register") return null;
+          if (command === "agent_control_startup_state") {
+            const mock = desktop.__nativeTest;
+            await mock.emitEvent(
+              "agent-control-startup-changed",
+              mock.agentControlStartup,
+            );
+            return mock.agentControlStartup;
+          }
+          if (command === "agent_control_startup_decide") {
+            const mock = desktop.__nativeTest;
+            mock.agentControlStartupCalls.push(args);
+            if (mock.agentControlStartupSaveDelay)
+              await new Promise((resolve) =>
+                setTimeout(resolve, mock.agentControlStartupSaveDelay),
+              );
+            if (mock.failAgentControlStartupSave)
+              throw new Error(mock.agentControlStartupSaveError);
+            if (mock.agentControlStartup.autoStart === null) {
+              mock.agentControlStartup = {
+                ...mock.agentControlStartup,
+                autoStart: args.enabled,
+                error:
+                  args.enabled && mock.agentControlStartupStartError
+                    ? mock.agentControlStartupStartError
+                    : null,
+              };
+              localStorage.setItem(
+                "test-agent-control-startup",
+                JSON.stringify(mock.agentControlStartup),
+              );
+            }
+            await mock.emitEvent(
+              "agent-control-startup-changed",
+              mock.agentControlStartup,
+            );
+            return mock.agentControlStartup;
+          }
+          if (command === "agent_control_set_auto_start") {
+            const mock = desktop.__nativeTest;
+            if (mock.agentControlStartupSettingSaveDelay)
+              await new Promise((resolve) =>
+                setTimeout(resolve, mock.agentControlStartupSettingSaveDelay),
+              );
+            if (mock.failAgentControlStartupSettingSave)
+              throw new Error(mock.agentControlStartupSettingSaveError);
+            mock.agentControlStartup = {
+              ...mock.agentControlStartup,
+              autoStart: args.enabled,
+              error: null,
+            };
+            localStorage.setItem(
+              "test-agent-control-startup",
+              JSON.stringify(mock.agentControlStartup),
+            );
+            await mock.emitEvent(
+              "agent-control-startup-changed",
+              mock.agentControlStartup,
+            );
+            return mock.agentControlStartup;
+          }
+          if (command === "agent_control_set_yolo_mode") {
+            const mock = desktop.__nativeTest;
+            if (mock.agentControlYoloModeSaveDelay)
+              await new Promise((resolve) =>
+                setTimeout(resolve, mock.agentControlYoloModeSaveDelay),
+              );
+            if (mock.failAgentControlYoloModeSave)
+              throw new Error(mock.agentControlYoloModeSaveError);
+            mock.agentControlStartup = {
+              ...mock.agentControlStartup,
+              yoloMode: args.enabled,
+            };
+            localStorage.setItem(
+              "test-agent-control-startup",
+              JSON.stringify(mock.agentControlStartup),
+            );
+            await mock.emitEvent(
+              "agent-control-startup-changed",
+              mock.agentControlStartup,
+            );
+            return mock.agentControlStartup;
+          }
+          if (command === "agent_control_state") {
+            desktop.__nativeTest.agentControlStateReads++;
+            return desktop.__nativeTest.agentControlState;
+          }
           if (command === "agent_control_closing") {
             desktop.__nativeTest.agentControlClosing = args.closing;
             return;

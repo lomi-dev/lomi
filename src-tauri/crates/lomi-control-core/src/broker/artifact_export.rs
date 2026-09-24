@@ -37,12 +37,11 @@ impl Broker {
                     &source.required_scope,
                 )?;
                 let grant = &state.sessions[owner].grant;
+                let origin_allowed = lomi_control_protocol::browser::Origin::parse(&source.origin)
+                    .is_ok_and(|origin| grant.permits_browser_origin(&origin));
                 if !target.control.authorized()
                     || grant.browser_profile.as_deref() != Some(source.profile_id.as_str())
-                    || !grant
-                        .browser_origins
-                        .iter()
-                        .any(|o| o.as_str() == source.origin)
+                    || !origin_allowed
                 {
                     return Err(ErrorCode::ControlRevoked);
                 }

@@ -167,7 +167,7 @@ impl Broker {
         revision: &str,
         current: SettingsUpdateValues,
     ) -> Result<super::settings::SettingsOpenPermit, ErrorCode> {
-        let (patch, permit) = {
+        let (patch, permit, yolo) = {
             let state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
             let work = self.settings_update_work(&state, operation, Some(nonce))?;
             let UiAction::UpdateSettings(command) = &work.command.action else {
@@ -179,10 +179,15 @@ impl Broker {
             {
                 return Err(ErrorCode::RevisionConflict);
             }
-            (
-                command.input.patch.clone(),
-                self.settings_permit(&state, work),
-            )
+            let yolo = state
+                .sessions
+                .get(&work.pairing)
+                .is_some_and(|session| session.grant.yolo);
+            let mut permit = self.settings_permit(&state, work);
+            if yolo {
+                permit.mark_automatically_approved();
+            }
+            (command.input.patch.clone(), permit, yolo)
         };
         let dispatch = self
             .settings_prepare_dispatch
@@ -209,6 +214,10 @@ impl Broker {
             return Err(ErrorCode::ControlRevoked);
         }
         state.work.get_mut(operation).unwrap().settings_update = Some(plan);
+        drop(state);
+        if yolo {
+            self.decide_settings_update(operation, true)?;
+        }
         Ok(permit)
     }
     pub fn settings_update_source_permit(

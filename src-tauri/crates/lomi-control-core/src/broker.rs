@@ -139,6 +139,63 @@ pub fn certificate_hash(bytes: &[u8]) -> String {
         .collect()
 }
 
+const YOLO_SCOPES: &[&str] = &[
+    "chat.read",
+    "chat.open",
+    "chat.create",
+    "chat.export",
+    "chat.stop",
+    "chat.draft",
+    "chat.send",
+    "settings.open",
+    "settings.read",
+    "settings.write",
+    "files.read",
+    "git.read",
+    "git.write",
+    "git.execute",
+    "git.network",
+    "git.push",
+    "git.discard",
+    "git.pull",
+    "files.trash",
+    "files.rename",
+    "files.create",
+    "files.mutate",
+    "editor.read",
+    "editor.write",
+    "artifact.import",
+    "artifact.import_file",
+    "artifact.export",
+    "android.observe",
+    "android.capture",
+    "android.launch",
+    "android.logs",
+    "android.install",
+    "android.interact",
+    "android.control",
+    "android.read",
+    "android.setup",
+    "android.manage",
+    "workspace.read",
+    "workspace.close",
+    "project.open",
+    "project.close",
+    "workspace.write",
+    "panel.move",
+    "panel.focus",
+    "panel.close",
+    "panel.create",
+    "terminal.execute",
+    "terminal.read",
+    "browser.navigate",
+    "browser.read",
+    "browser.interact",
+    "browser.capture_composite",
+    "browser.download",
+    "browser.upload",
+];
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Endpoint {
@@ -168,6 +225,11 @@ pub struct SessionView {
     pub android_device_ids: Vec<String>,
     pub android_packages: Vec<String>,
     pub chat_conversations: Vec<String>,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub enum ChatConversationSelection {
+    Exact(Vec<String>),
+    All,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -209,6 +271,7 @@ pub struct Grant {
     pub android_devices: HashSet<String>,
     pub android_packages: HashSet<String>,
     pub chat_conversations: HashSet<String>,
+    yolo: bool,
     policy_revision: u64,
     terminal_profile: Option<TerminalProfile>,
 }
@@ -227,6 +290,33 @@ impl Grant {
             .flat_map(|p| p.workspaces.iter().cloned())
             .collect()
     }
+    pub(crate) fn permits_browser_origin(
+        &self,
+        origin: &lomi_control_protocol::browser::Origin,
+    ) -> bool {
+        self.yolo || self.browser_origins.iter().any(|allowed| allowed == origin)
+    }
+    pub(crate) fn permits_browser_address(&self, value: &str) -> bool {
+        let Ok(url) = lomi_control_protocol::browser::address(value) else {
+            return false;
+        };
+        self.yolo
+            || self
+                .browser_origins
+                .iter()
+                .any(|origin| origin.permits(&url))
+    }
+    pub(crate) fn permits_android_device(&self, id: &str) -> bool {
+        lomi_control_protocol::android::valid_device_id(id)
+            && (self.yolo || self.android_devices.contains(id))
+    }
+    pub(crate) fn permits_android_package(&self, package: &str) -> bool {
+        lomi_control_protocol::android::valid_package(package)
+            && (self.yolo || self.android_packages.contains(package))
+    }
+    pub(crate) fn permits_chat_conversation(&self, id: &str) -> bool {
+        valid_chat_id(id) && (self.yolo || self.chat_conversations.contains(id))
+    }
     fn operation(
         &self,
         store: &receipts::Store,
@@ -234,7 +324,6 @@ impl Grant {
         operation: &str,
     ) -> Result<(String, receipts::Receipt), receipts::Error> {
         // Project membership remains required even for retired workspace receipts.
-        // A grant contains at most sixteen explicitly approved project roots.
         for project in self.projects.keys() {
             match store.get(owner, project, operation) {
                 Ok(receipt) => return Ok((project.clone(), receipt)),
@@ -297,6 +386,7 @@ pub struct Broker {
     identity: Identity,
     authorization: Arc<AtomicU64>,
     cleanup_running: AtomicBool,
+    yolo_mode: AtomicBool,
     cleanup_revision: AtomicU64,
     cleanup_done: tokio::sync::Notify,
     cleanup_tasks: Mutex<Vec<tokio::task::JoinHandle<()>>>,
@@ -417,6 +507,7 @@ impl Broker {
             identity,
             authorization: Arc::new(AtomicU64::new(0)),
             cleanup_running: AtomicBool::new(false),
+            yolo_mode: AtomicBool::new(false),
             cleanup_revision: AtomicU64::new(0),
             cleanup_done: tokio::sync::Notify::new(),
             cleanup_tasks: Mutex::new(Vec::new()),
@@ -526,6 +617,164 @@ impl Broker {
             return Err(failure());
         }
         Ok(())
+    }
+    pub fn set_yolo_mode(self: &Arc<Self>, enabled: bool) -> io::Result<()> {
+        if self.yolo_mode.swap(enabled, Ordering::SeqCst) != enabled {
+            self.revoke();
+        }
+        Ok(())
+    }
+    pub fn yolo_mode(&self) -> bool {
+        self.yolo_mode.load(Ordering::SeqCst)
+    }
+    fn projection_ready(projection: &Projection) -> bool {
+        !projection.ui_epoch.is_empty() && projection.revision != "0"
+    }
+    fn empty_yolo_grant(policy_revision: u64, projection: &Projection) -> io::Result<Grant> {
+        let scopes: HashSet<_> = YOLO_SCOPES.iter().map(|s| (*s).to_owned()).collect();
+        Ok(Grant {
+            projects: HashMap::new(),
+            scopes,
+            browser_origins: Vec::new(),
+            browser_profile: Some(new_id()?),
+            android_devices: HashSet::new(),
+            android_packages: HashSet::new(),
+            chat_conversations: projection
+                .panels
+                .iter()
+                .filter_map(|panel| panel.chat_conversation_id.clone())
+                .take(64)
+                .collect(),
+            yolo: true,
+            policy_revision,
+            terminal_profile: projection.terminal_profile.clone(),
+        })
+    }
+    fn add_yolo_workspaces(
+        grant: &mut Grant,
+        projection: &Projection,
+        reject_overflow: bool,
+    ) -> io::Result<()> {
+        for workspace in &projection.workspaces {
+            if let Some(project) = grant.projects.get_mut(&workspace.project_id) {
+                if project.project_path != workspace.project_path {
+                    return Err(failure());
+                }
+                project.workspaces.insert(workspace.id.clone());
+                continue;
+            }
+            if grant.projects.len() >= 500 {
+                if reject_overflow {
+                    return Err(failure());
+                }
+                continue;
+            }
+            // A valid projection can contain a root the process cannot read.
+            // Keep workspace-only capabilities for that root; file operations
+            // remain denied because no directory authority was opened.
+            let project_directory =
+                crate::project_files::ProjectDirectory::open(Path::new(&workspace.project_path))
+                    .ok()
+                    .map(Arc::new);
+            grant.projects.insert(
+                workspace.project_id.clone(),
+                ProjectGrant {
+                    project_id: workspace.project_id.clone(),
+                    project_path: workspace.project_path.clone(),
+                    project_directory,
+                    workspaces: HashSet::from([workspace.id.clone()]),
+                },
+            );
+        }
+        Ok(())
+    }
+    fn yolo_grant(projection: &Projection, policy_revision: u64) -> io::Result<Grant> {
+        let mut grant = Self::empty_yolo_grant(policy_revision, projection)?;
+        Self::add_yolo_workspaces(&mut grant, projection, true)?;
+        Ok(grant)
+    }
+    fn refresh_yolo_sessions(state: &mut State, projection: &Projection) -> io::Result<()> {
+        let policy_revision = state.policy_revision;
+        let mut replacements = HashMap::new();
+        for (id, session) in state.sessions.iter().filter(|(_, s)| s.grant.yolo) {
+            replacements.insert(
+                id.clone(),
+                Self::refreshed_yolo_grant(&session.grant, projection, policy_revision)?,
+            );
+        }
+        for (id, grant) in replacements {
+            let Some(session) = state.sessions.get_mut(&id) else {
+                continue;
+            };
+            session.grant = grant;
+            session.view.project_ids = session.grant.projects.keys().cloned().collect();
+            session.view.workspace_ids = session.grant.workspace_ids();
+            session.view.scopes = session.grant.scopes.iter().cloned().collect();
+            session.view.android_device_ids =
+                session.grant.android_devices.iter().cloned().collect();
+            session.view.chat_conversations =
+                session.grant.chat_conversations.iter().cloned().collect();
+            session.view.browser_origins.clear();
+            session.view.terminal_profile = session.grant.terminal_profile.clone();
+        }
+        Ok(())
+    }
+    fn refreshed_yolo_grant(
+        previous: &Grant,
+        projection: &Projection,
+        policy_revision: u64,
+    ) -> io::Result<Grant> {
+        let mut refreshed = Self::empty_yolo_grant(policy_revision, projection)?;
+        refreshed.browser_profile = previous.browser_profile.clone();
+        refreshed.android_devices = previous.android_devices.clone();
+        refreshed
+            .chat_conversations
+            .extend(previous.chat_conversations.iter().cloned().take(64));
+        refreshed.terminal_profile = previous.terminal_profile.clone();
+        // Current roots take priority over retired roots, so a long-lived session
+        // cannot lose access to a newly projected workspace at the 500-root cap.
+        for workspace in &projection.workspaces {
+            if let Some(project) = refreshed.projects.get_mut(&workspace.project_id) {
+                if project.project_path != workspace.project_path {
+                    return Err(failure());
+                }
+                project.workspaces.insert(workspace.id.clone());
+            } else if let Some(project) = previous.projects.get(&workspace.project_id) {
+                if project.project_path != workspace.project_path {
+                    return Err(failure());
+                }
+                let mut project = project.clone();
+                project.workspaces.insert(workspace.id.clone());
+                refreshed
+                    .projects
+                    .insert(workspace.project_id.clone(), project);
+            } else {
+                let project_directory = crate::project_files::ProjectDirectory::open(Path::new(
+                    &workspace.project_path,
+                ))
+                .ok()
+                .map(Arc::new);
+                refreshed.projects.insert(
+                    workspace.project_id.clone(),
+                    ProjectGrant {
+                        project_id: workspace.project_id.clone(),
+                        project_path: workspace.project_path.clone(),
+                        project_directory,
+                        workspaces: HashSet::from([workspace.id.clone()]),
+                    },
+                );
+            }
+        }
+        for (id, project) in &previous.projects {
+            if refreshed.projects.len() >= 500 {
+                break;
+            }
+            refreshed
+                .projects
+                .entry(id.clone())
+                .or_insert_with(|| project.clone());
+        }
+        Ok(refreshed)
     }
     fn revoke_now(&self) {
         let revision = self.authorization.fetch_add(1, Ordering::SeqCst) + 1;
@@ -822,7 +1071,28 @@ impl Broker {
             .git_panels
             .retain(|id, _| projection.panels.iter().any(|p| &p.id == id));
         self.reconcile_android_management(&mut state, &projection);
+        if self.yolo_mode() {
+            Self::refresh_yolo_sessions(&mut state, &projection)?;
+        }
         state.projection = projection;
+        if self.yolo_mode() && Self::projection_ready(&state.projection) {
+            let pairing_ids: Vec<_> = state.pending.keys().cloned().collect();
+            for id in pairing_ids {
+                let ready = state.pending.get(&id).is_some_and(|pending| {
+                    !pending.answer.is_closed() && pending.expires > Instant::now()
+                });
+                if !ready {
+                    state.pending.remove(&id);
+                    continue;
+                }
+                let Ok(grant) = Self::yolo_grant(&state.projection, state.policy_revision) else {
+                    continue;
+                };
+                if let Some(pending) = state.pending.remove(&id) {
+                    let _ = pending.answer.send(grant);
+                }
+            }
+        }
         Ok(())
     }
     pub fn overview(&self) -> io::Result<Overview> {
@@ -1201,6 +1471,7 @@ impl Broker {
             android_devices: android_devices.iter().cloned().collect(),
             android_packages: android_packages.iter().cloned().collect(),
             chat_conversations: chat_conversations.iter().cloned().collect(),
+            yolo: false,
             browser_profile: if browser_enabled {
                 Some(new_id()?)
             } else {
@@ -1286,7 +1557,15 @@ impl Broker {
         let certificate_sha256 = certificate_hash(&hello.certificate);
         self.spawn_worker(move || {
             let mut state = pending_broker.lock_state()?;
-            if state.pending.len() >= 4 || answer.is_closed() {
+            if answer.is_closed() {
+                return Err(failure());
+            }
+            if pending_broker.yolo_mode() && Self::projection_ready(&state.projection) {
+                if let Ok(grant) = Self::yolo_grant(&state.projection, state.policy_revision) {
+                    return answer.send(grant).map_err(|_| failure());
+                }
+            }
+            if state.pending.len() >= 4 {
                 return Err(failure());
             }
             state.pending.insert(
@@ -1866,7 +2145,7 @@ impl Broker {
                 browser_generation: panel.browser_generation.clone(),
                 android_device_id: panel.android_device_id.clone().filter(|device| {
                     session.grant.scopes.contains("android.read")
-                        && session.grant.android_devices.contains(device)
+                        && session.grant.permits_android_device(device)
                 }),
                 ownership: match owned
                     .map(|t| &t.owner)

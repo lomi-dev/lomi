@@ -89,6 +89,11 @@ resources. The client uses Lomi's retained terminals, native browser panels,
 managed Android devices, files, Git and selected Chat conversations. You can
 take control or revoke the connection from Lomi.
 
+The optional **YOLO mode** switch automatically pairs local MCP clients and
+approves supported operations across all workspaces. It defaults to off and is
+saved separately from automatic server startup. Turning it off ends current
+sessions and restores manual approvals.
+
 See the [MCP setup guide](docs/mcp/USAGE.md) for building the matching stdio
 helper and pairing it. The [acceptance record](docs/mcp/ACCEPTANCE.md) lists
 completed tests, the selected delivery scope and host limitations.

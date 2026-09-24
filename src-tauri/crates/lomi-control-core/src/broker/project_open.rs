@@ -67,7 +67,8 @@ impl Broker {
         {
             return Err(ErrorCode::ScopeDenied);
         }
-        if session.grant.projects.len() >= 16 {
+        let project_limit = if session.grant.yolo { 500 } else { 16 };
+        if session.grant.projects.len() >= project_limit {
             return Err(ErrorCode::ResourceExhausted);
         }
         if session.grant.projects.contains_key(&command.project_id)
@@ -372,8 +373,19 @@ impl Broker {
             .get(&work.pairing)
             .filter(|s| s.alive.load(Ordering::SeqCst))
             .ok_or(ErrorCode::ControlRevoked)?;
-        if session.grant.projects.len() >= 16
-            || session.grant.projects.contains_key(&command.project_id)
+        let pregranted_yolo_project = session.grant.yolo
+            && session
+                .grant
+                .projects
+                .get(&command.project_id)
+                .is_some_and(|project| {
+                    project.project_path == command.project_path
+                        && project.workspaces.contains(&command.new_workspace_id)
+                });
+        if (session.grant.yolo && session.grant.projects.len() >= 500 && !pregranted_yolo_project)
+            || (!session.grant.yolo
+                && (session.grant.projects.len() >= 16
+                    || session.grant.projects.contains_key(&command.project_id)))
             || session.grant.scopes != approval.scopes
         {
             return Err(ErrorCode::ControlRevoked);

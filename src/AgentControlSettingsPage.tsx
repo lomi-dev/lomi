@@ -1,11 +1,12 @@
 import { AgentBrowserUploadApproval } from "./AgentBrowserUploadApproval";
 import { AgentAndroidApproval } from "./AgentAndroidApproval";
 import { AgentChatPermission } from "./AgentChatPermission";
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { listen } from "@tauri-apps/api/event";
 import { api, errorMessage, native } from "./api";
 import type { ControlState, ControlWorkspace } from "./agent-control";
+import type { ControlStartupState } from "./agent-control-startup";
 import { formatShortcut } from "./keybindings";
 
 function ThemePreferenceChanges({
@@ -154,10 +155,17 @@ function TerminalPreferenceChanges({
 
 export default function AgentControlSettingsPage() {
   const [state, setState] = useState<ControlState>();
+  const [startupState, setStartupState] = useState<ControlStartupState>();
   const [error, setError] = useState("");
+  const [startupError, setStartupError] = useState("");
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
+  const [startupBusy, setStartupBusy] = useState(false);
   const [visible, setVisible] = useState(true);
+  const startupStateRef = useRef<ControlStartupState | undefined>(undefined);
+  const startupRevision = useRef(0);
+  const startupMutationRevision = useRef(0);
+  const startupSaveLock = useRef(false);
   const enabled = Boolean(state?.broker);
   useEffect(() => {
     if (!native) return;
@@ -171,6 +179,53 @@ export default function AgentControlSettingsPage() {
   const refresh = useCallback(async () => {
     setState(await api<ControlState>("agent_control_state"));
   }, []);
+  const applyStartupState = useCallback((next: ControlStartupState) => {
+    if (
+      (next.autoStart !== null &&
+        next.autoStart !== startupStateRef.current?.autoStart) ||
+      next.yoloMode !== startupStateRef.current?.yoloMode
+    ) {
+      ++startupMutationRevision.current;
+      setStartupError("");
+    }
+    startupStateRef.current = next;
+    setStartupState(next);
+  }, []);
+  const refreshStartup = useCallback(async () => {
+    const request = ++startupRevision.current;
+    try {
+      const next = await api<ControlStartupState>(
+        "agent_control_startup_state",
+      );
+      if (request !== startupRevision.current) return;
+      applyStartupState(next);
+    } catch (e) {
+      if (request === startupRevision.current) setStartupError(errorMessage(e));
+    }
+  }, [applyStartupState]);
+  useEffect(() => {
+    if (!native) return;
+    void refreshStartup();
+    const stop = listen<ControlStartupState>(
+      "agent-control-startup-changed",
+      ({ payload }) => {
+        ++startupRevision.current;
+        applyStartupState(payload);
+        void refresh().catch((e) => setError(errorMessage(e)));
+      },
+    );
+    const focused = () => {
+      void refreshStartup();
+      void refresh().catch((e) => setError(errorMessage(e)));
+    };
+    window.addEventListener("focus", focused);
+    return () => {
+      ++startupRevision.current;
+      ++startupMutationRevision.current;
+      window.removeEventListener("focus", focused);
+      void stop.then((unlisten) => unlisten()).catch(() => {});
+    };
+  }, [applyStartupState, refresh, refreshStartup]);
   useEffect(() => {
     if (!native || !visible) return;
     let alive = true;
@@ -208,6 +263,58 @@ export default function AgentControlSettingsPage() {
       setBusy(false);
     }
   };
+  const setAutomaticStart = async (enabled: boolean) => {
+    if (startupSaveLock.current) return;
+    startupSaveLock.current = true;
+    const request = ++startupMutationRevision.current;
+    ++startupRevision.current;
+    setStartupBusy(true);
+    setStartupError("");
+    try {
+      const next = await api<ControlStartupState>(
+        "agent_control_set_auto_start",
+        { enabled },
+      );
+      if (request === startupMutationRevision.current) {
+        ++startupRevision.current;
+        applyStartupState(next);
+        setStartupError("");
+      }
+    } catch (e) {
+      if (request === startupMutationRevision.current)
+        setStartupError(errorMessage(e));
+    } finally {
+      startupSaveLock.current = false;
+      setStartupBusy(false);
+    }
+  };
+  const setYoloMode = async (enabled: boolean) => {
+    if (startupSaveLock.current) return;
+    startupSaveLock.current = true;
+    const request = ++startupMutationRevision.current;
+    ++startupRevision.current;
+    setStartupBusy(true);
+    setStartupError("");
+    try {
+      const next = await api<ControlStartupState>(
+        "agent_control_set_yolo_mode",
+        { enabled },
+      );
+      if (request === startupMutationRevision.current) {
+        ++startupRevision.current;
+        applyStartupState(next);
+        setStartupError("");
+      }
+    } catch (e) {
+      if (request === startupMutationRevision.current) {
+        setStartupError(errorMessage(e));
+        await refreshStartup();
+      }
+    } finally {
+      startupSaveLock.current = false;
+      setStartupBusy(false);
+    }
+  };
   const broker = state?.broker;
   const config =
     broker && state?.helperPath
@@ -236,14 +343,90 @@ export default function AgentControlSettingsPage() {
       <header className="settings-page-heading">
         <div>
           <h1>Agent control</h1>
-          <p>Connect a local MCP client to selected Lomi workspaces.</p>
+          <p>
+            Connect local MCP clients to selected Lomi workspaces. YOLO mode
+            applies across all workspaces.
+          </p>
         </div>
       </header>
       <p className="settings-help">
         Access lasts for this connection. Restarting Lomi or its workspace view
-        ends every grant. Enable control, configure your client, then approve
-        its pending session here.
+        ends every grant. Enable control and configure your client.{" "}
+        {startupState?.yoloMode
+          ? "While YOLO mode is on, clients pair automatically and supported Lomi requests are approved."
+          : "Approve each pending pairing here."}
       </p>
+      <section
+        className="keybindings-group"
+        aria-labelledby="agent-control-preferences-heading"
+      >
+        <h2 id="agent-control-preferences-heading">MCP preferences</h2>
+        <div className="keybinding-row">
+          <label
+            htmlFor="agent-control-auto-start"
+            className="keybinding-label"
+          >
+            Start MCP server when Lomi opens
+            <small id="agent-control-auto-start-help">
+              Applies to future launches. Changing this does not start or stop
+              agent control in the current session.
+            </small>
+          </label>
+          <input
+            id="agent-control-auto-start"
+            className="settings-switch"
+            type="checkbox"
+            role="switch"
+            aria-describedby="agent-control-auto-start-help"
+            checked={startupState?.autoStart === true}
+            disabled={
+              !native || !startupState || !startupState.supported || startupBusy
+            }
+            onChange={(event) => void setAutomaticStart(event.target.checked)}
+          />
+        </div>
+        <div className="keybinding-row">
+          <label htmlFor="agent-control-yolo-mode" className="keybinding-label">
+            YOLO mode
+            <small id="agent-control-yolo-mode-help">
+              Automatically approve supported Lomi MCP actions for all local
+              clients and workspaces. Your choice is saved. Changing it applies
+              immediately and disconnects active MCP sessions, which must
+              reconnect under the new policy.
+              Your MCP client's own confirmation prompts remain independent.
+            </small>
+          </label>
+          <input
+            id="agent-control-yolo-mode"
+            className="settings-switch"
+            type="checkbox"
+            role="switch"
+            aria-describedby="agent-control-yolo-mode-help"
+            checked={startupState?.yoloMode === true}
+            disabled={
+              !native || !startupState || !startupState.supported || startupBusy
+            }
+            onChange={(event) => void setYoloMode(event.target.checked)}
+          />
+        </div>
+        {startupError && (
+          <div className="keybindings-error" role="alert">
+            {startupError}
+          </div>
+        )}
+        {startupState?.error && (
+          <div className="keybindings-error" role="alert">
+            {startupState.autoStart === true
+              ? `Automatic MCP startup is enabled, but the server could not start: ${startupState.error} The saved choice is still enabled.`
+              : startupState.error}
+          </div>
+        )}
+        {startupState && !startupState.supported && (
+          <p className="settings-help">
+            Automatic MCP startup is not supported on this host.
+          </p>
+        )}
+      </section>
       {error && (
         <div className="keybindings-error" role="alert">
           {error}

@@ -9,7 +9,10 @@ mod artifact_files_tests;
 mod browser_download_tests;
 #[path = "support/terminal_profiles.rs"]
 mod terminal_profile_tests;
-use lomi_control_core::{broker::Broker, client::Client};
+use lomi_control_core::{
+    broker::{Broker, ChatConversationSelection},
+    client::Client,
+};
 use lomi_control_protocol::{control::*, EmptyInput, ErrorCode};
 use std::{sync::Arc, time::Duration};
 
@@ -1207,8 +1210,11 @@ async fn chat_open_creates_once_grants_only_its_creator_and_requires_the_matchin
         }))
         .unwrap();
     broker
-        .set_chat_list_dispatch(Arc::new(|_, ids, check| {
+        .set_chat_list_dispatch(Arc::new(|_, selection, check| {
             check()?;
+            let ChatConversationSelection::Exact(ids) = selection else {
+                return Err(ErrorCode::OutcomeUnknown);
+            };
             Ok(ids.iter().map(|id| chat_summary(id)).collect())
         }))
         .unwrap();
@@ -1352,10 +1358,14 @@ async fn chat_list_filters_exact_grants_and_binds_bounded_pages_to_the_snapshot(
     let mode = Arc::new(AtomicU8::new(0));
     let fixture = mode.clone();
     broker
-        .set_chat_list_dispatch(Arc::new(move |project, ids, check| {
+        .set_chat_list_dispatch(Arc::new(move |project, selection, check| {
             check()?;
             assert_eq!(project, "p");
-            assert_eq!(ids, &["first", "second"]);
+            assert!(matches!(
+                selection,
+                ChatConversationSelection::Exact(ids)
+                    if ids == ["first", "second"]
+            ));
             let mut values = vec![chat_summary("second"), chat_summary("first")];
             match fixture.load(Ordering::SeqCst) {
                 1 => values[0].conversation_id = "unapproved".into(),

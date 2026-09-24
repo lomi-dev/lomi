@@ -8,8 +8,15 @@ pub struct SettingsOpenPermit {
     authorization: Arc<AtomicU64>,
     policy: u64,
     connected: Arc<AtomicBool>,
+    automatically_approved: bool,
 }
 impl SettingsOpenPermit {
+    pub fn automatically_approved(&self) -> bool {
+        self.automatically_approved
+    }
+    pub(super) fn mark_automatically_approved(&mut self) {
+        self.automatically_approved = true;
+    }
     pub fn check(&self) -> Result<(), ErrorCode> {
         if self.authorization.load(Ordering::SeqCst) != self.policy
             || !self.connected.load(Ordering::SeqCst)
@@ -49,6 +56,7 @@ impl Broker {
             authorization: self.authorization.clone(),
             policy: state.policy_revision,
             connected: state.sessions[&work.pairing].alive.clone(),
+            automatically_approved: false,
         }
     }
     fn settings_access(state: &State, owner: &str, workspace: &str) -> Result<(), ErrorCode> {
@@ -144,6 +152,7 @@ impl Broker {
                 authorization: self.authorization.clone(),
                 policy: state.policy_revision,
                 connected: state.sessions[&work.pairing].alive.clone(),
+                automatically_approved: false,
             },
         );
         state.work.get_mut(operation).unwrap().native_committed = true;

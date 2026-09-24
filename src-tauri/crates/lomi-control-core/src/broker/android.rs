@@ -4,6 +4,7 @@ pub type AndroidListDispatch =
     Arc<dyn Fn(AndroidListRequest) -> Result<AndroidDevices, ErrorCode> + Send + Sync>;
 pub struct AndroidListRequest {
     pub devices: Vec<String>,
+    pub all_devices: bool,
     authorization: Arc<AtomicU64>,
     policy_revision: u64,
     connected: Arc<AtomicBool>,
@@ -67,6 +68,7 @@ impl Broker {
             };
             AndroidListRequest {
                 devices,
+                all_devices: state.sessions[owner].grant.yolo,
                 authorization: self.authorization.clone(),
                 policy_revision: state.policy_revision,
                 connected: state.sessions[owner].alive.clone(),
@@ -89,7 +91,7 @@ impl Broker {
             Ok(result) => result,
             Err(code) => return error(code),
         };
-        let Ok(state) = self.lock_state() else {
+        let Ok(mut state) = self.lock_state() else {
             return error(ErrorCode::ControlRevoked);
         };
         let current = match Self::android_access(&state, owner, &input.workspace_id) {
@@ -100,10 +102,12 @@ impl Broker {
             return error(ErrorCode::ControlRevoked);
         }
         let mut seen = HashSet::new();
+        let yolo = state.sessions[owner].grant.yolo;
         if result.items.len() > 16
             || result.devices_revision.parse::<u64>().is_err()
             || result.items.iter().any(|d| {
-                !devices.contains(&d.device_id)
+                (!yolo && !devices.contains(&d.device_id))
+                    || !lomi_control_protocol::android::valid_device_id(&d.device_id)
                     || !seen.insert(&d.device_id)
                     || d.name.len() > 256
                     || d.name.chars().any(char::is_control)
@@ -111,6 +115,18 @@ impl Broker {
             })
         {
             return error(ErrorCode::OutcomeUnknown);
+        }
+        if yolo {
+            let mut ids: Vec<_> = result.items.iter().map(|d| d.device_id.clone()).collect();
+            ids.sort();
+            state.sessions.get_mut(owner).unwrap().grant.android_devices =
+                ids.iter().cloned().collect();
+            state
+                .sessions
+                .get_mut(owner)
+                .unwrap()
+                .view
+                .android_device_ids = ids;
         }
         Reply::ok(Data::AndroidDevices {
             workspace_id: input.workspace_id,
@@ -133,12 +149,12 @@ impl Broker {
             let Ok(state) = self.lock_state() else {
                 return error(ErrorCode::ControlRevoked);
             };
-            let devices = match Self::android_access(&state, owner, &input.workspace_id) {
-                Ok(devices) => devices,
-                Err(code) => return error(code),
-            };
+            if let Err(code) = Self::android_access(&state, owner, &input.workspace_id) {
+                return error(code);
+            }
             let session = &state.sessions[owner];
-            if !devices.contains(&input.device_id) || !session.grant.scopes.contains("panel.create")
+            if !session.grant.permits_android_device(&input.device_id)
+                || !session.grant.scopes.contains("panel.create")
             {
                 return error(ErrorCode::ScopeDenied);
             }
@@ -260,9 +276,10 @@ impl Broker {
         device: &str,
         generation: Option<&str>,
     ) -> Result<(), ErrorCode> {
-        let devices = Self::android_access(state, owner, workspace)?;
+        Self::android_access(state, owner, workspace)?;
         let session = &state.sessions[owner];
-        if !session.grant.scopes.contains("android.control") || !devices.iter().any(|d| d == device)
+        if !session.grant.scopes.contains("android.control")
+            || !session.grant.permits_android_device(device)
         {
             return Err(ErrorCode::ScopeDenied);
         }
@@ -318,7 +335,7 @@ impl Broker {
         }
         let session = &state.sessions[owner];
         if !session.grant.scopes.contains("android.control")
-            || !session.grant.android_devices.contains(&input.device_id)
+            || !session.grant.permits_android_device(&input.device_id)
         {
             return error(ErrorCode::ScopeDenied);
         }

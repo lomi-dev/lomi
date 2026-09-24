@@ -25,7 +25,7 @@ impl Broker {
             || panel
                 .chat_conversation_id
                 .as_ref()
-                .is_none_or(|id| !grant.chat_conversations.contains(id))
+                .is_none_or(|id| !grant.permits_chat_conversation(id))
         {
             return Err(ErrorCode::ScopeDenied);
         }
@@ -143,7 +143,7 @@ impl Broker {
             if !state
                 .sessions
                 .get(owner)
-                .is_some_and(|s| s.grant.android_devices.contains(device_id))
+                .is_some_and(|s| s.grant.permits_android_device(device_id))
             {
                 return Err(ErrorCode::ScopeDenied);
             }

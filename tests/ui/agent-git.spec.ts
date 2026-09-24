@@ -567,4 +567,55 @@ test("Git mutation approval preserves exact targets, defaults to cancel and dism
     await page.evaluate(() => (window as any).__gitApproval.commits.length),
   ).toBe(6);
   await expect(editor).toContainText("dirty shared buffer");
+
+  await page.evaluate(() => {
+    const desktop = window as any;
+    desktop.__nativeTest.agentControlStartup = {
+      ...desktop.__nativeTest.agentControlStartup,
+      supported: true,
+      yoloMode: true,
+    };
+    desktop.__gitApproval.operation = "stage";
+  });
+  const modeReadsBefore = await page.evaluate(
+    () =>
+      (window as any).__nativeTest.calls.filter(
+        (call: any) => call.command === "agent_control_startup_state",
+      ).length,
+  );
+  await request("yolo-stage");
+  await expect(
+    page.getByRole("dialog", { name: "Stage files for this agent?" }),
+  ).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => (window as any).__gitApproval.acknowledgements.length,
+      ),
+    )
+    .toBeGreaterThan(0);
+  const yoloResult = await page.evaluate(() => {
+    const desktop = window as any;
+    return {
+      modeReads: desktop.__nativeTest.calls.filter(
+        (call: any) => call.command === "agent_control_startup_state",
+      ).length,
+      decision: desktop.__gitApproval.decisions.at(-1),
+      commit: desktop.__gitApproval.commits.at(-1),
+      ack: desktop.__gitApproval.acknowledgements.at(-1),
+    };
+  });
+  expect(yoloResult.modeReads).toBe(modeReadsBefore + 1);
+  expect(yoloResult.decision).toEqual({
+    operationId: "yolo-stage",
+    nonce: "yolo-stage-nonce",
+    planHash: "a".repeat(64),
+    approved: true,
+  });
+  expect(yoloResult.commit).toEqual({
+    operationId: "yolo-stage",
+    nonce: "yolo-stage-nonce",
+    planHash: "a".repeat(64),
+  });
+  expect(yoloResult.ack.result.kind).toBe("git_mutated");
 });

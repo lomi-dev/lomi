@@ -51,9 +51,41 @@ pub(crate) fn list(
     app: &tauri::AppHandle,
     allowed: &[String],
 ) -> Result<AndroidDevices, ErrorCode> {
+    list_checked(app, allowed, &|| Ok(()))
+}
+
+pub(crate) fn list_all(
+    app: &tauri::AppHandle,
+    check: &dyn Fn() -> Result<(), ErrorCode>,
+) -> Result<AndroidDevices, ErrorCode> {
+    check()?;
+    let window = app.get_window("main").ok_or(ErrorCode::UiNotReady)?;
+    let manager = super::commands::backend(&window, &app.state::<super::manager::Android>())
+        .map_err(|_| ErrorCode::StorageUnavailable)?;
+    let devices = manager
+        .directory
+        .lock()
+        .map_err(|_| ErrorCode::StorageUnavailable)?
+        .devices()
+        .map_err(|_| ErrorCode::StorageUnavailable)?;
+    let mut allowed = Vec::new();
+    for device in devices.devices.into_iter().take(16) {
+        check()?;
+        allowed.push(device.id);
+    }
+    check()?;
+    list_checked(app, &allowed, check)
+}
+
+fn list_checked(
+    app: &tauri::AppHandle,
+    allowed: &[String],
+    check: &dyn Fn() -> Result<(), ErrorCode>,
+) -> Result<AndroidDevices, ErrorCode> {
     if allowed.len() > 16 || allowed.iter().any(|id| !valid_device_id(id)) {
         return Err(ErrorCode::ScopeDenied);
     }
+    check()?;
     let window = app.get_window("main").ok_or(ErrorCode::UiNotReady)?;
     let manager = super::commands::backend(&window, &app.state::<super::manager::Android>())
         .map_err(|_| ErrorCode::StorageUnavailable)?;
@@ -69,11 +101,17 @@ pub(crate) fn list(
     let items = devices
         .devices
         .into_iter()
-        .filter(|d| allowed.contains(&d.id))
+        .filter_map(|d| {
+            if !allowed.contains(&d.id) {
+                return None;
+            }
+            Some(d)
+        })
         .map(|device| {
+            check()?;
             let status = statuses.iter().find(|s| s.device_id == device.id);
             use super::runtime::Phase;
-            AndroidDevice {
+            Ok(AndroidDevice {
                 device_id: device.id,
                 name: device.name,
                 generation: status.and_then(|s| s.generation.clone()),
@@ -87,9 +125,10 @@ pub(crate) fn list(
                 },
                 process_alive: status.is_some_and(|s| s.process_alive),
                 display: status.and_then(|s| s.display.map(|(w, h)| [w, h])),
-            }
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>, ErrorCode>>()?;
+    check()?;
     Ok(AndroidDevices {
         devices_revision: devices.revision.to_string(),
         host_qualified: super::host::require_qualification().is_ok(),

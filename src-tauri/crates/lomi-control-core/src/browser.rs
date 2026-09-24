@@ -17,6 +17,7 @@ pub struct BrowserControl {
     pub panel_id: String,
     lease: String,
     origins: Vec<Origin>,
+    allow_any_http_origin: bool,
     epoch: Arc<AtomicU64>,
     expected_epoch: u64,
     connection: Arc<AtomicBool>,
@@ -73,11 +74,12 @@ impl BrowserControl {
         panel_id: String,
         profile_id: String,
         origins: Vec<Origin>,
+        allow_any_http_origin: bool,
         epoch: Arc<AtomicU64>,
         expected_epoch: u64,
         connection: Arc<AtomicBool>,
     ) -> io::Result<Self> {
-        if origins.is_empty()
+        if (!allow_any_http_origin && origins.is_empty())
             || origins.len() > 16
             || profile_id.len() != 32
             || !profile_id.bytes().all(|b| b.is_ascii_hexdigit())
@@ -90,6 +92,7 @@ impl BrowserControl {
             profile_id,
             lease: new_id()?,
             origins,
+            allow_any_http_origin,
             epoch,
             expected_epoch,
             connection,
@@ -252,7 +255,9 @@ impl BrowserControl {
         let Ok(url) = address(value) else {
             return false;
         };
-        self.authorized() && self.origins.iter().any(|origin| origin.permits(&url))
+        self.authorized()
+            && (self.allow_any_http_origin
+                || self.origins.iter().any(|origin| origin.permits(&url)))
     }
     pub fn native_navigation(&self, value: &str) -> bool {
         if !(self.permits(value) || self.human.load(Ordering::SeqCst) && address(value).is_ok()) {
@@ -435,6 +440,7 @@ mod tests {
                 "panel".into(),
                 "a".repeat(32),
                 vec![Origin::parse("http://localhost:3000").unwrap()],
+                false,
                 epoch,
                 3,
                 alive,
@@ -481,6 +487,7 @@ mod tests {
             "panel".into(),
             new_id().unwrap(),
             vec![Origin::parse("http://localhost:3000").unwrap()],
+            false,
             Arc::new(AtomicU64::new(1)),
             1,
             Arc::new(AtomicBool::new(true)),
@@ -562,6 +569,7 @@ mod tests {
             "panel".into(),
             new_id().unwrap(),
             vec![Origin::parse("http://localhost:3000").unwrap()],
+            false,
             epoch.clone(),
             7,
             alive.clone(),

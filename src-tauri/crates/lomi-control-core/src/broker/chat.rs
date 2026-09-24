@@ -3,7 +3,7 @@ use super::*;
 pub type ChatListDispatch = Arc<
     dyn Fn(
             &str,
-            &[String],
+            ChatConversationSelection,
             &dyn Fn() -> Result<(), ErrorCode>,
         ) -> Result<Vec<ChatSummary>, ErrorCode>
         + Send
@@ -67,7 +67,7 @@ impl Broker {
             .all(|s| session.grant.scopes.contains(*s))
             || match &input.target {
                 ChatOpenTarget::Existing { conversation_id } => {
-                    !session.grant.chat_conversations.contains(conversation_id)
+                    !session.grant.permits_chat_conversation(conversation_id)
                 }
                 ChatOpenTarget::New => !session.grant.scopes.contains("chat.create"),
             }
@@ -112,7 +112,7 @@ impl Broker {
             Ok(None) => {}
         }
         let create = matches!(input.target, ChatOpenTarget::New);
-        if create && session.grant.chat_conversations.len() >= 64 {
+        if create && !session.grant.yolo && session.grant.chat_conversations.len() >= 64 {
             return error(ErrorCode::ResourceExhausted);
         }
         let conversation_id = match input.target {
@@ -209,8 +209,7 @@ impl Broker {
                 || (!command.create
                     && !session
                         .grant
-                        .chat_conversations
-                        .contains(&command.conversation_id))
+                        .permits_chat_conversation(&command.conversation_id))
             {
                 return Err(ErrorCode::ScopeDenied);
             }
@@ -224,7 +223,10 @@ impl Broker {
                         && matches!(&w.command.action,UiAction::OpenChat(c) if c.create)
                 })
                 .count();
-            if command.create && session.grant.chat_conversations.len() + pending_creates >= 64 {
+            if command.create
+                && !session.grant.yolo
+                && session.grant.chat_conversations.len() + pending_creates >= 64
+            {
                 return Err(ErrorCode::ResourceExhausted);
             }
             work.native_permit.check()?;
@@ -275,17 +277,19 @@ impl Broker {
                 .sessions
                 .get_mut(&owner)
                 .ok_or(ErrorCode::ControlRevoked)?;
-            if session.grant.chat_conversations.len() >= 64 {
+            if !session.grant.yolo && session.grant.chat_conversations.len() >= 64 {
                 return Err(ErrorCode::ResourceExhausted);
             }
-            session
-                .grant
-                .chat_conversations
-                .insert(command.conversation_id.clone());
-            session
-                .view
-                .chat_conversations
-                .push(command.conversation_id);
+            if session.grant.chat_conversations.len() < 64 {
+                session
+                    .grant
+                    .chat_conversations
+                    .insert(command.conversation_id.clone());
+                session
+                    .view
+                    .chat_conversations
+                    .push(command.conversation_id);
+            }
         }
         Ok(summary)
     }
@@ -329,7 +333,7 @@ impl Broker {
         {
             return error(ErrorCode::ResourceExhausted);
         }
-        let (project, ids, policy) = {
+        let (project, selection, policy) = {
             let Ok(state) = self.lock_state() else {
                 return error(ErrorCode::ControlRevoked);
             };
@@ -337,14 +341,15 @@ impl Broker {
                 Ok(p) => p,
                 Err(e) => return error(e),
             };
-            let mut ids: Vec<_> = state.sessions[owner]
-                .grant
-                .chat_conversations
-                .iter()
-                .cloned()
-                .collect();
-            ids.sort();
-            (project, ids, state.policy_revision)
+            let grant = &state.sessions[owner].grant;
+            let selection = if grant.yolo {
+                ChatConversationSelection::All
+            } else {
+                let mut ids: Vec<_> = grant.chat_conversations.iter().cloned().collect();
+                ids.sort();
+                ChatConversationSelection::Exact(ids)
+            };
+            (project, selection, state.policy_revision)
         };
         let _producer = match self.file_reads.clone().try_acquire_owned() {
             Ok(p) => p,
@@ -356,11 +361,22 @@ impl Broker {
                 return Err(ErrorCode::ControlRevoked);
             }
             let state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
-            if Self::chat_access(&state, owner, &input.workspace_id)? != project
-                || ids
-                    .iter()
-                    .any(|id| !state.sessions[owner].grant.chat_conversations.contains(id))
-            {
+            if Self::chat_access(&state, owner, &input.workspace_id)? != project {
+                return Err(ErrorCode::ControlRevoked);
+            }
+            let grant = &state
+                .sessions
+                .get(owner)
+                .filter(|session| session.alive.load(Ordering::SeqCst))
+                .ok_or(ErrorCode::ControlRevoked)?
+                .grant;
+            let selection_authorized = match &selection {
+                ChatConversationSelection::Exact(ids) => {
+                    ids.iter().all(|id| grant.permits_chat_conversation(id))
+                }
+                ChatConversationSelection::All => grant.yolo,
+            };
+            if !selection_authorized {
                 return Err(ErrorCode::ControlRevoked);
             }
             if Instant::now() >= deadline {
@@ -370,24 +386,31 @@ impl Broker {
         };
         let read = || -> Result<ChatList, ErrorCode> {
             check()?;
-            // Empty grants must not reveal whether private history is initialized.
-            let mut items = if ids.is_empty() {
-                Vec::new()
-            } else {
-                let dispatch = self
-                    .chat_list_dispatch
-                    .lock()
-                    .ok()
-                    .and_then(|d| d.clone())
-                    .ok_or(ErrorCode::UiNotReady)?;
-                dispatch(&project, &ids, &check)?
+            // An empty exact grant reveals nothing; `All` is available only to
+            // a YOLO session and remains bounded by the native history adapter.
+            let mut items = match &selection {
+                ChatConversationSelection::Exact(ids) if ids.is_empty() => Vec::new(),
+                _ => {
+                    let dispatch = self
+                        .chat_list_dispatch
+                        .lock()
+                        .ok()
+                        .and_then(|d| d.clone())
+                        .ok_or(ErrorCode::UiNotReady)?;
+                    dispatch(&project, selection.clone(), &check)?
+                }
             };
             check()?;
-            if items.len() > ids.len()
-                || items
-                    .iter()
-                    .any(|s| !valid_summary(s) || !ids.contains(&s.conversation_id))
-            {
+            let valid_items = items.iter().all(|summary| {
+                valid_summary(summary)
+                    && match &selection {
+                        ChatConversationSelection::Exact(ids) => {
+                            ids.contains(&summary.conversation_id)
+                        }
+                        ChatConversationSelection::All => true,
+                    }
+            });
+            if items.len() > 64 || !valid_items {
                 return Err(ErrorCode::OutcomeUnknown);
             }
             items.sort_by(|a, b| a.conversation_id.cmp(&b.conversation_id));
@@ -397,7 +420,7 @@ impl Broker {
             {
                 return Err(ErrorCode::OutcomeUnknown);
             }
-            let bytes = serde_json::to_vec(&(&project, &ids, &items))
+            let bytes = serde_json::to_vec(&(&project, &selection, &items))
                 .map_err(|_| ErrorCode::ResourceExhausted)?;
             if bytes.len() > 48 * 1024 {
                 return Err(ErrorCode::ResourceExhausted);
@@ -452,8 +475,7 @@ impl Broker {
             let project = Self::chat_access(state, owner, &input.workspace_id)?;
             if !state.sessions[owner]
                 .grant
-                .chat_conversations
-                .contains(&input.conversation_id)
+                .permits_chat_conversation(&input.conversation_id)
             {
                 return Err(ErrorCode::ScopeDenied);
             }

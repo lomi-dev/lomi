@@ -193,6 +193,86 @@ test("send approval defaults to cancel, exposes exact context and expires on hum
   expect(await page.evaluate(() => (window as any).__chatTest.starts)).toBe(0);
 });
 
+test("saved YOLO mode sends only after exact native approval", async ({
+  page,
+}) => {
+  await page.evaluate(() => {
+    const desktop = window as any;
+    desktop.__nativeTest.agentControlStartup = {
+      ...desktop.__nativeTest.agentControlStartup,
+      supported: true,
+      yoloMode: true,
+    };
+  });
+  const modeReadsBefore = await page.evaluate(
+    () =>
+      (window as any).__nativeTest.calls.filter(
+        (call: any) => call.command === "agent_control_startup_state",
+      ).length,
+  );
+  await request(page, "yolo-send");
+
+  await expect(
+    page.getByRole("dialog", { name: "Send this message for the agent?" }),
+  ).toHaveCount(0);
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__sendTest.acks.length))
+    .toBe(1);
+  const result = await page.evaluate(() => {
+    const desktop = window as any;
+    return {
+      decisions: desktop.__sendTest.decisions,
+      sends: desktop.__sendTest.calls,
+      starts: desktop.__chatTest.starts,
+      ack: desktop.__sendTest.acks[0],
+      modeReads: desktop.__nativeTest.calls.filter(
+        (call: any) => call.command === "agent_control_startup_state",
+      ).length,
+    };
+  });
+  expect(result.modeReads).toBe(modeReadsBefore + 1);
+  expect(result.decisions).toEqual([
+    {
+      operationId: "yolo-send",
+      nonce: "yolo-send-nonce",
+      planHash: "a".repeat(64),
+      approved: true,
+    },
+  ]);
+  expect(result.sends).toHaveLength(1);
+  expect(result.starts).toBe(1);
+  expect(result.ack.result.kind).toBe("chat_sent");
+});
+
+test("an unavailable YOLO setting falls back to the ordinary send approval", async ({
+  page,
+}) => {
+  await page.evaluate(() => {
+    const desktop = window as any;
+    desktop.__nativeTest.agentControlStartup = {
+      ...desktop.__nativeTest.agentControlStartup,
+      supported: true,
+      yoloMode: true,
+    };
+    const invoke = desktop.__TAURI_INTERNALS__.invoke;
+    desktop.__TAURI_INTERNALS__.invoke = (command: string, args: any) =>
+      command === "agent_control_startup_state"
+        ? Promise.reject(new Error("settings unavailable"))
+        : invoke(command, args);
+  });
+  await request(page, "yolo-read-error");
+
+  await expect(
+    page.getByRole("dialog", { name: "Send this message for the agent?" }),
+  ).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__sendTest.calls)).toEqual(
+    [],
+  );
+  expect(
+    await page.evaluate(() => (window as any).__sendTest.decisions),
+  ).toEqual([]);
+});
+
 test("approved send uses reserved identity and retains SDK and human next draft during delayed ACK", async ({
   page,
 }) => {

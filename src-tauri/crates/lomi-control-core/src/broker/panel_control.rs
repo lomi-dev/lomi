@@ -86,6 +86,7 @@ impl Broker {
         if session.retry_epoch != input.retry_epoch {
             return error(ErrorCode::RetryWindowExpired);
         }
+        let yolo = session.grant.yolo;
         let Some(profile) = session.grant.terminal_profile.clone() else {
             return error(ErrorCode::HostUnqualified);
         };
@@ -181,15 +182,34 @@ impl Broker {
             };
             state.claims.insert(operation.clone(), claim);
             let weak = Arc::downgrade(self);
+            let timeout_operation = operation.clone();
             self.spawn_background(async move {
                 tokio::time::sleep(Duration::from_secs(120)).await;
                 if let Some(broker) = weak.upgrade() {
                     let worker = broker.clone();
                     drop(broker.spawn_worker(move || {
-                        let _ = worker.decide_control(&operation, false);
+                        let _ = worker.decide_control(&timeout_operation, false);
                     }));
                 }
             });
+            if yolo {
+                drop(store);
+                drop(state);
+                if self.decide_control(&operation, true).is_err() {
+                    return error(ErrorCode::ControlRevoked);
+                }
+                let Ok(state) = self.lock_state() else {
+                    return error(ErrorCode::ControlRevoked);
+                };
+                let Ok(store) = self.store.lock() else {
+                    return error(ErrorCode::StorageUnavailable);
+                };
+                let receipt = match store.get(id, &project, &operation) {
+                    Ok(receipt) => receipt,
+                    Err(_) => return error(ErrorCode::StorageUnavailable),
+                };
+                return Self::terminal_receipt(&state, id, receipt);
+            }
             return Self::operation_reply(receipt);
         }
         if let Err(e) = store.transition(

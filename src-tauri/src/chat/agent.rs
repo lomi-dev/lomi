@@ -1,4 +1,5 @@
 use super::{commands::Chats, store::Store};
+use lomi_control_core::broker::ChatConversationSelection;
 use lomi_control_protocol::{
     chat::{
         valid_chat_id, ChatDraftInput, ChatDraftUpdated, ChatOpenCommand, ChatRead, ChatReadInput,
@@ -70,27 +71,60 @@ pub(super) fn summary(store: &Store, project: &str, id: &str) -> Result<ChatSumm
 pub(crate) fn list(
     app: &tauri::AppHandle,
     project: &str,
-    ids: &[String],
+    selection: ChatConversationSelection,
     check: &dyn Fn() -> Result<(), ErrorCode>,
 ) -> Result<Vec<ChatSummary>, ErrorCode> {
-    if ids.len() > 64 || ids.iter().any(|id| !valid_chat_id(id)) {
-        return Err(ErrorCode::ResourceExhausted);
-    }
     check()?;
-    with_store(app, |store| {
-        let mut result = Vec::new();
-        for id in ids {
-            check()?;
-            match summary(store, project, id) {
-                Ok(value) => result.push(value),
-                Err(ErrorCode::TargetNotFound) => {}
-                Err(error) => return Err(error),
+    with_store(app, |store| list_store(store, project, selection, check))
+}
+
+fn list_store(
+    store: &Store,
+    project: &str,
+    selection: ChatConversationSelection,
+    check: &dyn Fn() -> Result<(), ErrorCode>,
+) -> Result<Vec<ChatSummary>, ErrorCode> {
+    check()?;
+    let ids = match selection {
+        ChatConversationSelection::Exact(ids) => {
+            if ids.len() > 64 || ids.iter().any(|id| !valid_chat_id(id)) {
+                return Err(ErrorCode::ResourceExhausted);
             }
+            ids
         }
-        result.sort_by(|a, b| a.conversation_id.cmp(&b.conversation_id));
+        ChatConversationSelection::All => {
+            let mut query = store
+                .connection
+                .prepare(
+                    "SELECT id FROM conversations WHERE length(CAST(id AS BLOB))<=100 AND length(CAST(origin AS BLOB))<=4096 AND json_extract(origin,'$.projectId')=?1 ORDER BY updated_at DESC,id LIMIT 64",
+                )
+                .map_err(|_| ErrorCode::StorageUnavailable)?;
+            let rows = query
+                .query_map(params![project], |row| row.get::<_, String>(0))
+                .map_err(|_| ErrorCode::StorageUnavailable)?;
+            let mut ids = Vec::new();
+            for row in rows {
+                check()?;
+                let id = row.map_err(|_| ErrorCode::StorageUnavailable)?;
+                if valid_chat_id(&id) {
+                    ids.push(id);
+                }
+            }
+            ids
+        }
+    };
+    let mut result = Vec::new();
+    for id in &ids {
         check()?;
-        Ok(result)
-    })
+        match summary(store, project, id) {
+            Ok(value) => result.push(value),
+            Err(ErrorCode::TargetNotFound) => {}
+            Err(error) => return Err(error),
+        }
+    }
+    result.sort_by(|a, b| a.conversation_id.cmp(&b.conversation_id));
+    check()?;
+    Ok(result)
 }
 
 pub(crate) fn read(
@@ -486,6 +520,46 @@ mod tests {
             include_send_target: false,
         }
     }
+    #[test]
+    fn all_yolo_conversations_are_project_scoped_and_capped() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut store = Store::open(temp.path()).unwrap();
+        let config = Config::default();
+        for (project, count) in [("current", 70), ("other", 2)] {
+            for index in 0..count {
+                let origin = Origin {
+                    project_id: project.into(),
+                    project_name: project.into(),
+                    workspace_id: format!("workspace-{project}"),
+                    workspace_name: project.into(),
+                };
+                store
+                    .create(
+                        &format!("conversation-{project}-{index:03}"),
+                        &origin,
+                        &config,
+                    )
+                    .unwrap();
+            }
+        }
+        let items = list_store(
+            &store,
+            "current",
+            ChatConversationSelection::All,
+            &|| Ok(()),
+        )
+        .unwrap();
+        assert_eq!(items.len(), 64);
+        assert!(items
+            .iter()
+            .all(|item| item.conversation_id.starts_with("conversation-current-")));
+
+        let denied = list_store(&store, "current", ChatConversationSelection::All, &|| {
+            Err(ErrorCode::ControlRevoked)
+        });
+        assert_eq!(denied.unwrap_err(), ErrorCode::ControlRevoked);
+    }
+
     #[test]
     fn drafts_check_project_and_both_revisions_before_preserving_the_existing_store() {
         let root = tempfile::tempdir().unwrap();

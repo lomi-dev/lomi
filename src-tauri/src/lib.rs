@@ -200,6 +200,7 @@ pub fn run() {
                     eprintln!("Cannot prepare settings window: {error}");
                 }
             });
+            agent_control::initialize_startup(app.handle().clone());
             Ok(())
         })
         .invoke_handler(|invoke| {
@@ -243,6 +244,10 @@ pub fn run() {
             }
             let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
                 agent_control::agent_control_state,
+                agent_control::agent_control_startup_state,
+                agent_control::agent_control_startup_decide,
+                agent_control::agent_control_set_auto_start,
+                agent_control::agent_control_set_yolo_mode,
                 agent_control::agent_control_settings_open,
                 agent_control::agent_control_settings_prepare,
                 agent_control::agent_control_settings_source,

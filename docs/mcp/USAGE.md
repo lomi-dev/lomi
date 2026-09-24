@@ -40,6 +40,24 @@ Access ends when the connection is revoked, Lomi restarts, or the workspace view
 is re-registered. Use fresh generated configuration after restarting Lomi or
 disabling control. Do not reuse an endpoint from an old diagnostic run.
 
+On first launch, choose whether the MCP server should start automatically. Change
+that saved preference later in **Settings → Agent control**. Automatic startup
+only starts the server; clients still require pairing and approval when YOLO
+mode is off.
+
+### Global YOLO mode
+
+Enable **Settings → Agent control → YOLO mode** to automatically pair local MCP
+clients and approve supported MCP operations across all workspaces. This includes
+terminal commands, files, Git, browser actions, Android management and Chat sends.
+The choice is saved independently of automatic server startup and defaults to off.
+Changing the mode ends current connections and pending operations; reconnect the
+client to use the new mode. Turning it off restores manual pairing and approvals.
+
+YOLO changes Lomi's MCP permissions. Client-side approval settings remain separate.
+Target and revision validation, operation limits, and unsaved-file guards still
+apply. The manual pairing and approval instructions below describe YOLO being off.
+
 Codex can require its own approval before sending a modifying MCP call, in
 addition to Lomi's pairing and operation approvals. A noninteractive
 `approval_policy = "never"` does not grant that approval: the client can reject

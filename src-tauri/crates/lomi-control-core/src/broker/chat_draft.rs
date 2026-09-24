@@ -27,8 +27,7 @@ impl Broker {
         if !session.grant.scopes.contains("chat.draft")
             || !session
                 .grant
-                .chat_conversations
-                .contains(&input.conversation_id)
+                .permits_chat_conversation(&input.conversation_id)
         {
             return Err(ErrorCode::ScopeDenied);
         }

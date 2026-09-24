@@ -24,6 +24,7 @@ import {
   useAgentSettingsReader,
   type SettingsReadRequest,
 } from "./agent-settings";
+import type { ControlStartupState } from "./agent-control-startup";
 import { listen } from "@tauri-apps/api/event";
 import { api, native } from "./api";
 import type { KeybindingPatch, KeybindingSource } from "./agent-keybindings";
@@ -80,6 +81,16 @@ import {
   waitForAgentBrowser,
   hasLiveAgentBrowser,
 } from "./browser-runtime";
+
+async function agentControlYoloModeEnabled() {
+  try {
+    const state = await api<ControlStartupState>("agent_control_startup_state");
+    return state.supported === true && state.yoloMode === true;
+  } catch {
+    // A missing or unavailable setting must leave the ordinary approval in place.
+    return false;
+  }
+}
 
 export interface ControlWorkspace {
   id: string;
@@ -867,7 +878,14 @@ export function useAgentControlBridge(
                     ...target,
                     planHash: plan.planHash,
                   }));
-                if (
+                if (await agentControlYoloModeEnabled()) {
+                  if (!(await isActive())) throw Error("REVISION_CONFLICT");
+                  await api("agent_control_chat_send_decide", {
+                    ...target,
+                    planHash: plan.planHash,
+                    approved: true,
+                  });
+                } else if (
                   !(await domain.current.confirmChat({
                     ...target,
                     plan,
@@ -1778,7 +1796,14 @@ export function useAgentControlBridge(
                     ...target,
                     planHash: plan.planHash,
                   }));
-                if (
+                if (await agentControlYoloModeEnabled()) {
+                  if (!(await isActive())) throw Error("REVISION_CONFLICT");
+                  await api("agent_control_git_mutation_decide", {
+                    ...target,
+                    planHash: plan.planHash,
+                    approved: true,
+                  });
+                } else if (
                   !(await domain.current.confirmGit({
                     ...target,
                     plan,

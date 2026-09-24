@@ -143,13 +143,14 @@ impl Broker {
         }
         let session = &state.sessions[owner];
         if !session.grant.scopes.contains("android.install")
-            || !session.grant.android_devices.contains(&input.device_id)
+            || !session.grant.permits_android_device(&input.device_id)
         {
             return error(ErrorCode::ScopeDenied);
         }
         if session.retry_epoch != input.retry_epoch {
             return error(ErrorCode::RetryWindowExpired);
         }
+        let yolo = session.grant.yolo;
         let Some(root) = session.grant.workspace(&input.workspace_id) else {
             return error(ErrorCode::TargetNotFound);
         };
@@ -238,6 +239,7 @@ impl Broker {
             Err(e) => return storage_error(e),
         };
         let deadline = Instant::now() + Duration::from_secs(120);
+        let project_id = project.clone();
         let job = InstallJob {
             pairing: owner.into(),
             project,
@@ -259,8 +261,28 @@ impl Broker {
             running: false,
         };
         state.installs.insert(operation.clone(), job);
-        self.schedule_install_expiry(operation, Duration::from_secs(120));
+        self.schedule_install_expiry(operation.clone(), Duration::from_secs(120));
+        drop(store);
+        drop(state);
+        if yolo {
+            if self.decide_install(&operation, true).is_err() {
+                self.cancel_automatic_install(&operation);
+            }
+            if let Ok(store) = self.store.lock() {
+                if let Ok(current) = store.get(owner, &project_id, &operation) {
+                    return Self::operation_reply(current);
+                }
+            }
+            return error(ErrorCode::TargetBusy);
+        }
         Self::operation_reply(receipt)
+    }
+    fn cancel_automatic_install(&self, operation: &str) {
+        if let Ok(mut state) = self.lock_state() {
+            if let Some(job) = state.installs.remove(operation) {
+                self.settle_install(operation, &job);
+            }
+        }
     }
     fn schedule_install_expiry(self: &Arc<Self>, operation: String, duration: Duration) {
         let weak = Arc::downgrade(self);

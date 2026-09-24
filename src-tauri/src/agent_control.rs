@@ -1,7 +1,10 @@
 //! Trusted native UI is the sole source of pairing decisions. An empty state
 //! opens no socket, scans no project directory and starts no background task.
+mod startup;
+
 use lomi_control_protocol::control::{Projection, UiAck};
 use serde::Serialize;
+use startup::{ControlStartupState, Runtime as StartupRuntime};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Mutex,
@@ -9,7 +12,7 @@ use std::sync::{
 use tauri::{Emitter, Manager, State, Window};
 #[cfg(unix)]
 use {
-    lomi_control_core::broker::{Broker, Overview},
+    lomi_control_core::broker::{Broker, ChatConversationSelection, Overview},
     std::sync::Arc,
 };
 
@@ -31,6 +34,7 @@ pub(crate) fn supported_host() -> bool {
 pub struct Control {
     #[cfg(unix)]
     broker: Mutex<Option<Arc<Broker>>>,
+    startup: Mutex<StartupRuntime>,
     transition: tokio::sync::Mutex<()>,
     closing: AtomicBool,
 }
@@ -54,6 +58,233 @@ fn settings(window: &Window) -> Result<(), String> {
 }
 fn unavailable() -> String {
     "Agent control is unavailable. Reopen its Settings page.".into()
+}
+
+fn startup_preferences_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    app.path()
+        .app_data_dir()
+        .map(|path| path.join("agent-control-preferences.json"))
+        .map_err(|error| format!("Cannot locate Agent control preferences ({error})."))
+}
+
+fn load_startup_preferences(app: &tauri::AppHandle, control: &Control) -> Result<(), String> {
+    let mut runtime = control.startup.lock().map_err(|_| unavailable())?;
+    match startup_preferences_path(app) {
+        Ok(path) => runtime.load(&path),
+        Err(error) => runtime.fail_load(error),
+    }
+    Ok(())
+}
+
+fn startup_state(control: &Control) -> Result<ControlStartupState, String> {
+    let mut snapshot = control
+        .startup
+        .lock()
+        .map(|runtime| runtime.state(supported_host()))
+        .map_err(|_| unavailable())?;
+    #[cfg(unix)]
+    if let Some(broker) = control.current()? {
+        snapshot.yolo_mode = broker.yolo_mode();
+    }
+    Ok(snapshot)
+}
+
+fn emit_startup_state(app: &tauri::AppHandle, state: ControlStartupState) {
+    let _ = app.emit("agent-control-startup-changed", state);
+}
+
+async fn initialize_startup_locked(
+    app: &tauri::AppHandle,
+    control: &Control,
+) -> Result<ControlStartupState, String> {
+    load_startup_preferences(app, control)?;
+    let should_start = control
+        .startup
+        .lock()
+        .map_err(|_| unavailable())?
+        .begin_initialization(supported_host());
+    if should_start {
+        let result = set_enabled_locked(app.clone(), control, true).await;
+        control
+            .startup
+            .lock()
+            .map_err(|_| unavailable())?
+            .set_startup_error(result.err());
+    }
+    let snapshot = startup_state(control)?;
+    emit_startup_state(app, snapshot.clone());
+    Ok(snapshot)
+}
+
+pub(crate) fn initialize_startup(app: tauri::AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let control = app.state::<Control>();
+        let _transition = control.transition.lock().await;
+        if let Err(error) = initialize_startup_locked(&app, &control).await {
+            eprintln!("Cannot initialize Agent control startup state: {error}");
+        }
+    });
+}
+
+#[tauri::command]
+pub async fn agent_control_startup_state(
+    window: Window,
+    app: tauri::AppHandle,
+    state: State<'_, Control>,
+) -> Result<ControlStartupState, String> {
+    if !matches!(window.label(), "main" | "settings") {
+        return Err("Agent control startup state is unavailable in this window.".into());
+    }
+    let _transition = state.transition.lock().await;
+    initialize_startup_locked(&app, &state).await
+}
+
+#[tauri::command]
+pub async fn agent_control_startup_decide(
+    window: Window,
+    app: tauri::AppHandle,
+    state: State<'_, Control>,
+    enabled: bool,
+) -> Result<ControlStartupState, String> {
+    crate::files::main_window(&window)?;
+    let _transition = state.transition.lock().await;
+    load_startup_preferences(&app, &state)?;
+    let path = startup_preferences_path(&app)?;
+    {
+        let mut runtime = state.startup.lock().map_err(|_| unavailable())?;
+        startup::check_enable_supported(enabled, supported_host())?;
+        if runtime.auto_start().is_some() {
+            drop(runtime);
+            return startup_state(&state);
+        }
+        if !runtime.can_record_choice() {
+            let error = runtime
+                .state(supported_host())
+                .error
+                .unwrap_or_else(|| "Agent control preferences cannot be replaced.".into());
+            return Err(error);
+        }
+        startup::save(&path, Some(enabled), runtime.yolo_mode())?;
+        runtime.record_saved_choice(enabled);
+        runtime.suppress_initialization();
+    }
+    if enabled {
+        let result = set_enabled_locked(app.clone(), &state, true).await;
+        state
+            .startup
+            .lock()
+            .map_err(|_| unavailable())?
+            .set_startup_error(result.err());
+    }
+    let snapshot = startup_state(&state)?;
+    emit_startup_state(&app, snapshot.clone());
+    Ok(snapshot)
+}
+
+#[tauri::command]
+pub async fn agent_control_set_auto_start(
+    window: Window,
+    app: tauri::AppHandle,
+    state: State<'_, Control>,
+    enabled: bool,
+) -> Result<ControlStartupState, String> {
+    settings(&window)?;
+    let _transition = state.transition.lock().await;
+    load_startup_preferences(&app, &state)?;
+    let path = startup_preferences_path(&app)?;
+    let mut runtime = state.startup.lock().map_err(|_| unavailable())?;
+    startup::check_enable_supported(enabled, supported_host())?;
+    if !runtime.can_save() {
+        let error = runtime
+            .state(supported_host())
+            .error
+            .unwrap_or_else(|| "Agent control preferences cannot be replaced.".into());
+        return Err(error);
+    }
+    startup::save(&path, Some(enabled), runtime.yolo_mode())?;
+    runtime.record_saved_choice(enabled);
+    drop(runtime);
+    let snapshot = startup_state(&state)?;
+    emit_startup_state(&app, snapshot.clone());
+    Ok(snapshot)
+}
+
+#[tauri::command]
+pub async fn agent_control_set_yolo_mode(
+    window: Window,
+    app: tauri::AppHandle,
+    state: State<'_, Control>,
+    enabled: bool,
+) -> Result<ControlStartupState, String> {
+    settings(&window)?;
+    let _transition = state.transition.lock().await;
+    load_startup_preferences(&app, &state)?;
+    startup::check_enable_supported(enabled, supported_host())?;
+    let path = startup_preferences_path(&app)?;
+    let (auto_start, previous) = {
+        let runtime = state.startup.lock().map_err(|_| unavailable())?;
+        if !runtime.can_save() {
+            return Err(runtime
+                .state(supported_host())
+                .error
+                .unwrap_or_else(|| "Agent control preferences cannot be replaced.".into()));
+        }
+        (runtime.auto_start(), runtime.yolo_mode())
+    };
+    #[cfg(unix)]
+    let broker = state.current()?;
+    #[cfg(unix)]
+    let previous_effective = broker
+        .as_ref()
+        .map_or(previous, |broker| broker.yolo_mode());
+
+    // Store the choice before changing the active broker, so a newly created
+    // broker cannot start with a value older than the user's saved setting.
+    startup::save(&path, auto_start, enabled)?;
+    #[cfg(unix)]
+    if let Some(broker) = broker {
+        let apply_broker = broker.clone();
+        let applied =
+            match tauri::async_runtime::spawn_blocking(move || apply_broker.set_yolo_mode(enabled))
+                .await
+            {
+                Ok(Ok(())) => Ok(()),
+                Ok(Err(error)) => Err(error.to_string()),
+                Err(_) => Err("The YOLO mode change did not complete.".to_string()),
+            };
+        if let Err(error) = applied {
+            let restore_broker = broker.clone();
+            let broker_restored = tauri::async_runtime::spawn_blocking(move || {
+                restore_broker.set_yolo_mode(previous_effective)
+            })
+            .await
+            .map_or(false, |result| result.is_ok());
+            let preference_restored = startup::save(&path, auto_start, previous).is_ok();
+            if !preference_restored {
+                state
+                    .startup
+                    .lock()
+                    .map_err(|_| unavailable())?
+                    .record_yolo_mode(enabled);
+            }
+            let details = match (broker_restored, preference_restored) {
+                (true, true) => "The previous mode was restored.",
+                (false, true) => "The saved choice was restored, but the running server may need to be restarted.",
+                (true, false) => "The running server was restored, but the saved choice could not be reverted.",
+                (false, false) => "The running server and saved choice could not both be restored.",
+            };
+            return Err(format!("Could not apply YOLO mode ({error}). {details}"));
+        }
+    }
+
+    state
+        .startup
+        .lock()
+        .map_err(|_| unavailable())?
+        .record_yolo_mode(enabled);
+    let snapshot = startup_state(&state)?;
+    emit_startup_state(&app, snapshot.clone());
+    Ok(snapshot)
 }
 
 #[tauri::command]
@@ -107,8 +338,9 @@ pub async fn agent_control_settings_prepare(
     #[cfg(unix)]
     {
         let broker = state.required()?;
+        let prepare_broker = broker.clone();
         let permit = tauri::async_runtime::spawn_blocking(move || {
-            broker.prepare_settings_update(&operation_id, &nonce, &revision, current)
+            prepare_broker.prepare_settings_update(&operation_id, &nonce, &revision, current)
         })
         .await
         .map_err(|_| "OUTCOME_UNKNOWN".to_string())?
@@ -119,11 +351,15 @@ pub async fn agent_control_settings_prepare(
                 .unwrap()
                 .to_string()
         })?;
-        crate::settings_window::request_checked(&app, Some("agent-control".into()), || {
-            permit.check().map_err(|_| "CONTROL_REVOKED".into())
-        })
-        .await
-        .map_err(|_| "OUTCOME_UNKNOWN".into())
+        if permit.automatically_approved() {
+            Ok(())
+        } else {
+            crate::settings_window::request_checked(&app, Some("agent-control".into()), || {
+                permit.check().map_err(|_| "CONTROL_REVOKED".into())
+            })
+            .await
+            .map_err(|_| "OUTCOME_UNKNOWN".into())
+        }
     }
     #[cfg(not(unix))]
     {
@@ -310,6 +546,27 @@ pub async fn agent_control_enable(
 ) -> Result<(), String> {
     settings(&window)?;
     let _transition = state.transition.lock().await;
+    load_startup_preferences(&app, &state)?;
+    state
+        .startup
+        .lock()
+        .map_err(|_| unavailable())?
+        .suppress_initialization();
+    let result = set_enabled_locked(app.clone(), &state, enabled).await;
+    state
+        .startup
+        .lock()
+        .map_err(|_| unavailable())?
+        .set_startup_error(result.as_ref().err().cloned());
+    emit_startup_state(&app, startup_state(&state)?);
+    result
+}
+
+async fn set_enabled_locked(
+    app: tauri::AppHandle,
+    state: &Control,
+    enabled: bool,
+) -> Result<(), String> {
     #[cfg(unix)]
     {
         if enabled {
@@ -326,6 +583,11 @@ pub async fn agent_control_enable(
                     .map_err(|_| unavailable())?
                     .join("agent-control");
                 let broker = Broker::start(&root).map_err(|_| unavailable())?;
+                let yolo_mode = state.startup.lock().map_err(|_| unavailable())?.yolo_mode();
+                if let Err(error) = broker.set_yolo_mode(yolo_mode) {
+                    broker.shutdown().await;
+                    return Err(format!("Could not initialize YOLO mode ({error})."));
+                }
                 #[cfg(target_os = "macos")]
                 broker
                     .set_files_trash_dispatch(Arc::new(crate::files::agent::trash_staged))
@@ -383,7 +645,11 @@ pub async fn agent_control_enable(
                 broker
                     .set_android_list_dispatch(Arc::new(move |request| {
                         request.check()?;
-                        let result = crate::android::agent::list(&android_app, &request.devices)?;
+                        let result = if request.all_devices {
+                            crate::android::agent::list_all(&android_app, &|| request.check())?
+                        } else {
+                            crate::android::agent::list(&android_app, &request.devices)?
+                        };
                         request.check()?;
                         Ok(result)
                     }))
@@ -533,8 +799,8 @@ pub async fn agent_control_enable(
                     }))
                     .map_err(|_| unavailable())?;
                 broker
-                    .set_chat_list_dispatch(Arc::new(move |project, ids, check| {
-                        crate::chat::agent::list(&chat_list_app, project, ids, check)
+                    .set_chat_list_dispatch(Arc::new(move |project, selection, check| {
+                        crate::chat::agent::list(&chat_list_app, project, selection, check)
                     }))
                     .map_err(|_| unavailable())?;
                 let chat_send_app = app.clone();
@@ -664,8 +930,13 @@ pub async fn agent_control_approve(
                     .collect();
                 let mut found = std::collections::HashSet::new();
                 for project in projects {
-                    let items = crate::chat::agent::list(&app, project, &conversations, &|| Ok(()))
-                        .map_err(|_| std::io::Error::other("Chat history is unavailable."))?;
+                    let items = crate::chat::agent::list(
+                        &app,
+                        project,
+                        ChatConversationSelection::Exact(conversations.clone()),
+                        &|| Ok(()),
+                    )
+                    .map_err(|_| std::io::Error::other("Chat history is unavailable."))?;
                     found.extend(items.into_iter().map(|c| c.conversation_id));
                 }
                 if conversations.iter().any(|id| !found.contains(id)) {
@@ -1541,10 +1812,16 @@ pub async fn agent_browser_upload_prepare(
         let app = window.app_handle().clone();
         let broker = app.state::<Control>().required()?;
         let native = app.clone();
+        let prepare_broker = broker.clone();
+        let prepare_operation = operation_id.clone();
         let permit = tauri::async_runtime::spawn_blocking(move || {
-            broker.prepare_browser_upload(&operation_id, &nonce, |control, input, permit| {
-                crate::browser::agent_dom::prepare_upload(&native, control, input, permit)
-            })
+            prepare_broker.prepare_browser_upload(
+                &prepare_operation,
+                &nonce,
+                |control, input, permit| {
+                    crate::browser::agent_dom::prepare_upload(&native, control, input, permit)
+                },
+            )
         })
         .await
         .map_err(|_| "OUTCOME_UNKNOWN".to_string())?
@@ -1555,11 +1832,29 @@ pub async fn agent_browser_upload_prepare(
                 .unwrap()
                 .to_string()
         })?;
-        crate::settings_window::request_checked(&app, Some("agent-control".into()), || {
-            permit.check().map_err(|_| "CONTROL_REVOKED".into())
-        })
-        .await
-        .map_err(|_| "OUTCOME_UNKNOWN".into())
+        if broker.yolo_mode() {
+            let upload_app = app.clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                broker.decide_browser_upload(&operation_id, true, |approval| {
+                    crate::browser::agent_dom::upload(&upload_app, approval)
+                })
+            })
+            .await
+            .map_err(|_| "OUTCOME_UNKNOWN".to_string())?
+            .map_err(|code| {
+                serde_json::to_value(code)
+                    .unwrap()
+                    .as_str()
+                    .unwrap()
+                    .to_string()
+            })
+        } else {
+            crate::settings_window::request_checked(&app, Some("agent-control".into()), || {
+                permit.check().map_err(|_| "CONTROL_REVOKED".into())
+            })
+            .await
+            .map_err(|_| "OUTCOME_UNKNOWN".into())
+        }
     }
     #[cfg(not(target_os = "macos"))]
     {
