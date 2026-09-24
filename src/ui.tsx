@@ -83,8 +83,10 @@ export function Modal({
   className = "",
   descriptionId,
   initialFocus,
+  role = "dialog",
   tone,
   protectTheme = false,
+  closeDisabled = false,
 }: {
   title: string;
   children: ReactNode;
@@ -93,8 +95,10 @@ export function Modal({
   className?: string;
   descriptionId?: string;
   initialFocus?: RefObject<HTMLElement | null>;
+  role?: "dialog" | "alertdialog";
   tone?: "warning" | "danger";
   protectTheme?: boolean;
+  closeDisabled?: boolean;
 }) {
   useProtectedTheme(protectTheme);
   const dialog = useRef<HTMLDialogElement>(null);
@@ -110,15 +114,16 @@ export function Modal({
     <dialog
       ref={dialog}
       className={`modal${wide ? " modal-wide" : ""}${className ? ` ${className}` : ""}`}
+      role={role}
       aria-labelledby={titleId}
       aria-describedby={descriptionId}
       data-tone={tone}
       onCancel={(event) => {
         event.preventDefault();
-        onClose();
+        if (!closeDisabled) onClose();
       }}
       onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (!closeDisabled && event.target === event.currentTarget) onClose();
       }}
     >
       <div className="modal-surface">
@@ -129,7 +134,11 @@ export function Modal({
             </span>
           )}
           <h2 id={titleId}>{title}</h2>
-          <IconButton title="Close dialog" onClick={onClose}>
+          <IconButton
+            title="Close dialog"
+            disabled={closeDisabled}
+            onClick={onClose}
+          >
             <X size={16} iconId="dialog-close" />
           </IconButton>
         </header>

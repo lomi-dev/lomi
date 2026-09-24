@@ -78,6 +78,11 @@ test("Android approval binds provider terms and destructive confirmation to the 
     };
   });
   await page.goto("/?window=settings&page=agent-control");
+  const sessionsTab = page.getByRole("tab", { name: /^Sessions/ });
+  await expect(sessionsTab).toBeVisible();
+  if ((await sessionsTab.getAttribute("aria-selected")) !== "true")
+    await sessionsTab.click();
+  await expect(sessionsTab).toHaveAttribute("aria-selected", "true");
   const approve = page.getByRole("button", {
     name: "Approve Android operation",
     exact: true,

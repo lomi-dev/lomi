@@ -97,13 +97,13 @@ fn merge(source: Option<&str>) -> Result<Value, String> {
 }
 
 #[derive(Serialize)]
-pub struct NotificationSetup {
-    path: String,
-    revision: Option<String>,
-    configured: bool,
+pub(crate) struct NotificationSetup {
+    pub(crate) path: String,
+    pub(crate) revision: Option<String>,
+    pub(crate) configured: bool,
 }
 
-fn inspect(path: &Path) -> Result<NotificationSetup, String> {
+pub(crate) fn inspect(path: &Path) -> Result<NotificationSetup, String> {
     let source = cli_config::read(path)?;
     let merged = merge(source.as_deref())?;
     let configured = source
@@ -117,7 +117,7 @@ fn inspect(path: &Path) -> Result<NotificationSetup, String> {
     })
 }
 
-fn enable(path: &Path, expected: Option<&str>) -> Result<(), String> {
+pub(crate) fn enable(path: &Path, expected: Option<&str>) -> Result<(), String> {
     let source = cli_config::read(path)?;
     if cli_config::revision(source.as_deref()).as_deref() != expected {
         return Err(

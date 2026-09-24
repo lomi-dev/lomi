@@ -196,8 +196,8 @@ const YOLO_SCOPES: &[&str] = &[
     "browser.upload",
 ];
 
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, serde::Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Endpoint {
     pub instance_id: String,
     pub endpoint: PathBuf,

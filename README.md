@@ -220,10 +220,21 @@ where you can remove images you no longer need. Each saved PNG is limited to
 Images are local files, not uploads;
 remote SSH sessions and containers need their own access to those files.
 
-On Linux, Lomi can help configure titles for Codex, agy, Cursor CLI, and
-Claude Code. It asks before changing configuration and keeps a backup. The agy
-title formatter reads local conversation-name annotations. Setup does not restart
-the CLI or resume a conversation automatically.
+Lomi recognizes 30 coding agents plus Antigravity CLI on macOS and Linux.
+The status bar offers each agent’s supported missing integrations. See the
+[CLI integration matrix](docs/cli-agents.md) for supported agents, MCP formats,
+manual setup and version limitations. Click **Enable …
+notifications**, **Enable … Lomi MCP**, or **Enable … titlebar** to configure that
+feature. Notifications support Codex and Claude Code; MCP is available on
+qualified macOS Apple Silicon hosts. Configured features disappear. Each suggestion has its own close button; closing
+it hides only that feature for that CLI until Lomi restarts.
+
+Changes preserve other settings and save a backup. Restart or reload the CLI to
+apply them; Antigravity titles can also be activated with `/title on`. Lomi does
+not restart the CLI or resume conversations automatically. Settings → Agent
+control lists all agents and installs MCP in one supported user configuration or
+in bulk. Clients without automatic setup show the required manual steps.
+See [MCP setup](docs/mcp/USAGE.md) for pairing and client approvals.
 
 ## What survives a restart
 

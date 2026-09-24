@@ -1,5 +1,31 @@
 import { expect, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { mockDesktop } from "./desktop";
+
+async function openPermissionGroup(page: Page, name: string) {
+  const summary = page
+    .locator("details.agent-permission-group > summary")
+    .filter({ hasText: name })
+    .first();
+  const details = summary.locator("xpath=..");
+  await expect(summary).toBeVisible();
+  if (
+    !(await details.evaluate((element) => (element as HTMLDetailsElement).open))
+  )
+    await summary.click();
+  await expect
+    .poll(() =>
+      details.evaluate((element) => (element as HTMLDetailsElement).open),
+    )
+    .toBe(true);
+}
+
+async function openSessionsTab(page: Page) {
+  const tab = page.getByRole("tab", { name: /^Sessions/ });
+  await expect(tab).toBeVisible();
+  if ((await tab.getAttribute("aria-selected")) !== "true") await tab.click();
+  await expect(tab).toHaveAttribute("aria-selected", "true");
+}
 
 test("Chat history is opt-in, exact, paginated and cleared when the workspace changes", async ({
   page,
@@ -79,6 +105,8 @@ test("Chat history is opt-in, exact, paginated and cleared when the workspace ch
     };
   });
   await page.goto("/?window=settings&page=agent-control");
+  await openSessionsTab(page);
+  await openPermissionGroup(page, "Chat AI");
   const permission = page.getByLabel(
     "Allow reading selected Chat AI conversations",
   );

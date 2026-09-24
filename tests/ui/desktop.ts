@@ -121,6 +121,12 @@ export async function mockDesktop(
         cliTitleSetup: null,
         cliTitleError: "",
         cliTitleSaveDelay: 0,
+        cliIntegrationStatuses: {} as Record<string, any>,
+        dismissedCliIntegrations: new Map<string, boolean>(),
+        cliIntegrationError: "",
+        cliIntegrationSaveDelay: 0,
+        mcpClients: [] as any[],
+        mcpInstallErrors: {} as Record<string, string>,
         agentNotificationSetup: {
           path: "/home/test/.claude/settings.json",
           revision: "initial",
@@ -1157,6 +1163,63 @@ export async function mockDesktop(
             if (desktop.__nativeTest.cliTitleError)
               throw new Error(desktop.__nativeTest.cliTitleError);
             desktop.__nativeTest.cliTitleSetup = null;
+            return;
+          }
+          if (command === "inspect_cli_integrations") {
+            const mock = desktop.__nativeTest;
+            const configured = mock.cliIntegrationStatuses[args.process.cli];
+            const status = configured ?? {
+              cli: args.process.cli,
+              features: [],
+            };
+            return {
+              ...status,
+              features: status.features
+                .filter(
+                  (feature: any) =>
+                    !mock.dismissedCliIntegrations.has(
+                      `${args.process.cli}:${feature.feature}`,
+                    ),
+                )
+                .map((feature: any) => ({ ...feature })),
+            };
+          }
+          if (command === "enable_cli_integration") {
+            const mock = desktop.__nativeTest;
+            if (mock.cliIntegrationSaveDelay)
+              await new Promise((resolve) =>
+                setTimeout(resolve, mock.cliIntegrationSaveDelay),
+              );
+            if (mock.cliIntegrationError)
+              throw new Error(mock.cliIntegrationError);
+            const status = mock.cliIntegrationStatuses[args.process.cli];
+            if (status) {
+              const feature = status.features.find(
+                (item: any) => item.feature === args.feature,
+              );
+              if (feature) feature.configured = true;
+            }
+            return `${args.process.cli} ${args.feature} are configured.`;
+          }
+          if (command === "dismiss_cli_integrations") {
+            desktop.__nativeTest.dismissedCliIntegrations.set(
+              `${args.cli}:${args.feature}`,
+              true,
+            );
+            return;
+          }
+          if (command === "inspect_mcp_clients")
+            return desktop.__nativeTest.mcpClients.map((client: any) => ({
+              ...client,
+            }));
+          if (command === "install_mcp_client") {
+            const mock = desktop.__nativeTest;
+            const error = mock.mcpInstallErrors[args.cli];
+            if (error) throw new Error(error);
+            const client = mock.mcpClients.find(
+              (item: any) => item.cli === args.cli,
+            );
+            if (client) client.configured = true;
             return;
           }
           if (command === "quote_paths")

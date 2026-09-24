@@ -195,6 +195,7 @@ test("Settings changes future startup only and refreshes current control state o
     mock.agentControlState.supported = true;
   });
   await page.goto("/?window=settings&page=agent-control");
+  await page.getByRole("tab", { name: "Preferences", exact: true }).click();
 
   const automaticStart = page.getByRole("switch", {
     name: /Start MCP server when Lomi opens/,
@@ -206,7 +207,7 @@ test("Settings changes future startup only and refreshes current control state o
   });
   await automaticStart.check();
   await expect(automaticStart).toBeChecked();
-  await expect(page.getByRole("status")).toHaveText("Agent control is off");
+  await expect(page.locator(".agent-control-badge")).toHaveText("Off");
   await expect
     .poll(() =>
       page.evaluate(
@@ -253,7 +254,7 @@ test("Settings changes future startup only and refreshes current control state o
     );
   });
   await expect(automaticStart).toBeChecked();
-  await expect(page.getByRole("status")).toHaveText("Ready for pairing");
+  await expect(page.locator(".agent-control-badge")).toHaveText("Ready");
 });
 
 test("Settings save errors survive a focus refresh", async ({ page }) => {
@@ -268,6 +269,7 @@ test("Settings save errors survive a focus refresh", async ({ page }) => {
     mock.agentControlState.supported = true;
   });
   await page.goto("/?window=settings&page=agent-control");
+  await page.getByRole("tab", { name: "Preferences", exact: true }).click();
   const automaticStart = page.getByRole("switch", {
     name: /Start MCP server when Lomi opens/,
   });

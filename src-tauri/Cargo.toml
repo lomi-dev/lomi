@@ -38,6 +38,7 @@ tauri-build = { version = "2", features = [] }
 tonic-prost-build = { version = "0.14.6" }
 
 [dependencies]
+lomi-mcp = { path = "crates/lomi-mcp" }
 lomi-control-core = { path = "crates/lomi-control-core" }
 lomi-control-protocol = { path = "crates/lomi-control-protocol" }
 tauri = { version = "2", features = ["macos-private-api", "unstable"] }
@@ -78,6 +79,7 @@ base64 = { version = "0.22.1" }
 
 tar = { version = "0.4.46" }
 flate2 = { version = "1.1.10", default-features = false, features = ["zlib-rs"] }
+serde-saphyr = { version = "=1.3.0", default-features = false, features = ["deserialize", "serialize"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "=3.6.3", features = ["sync-secret-service", "crypto-rust", "vendored"] }

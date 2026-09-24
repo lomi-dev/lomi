@@ -1,12 +1,33 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { mockDesktop } from "./desktop";
+import type { CliAgent } from "../../src/cli-agents";
 
-const config = {
-  cli: "codex",
-  path: "/home/user/.codex/config.toml",
-  revision: "original",
-};
+const cliPath = "/home/user/.codex/config.toml";
+
+function status(cli: "codex" | "claude" = "codex", revision = "original") {
+  const directory =
+    cli === "codex" ? "/home/user/.codex" : "/home/user/.claude";
+  return {
+    cli,
+    features: (["notifications", "mcp", "titlebar"] as const).map(
+      (feature) => ({
+        feature,
+        configured: false,
+        path:
+          feature === "notifications"
+            ? `${directory}/settings.json`
+            : feature === "mcp"
+              ? `${directory}/mcp.json`
+              : cli === "codex"
+                ? cliPath
+                : `${directory}/settings.json`,
+        revision,
+        error: null,
+      }),
+    ),
+  };
+}
 
 async function setup(page: Page) {
   await mockDesktop(page, false);
@@ -15,21 +36,33 @@ async function setup(page: Page) {
   await expect
     .poll(() => page.evaluate(() => (window as any).__nativeTest.sessions.size))
     .toBeGreaterThan(0);
-  await page.evaluate((config) => {
-    (window as any).__nativeTest.cliTitleSetup = config;
-  }, config);
+  await page.evaluate((codex) => {
+    (window as any).__nativeTest.cliIntegrationStatuses.codex = codex;
+  }, status());
 }
 
-async function detect(page: Page, cliRunning = true) {
-  await page.evaluate((cliRunning) => {
-    const state = (window as any).__nativeTest;
-    for (const id of state.sessions.keys())
-      state.terminalContexts[id] = {
-        cwd: "/project",
-        foregroundProgram: cliRunning ? "codex" : null,
-        titleCli: cliRunning ? { cli: "codex", pid: 123 } : null,
-      };
-  }, cliRunning);
+async function detect(page: Page, cli: CliAgent = "codex", pid = 123) {
+  const previousPolls = await calls(page, "terminal_contexts").then(
+    (items) => items.length,
+  );
+  await page.evaluate(
+    ({ cli, pid }) => {
+      const state = (window as any).__nativeTest;
+      for (const id of state.sessions.keys())
+        state.terminalContexts[id] = {
+          cwd: "/project",
+          foregroundProgram: cli,
+          titleCli: { cli, pid },
+        };
+    },
+    { cli, pid },
+  );
+  await expect
+    .poll(() => calls(page, "terminal_contexts").then((items) => items.length))
+    .toBeGreaterThan(previousPolls);
+  await expect
+    .poll(() => calls(page, "inspect_cli_integrations"))
+    .not.toHaveLength(0);
 }
 
 async function calls(page: Page, command: string) {
@@ -42,197 +75,267 @@ async function calls(page: Page, command: string) {
   );
 }
 
-test("detects Codex and writes only after consent without restarting the PTY", async ({
+test("offers three Codex integrations in the status bar and saves only after a click", async ({
   page,
 }, testInfo) => {
   await setup(page);
-  await page.keyboard.type("echo codex");
-  await expect.poll(() => calls(page, "terminal_contexts")).not.toHaveLength(0);
-  expect(await calls(page, "inspect_cli_titles")).toHaveLength(0);
   await detect(page);
-  const dialog = page.getByRole("dialog", {
-    name: "Enable Codex terminal titles?",
-  });
-  await expect(dialog).toBeVisible();
-  await expect(dialog).toContainText(config.path);
-  await expect(dialog.getByRole("button", { name: "Not now" })).toBeFocused();
-  expect(await calls(page, "enable_cli_titles")).toHaveLength(0);
-  await page.setViewportSize({ width: 800, height: 420 });
+
+  const group = page.getByRole("group", { name: "Codex integrations" });
+  await expect(group).toBeVisible();
   await expect(
-    dialog.getByRole("button", { name: "Allow changes" }),
+    group.getByRole("button", { name: "Enable Codex notifications" }),
   ).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath("codex-consent.png") });
-  await page.evaluate(() => {
-    (window as any).__nativeTest.cliTitleSaveDelay = 300;
+  await expect(
+    group.getByRole("button", { name: "Enable Codex Lomi MCP" }),
+  ).toBeVisible();
+  await expect(
+    group.getByRole("button", { name: "Enable Codex titlebar" }),
+  ).toBeVisible();
+  await expect(group.getByRole("button")).toHaveCount(6);
+  await expect(
+    group.getByRole("button", { name: "Enable Codex titlebar" }),
+  ).toHaveAttribute("title", expect.stringContaining(cliPath));
+  expect(await calls(page, "enable_cli_integration")).toHaveLength(0);
+  expect(await calls(page, "dismiss_cli_integrations")).toHaveLength(0);
+
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.screenshot({
+    path: testInfo.outputPath("cli-statusbar-wide.png"),
   });
-  await dialog.getByRole("button", { name: "Allow changes" }).click();
-  await expect(dialog.getByRole("button", { name: "Not now" })).toBeDisabled();
-  await page.keyboard.press("Escape");
-  await expect(dialog).toBeVisible();
-  await expect(dialog).toHaveCount(0);
-  await expect(page.getByText(/Codex title settings are ready/)).toBeVisible();
-  const saved = await calls(page, "enable_cli_titles");
-  expect(saved).toHaveLength(1);
-  expect(saved[0].args).toEqual({
-    path: config.path,
-    revision: config.revision,
+  await page.setViewportSize({ width: 800, height: 420 });
+  await expect(group).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("cli-statusbar-small.png"),
+  });
+
+  const starts = await calls(page, "start_terminal");
+  await group.getByRole("button", { name: "Enable Codex titlebar" }).click();
+  await expect(
+    group.getByRole("button", { name: "Enable Codex titlebar" }),
+  ).toHaveCount(0);
+  await expect(
+    group.getByRole("button", { name: "Enable Codex notifications" }),
+  ).toBeVisible();
+  await expect(
+    group.getByRole("button", { name: "Enable Codex Lomi MCP" }),
+  ).toBeVisible();
+  const enabled = await calls(page, "enable_cli_integration");
+  expect(enabled).toHaveLength(1);
+  expect(enabled[0].args).toEqual({
     id: expect.any(String),
     process: { cli: "codex", pid: 123 },
+    feature: "titlebar",
+    path: cliPath,
+    revision: "original",
   });
-  expect(await calls(page, "start_terminal")).toHaveLength(1);
+  expect(await calls(page, "start_terminal")).toHaveLength(starts.length);
   expect(await calls(page, "close_terminal")).toHaveLength(0);
-  expect(await calls(page, "write_terminal")).toEqual(
-    expect.not.arrayContaining([
-      expect.objectContaining({
-        args: expect.objectContaining({ data: "\r" }),
-      }),
-    ]),
-  );
+  expect(await calls(page, "write_terminal")).toHaveLength(0);
 });
 
-test("defers to existing dialogs and does not repeat a declined request for the same config", async ({
+test("dismisses each feature independently across tabs and CLI processes", async ({
   page,
 }) => {
   await setup(page);
-  await page.getByRole("tab", { name: "Terminal", exact: true }).dblclick();
-  const rename = page.getByRole("dialog", { name: "Rename tab" });
-  await expect(rename).toBeVisible();
   await detect(page);
-  await expect.poll(() => calls(page, "terminal_contexts")).not.toHaveLength(0);
-  expect(await calls(page, "inspect_cli_titles")).toHaveLength(0);
-  await rename.getByRole("button", { name: "Cancel" }).click();
-  const dialog = page.getByRole("dialog", {
-    name: "Enable Codex terminal titles?",
+  const group = page.getByRole("group", { name: "Codex integrations" });
+  const mcp = group.getByRole("button", { name: "Enable Codex Lomi MCP" });
+  const notifications = group.getByRole("button", {
+    name: "Enable Codex notifications",
   });
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole("button", { name: "Not now" }).click();
+  const titlebar = group.getByRole("button", { name: "Enable Codex titlebar" });
+  const closeMcp = group.getByRole("button", {
+    name: "Dismiss Codex Lomi MCP suggestion until Lomi restarts",
+  });
+  await closeMcp.focus();
+  await page.keyboard.press("Enter");
+  await expect(mcp).toHaveCount(0);
+  await expect(notifications).toBeVisible();
+  await expect(titlebar).toBeVisible();
+  await expect(group.getByRole("button")).toHaveCount(4);
+  expect(await calls(page, "dismiss_cli_integrations")).toEqual([
+    {
+      command: "dismiss_cli_integrations",
+      args: { cli: "codex", feature: "mcp" },
+    },
+  ]);
+  expect(await calls(page, "enable_cli_integration")).toHaveLength(0);
+
   await page.keyboard.press("Control+Shift+t");
-  await expect(page.locator(".xterm-screen")).toBeVisible();
-  await detect(page);
-  await expect.poll(() => calls(page, "inspect_cli_titles")).toHaveLength(2);
-  await expect(dialog).toHaveCount(0);
-  expect(await calls(page, "enable_cli_titles")).toHaveLength(0);
+  await expect(page.getByRole("tab")).toHaveCount(2);
+  await detect(page, "codex", 789);
+  await expect(mcp).toHaveCount(0);
+  await expect(notifications).toBeVisible();
+  await expect(titlebar).toBeVisible();
+
+  await page.evaluate((claude) => {
+    (window as any).__nativeTest.cliIntegrationStatuses.claude = claude;
+  }, status("claude"));
+  await detect(page, "claude", 456);
+  await expect(
+    page.getByRole("button", { name: "Enable Claude Code Lomi MCP" }),
+  ).toBeVisible();
+  await detect(page, "codex", 999);
+  await expect(mcp).toHaveCount(0);
+
+  await group
+    .getByRole("button", {
+      name: "Dismiss Codex notifications suggestion until Lomi restarts",
+    })
+    .click();
+  await expect(notifications).toHaveCount(0);
+  await expect(titlebar).toBeVisible();
+  await group
+    .getByRole("button", {
+      name: "Dismiss Codex titlebar suggestion until Lomi restarts",
+    })
+    .click();
+  await expect(group).toHaveCount(0);
+  expect(await calls(page, "enable_cli_integration")).toHaveLength(0);
+  expect(
+    (await calls(page, "dismiss_cli_integrations")).map(
+      (call: any) => call.args.feature,
+    ),
+  ).toEqual(["mcp", "notifications", "titlebar"]);
 });
 
-test("skips configured titles and requires renewed consent after a save conflict", async ({
+test("refreshes the offer when the detected CLI changes", async ({ page }) => {
+  await setup(page);
+  await page.evaluate(
+    (claude) => {
+      (window as any).__nativeTest.cliIntegrationStatuses.claude = claude;
+    },
+    status("claude", "claude-revision"),
+  );
+  await detect(page);
+  await expect(
+    page.getByRole("group", { name: "Codex integrations" }),
+  ).toBeVisible();
+
+  const previousInspections = (await calls(page, "inspect_cli_integrations"))
+    .length;
+  await page.evaluate(() => {
+    const state = (window as any).__nativeTest;
+    for (const id of state.sessions.keys())
+      state.terminalContexts[id] = {
+        cwd: "/project",
+        foregroundProgram: "claude",
+        titleCli: { cli: "claude", pid: 456 },
+      };
+  });
+  await expect
+    .poll(() =>
+      calls(page, "inspect_cli_integrations").then((items) => items.length),
+    )
+    .toBeGreaterThan(previousInspections);
+  await expect(
+    page.getByRole("group", { name: "Claude Code integrations" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("group", { name: "Codex integrations" }),
+  ).toHaveCount(0);
+});
+
+test("requires a fresh click after a configuration conflict refreshes the revision", async ({
+  page,
+}) => {
+  await setup(page);
+  await detect(page);
+  const group = page.getByRole("group", { name: "Codex integrations" });
+  await page.evaluate(() => {
+    const state = (window as any).__nativeTest;
+    state.cliIntegrationError = "Codex configuration changed. Review it again.";
+    const titlebar = state.cliIntegrationStatuses.codex.features.find(
+      (feature: any) => feature.feature === "titlebar",
+    );
+    titlebar.revision = "external-edit";
+  });
+
+  await group.getByRole("button", { name: "Enable Codex titlebar" }).click();
+  await expect(page.getByRole("alert")).toContainText("configuration changed");
+  await expect(
+    group.getByRole("button", { name: "Enable Codex titlebar" }),
+  ).toBeVisible();
+  const failedAttempt = await calls(page, "enable_cli_integration");
+  expect(failedAttempt).toHaveLength(1);
+  expect(failedAttempt[0].args.revision).toBe("original");
+
+  await page.evaluate(() => {
+    (window as any).__nativeTest.cliIntegrationError = "";
+  });
+  await expect
+    .poll(() => calls(page, "inspect_cli_integrations"))
+    .toHaveLength(2);
+  expect(await calls(page, "enable_cli_integration")).toHaveLength(1);
+  await group.getByRole("button", { name: "Enable Codex titlebar" }).click();
+  await expect(
+    group.getByRole("button", { name: "Enable Codex titlebar" }),
+  ).toHaveCount(0);
+  const attempts = await calls(page, "enable_cli_integration");
+  expect(attempts).toHaveLength(2);
+  expect(attempts[1].args.revision).toBe("external-edit");
+});
+
+test("notification permission denial does not write CLI configuration", async ({
+  page,
+}) => {
+  await setup(page);
+  await detect(page);
+  await page.evaluate(() => {
+    (window as any).__nativeTest.agentNotificationPermission = false;
+  });
+
+  await page
+    .getByRole("group", { name: "Codex integrations" })
+    .getByRole("button", { name: "Enable Codex notifications" })
+    .click();
+  await expect(
+    page.getByText("Notifications are blocked.", { exact: false }),
+  ).toBeVisible();
+  expect(
+    await calls(page, "plugin:notification|request_permission"),
+  ).toHaveLength(1);
+  expect(await calls(page, "enable_cli_integration")).toHaveLength(0);
+});
+
+test("offers only native features for newly detected CLIs", async ({
   page,
 }) => {
   await setup(page);
   await page.evaluate(() => {
-    (window as any).__nativeTest.cliTitleSetup = null;
+    (window as any).__nativeTest.cliIntegrationStatuses.kilo = {
+      cli: "kilo",
+      features: [
+        {
+          feature: "mcp",
+          configured: false,
+          path: "/home/test/.config/kilo/kilo.jsonc",
+          revision: "kilo-revision",
+          error: null,
+        },
+      ],
+    };
   });
-  await detect(page);
-  await expect.poll(() => calls(page, "inspect_cli_titles")).toHaveLength(1);
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await page.keyboard.press("Control+Shift+t");
-  await expect(page.locator(".xterm-screen")).toBeVisible();
-  await page.evaluate((config) => {
-    const state = (window as any).__nativeTest;
-    state.cliTitleSetup = config;
-    state.cliTitleError =
-      "Codex configuration changed. Check the settings again.";
-  }, config);
-  await detect(page);
-  const dialog = page.getByRole("dialog", {
-    name: "Enable Codex terminal titles?",
-  });
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole("button", { name: "Allow changes" }).click();
-  await expect(dialog.getByRole("alert")).toContainText(
-    "configuration changed",
-  );
-  await page.evaluate((config) => {
-    const state = (window as any).__nativeTest;
-    state.cliTitleSetup = { ...config, revision: "external-edit" };
-    state.cliTitleError = "";
-  }, config);
-  await dialog.getByRole("button", { name: "Check again" }).click();
+  await detect(page, "kilo", 456);
+  const group = page.getByRole("group", { name: "Kilo Code CLI integrations" });
   await expect(
-    dialog.getByRole("button", { name: "Allow changes" }),
+    group.getByRole("button", { name: "Enable Kilo Code CLI Lomi MCP" }),
   ).toBeVisible();
-  expect(await calls(page, "enable_cli_titles")).toHaveLength(1);
-  await dialog.getByRole("button", { name: "Allow changes" }).click();
-  await expect(dialog).toHaveCount(0);
-  expect((await calls(page, "enable_cli_titles"))[1].args.revision).toBe(
-    "external-edit",
-  );
-});
-
-for (const [cli, name, path] of [
-  ["agy", "agy", "/home/user/.gemini/antigravity-cli/settings.json"],
-  ["cursor", "Cursor CLI", "/home/user/.cursor/cli-config.json"],
-  ["claude", "Claude Code", "/home/user/.claude/settings.json"],
-]) {
-  test(`requests consent for ${name} after switching CLI in the same terminal`, async ({
-    page,
-  }, testInfo) => {
-    await setup(page);
-    await page.evaluate(() => {
-      (window as any).__nativeTest.cliTitleSetup = null;
-    });
-    await detect(page);
-    await expect.poll(() => calls(page, "inspect_cli_titles")).toHaveLength(1);
-    await page.evaluate(
-      ({ cli, path }) => {
-        const state = (window as any).__nativeTest;
-        state.cliTitleSetup = { cli, path, revision: "new-cli" };
-        for (const id of state.sessions.keys())
-          state.terminalContexts[id].titleCli = { cli, pid: 456 };
-      },
-      { cli, path },
-    );
-    const dialog = page.getByRole("dialog", {
-      name: `Enable ${name} terminal titles?`,
-    });
-    await expect(dialog).toBeVisible();
-    await expect(dialog).toContainText(path);
-    expect(await calls(page, "enable_cli_titles")).toHaveLength(0);
-    if (cli === "agy") {
-      await page.setViewportSize({ width: 800, height: 420 });
-      await expect(dialog).toContainText("Lomi’s local title formatter");
-      const button = await dialog
-        .getByRole("button", { name: "Allow changes" })
-        .boundingBox();
-      expect(button!.y + button!.height).toBeLessThan(420);
-      await page.screenshot({ path: testInfo.outputPath("agy-consent.png") });
-      await page.clock.install();
-    }
-    await dialog.getByRole("button", { name: "Allow changes" }).click();
-    await expect(dialog).toHaveCount(0);
-    if (cli === "agy") {
-      const activation = page.getByRole("dialog", {
-        name: "Activate agy terminal titles",
-      });
-      await expect(activation).toContainText("Settings saved.");
-      await expect(activation).toContainText("/title on");
-      await expect(activation).toContainText(
-        "/resume alone does not activate titles",
-      );
-      await expect(
-        activation.getByRole("button", { name: "Got it" }),
-      ).toBeFocused();
-      await page.clock.fastForward(6000);
-      await expect(activation).toBeVisible();
-      await page.screenshot({
-        path: testInfo.outputPath("agy-activation.png"),
-      });
-      await activation.getByRole("button", { name: "Got it" }).click();
-      await expect(activation).toHaveCount(0);
-      expect(await calls(page, "write_terminal")).toHaveLength(0);
-    }
-    const saved = await calls(page, "enable_cli_titles");
-    expect(saved).toHaveLength(1);
-    expect(saved[0].args).toEqual({
-      id: expect.any(String),
-      process: { cli, pid: 456 },
-      path,
-      revision: "new-cli",
-    });
-    if (cli !== "agy")
-      await expect(
-        page.getByText(`${name} title settings are ready.`, { exact: false }),
-      ).toBeVisible();
-    expect(await calls(page, "start_terminal")).toHaveLength(1);
-    expect(await calls(page, "close_terminal")).toHaveLength(0);
+  await expect(
+    group.getByRole("button", { name: /titlebar|notifications/ }),
+  ).toHaveCount(0);
+  expect(await calls(page, "enable_cli_integration")).toHaveLength(0);
+  await group
+    .getByRole("button", { name: "Enable Kilo Code CLI Lomi MCP" })
+    .click();
+  expect((await calls(page, "enable_cli_integration"))[0].args).toEqual({
+    id: expect.any(String),
+    process: { cli: "kilo", pid: 456 },
+    feature: "mcp",
+    path: "/home/test/.config/kilo/kilo.jsonc",
+    revision: "kilo-revision",
   });
-}
+  expect(await calls(page, "write_terminal")).toHaveLength(0);
+});

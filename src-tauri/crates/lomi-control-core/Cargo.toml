@@ -6,6 +6,7 @@ license = "Apache-2.0"
 publish = false
 
 [dependencies]
+ring = "0.17.14"
 lomi-control-protocol = { path = "../lomi-control-protocol" }
 rcgen = { version = "=0.14.10", default-features = false, features = ["ring"] }
 rustls = { version = "=0.23.45", default-features = false, features = ["ring", "std"] }

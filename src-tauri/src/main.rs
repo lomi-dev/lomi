@@ -2,6 +2,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--mcp")) {
+        if let Err(error) = lomi_mcp::run(std::env::args().skip(2).collect()) {
+            eprintln!("{error}");
+            std::process::exit(1);
+        }
+        return;
+    }
     if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--agy-terminal-title")) {
         if let Err(error) = lomi_lib::print_agy_title() {
             eprintln!("{error}");

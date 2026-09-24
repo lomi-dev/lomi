@@ -1,5 +1,31 @@
 import { expect, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { mockDesktop } from "./desktop";
+
+async function openPermissionGroup(page: Page, name: string) {
+  const summary = page
+    .locator("details.agent-permission-group > summary")
+    .filter({ hasText: name })
+    .first();
+  const details = summary.locator("xpath=..");
+  await expect(summary).toBeVisible();
+  if (
+    !(await details.evaluate((element) => (element as HTMLDetailsElement).open))
+  )
+    await summary.click();
+  await expect
+    .poll(() =>
+      details.evaluate((element) => (element as HTMLDetailsElement).open),
+    )
+    .toBe(true);
+}
+
+async function openSessionsTab(page: Page) {
+  const tab = page.getByRole("tab", { name: /^Sessions/ });
+  await expect(tab).toBeVisible();
+  if ((await tab.getAttribute("aria-selected")) !== "true") await tab.click();
+  await expect(tab).toHaveAttribute("aria-selected", "true");
+}
 
 test("pairing binds terminal execution to the selected available shell", async ({
   page,
@@ -60,6 +86,8 @@ test("pairing binds terminal execution to the selected available shell", async (
     };
   });
   await page.goto("/?window=settings&page=agent-control");
+  await openSessionsTab(page);
+  await openPermissionGroup(page, "Terminal");
   await page.getByLabel("Workspace", { exact: true }).selectOption("workspace");
   const permission = page.getByLabel(
     "Allow terminal creation, command execution and output reads",

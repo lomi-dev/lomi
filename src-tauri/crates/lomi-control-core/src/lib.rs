@@ -14,6 +14,8 @@ pub mod browser;
 #[cfg(unix)]
 pub mod client;
 #[cfg(unix)]
+pub mod discovery;
+#[cfg(unix)]
 pub mod file_mutation;
 #[cfg(unix)]
 pub mod file_trash;

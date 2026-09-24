@@ -161,7 +161,7 @@ import {
   prepareApplicationClose,
   type ReleaseClosePreparation,
 } from "./application-close";
-import { useCliTitleSetup } from "./CliTitleSetup";
+import { useCliIntegrations } from "./CliIntegrations";
 import { useAgentNotifications } from "./AgentNotifications";
 import {
   absoluteFilePath,
@@ -611,7 +611,11 @@ export default function Workbench() {
     [setSession],
   );
   const [paneNotice, setPaneNotice] = useState("");
-  const cliTitles = useCliTitleSetup(setError, setPaneNotice);
+  const cliIntegrations = useCliIntegrations(
+    selected ? activePanel(selected.tab)?.id : undefined,
+    setError,
+    setPaneNotice,
+  );
   const agentNotifications = useAgentNotifications(
     session,
     terminalPreferences.ready && terminalPreferences.value.agentNotifications,
@@ -906,7 +910,7 @@ export default function Workbench() {
       void api<Record<string, TerminalContext>>("terminal_contexts")
         .then((contexts) => {
           const directories = observeTerminalContexts(contexts);
-          void cliTitles.observe(contexts);
+          void cliIntegrations.observe(contexts);
           setSession((state) =>
             state ? updateDirectories(state, directories) : state,
           );
@@ -914,7 +918,7 @@ export default function Workbench() {
         .catch(() => {});
     }, 1000);
     return () => clearInterval(timer);
-  }, [info, cliTitles.observe]);
+  }, [info, cliIntegrations.observe]);
   useEffect(() => {
     if (!info) return;
     let current = true;
@@ -1691,6 +1695,7 @@ export default function Workbench() {
             <footer className="statusbar">
               {workspaceToggle}
               <Slot name="statusbar" />
+              {cliIntegrations.bar}
               <span className="status-spacer" />
             </footer>
             {dialog && (
@@ -1710,7 +1715,7 @@ export default function Workbench() {
             {closeGuard.dialog}
             {gitApproval.dialog}
             {chatApproval.dialog}
-            {cliTitles.dialog}
+
             {agentNotifications.dialog}
             <AgentControlStartup />
           </div>
@@ -2607,6 +2612,7 @@ export default function Workbench() {
             </div>
             {pluginSidebarToggles}
             <Slot name="statusbar" />
+            {cliIntegrations.bar}
             <span className="status-spacer" />
             {editorDocument && (
               <FileEditorStatus
@@ -2785,7 +2791,7 @@ export default function Workbench() {
               </div>
             </Modal>
           )}
-          {cliTitles.dialog}
+
           {agentNotifications.dialog}
           <AgentControlStartup />
         </div>

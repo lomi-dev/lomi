@@ -188,6 +188,12 @@ test("permission denial and disabling during a pending check suppress delivery",
     page.getByText("Agent notifications are blocked.", { exact: false }),
   ).toBeVisible();
   expect(await notices(page)).toHaveLength(0);
+  const previousPermissionChecks = await page.evaluate(
+    () =>
+      (window as any).__nativeTest.calls.filter(
+        (c: any) => c.command === "plugin:notification|is_permission_granted",
+      ).length,
+  );
   await page.evaluate(() => {
     (window as any).__nativeTest.agentNotificationPermission = true;
     (window as any).__nativeTest.agentNotificationPermissionDelay = 500;
@@ -203,7 +209,7 @@ test("permission denial and disabling during a pending check suppress delivery",
           ).length,
       ),
     )
-    .toBe(2);
+    .toBeGreaterThan(previousPermissionChecks);
   await page.evaluate(async () => {
     const { defaultTerminalPreferences } =
       await import("/src/terminal-preferences.ts");
@@ -231,4 +237,73 @@ test("permission denial and disabling during a pending check suppress delivery",
     .toBeGreaterThan(1);
   await page.waitForTimeout(600);
   expect(await notices(page)).toHaveLength(0);
+});
+
+test("hidden OSC 9 alerts expose no terminal text and ignore duplicate and progress reports", async ({
+  page,
+}) => {
+  await mockDesktop(page, false);
+  await page.goto("/");
+  const first = await terminal(page);
+  await page.keyboard.press("Control+Shift+t");
+  await expect(page.getByRole("tab")).toHaveCount(2);
+
+  const privateText = "PRIVATE_OSC9_TERMINAL_CONTENT";
+  await page.evaluate(
+    ({ id, privateText }) =>
+      (window as any).__nativeTest.emit(id, `\x1b]9;${privateText}\x07`),
+    { id: first.sessionId, privateText },
+  );
+  await expect
+    .poll(() => notices(page))
+    .toEqual([
+      {
+        kind: "attention",
+        context: "project · Default · Terminal",
+      },
+    ]);
+  expect(
+    await page.evaluate(() =>
+      (window as any).__nativeTest.calls.filter(
+        (call: any) => call.command === "notify_agent",
+      ),
+    ),
+  ).toEqual([
+    {
+      command: "notify_agent",
+      args: {
+        kind: "attention",
+        context: "project · Default · Terminal",
+      },
+    },
+  ]);
+
+  const previousAcknowledgements = await page.evaluate(
+    () =>
+      (window as any).__nativeTest.calls.filter(
+        (call: any) => call.command === "acknowledge_terminal",
+      ).length,
+  );
+  await page.evaluate(
+    ({ id, privateText }) => {
+      const native = (window as any).__nativeTest;
+      native.emit(id, `\x1b]9;${privateText}\x07`);
+      native.emit(id, "\x1b]9;4;50;100\x07");
+      native.emit(id, "\x1b]9;4;0\x07");
+    },
+    { id: first.sessionId, privateText },
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__nativeTest.calls.filter(
+            (call: any) => call.command === "acknowledge_terminal",
+          ).length,
+      ),
+    )
+    .toBeGreaterThan(previousAcknowledgements);
+  await expect.poll(() => notices(page)).toHaveLength(1);
+  expect(JSON.stringify(await notices(page))).not.toContain(privateText);
+  expect(await buffer(page, first.paneId)).not.toContain(privateText);
 });

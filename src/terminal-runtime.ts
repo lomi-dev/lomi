@@ -1,3 +1,4 @@
+import type { CliAgent } from "./cli-agents";
 import { Channel } from "@tauri-apps/api/core";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -49,7 +50,7 @@ interface Snapshot {
   blocksOpen: boolean;
 }
 export interface TitleProcess {
-  cli: "codex" | "agy" | "cursor" | "claude";
+  cli: CliAgent;
   pid: number;
 }
 
@@ -274,6 +275,18 @@ export class TerminalRuntime {
       return true;
     });
     const shouldNotify = createAgentNotificationGate();
+    this.terminal.parser.registerOscHandler(9, (value) => {
+      // OSC 9;4 is a progress report, not a notification. Never forward raw
+      // terminal text into a system notification.
+      if (!value || /^\d;/.test(value)) return false;
+      if (!this.disposed && shouldNotify("attention"))
+        emitAgentNotification({
+          paneId: this.paneId,
+          sessionId: this.sessionId,
+          kind: "attention",
+        });
+      return true;
+    });
     this.terminal.parser.registerOscHandler(777, (value) => {
       const kind = parseAgentSignal(value);
       if (!kind) return false;

@@ -856,6 +856,13 @@ async fn set_enabled_locked(
                             .map_err(std::io::Error::other)
                     }))
                     .map_err(|_| unavailable())?;
+                if let Err(error) = lomi_control_core::discovery::publish(
+                    &root,
+                    &broker.overview().map_err(|_| unavailable())?.endpoint,
+                ) {
+                    broker.shutdown().await;
+                    return Err(format!("Could not publish the MCP registration: {error}"));
+                }
                 *state.broker.lock().map_err(|_| unavailable())? = Some(broker);
                 app.emit_to("main", "agent-control-refresh", ())
                     .map_err(|_| unavailable())?;
@@ -865,6 +872,7 @@ async fn set_enabled_locked(
             #[cfg(target_os = "macos")]
             crate::browser::native_input::clear(&app);
             if let Some(broker) = broker {
+                remove_discovery(&app, &broker);
                 broker.shutdown().await;
             }
             crate::browser::refresh_control_state(&app);
@@ -875,6 +883,35 @@ async fn set_enabled_locked(
     {
         let _ = (app, enabled);
         Err("This host has no qualified local control transport.".into())
+    }
+}
+
+pub(crate) async fn enable_for_cli_setup(app: &tauri::AppHandle) -> Result<(), String> {
+    let state = app.state::<Control>();
+    let _transition = state.transition.lock().await;
+    load_startup_preferences(app, &state)?;
+    state
+        .startup
+        .lock()
+        .map_err(|_| unavailable())?
+        .suppress_initialization();
+    let result = set_enabled_locked(app.clone(), &state, true).await;
+    state
+        .startup
+        .lock()
+        .map_err(|_| unavailable())?
+        .set_startup_error(result.as_ref().err().cloned());
+    emit_startup_state(app, startup_state(&state)?);
+    result
+}
+
+#[cfg(unix)]
+fn remove_discovery(app: &tauri::AppHandle, broker: &Broker) {
+    if let (Ok(directory), Ok(overview)) = (app.path().app_data_dir(), broker.overview()) {
+        let _ = lomi_control_core::discovery::remove(
+            &directory.join("agent-control"),
+            &overview.endpoint.instance_id,
+        );
     }
 }
 
@@ -1062,6 +1099,7 @@ pub async fn shutdown(app: &tauri::AppHandle) {
             .ok()
             .and_then(|mut broker| broker.take());
         if let Some(broker) = broker {
+            remove_discovery(app, &broker);
             broker.shutdown().await;
         }
     }

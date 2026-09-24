@@ -134,11 +134,17 @@ or acronym.
   preserve the caller webview check in the application invoke handler.
 - xterm.js renders terminals; `src/terminal-runtime.ts` owns their lifecycle and
   streaming independently of React. Rust `portable-pty` owns native processes.
-- `src/CliTitleSetup.tsx` requests consent when a local Linux terminal runs
-  Codex, agy, Cursor CLI, or Claude Code without terminal titles configured.
-  `src-tauri/src/cli_titles.rs` locates that process's user configuration and
-  changes only title settings after approval in the main window, preserving
-  other settings and a backup. The `--agy-terminal-title` entry point formats
+- `src/CliIntegrations.tsx` offers missing titlebar, MCP, and supported notification
+  integrations in the status bar for local macOS/Linux CLI processes. Explicit
+  clicks authorize native process-scoped configuration; each suggestion has its own
+  dismissal scoped to the CLI and feature for the native app process. Settings lists the CLI catalog and installs MCP per supported client or in bulk.
+  `cli_catalog.rs` owns identities; `cli_mcp.rs` and its YAML adapter handle
+  verified formats. Preserve capability gating and manual-only clients; see
+  `docs/cli-agents.md` for paths and qualification.
+  `cli_titles.rs` resolves the process configuration; `cli_config.rs` preserves
+  other settings, revisions, and backups. `cli_mcp.rs` registers the app's headless
+  `--mcp` entry point with a pinned signing key for authenticated broker discovery.
+  Pairing grants remain connection-scoped. The `--agy-terminal-title` entry point formats
   agy's supplied JSON state, reading current conversation names from its local
   annotation files without starting the GUI or reading transcripts. Never
   configure a CLI silently or restart it automatically.

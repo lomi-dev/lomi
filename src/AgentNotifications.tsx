@@ -56,7 +56,7 @@ export function useAgentNotifications(
           if (!permissionReported.current) {
             permissionReported.current = true;
             current.current.onError(
-              "Agent notifications are blocked. Open Settings → Terminal → Configure Claude Code to check notification permission.",
+              "Agent notifications are blocked. Allow notifications for Lomi in your system settings, or use the CLI notification button to check permission.",
             );
           }
           return;

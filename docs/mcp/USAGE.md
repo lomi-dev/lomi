@@ -14,36 +14,43 @@ origin/main, without tags or releases. Build and pair locally as follows.
 ## Run and pair
 
 From the application repository, install the pinned dependencies as described in
-the main [README](../../README.md). Build the matching helper before starting the
-desktop application:
+the main [README](../../README.md), then run `pnpm tauri dev`. The application
+includes a headless MCP entry point; automatic installation needs no separate
+helper executable.
 
-```sh
-cargo build --manifest-path src-tauri/Cargo.toml --locked -p lomi-mcp
-pnpm tauri dev
-```
-
-1. Open the project in Lomi, then open **Settings → Agent control**.
-2. Select **Enable for this Lomi session**.
-3. Copy **MCP JSON configuration for this running instance** into the local MCP
-   client's supported configuration interface. The generated command points to
-   `lomi-mcp` next to the application executable. Its arguments identify this
-   instance and its public broker identity. The JSON itself grants no access.
+1. On the first launch without a saved MCP startup choice, choose **Enable
+   automatic start** to start the server now and whenever Lomi opens, or **Keep
+   disabled** to leave automatic startup off. Both choices are remembered.
+2. Open the project in Lomi, then open **Settings → Agent control**. Select
+   **Start server** if needed. Under **Preferences**, change **Start MCP server
+   when Lomi opens** to control future launches; the header controls the running
+   server independently.
+3. Under **Connect an agent**, choose your CLI from the searchable list, then
+   select **Add Lomi to …** on its configuration screen. **Back to agents**
+   returns to the list. For bulk setup, expand **All client configurations** and
+   select **Set up all eligible clients**. The
+   [CLI integration matrix](../cli-agents.md) lists the complete catalog and
+   clients requiring manual setup. Setup writes user configuration for all
+   projects and starts the server for this Lomi session.
+   A running local CLI also offers **Enable … Lomi MCP** in the status bar,
+   using that process's configuration location. Restart or reload the CLI and
+   approve Lomi in the client if prompted.
 4. Start the client's MCP connection. Call `lomi_status` and match its
-   `pairingRequestId` with the pending request displayed in Lomi.
+   `pairingRequestId` with the pending request under **Sessions** in Lomi.
 5. Select the intended workspace and explicitly check any additional existing
    workspaces from the same project. Enable the required permissions and choose
    **Approve session**. The client name is only a label; match the request ID.
 6. Call `lomi_workspace_list`, then `lomi_connect` with the approved workspace's
    ID. Keep the returned retry epoch for mutations on that connection.
 
-Access ends when the connection is revoked, Lomi restarts, or the workspace view
-is re-registered. Use fresh generated configuration after restarting Lomi or
-disabling control. Do not reuse an endpoint from an old diagnostic run.
-
-On first launch, choose whether the MCP server should start automatically. Change
-that saved preference later in **Settings → Agent control**. Automatic startup
-only starts the server; clients still require pairing and approval when YOLO
-mode is off.
+Automatic startup only starts the server; with YOLO mode off, clients still need
+explicit pairing and permission approval. Access ends when the connection is revoked, Lomi
+restarts, or the workspace view is re-registered. Automatic registration pins a
+persistent public key and authenticates each new broker endpoint. After a Lomi
+restart, restart the client's MCP connection and pair again; the registered
+configuration stays valid. YOLO mode automatically pairs the new connection.
+Moving the Lomi executable or deleting its app data
+requires installing the registration again.
 
 ### Global YOLO mode
 
@@ -57,6 +64,28 @@ client to use the new mode. Turning it off restores manual pairing and approvals
 YOLO changes Lomi's MCP permissions. Client-side approval settings remain separate.
 Target and revision validation, operation limits, and unsaved-file guards still
 apply. The manual pairing and approval instructions below describe YOLO being off.
+
+Installation preserves other settings, keeps a backup, rejects conflicting edits,
+and refuses to replace a different server already named `lomi`. Client approvals
+and project overrides still apply. Settings uses the current user's default
+configuration (including inherited `CODEX_HOME`). A running CLI uses its own
+process environment. Custom `CLAUDE_CONFIG_DIR` MCP registry locations are not
+guessed; use Claude's own MCP registration command for such profiles. No configs
+are changed until an installation button is clicked.
+
+Manual setup remains available under **Preferences → Manual configuration**,
+through **MCP JSON configuration for this running instance**. It requires the
+standalone `lomi-mcp` helper beside the executable
+and a fresh copied endpoint after each server restart. Build it with
+`cargo build --manifest-path src-tauri/Cargo.toml --locked -p lomi-mcp`.
+Never reuse an endpoint from an old diagnostic run.
+
+The expanded [CLI integration matrix](../cli-agents.md) documents JSON, JSONC,
+JSON5, TOML and YAML adapters with their primary sources. Existing client formats
+follow the official [Codex](https://learn.chatgpt.com/docs/extend/mcp?surface=cli),
+[Claude Code](https://code.claude.com/docs/en/mcp), [Cursor](https://cursor.com/docs/mcp),
+and [Antigravity](https://developers.google.com/workspace/docs/api/guides/configure-mcp-server)
+configuration documentation.
 
 Codex can require its own approval before sending a modifying MCP call, in
 addition to Lomi's pairing and operation approvals. A noninteractive
@@ -229,12 +258,13 @@ permission to execute repository hooks or helpers.
 
 ## Stop and recover
 
-Use **Stop agent control** in Settings to revoke sessions and reject pending
+Use **Turn off server** in Settings to revoke sessions and reject pending
 requests. The native Lomi menu also offers stopping access if the workspace view
 is unresponsive. Revocation does not assert that already running commands have
 exited; inspect their actual terminal or device state before taking further
-action. Disabling agent control also requires new configuration for a later
-connection.
+action. After enabling the server again, restart the client's MCP connection
+and approve a new pairing. Automatic registrations remain valid; manually copied
+per-instance configurations need the new endpoint.
 
 If receipt storage cannot open, preserve its database and matching WAL/SHM
 files together before attempting recovery. Invalid WAL checksums, truncated
@@ -267,6 +297,17 @@ is not overwritten. Keep recovery records until their contents are reconciled.
 | `outcome_unknown`                             | Preserve the receipt and inspect actual resources. Do not automatically replay the effect.     |
 
 ## Local verification
+
+To verify the application's embedded MCP entry point, build `lomi` and run the
+isolated signed-discovery test. It checks pairing, scoped access, restarts and
+tampered descriptors without changing your CLI configurations:
+
+```sh
+cargo build --manifest-path src-tauri/Cargo.toml --bin lomi --locked
+LOMI_MCP_TEST_EXECUTABLE="$PWD/src-tauri/target/debug/lomi" cargo test --manifest-path src-tauri/Cargo.toml -p lomi-control-core --test discovery_helper --locked -- --nocapture
+```
+
+Without `LOMI_MCP_TEST_EXECUTABLE`, that test reports a skip.
 
 `pnpm test:mcp` exercises the actual helper wire contracts. `pnpm test:mcp:control`
 runs the opt-in isolated native fixture on its supported host and records its

@@ -1,5 +1,37 @@
 import { expect, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { mockDesktop } from "./desktop";
+
+async function openPermissionGroup(page: Page, name: string) {
+  const summary = page
+    .locator("details.agent-permission-group > summary")
+    .filter({ hasText: name })
+    .first();
+  const details = summary.locator("xpath=..");
+  await expect(summary).toBeVisible();
+  if (
+    !(await details.evaluate((element) => (element as HTMLDetailsElement).open))
+  )
+    await summary.click();
+  await expect
+    .poll(() =>
+      details.evaluate((element) => (element as HTMLDetailsElement).open),
+    )
+    .toBe(true);
+}
+
+async function openTab(
+  page: Page,
+  name: "Connect an agent" | "Sessions" | "Preferences",
+) {
+  const tab =
+    name === "Sessions"
+      ? page.getByRole("tab", { name: /^Sessions/ })
+      : page.getByRole("tab", { name, exact: true });
+  await expect(tab).toBeVisible();
+  if ((await tab.getAttribute("aria-selected")) !== "true") await tab.click();
+  await expect(tab).toHaveAttribute("aria-selected", "true");
+}
 
 test("Android metadata approval requires a selected device and grants only read access", async ({
   page,
@@ -98,18 +130,27 @@ test("Android metadata approval requires a selected device and grants only read 
     };
   });
   await page.goto("/?window=settings&page=agent-control");
+  await openTab(page, "Preferences");
+  const recoverySummary = page
+    .locator("details.agent-control-details > summary")
+    .filter({ hasText: "File recovery" });
+  await recoverySummary.click();
   const recovery = page.getByRole("button", {
     name: "Show recovery folder",
     exact: true,
   });
   await recovery.click();
-  await expect(page.getByRole("status")).toHaveText(
+  await expect(page.locator(".keybindings-status")).toHaveText(
     "No file recovery data has been created.",
   );
   await recovery.click();
-  await expect(page.getByRole("status")).toHaveText("Recovery folder opened.");
+  await expect(page.locator(".keybindings-status")).toHaveText(
+    "Recovery folder opened.",
+  );
   await recovery.scrollIntoViewIfNeeded();
   await page.screenshot({ path: "test-results/agent-control-recovery.png" });
+  await openTab(page, "Sessions");
+  await openPermissionGroup(page, "Application preferences");
   await page.getByLabel("Workspace", { exact: true }).selectOption("workspace");
   const settingsOpening = page.getByLabel("Allow opening Settings sections");
   await expect(settingsOpening).not.toBeChecked();
@@ -273,6 +314,7 @@ test("Android metadata approval requires a selected device and grants only read 
     await expect(shortcut).toHaveCount(0);
   }
 
+  await openPermissionGroup(page, "Workspaces & panels");
   const movement = page.getByLabel("Allow rearranging existing panels");
   await page.evaluate(() => {
     (window as any).__agentTest.pendingSettingsUpdates = [
@@ -352,6 +394,7 @@ test("Android metadata approval requires a selected device and grants only read 
   expect(
     await page.evaluate(() => (window as any).__agentTest.androidReads),
   ).toBe(0);
+  await openPermissionGroup(page, "Android");
   await page.getByLabel("Allow reading selected Android device status").check();
   const inputPermission = page.getByLabel(
     "Allow touch, keys and text in this Android device",
@@ -450,6 +493,7 @@ test("Android metadata approval requires a selected device and grants only read 
   await page
     .getByLabel("Allow reading selected Android device status")
     .uncheck();
+  await openPermissionGroup(page, "Files & editor");
   const importPermission = page.getByLabel(
     "Allow importing APK files from this project",
   );
@@ -530,6 +574,7 @@ test("Android metadata approval requires a selected device and grants only read 
   const navigateBrowser = page.getByLabel(
     "Allow opening and navigating isolated browser panels",
   );
+  await openPermissionGroup(page, "Browser");
   const readBrowser = page.getByLabel(
     "Allow reading page text, form structure and browser logs",
   );
@@ -581,6 +626,7 @@ test("Android metadata approval requires a selected device and grants only read 
   const gitPermission = page.getByLabel(
     "Allow reading Git information in this project",
   );
+  await openPermissionGroup(page, "Git");
   await expect(gitPermission).toBeDisabled();
   await expect(gitPermission).not.toBeChecked();
   await filePermission.check();

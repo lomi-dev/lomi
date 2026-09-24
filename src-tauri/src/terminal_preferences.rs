@@ -338,6 +338,26 @@ pub fn save_terminal_preferences(
         .map_err(|error| error.to_string())
 }
 
+pub(crate) fn enable_notifications(app: &tauri::AppHandle) -> Result<(), String> {
+    let state = app.state::<TerminalPreferencesFile>();
+    let _guard = state.0.lock().map_err(|error| error.to_string())?;
+    let path = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?
+        .join("terminal-preferences.json");
+    // Notifications are enabled by default when no preference file exists.
+    if let Some(mut data) = read(&path)? {
+        if data.get("agentNotifications").and_then(Value::as_bool) == Some(false) {
+            data["agentNotifications"] = Value::Bool(true);
+            save(&path, &data)?;
+            app.emit("terminal-preferences-changed", ())
+                .map_err(|error| error.to_string())?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

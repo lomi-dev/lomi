@@ -51,7 +51,7 @@ test("package styles cannot hide Agent control or modal ancestors, including a l
   await expect.poll(opacity).toBe("1");
   await expect(
     page.getByRole("button", {
-      name: "Enable for this Lomi session",
+      name: "Start server",
       exact: true,
     }),
   ).toBeVisible();

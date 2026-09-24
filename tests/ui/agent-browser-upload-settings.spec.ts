@@ -59,6 +59,11 @@ test("upload consent presents immutable bytes and sends only a one-use decision"
     };
   });
   await page.goto("/?window=settings&page=agent-control");
+  const sessionsTab = page.getByRole("tab", { name: /^Sessions/ });
+  await expect(sessionsTab).toBeVisible();
+  if ((await sessionsTab.getAttribute("aria-selected")) !== "true")
+    await sessionsTab.click();
+  await expect(sessionsTab).toHaveAttribute("aria-selected", "true");
   await expect(
     page.getByRole("heading", { name: "Browser upload requests" }),
   ).toBeVisible();

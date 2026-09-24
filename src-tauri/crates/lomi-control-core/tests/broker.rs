@@ -2413,7 +2413,7 @@ async fn settings_open_requires_scope_native_commit_and_retains_exact_receipts()
         };
         let input = SettingsOpenInput {
             workspace_id: "a".into(),
-            page: SettingsPage::Editor,
+            page: SettingsPage::Terminal,
             expected_revision: "1".into(),
             retry_epoch,
             request_key: "open-settings".into(),
@@ -2458,7 +2458,7 @@ async fn settings_open_requires_scope_native_commit_and_retains_exact_receipts()
             ui_epoch: p.ui_epoch.clone(),
             result: OperationResult::SettingsOpened(SettingsOpened {
                 workspace_id: "a".into(),
-                page: SettingsPage::Editor,
+                page: SettingsPage::Terminal,
                 requested: true,
             }),
         };
@@ -2501,7 +2501,7 @@ async fn settings_open_requires_scope_native_commit_and_retains_exact_receipts()
                     .begin_settings_open(&command.operation_id, &command.nonce)
                     .unwrap();
                 assert!(
-                    matches!(ticket.action,UiAction::OpenSettings(ref c) if c.workspace_id=="a" && c.page==SettingsPage::Editor)
+                    matches!(ticket.action,UiAction::OpenSettings(ref c) if c.workspace_id=="a" && c.page==SettingsPage::Terminal)
                 );
                 assert!(broker
                     .begin_settings_open(&command.operation_id, &command.nonce)
@@ -2550,7 +2550,7 @@ async fn settings_open_requires_scope_native_commit_and_retains_exact_receipts()
         if case == "success" {
             assert!(
                 matches!(result,Reply::Ok{data:Data::Operation{ref state,ref effect_state,result:Some(OperationResult::SettingsOpened(ref s)),..},..}
-                if state=="succeeded" && effect_state=="complete" && s.requested && s.page==SettingsPage::Editor),
+                if state=="succeeded" && effect_state=="complete" && s.requested && s.page==SettingsPage::Terminal),
                 "{result:?}"
             );
         } else {
@@ -2568,7 +2568,7 @@ async fn settings_open_requires_scope_native_commit_and_retains_exact_receipts()
             serde_json::to_value(result).unwrap()
         );
         let mut changed = input.clone();
-        changed.page = SettingsPage::Terminal;
+        changed.page = SettingsPage::Themes;
         assert!(matches!(
             client.call(Request::OpenSettings(changed)).await.unwrap(),
             Reply::Error {

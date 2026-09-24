@@ -13,7 +13,11 @@ mod chat;
 #[cfg(feature = "chat-probe")]
 #[path = "../../tests/native/chat-support.rs"]
 mod chat_probe;
+mod cli_catalog;
 mod cli_config;
+mod cli_integrations;
+mod cli_mcp;
+mod cli_notifications;
 mod cli_titles;
 #[cfg(all(feature = "mcp-probe", target_os = "macos"))]
 #[path = "../../tests/native/mcp-browser-support.rs"]
@@ -151,6 +155,7 @@ pub fn run() {
         .manage(browser::Browsers::default())
         .manage(terminal::Terminals::default())
         .manage(cli_titles::CliTitleConfig::default())
+        .manage(cli_integrations::CliIntegrations::default())
         .manage(files::SessionFile::default())
         .manage(files::search::ProjectSearch::default())
         .manage(files::editor::EditorFiles::default())
@@ -243,6 +248,11 @@ pub fn run() {
                 return probe(invoke);
             }
             let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+                cli_integrations::inspect_cli_integrations,
+                cli_integrations::dismiss_cli_integrations,
+                cli_integrations::enable_cli_integration,
+                cli_integrations::inspect_mcp_clients,
+                cli_integrations::install_mcp_client,
                 agent_control::agent_control_state,
                 agent_control::agent_control_startup_state,
                 agent_control::agent_control_startup_decide,

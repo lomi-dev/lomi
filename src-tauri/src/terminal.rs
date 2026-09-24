@@ -146,7 +146,7 @@ impl Session {
     }
 
     fn title_process(&self) -> Option<crate::cli_titles::TitleProcess> {
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         if self.profile.distro.is_none() {
             let group = self.master.lock().ok()?.process_group_leader()? as u32;
             return crate::cli_titles::process_in_group(group);
@@ -1137,10 +1137,13 @@ pub fn terminal_contexts(
             context.cwd = std::fs::read_link(format!("/proc/{pid}/cwd"))
                 .ok()
                 .map(|path| path.to_string_lossy().into_owned());
+        }
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        {
             context.foreground_program = session.foreground_program();
             context.title_cli = session.title_process();
         }
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
         let _ = &session.pid;
         contexts.insert(id.clone(), context);
     }
@@ -1287,6 +1290,7 @@ mod tests {
         {
             let session = manager.get("test").unwrap();
             use crate::cli_titles::TitleCli;
+            let sleep_path = "/usr/bin/sleep";
             for (name, cli) in [
                 ("codex", TitleCli::Codex),
                 ("agy", TitleCli::Agy),
@@ -1294,7 +1298,7 @@ mod tests {
                 ("cursor-agent", TitleCli::Cursor),
             ] {
                 let executable_path = directory.path().join(name);
-                std::fs::copy("/usr/bin/sleep", &executable_path).unwrap();
+                std::fs::copy(sleep_path, &executable_path).unwrap();
                 let executable = shell::quote(&executable_path.to_string_lossy(), "bash").unwrap();
                 for command in [
                     format!("{executable} 30\r"),
@@ -1374,5 +1378,131 @@ mod tests {
         assert!(text.contains("UTF8: zażółć"), "{text}");
         assert!(text.contains("31 101"), "{text}");
         assert!(manager.sessions.lock().unwrap().is_empty());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_pty_detects_unsigned_cli_child_and_resolves_process_config() {
+        use crate::cli_titles::TitleCli;
+        use std::{
+            sync::mpsc,
+            time::{Duration, Instant},
+        };
+
+        let directory = tempfile::tempdir().unwrap();
+        shell::prepare(directory.path()).unwrap();
+        let profile = shell::discover()
+            .into_iter()
+            .find(|profile| profile.kind == "bash")
+            .unwrap();
+        let shells = Shells {
+            profiles: vec![profile.clone()],
+            integration: directory.path().to_owned(),
+        };
+        let manager = Terminals::default();
+        let (send, receive) = mpsc::channel();
+        let ack = manager.clone();
+        let output = Channel::new(move |body| {
+            if let tauri::ipc::InvokeResponseBody::Raw(bytes) = body {
+                ack.acknowledge("mac-fixture", bytes.len());
+                let _ = send.send(bytes);
+            }
+            Ok(())
+        });
+        let (exit_send, _exit_receive) = mpsc::channel();
+        let exited = Channel::new(move |_| {
+            exit_send.send(()).unwrap();
+            Ok(())
+        });
+        manager
+            .start(
+                &shells,
+                StartRequest {
+                    id: "mac-fixture".into(),
+                    profile_id: profile.id,
+                    cwd: directory.path().to_string_lossy().into_owned(),
+                    cols: 80,
+                    rows: 24,
+                    agent_ticket: None,
+                },
+                output,
+                exited,
+            )
+            .unwrap();
+
+        let marker = b"__LOMI_FIXTURE_SHELL_READY__";
+        manager
+            .write("mac-fixture", "printf '__LOMI_FIXTURE_SHELL_READY__\\n'\r")
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut output = Vec::new();
+        while !output.windows(marker.len()).any(|window| window == marker)
+            && Instant::now() < deadline
+        {
+            let Ok(chunk) = receive.recv_timeout(Duration::from_millis(100)) else {
+                continue;
+            };
+            assert!(!chunk.is_empty(), "PTY closed before its readiness marker");
+            output.extend(chunk);
+        }
+        assert!(
+            output.windows(marker.len()).any(|window| window == marker),
+            "interactive shell did not reach the fixture readiness marker"
+        );
+
+        let fixture = directory.path().join("codex");
+        std::fs::copy(std::env::current_exe().unwrap(), &fixture).unwrap();
+        let home = directory.path().join("fixture-home");
+        let codex_home = directory.path().join("fixture-codex-home");
+        let canonical_codex_home = directory
+            .path()
+            .canonicalize()
+            .unwrap()
+            .join("fixture-codex-home");
+        let command = format!(
+            "HOME={} CODEX_HOME={} LOMI_CLI_PROCESS_FIXTURE=1 sh -c '\"$1\" --exact cli_titles::tests::fixture_cli_process --nocapture & wait' sh {}\r",
+            shell::quote(&home.to_string_lossy(), "bash").unwrap(),
+            shell::quote(&codex_home.to_string_lossy(), "bash").unwrap(),
+            shell::quote(&fixture.to_string_lossy(), "bash").unwrap(),
+        );
+        manager.write("mac-fixture", &command).unwrap();
+        let session = manager.get("mac-fixture").unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let process = loop {
+            if let Some(process) = session.title_process() {
+                break process;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "fake Codex child was not detected; foreground {:?}",
+                session.foreground_program()
+            );
+            thread::sleep(Duration::from_millis(10));
+        };
+        assert_eq!(process.cli, TitleCli::Codex);
+        assert_ne!(
+            Some(process.pid as i32),
+            session.master.lock().unwrap().process_group_leader(),
+            "fixture should be discovered as a descendant of its shell wrapper"
+        );
+        manager.check_title_process("mac-fixture", process).unwrap();
+        assert_eq!(
+            crate::cli_titles::configuration(process).unwrap(),
+            (canonical_codex_home.join("config.toml"), false)
+        );
+        assert_eq!(
+            crate::cli_titles::mcp_configuration(process).unwrap(),
+            canonical_codex_home.join("config.toml")
+        );
+        assert!(
+            !codex_home.exists(),
+            "inspection must not create user config directories"
+        );
+        manager.write("mac-fixture", "\u{3}").unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while session.title_process().is_some() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        manager.stop_all();
     }
 }
