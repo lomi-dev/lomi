@@ -14,7 +14,7 @@ installer publication or private client-configuration writes.
 
 ## Baseline
 
-- App 0.4.0, initial HEAD `7d4b9ac5fbe94889b09b5a527055defd08047cca`; current HEAD `4403883ebe583188f79dfe8d7886d2422e49bfcd` (external desktop icon change, preserved).
+- App 0.4.0, initial HEAD `7d4b9ac5fbe94889b09b5a527055defd08047cca`; baseline follow-up HEAD `4403883ebe583188f79dfe8d7886d2422e49bfcd` (external desktop icon change, preserved).
 - Pre-existing modification: `src-tauri/Cargo.lock` (relocation of the lomi package entry; no version changes). Preserve it.
 - macOS 27.0 (26A428), Apple M3, ARM64; Rust/Cargo 1.98.1, Node 22.22.3, pnpm 11.25.0, Codex CLI 0.155.1.
 - Initial free disk: approximately 18 GiB. Reuse the existing Cargo target.
@@ -23,22 +23,27 @@ installer publication or private client-configuration writes.
 
 ## Milestones
 
-| Stage | State           | Acceptance                                                                                                |
-| ----- | --------------- | --------------------------------------------------------------------------------------------------------- |
-| P0    | IN_PROGRESS     | SDK/client, native browser, PTY, Android and authentication probes                                        |
-| P1    | IN_PROGRESS     | Authenticated broker, grants, receipts, UI bridge, revoke                                                 |
-| P2    | IN_PROGRESS     | Workspace, PTY, basic browser end-to-end                                                                  |
-| P3    | IN_PROGRESS     | Native browser actions, observations and artifacts                                                        |
-| P4    | IN_PROGRESS     | Managed Android end-to-end                                                                                |
-| P5.1  | IN_PROGRESS     | Scoped disk reads and editor/file adapters                                                                |
-| P5.2  | IN_PROGRESS     | Git reads/views and all seven bounded mutations; qualification active                                     |
-| P5.3  | QUALIFIED       | Selected project/workspace/panel lifecycle, mixed layout and Chat/Android descendants; plugins excluded   |
-| P5.4  | VERIFIED_SLICES | Settings open/read/editor/terminal/shortcut writes verified; further themes/plugins EXCLUDED_BY_USER      |
-| P5.5  | QUALIFIED       | Android setup, device management and protected recovery                                                   |
-| P5.6  | QUALIFIED       | Seven Chat AI tools and selected layout integration; all final checks passed                              |
-| P5.7  | QUALIFIED       | Advanced browser/PTY; application lifecycle tools EXCLUDED_BY_USER                                        |
-| P6    | IN_PROGRESS     | Functional/safety/performance and client-routing tests; distribution/installers/releases EXCLUDED_BY_USER |
-| P7    | NOT_SELECTED    | No optional extension selected by this request                                                            |
+| Stage | State        | Acceptance                                                                                                |
+| ----- | ------------ | --------------------------------------------------------------------------------------------------------- |
+| P0    | VERIFIED     | Selected SDK/client, native WKWebView, Bash/Zsh PTY, managed Android and authenticated IPC on macOS ARM64 |
+| P1    | VERIFIED     | Authenticated broker, exact grants, durable receipts, scoped UI bridge and native revoke                  |
+| P2    | VERIFIED     | Workspace, retained PTY and native browser end-to-end; client routing repetitions tracked under P6        |
+| P3    | VERIFIED     | Native browser actions, observations, screenshots, immutable artifacts and profile isolation              |
+| P4    | VERIFIED     | Selected managed Android build/import/install/launch/input path, protected generations and cleanup        |
+| P5.1  | VERIFIED     | Scoped disk/editor operations, shared buffers, conflicts, previews and real full-disk preservation        |
+| P5.2  | VERIFIED     | Guarded Git observations/views and all seven typed mutations with exact native approval                   |
+| P5.3  | VERIFIED     | Selected project/workspace/panel lifecycle, mixed layout and Chat/Android descendants                     |
+| P5.4  | VERIFIED     | Selected Settings open/read/editor/terminal/shortcut writes; further themes/plugins NOT_SELECTED          |
+| P5.5  | VERIFIED     | Android setup, device management and protected recovery on the qualified host                             |
+| P5.6  | VERIFIED     | Seven Chat AI tools and retained layout; local provider fixture, no paid request                          |
+| P5.7  | VERIFIED     | Advanced browser/PTY; application close/restart/update tools NOT_SELECTED                                 |
+| P6    | IN_PROGRESS  | Functional/safety/performance evidence recorded; finish actual-model repetitions and final reconciliation |
+| P7    | NOT_SELECTED | No optional extension selected                                                                            |
+
+VERIFIED applies only to the selected macOS ARM64 contracts and their documented
+limits. It does not qualify another operating system, a strict routing profile,
+or distribution. See REQUIREMENTS.md for all 74 tools and QUALIFICATION.md for
+executed evidence, retained failures and per-profile cleanup.
 
 ## Current work
 
@@ -46,12 +51,18 @@ Native dual-client isolation, real application restart, in-flight command/click/
 APK disconnects and product browser-profile separation have passed with normal
 cleanup. Their artifacts and scope are recorded in QUALIFICATION.md. The focused
 ADB guard regression and workspace all-target mcp-probe Clippy also passed.
-The fixed-profile actual-model matrix remains IN_PROGRESS: batch s6esnL is
-repeating dev-server, form, fix-test and origin-server. See routing-matrix.json
-for the recorded completed attempts; unexecuted repetitions are not passes.
-After this frozen batch, correct the stale panel_move description that still
-calls Android transfers unqualified, then continue the remaining repetitions.
-Final acceptance/documentation reconciliation and the last push remain required.
+The fixed-profile actual-model matrix remains IN_PROGRESS: batch s6esnL passed
+all 12 dev-server/form/fix-test/origin-server executions, bringing the ledger to
+38 complete passes and nine complete three-run rows. Twenty remaining browser,
+terminal, files/Git/reconnect repetitions and two APK repetitions remain.
+Stale Android layout tool descriptions are corrected; eight helper wire tests
+passed. Real guest-space exhaustion exposed an unrecognized pre-session Android
+exception. The bounded parser correction passed native 5Gfkz6: exact storage
+failure, same retry receipt, unchanged installed package, restored guest space
+and normal cleanup. Both parser regressions and workspace all-target mcp-probe
+Clippy passed. Formatting, syntax, catalog coverage and local doc links passed.
+Continue the remaining model repetitions, then finish acceptance reconciliation
+and push the final changes.
 
 ## Milestone history
 

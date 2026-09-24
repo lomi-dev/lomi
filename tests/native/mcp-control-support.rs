@@ -3097,11 +3097,13 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
             json!({"profile":"browser-profiles-only","catalogCount":catalog["result"]["tools"].as_array().map(Vec::len)}),
         );
     }
-    if std::env::var_os("LOMI_MCP_ANDROID_DISCONNECT_ONLY").is_some() {
+    if std::env::var_os("LOMI_MCP_ANDROID_DISCONNECT_ONLY").is_some()
+        || std::env::var_os("LOMI_MCP_ANDROID_STORAGE_ONLY").is_some()
+    {
         android_disconnect_probe::qualify(app, &mut wire, &settings, &mut child, helper, directory,
             &json!({"workspaceId":workspace,"retryEpoch":connected["structuredContent"]["data"]["retryEpoch"]})).await?;
         return Ok(
-            json!({"profile":"android-disconnect-only","catalogCount":catalog["result"]["tools"].as_array().map(Vec::len)}),
+            json!({"profile":if std::env::var_os("LOMI_MCP_ANDROID_STORAGE_ONLY").is_some() { "android-storage-only" } else { "android-disconnect-only" },"catalogCount":catalog["result"]["tools"].as_array().map(Vec::len)}),
         );
     }
     if std::env::var_os("LOMI_MCP_BROWSER_DISCONNECT_ONLY").is_some() {

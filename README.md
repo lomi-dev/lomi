@@ -81,6 +81,18 @@ task in the same folder, open the Workspaces sidebar and choose **New workspace*
   hold separate sets of tabs. Place Workspaces, Explorer, and Source Control on
   either side of the window.
 
+### Connect a local MCP client
+
+Source builds on macOS Apple Silicon include **Settings → Agent control**.
+Pair a local MCP client and grant access to selected workspaces, tools and
+resources. The client uses Lomi's retained terminals, native browser panels,
+managed Android devices, files, Git and selected Chat conversations. You can
+take control or revoke the connection from Lomi.
+
+See the [MCP setup guide](docs/mcp/USAGE.md) for building the matching stdio
+helper and pairing it. The [acceptance record](docs/mcp/ACCEPTANCE.md) lists
+completed tests, remaining qualification work and host limitations.
+
 ### Run a local Android phone
 
 Choose **+ → New android symulator** and prepare tools, a system image and a

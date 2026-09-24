@@ -5,6 +5,7 @@ import {
   writeFile,
   rm,
   copyFile,
+  statfs,
 } from "node:fs/promises";
 import { tmpdir, homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -25,7 +26,8 @@ const directory = await mkdtemp(join(tmpdir(), "lomi-mcp-control-"));
 const androidRoot = process.env.LOMI_ANDROID_PRODUCT_DIRECTORY;
 if (
   (process.env.LOMI_MCP_ROUTING_ONLY === "apk" ||
-    process.env.LOMI_MCP_ANDROID_DISCONNECT_ONLY) &&
+    process.env.LOMI_MCP_ANDROID_DISCONNECT_ONLY ||
+    process.env.LOMI_MCP_ANDROID_STORAGE_ONLY) &&
   !androidRoot
 )
   throw Error("APK routing requires the licensed isolated Android fixture.");
@@ -33,6 +35,13 @@ if (process.env.LOMI_MCP_ANDROID_LATENCY && !androidRoot)
   throw Error(
     "Android latency requires the licensed isolated Android fixture.",
   );
+if (process.env.LOMI_MCP_ANDROID_STORAGE_ONLY) {
+  const disk = await statfs(androidRoot, { bigint: true });
+  if (disk.bavail * disk.bsize < 12n * 1024n * 1024n * 1024n)
+    throw Error(
+      "Guest storage qualification needs at least 12 GiB free on the fixture volume.",
+    );
+}
 if (androidRoot) {
   const metadata = JSON.parse(
     await readFile(join(androidRoot, "devices.json"), "utf8"),
@@ -377,7 +386,25 @@ try {
     )
       throw Error("Android latency returned incomplete measurement evidence");
   }
-  if (result.stage === "passed" && process.env.LOMI_MCP_BROWSER_PROFILES_ONLY) {
+  if (result.stage === "passed" && process.env.LOMI_MCP_ANDROID_STORAGE_ONLY) {
+    const proof = JSON.parse(
+      await readFile(join(directory, "android-storage.json"), "utf8"),
+    );
+    if (
+      result.data?.profile !== "android-storage-only" ||
+      result.data?.catalogCount !== 74 ||
+      !proof.passed ||
+      proof.filledFreeBytes >= 40 * 1024 * 1024 ||
+      proof.restoredFreeBytes <= proof.beforeFreeBytes - 256 * 1024 * 1024 ||
+      proof.beforePackage !== proof.afterPackage ||
+      proof.rejected?.structuredContent?.data?.result?.installerFailure !==
+        "INSTALL_FAILED_INSUFFICIENT_STORAGE"
+    )
+      throw Error("Incomplete native guest storage refusal evidence");
+  } else if (
+    result.stage === "passed" &&
+    process.env.LOMI_MCP_BROWSER_PROFILES_ONLY
+  ) {
     const proof = JSON.parse(
       await readFile(join(directory, "browser-profiles.json"), "utf8"),
     );

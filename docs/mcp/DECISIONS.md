@@ -2,6 +2,44 @@
 
 Source of scope: `../../../lomi-mpc-docs/PROMPT.md` and its referenced contracts.
 
+## Current decisions and later qualifications
+
+The numbered entries below retain the implementation sequence. These current
+decisions supersede their earlier statements about unfinished capabilities:
+
+- The selected host is macOS ARM64. Other hosts, remote clients and strict
+  routing are unqualified. The source checkout is the delivery target; the user
+  excluded distribution, installers, releases, tags, further theme/plugin MCP
+  work and application close/restart/update tools.
+- The catalog contains 74 tools. Android and Chat participate in the selected
+  panel/workspace/project layout operations with their exact domain grants and
+  existing close guards. Plugin layout automation remains outside this scope.
+- Browser DOM actions include bounded same-origin frames. Foreign and opaque
+  frames remain inaccessible; capture requires the explicit composite grant.
+  Input remains synthetic DOM input, not a trusted native gesture.
+- Browser logs include bounded JavaScript errors, console primitives and
+  promise-rejection observations. Console/rejection collectors run in the page
+  world and their output is untrusted and incomplete. The fixed reader exposes
+  no generic native command or evaluation capability.
+- Explicit upload attaches an approved immutable file; explicit download uses
+  a bounded same-origin GET into a private artifact. Ordinary browser downloads
+  remain disabled. Neither origin grants nor these tools isolate network access.
+- Git observations and all seven typed mutations are implemented. Read helpers
+  are denied by the qualified host guard; mutation execution requires the
+  separate scope and exact native approval. Linked worktrees and arbitrary
+  Git command dispatch remain unsupported.
+- Pairing remains session-only. Real helper disconnects and application restart
+  invalidate prior authority and retry epochs. Dispatched work with uncertain
+  completion stays uncertain; reconnect never repeats it automatically.
+- The tested client profile is Codex CLI 0.156.1, gpt-6-sol, medium effort,
+  prefer-Lomi. The required 20-task, three-run matrix is still in progress.
+
+Current contracts are in [REQUIREMENTS.md](REQUIREMENTS.md), executed evidence
+in [QUALIFICATION.md](QUALIFICATION.md), and remaining work in
+[IMPLEMENTATION-STATUS.md](IMPLEMENTATION-STATUS.md).
+
+## Implementation decision history
+
 - D01: Keep a Cargo workspace under src-tauri, with GUI-free crates under src-tauri/crates and the existing src-tauri/Cargo.lock. Default member remains the app; MCP checks explicitly cover the workspace. This preserves existing Tauri commands and pre-existing lockfile changes.
 - D02: Selected SDK is published rmcp 3.4.0 (Apache-2.0), downloaded with cargo info on 2026-09-23; schemars 1.2.2 (MIT). Pinned after source/API inspection and independent process tests. No HTTP, sampling, task or cache capabilities.
 - D03: TLS 1.3 mutual authentication with rustls 0.23.45, tokio-rustls 0.26.5 and rcgen 0.14.10 passed the UDS/replay probe. The initially tested 0.23.44 was replaced after the advisory scan found RUSTSEC-2026-0285; authentication tests passed again. Early data, resumption and tickets are disabled. Session-only keys stay in RAM. Peer trust anchors must be supplied by an approved pairing, never accepted from a descriptor or peer itself. Enrollment pins the broker public certificate from the native Settings-generated configuration and requires explicit approval of the ephemeral helper certificate. The mode is session-only, with no keyring persistence or silent plaintext fallback. A new broker instance needs a new generated configuration.

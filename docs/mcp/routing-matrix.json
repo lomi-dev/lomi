@@ -19,13 +19,13 @@
     },
     {
       "task": "form",
-      "executions": 0,
-      "completePasses": 0
+      "executions": 3,
+      "completePasses": 3
     },
     {
       "task": "fix-test",
-      "executions": 0,
-      "completePasses": 0
+      "executions": 3,
+      "completePasses": 3
     },
     {
       "task": "scope-denied",
@@ -44,8 +44,8 @@
     },
     {
       "task": "origin-server",
-      "executions": 0,
-      "completePasses": 0
+      "executions": 3,
+      "completePasses": 3
     },
     {
       "task": "two-workspaces",
@@ -952,6 +952,231 @@
       "androidCleanup": null,
       "batch": "s6esnL",
       "artifact": "lomi-mcp-control-gFMzeU",
+      "sourceFingerprint": "0864f064b05c9cd15bf15c69a0d9358c7070697e7f726a067e57da47d58e36b1"
+    },
+    {
+      "task": "form",
+      "repeat": 1,
+      "passed": true,
+      "taskCompleted": true,
+      "modelTurnCompleted": true,
+      "selectedLomi": true,
+      "competingActions": [],
+      "silentFallback": false,
+      "toolCalls": 24,
+      "error": null,
+      "cleanup": {
+        "hostExited": true,
+        "appDataRemoved": true,
+        "retainedForRestart": false,
+        "exitCode": 0,
+        "signal": null,
+        "exitWaitMs": 189
+      },
+      "externalCleanup": null,
+      "androidCleanup": null,
+      "batch": "s6esnL",
+      "artifact": "lomi-mcp-control-QDQtUj",
+      "sourceFingerprint": "0864f064b05c9cd15bf15c69a0d9358c7070697e7f726a067e57da47d58e36b1"
+    },
+    {
+      "task": "form",
+      "repeat": 2,
+      "passed": true,
+      "taskCompleted": true,
+      "modelTurnCompleted": true,
+      "selectedLomi": true,
+      "competingActions": [],
+      "silentFallback": false,
+      "toolCalls": 21,
+      "error": null,
+      "cleanup": {
+        "hostExited": true,
+        "appDataRemoved": true,
+        "retainedForRestart": false,
+        "exitCode": 0,
+        "signal": null,
+        "exitWaitMs": 52
+      },
+      "externalCleanup": null,
+      "androidCleanup": null,
+      "batch": "s6esnL",
+      "artifact": "lomi-mcp-control-0SEf7i",
+      "sourceFingerprint": "0864f064b05c9cd15bf15c69a0d9358c7070697e7f726a067e57da47d58e36b1"
+    },
+    {
+      "task": "form",
+      "repeat": 3,
+      "passed": true,
+      "taskCompleted": true,
+      "modelTurnCompleted": true,
+      "selectedLomi": true,
+      "competingActions": [],
+      "silentFallback": false,
+      "toolCalls": 22,
+      "error": null,
+      "cleanup": {
+        "hostExited": true,
+        "appDataRemoved": true,
+        "retainedForRestart": false,
+        "exitCode": 0,
+        "signal": null,
+        "exitWaitMs": 8
+      },
+      "externalCleanup": null,
+      "androidCleanup": null,
+      "batch": "s6esnL",
+      "artifact": "lomi-mcp-control-MF5HV5",
+      "sourceFingerprint": "0864f064b05c9cd15bf15c69a0d9358c7070697e7f726a067e57da47d58e36b1"
+    },
+    {
+      "task": "fix-test",
+      "repeat": 1,
+      "passed": true,
+      "taskCompleted": true,
+      "modelTurnCompleted": true,
+      "selectedLomi": true,
+      "competingActions": [],
+      "silentFallback": false,
+      "toolCalls": 24,
+      "error": null,
+      "cleanup": {
+        "hostExited": true,
+        "appDataRemoved": true,
+        "retainedForRestart": false,
+        "exitCode": 0,
+        "signal": null,
+        "exitWaitMs": 92
+      },
+      "externalCleanup": null,
+      "androidCleanup": null,
+      "batch": "s6esnL",
+      "artifact": "lomi-mcp-control-omUD34",
+      "sourceFingerprint": "0864f064b05c9cd15bf15c69a0d9358c7070697e7f726a067e57da47d58e36b1"
+    },
+    {
+      "task": "fix-test",
+      "repeat": 2,
+      "passed": true,
+      "taskCompleted": true,
+      "modelTurnCompleted": true,
+      "selectedLomi": true,
+      "competingActions": [],
+      "silentFallback": false,
+      "toolCalls": 27,
+      "error": null,
+      "cleanup": {
+        "hostExited": true,
+        "appDataRemoved": true,
+        "retainedForRestart": false,
+        "exitCode": 0,
+        "signal": null,
+        "exitWaitMs": 25
+      },
+      "externalCleanup": null,
+      "androidCleanup": null,
+      "batch": "s6esnL",
+      "artifact": "lomi-mcp-control-PQS8Uo",
+      "sourceFingerprint": "0864f064b05c9cd15bf15c69a0d9358c7070697e7f726a067e57da47d58e36b1"
+    },
+    {
+      "task": "fix-test",
+      "repeat": 3,
+      "passed": true,
+      "taskCompleted": true,
+      "modelTurnCompleted": true,
+      "selectedLomi": true,
+      "competingActions": [],
+      "silentFallback": false,
+      "toolCalls": 26,
+      "error": null,
+      "cleanup": {
+        "hostExited": true,
+        "appDataRemoved": true,
+        "retainedForRestart": false,
+        "exitCode": 0,
+        "signal": null,
+        "exitWaitMs": 2
+      },
+      "externalCleanup": null,
+      "androidCleanup": null,
+      "batch": "s6esnL",
+      "artifact": "lomi-mcp-control-ETolgb",
+      "sourceFingerprint": "0864f064b05c9cd15bf15c69a0d9358c7070697e7f726a067e57da47d58e36b1"
+    },
+    {
+      "task": "origin-server",
+      "repeat": 1,
+      "passed": true,
+      "taskCompleted": true,
+      "modelTurnCompleted": true,
+      "selectedLomi": true,
+      "competingActions": [],
+      "silentFallback": false,
+      "toolCalls": 17,
+      "error": null,
+      "cleanup": {
+        "hostExited": true,
+        "appDataRemoved": true,
+        "retainedForRestart": false,
+        "exitCode": 0,
+        "signal": null,
+        "exitWaitMs": 48
+      },
+      "externalCleanup": null,
+      "androidCleanup": null,
+      "batch": "s6esnL",
+      "artifact": "lomi-mcp-control-9wjeNb",
+      "sourceFingerprint": "0864f064b05c9cd15bf15c69a0d9358c7070697e7f726a067e57da47d58e36b1"
+    },
+    {
+      "task": "origin-server",
+      "repeat": 2,
+      "passed": true,
+      "taskCompleted": true,
+      "modelTurnCompleted": true,
+      "selectedLomi": true,
+      "competingActions": [],
+      "silentFallback": false,
+      "toolCalls": 17,
+      "error": null,
+      "cleanup": {
+        "hostExited": true,
+        "appDataRemoved": true,
+        "retainedForRestart": false,
+        "exitCode": 0,
+        "signal": null,
+        "exitWaitMs": 109
+      },
+      "externalCleanup": null,
+      "androidCleanup": null,
+      "batch": "s6esnL",
+      "artifact": "lomi-mcp-control-8zukng",
+      "sourceFingerprint": "0864f064b05c9cd15bf15c69a0d9358c7070697e7f726a067e57da47d58e36b1"
+    },
+    {
+      "task": "origin-server",
+      "repeat": 3,
+      "passed": true,
+      "taskCompleted": true,
+      "modelTurnCompleted": true,
+      "selectedLomi": true,
+      "competingActions": [],
+      "silentFallback": false,
+      "toolCalls": 15,
+      "error": null,
+      "cleanup": {
+        "hostExited": true,
+        "appDataRemoved": true,
+        "retainedForRestart": false,
+        "exitCode": 0,
+        "signal": null,
+        "exitWaitMs": 26
+      },
+      "externalCleanup": null,
+      "androidCleanup": null,
+      "batch": "s6esnL",
+      "artifact": "lomi-mcp-control-WUE1B3",
       "sourceFingerprint": "0864f064b05c9cd15bf15c69a0d9358c7070697e7f726a067e57da47d58e36b1"
     },
     {

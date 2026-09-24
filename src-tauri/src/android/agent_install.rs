@@ -73,6 +73,19 @@ pub(crate) fn install(
         file,
         Some(guard.clone()),
     ));
+    #[cfg(all(feature = "mcp-probe", target_os = "macos"))]
+    if std::env::var_os("LOMI_MCP_ANDROID_STORAGE_ONLY").is_some() {
+        if let Some(directory) = std::env::var_os("LOMI_MCP_CONTROL_PROBE_DIRECTORY") {
+            let observation = installed
+                .as_ref()
+                .err()
+                .map(|message| message.chars().take(8192).collect::<String>());
+            let _ = std::fs::write(
+                std::path::PathBuf::from(directory).join("android-storage-transport.json"),
+                serde_json::to_vec_pretty(&observation).unwrap(),
+            );
+        }
+    }
     request.check()?;
     let installer_failure = match installed {
         Ok(()) => None,
@@ -113,12 +126,23 @@ pub(crate) fn install(
     })
 }
 fn installer_failure(message: &str) -> Option<String> {
-    let code = message
-        .strip_prefix("APK installation failed: ")?
-        .trim()
-        .strip_prefix("Failure [")?
-        .split([':', ']'])
-        .next()?;
+    let output = message.strip_prefix("APK installation failed: ")?;
+    if output.len() > 4096 {
+        return None;
+    }
+    let output = output.trim();
+    // API 36 can reject volume selection before creating an install session,
+    // outside the normal commit-result callback that prints Failure [...].
+    // Require the exact cause and both pre-session call sites; other exceptions
+    // remain uncertain. Never disclose the guest's exception or stack trace.
+    if output.starts_with("Exception occurred while executing 'install':\nandroid.os.ParcelableException: java.io.IOException: Requested internal only, but not enough space\n")
+        && output.contains("\n\tat com.android.server.pm.PackageManagerShellCommand.doCreateSession(")
+        && output.contains("\nCaused by: java.io.IOException: Requested internal only, but not enough space\n\tat com.android.internal.content.InstallLocationUtils.resolveInstallVolume(")
+        && !output.lines().any(|line| line.trim() == "Success")
+    {
+        return Some("INSTALL_FAILED_INSUFFICIENT_STORAGE".into());
+    }
+    let code = output.strip_prefix("Failure [")?.split([':', ']']).next()?;
     (code.starts_with("INSTALL_")
         && code.len() <= 128
         && code
@@ -129,6 +153,32 @@ fn installer_failure(message: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn native_pre_session_storage_refusal_is_classified_without_guessing() {
+        let native =
+            include_str!("../../../tests/native/fixtures/android-install-storage-error.txt");
+        assert_eq!(
+            installer_failure(native),
+            Some("INSTALL_FAILED_INSUFFICIENT_STORAGE".into())
+        );
+        for uncertain in [
+            native.replace("doCreateSession", "doCommitSession"),
+            native.replace("resolveInstallVolume", "writePackage"),
+            native.replace(
+                "Requested internal only, but not enough space",
+                "Unrecognized guest failure",
+            ),
+            format!("{native}\nSuccess\n"),
+            format!("{native}{}", "x".repeat(4096)),
+            "APK installation failed: Requested internal only, but not enough space".into(),
+            format!(
+                "APK installation failed: Failure [INSTALL_FAILED_INSUFFICIENT_STORAGE]{}",
+                "x".repeat(4096)
+            ),
+        ] {
+            assert_eq!(installer_failure(&uncertain), None);
+        }
+    }
     #[test]
     fn installer_failure_keeps_only_definitive_bounded_machine_code() {
         assert_eq!(installer_failure("APK installation failed: Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: private description]"),Some("INSTALL_FAILED_UPDATE_INCOMPATIBLE".into()));

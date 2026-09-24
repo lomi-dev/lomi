@@ -194,6 +194,23 @@ impl Guest {
         self.shell(&(self.guard()? + r#"path=$(pm path org.lomi.inputtest); case "$path" in package:/data/app/*/base.apk) sha256sum "${path#package:}" ;; *) printf absent ;; esac"#))
     }
 
+    #[cfg(all(feature = "mcp-probe", target_os = "macos"))]
+    pub fn native_apk_storage_fixture(&self) -> Result<ApkStorageFixture, String> {
+        if std::env::var_os("LOMI_MCP_ANDROID_STORAGE_ONLY").is_none() {
+            return Err("Guest storage fixture is not selected".into());
+        }
+        let folder = format!(
+            "/data/local/tmp/lomi-mcp-storage-{}",
+            super::auth::new_id()?
+        );
+        self.shell(&(self.guard()? + &format!("umask 077; mkdir '{folder}'")))?;
+        Ok(ApkStorageFixture {
+            guest: self.clone(),
+            folder,
+            released: false,
+        })
+    }
+
     fn identity(&self) -> Result<(), String> {
         if !super::storage::valid_id(&self.device_id)
             || !super::storage::valid_id(&self.generation_key)
@@ -1244,5 +1261,67 @@ mod app_log_tests {
         assert_eq!(logs.lines.len(), 32);
         assert_eq!(logs.lines.iter().map(String::len).sum::<usize>(), 65536);
         assert!(logs.lines.iter().all(|l| l.chars().count() == 512));
+    }
+}
+
+#[cfg(all(feature = "mcp-probe", target_os = "macos"))]
+pub struct ApkStorageFixture {
+    guest: Guest,
+    folder: String,
+    released: bool,
+}
+#[cfg(all(feature = "mcp-probe", target_os = "macos"))]
+impl ApkStorageFixture {
+    pub fn free_bytes(&self) -> Result<u64, String> {
+        let text = self
+            .guest
+            .shell(&(self.guest.guard()? + "df -k /data/local/tmp"))?;
+        let available = text
+            .lines()
+            .last()
+            .and_then(|line| line.split_whitespace().nth(3))
+            .and_then(|value| value.parse::<u64>().ok())
+            .ok_or("Invalid guest free-space observation")?;
+        available
+            .checked_mul(1024)
+            .ok_or("Guest free-space overflow".into())
+    }
+    pub fn fill(&self, blocks: u64) -> Result<(), String> {
+        if !(1..=6144).contains(&blocks) {
+            return Err("Guest fixture fill exceeds 6 GiB".into());
+        }
+        let command = self.guest.guard()?
+            + &format!(
+                "toybox timeout 90 dd if=/dev/zero of='{}/fill' bs=1048576 count={blocks}",
+                self.folder
+            );
+        self.guest
+            .shell_until(&command, Instant::now() + Duration::from_secs(100), None)
+            .map(|_| ())
+    }
+    pub fn clear(&mut self) -> Result<(), String> {
+        if self.released {
+            return Ok(());
+        }
+        self.guest.shell(
+            &(self.guest.guard()?
+                + &format!(
+                    "rm -f -- '{}/fill' && rmdir -- '{}'",
+                    self.folder, self.folder
+                )),
+        )?;
+        self.released = true;
+        Ok(())
+    }
+}
+#[cfg(all(feature = "mcp-probe", target_os = "macos"))]
+impl Drop for ApkStorageFixture {
+    fn drop(&mut self) {
+        if let Err(error) = self.clear() {
+            eprintln!(
+                "Native APK storage fixture {} cleanup failed: {error}",
+                self.folder
+            );
+        }
     }
 }

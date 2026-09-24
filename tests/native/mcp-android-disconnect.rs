@@ -1,4 +1,6 @@
-//! Disconnect an approved real APK stream after its first partial transfer.
+//! Qualify approved APK installation under real transport and storage faults.
+#[path = "mcp-android-storage.rs"]
+mod storage_probe;
 use super::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -145,6 +147,11 @@ pub(super) async fn qualify(
             .await
             .map_err(|e| e.to_string())??;
     let arguments = json!({"workspaceId":workspace,"panelId":panel,"deviceId":device["deviceId"],"generation":generation,"artifactId":artifact["artifactId"],"sha256":metadata["sha256"],"retryEpoch":epoch,"requestKey":"apk-disconnect-install"});
+    if std::env::var_os("LOMI_MCP_ANDROID_STORAGE_ONLY").is_some() {
+        storage_probe::qualify(wire, settings, &arguments, &before, directory).await?;
+        child.kill().await.map_err(|e| e.to_string())?;
+        return Ok(());
+    }
     let accepted = wire
         .tool("lomi_android_install_apk", arguments.clone())
         .await?;

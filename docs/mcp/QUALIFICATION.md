@@ -5,6 +5,87 @@ their original failures and pending work; subsequent evidence supersedes only
 the specific checks it actually covers. The active task list is in
 [implementation status](IMPLEMENTATION-STATUS.md).
 
+The concise [acceptance record](ACCEPTANCE.md) maps the selected product and
+security observations to this evidence. Overall acceptance remains in progress.
+
+## Real guest storage refusal — native correction verified (2026-09-24)
+
+5Gfkz6 passed the corrected native profile with 74 tools. It wrote 5,442 MiB
+to the private guest fixture, reducing free space from 5,740,097,536 to
+33,755,136 bytes. The approved actual APK install returned failed / none,
+installed=false, previousVersion=1 and INSTALL_FAILED_INSUFFICIENT_STORAGE.
+Exact retry returned the same operation and failure. The installed package's
+SHA-256 and native path were unchanged. Cleanup restored 5,740,113,920 free
+bytes, normal host exit 0 (739 ms), removed private app data and stopped the
+owned guest/private ADB without force. No shared device or ADB was modified.
+Log: /tmp/lomi-mcp-android-storage-4.log. Both parser tests passed (252 filtered);
+workspace all-target mcp-probe Clippy passed with warnings denied. The eight
+helper wire tests, Rust/JavaScript/document formatting, Node syntax and diff
+checks passed. Validation logs: /tmp/lomi-mcp-storage-parser-tests.log,
+/tmp/lomi-mcp-storage-clippy-2.log and /tmp/lomi-mcp-final-catalog-wire.log.
+
+The new isolated profile fills one exclusively created guest directory, bounded
+to 6 GiB and 90 seconds, while retaining about 32 MiB free. The host wrapper
+requires at least 12 GiB free on the fixture volume. Every guest command checks
+the owned device and generation. Explicit cleanup and a fallback resource guard
+remove only the created file/directory; no device wipe or uninstall occurs.
+The observer and fill helper compile only with macOS mcp-probe.
+
+VMn6XK failed because the fixture polled before asynchronous native approval
+completed. It restored guest space and exited normally, but the approved install
+then completed after space was released: the next run's baseline hash matches
+VMn6XK's built fixture APK. The earlier immediate hash observation was therefore
+not a final package-preservation proof. This failed attempt is not counted as a
+storage-refusal pass. The fixture now waits for approval processing before
+polling completion and keeps the fill file until the operation settles.
+
+3QBJ3v and diagnostic rHs8jY reached the actual low-space install and returned
+outcome_unknown. Both preserved the exact installed package, restored guest
+space, exited normally and stopped the owned guest/private ADB without force.
+rHs8jY retained the bounded native installer response: Android rejected volume
+selection while creating the session, before reading/committing the APK. This
+path throws a Java exception instead of printing the usual Failure result.
+The original parser conservatively treated that unrecognized response as unknown.
+
+The correction recognizes only that exact cause and pre-session call sites and
+returns the normalized INSTALL_FAILED_INSUFFICIENT_STORAGE code. Other exceptions,
+missing call sites and oversized responses remain unknown. Raw exceptions and
+stack traces are never returned through MCP. The observed response matches
+[Android 16 install-session ordering](https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-16.0.0_r2/services/core/java/com/android/server/pm/PackageManagerShellCommand.java)
+and [volume-selection failure](https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-16.0.0_r2/core/java/com/android/internal/content/InstallLocationUtils.java).
+The captured fixture is retained for parser regression tests; only the corrected
+5Gfkz6 run is a native storage-refusal pass.
+
+## Fixed-profile server, form and code-fix repetitions (2026-09-24)
+
+Batch s6esnL passed all 12 executions with Codex CLI 0.156.1, gpt-6-sol,
+medium effort and prefer-Lomi. Each used a fresh native app/client session;
+the first compiled the disposable host and subsequent runs verified its exact
+binary SHA and unchanged source fingerprint before reuse. Normal native exit 0
+and private app-data cleanup passed for every execution. No competing tool
+actions occurred. All final model answers were reviewed against independent
+native postconditions.
+
+| Task          | Complete runs          | Observed result                                                                                                |
+| ------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------- |
+| dev-server    | TxfmVk, 76v6Q8, gFMzeU | Separate retained execution PTY, printed URL, native WKWebView heading and MCP image                           |
+| form          | QDQtUj, 0SEf7i, MF5HV5 | Exactly one POST containing Zażółć 🙂, actual saved-page confirmation and MCP image                            |
+| fix-test      | omUD34, PQS8Uo, ETolgb | Original test failure, corrected implementation, unchanged test-file bytes and independent exit 0              |
+| origin-server | 9wjeNb, 8zukng, WUE1B3 | Actual Codex process ancestry from the original PTY; separate execution PTY/native browser, no origin mutation |
+
+TxfmVk, QDQtUj and 9wjeNb screenshots were visually inspected. Repeated captures
+were checked by the native/image assertions; this is not a claim that every
+repeated image was manually inspected. The ledger now has 38 complete passes
+and nine complete three-run rows. The remaining 22 model executions and final
+acceptance reconciliation are still required. Log:
+/tmp/lomi-mcp-routing-core-tasks.log.
+
+The final coverage review identified a separate native Android gap: only the
+insufficient-storage classifier, not actual guest-space exhaustion, had been
+tested. A bounded isolated guest-fill/restore probe is now under qualification.
+It must verify the real installer refusal, retained package and restored free
+space before this gap is closed.
+
 ## Final native fault/profile check validation (2026-09-24)
 
 The focused production ADB guard regression passed (one selected test, 252
