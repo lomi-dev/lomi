@@ -16,6 +16,8 @@ use std::{
 use tauri::{Emitter, Listener, Manager, Webview};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
+#[path = "mcp-android-latency-support.rs"]
+mod android_latency_probe;
 #[path = "mcp-android-layout-support.rs"]
 mod android_layout_probe;
 #[path = "mcp-android-setup-support.rs"]
@@ -6757,6 +6759,10 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
                 serde_json::to_vec_pretty(&rotations).unwrap(),
             )
             .map_err(|e| e.to_string())?;
+
+            if std::env::var_os("LOMI_MCP_ANDROID_LATENCY").is_some() {
+                android_latency_probe::measure(&mut wire, &main, &input_args, directory).await?;
+            }
 
             let projection = wire
                 .tool("lomi_panel_list", json!({"workspaceId":new_workspace}))

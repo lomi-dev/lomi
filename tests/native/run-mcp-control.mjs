@@ -23,6 +23,10 @@ const directory = await mkdtemp(join(tmpdir(), "lomi-mcp-control-"));
 const androidRoot = process.env.LOMI_ANDROID_PRODUCT_DIRECTORY;
 if (process.env.LOMI_MCP_ROUTING_ONLY === "apk" && !androidRoot)
   throw Error("APK routing requires the licensed isolated Android fixture.");
+if (process.env.LOMI_MCP_ANDROID_LATENCY && !androidRoot)
+  throw Error(
+    "Android latency requires the licensed isolated Android fixture.",
+  );
 if (androidRoot) {
   const metadata = JSON.parse(
     await readFile(join(androidRoot, "devices.json"), "utf8"),
@@ -307,6 +311,19 @@ try {
     }
   }
   if (!result) throw Error("Native control probe timed out");
+  if (result.stage === "passed" && process.env.LOMI_MCP_ANDROID_LATENCY) {
+    const proof = JSON.parse(
+      await readFile(join(directory, "android-latency.json"), "utf8"),
+    );
+    if (
+      proof.samplesMs?.length !== 50 ||
+      proof.warmupSamplesMs?.length !== 3 ||
+      !Number.isFinite(proof.p95Ms) ||
+      proof.p95Ms > 150 ||
+      result.data?.androidInputQualification !== "RUN"
+    )
+      throw Error("Android latency returned incomplete measurement evidence");
+  }
   if (result.stage === "passed" && process.env.LOMI_MCP_ROUTING_ONLY) {
     const proof = JSON.parse(
       await readFile(join(directory, "routing-result.json"), "utf8"),

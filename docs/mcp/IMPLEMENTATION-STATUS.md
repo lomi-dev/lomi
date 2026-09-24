@@ -42,6 +42,15 @@ installer publication or private client-configuration writes.
 
 ## Current work
 
+Android/import milestone `42ed05a7f1912e9df1a5a0cf3269e7024b6b1e66` was
+pushed to origin/main and verified remotely. The subsequent full native run
+1tJWXL passed with 74 tools, 91 primary checks and required Android input.
+Its 50-sample input-to-presentation proxy measured p95 136 ms, maximum 144 ms
+against the 150 ms budget. Host, guest and private ADB cleanup passed.
+See QUALIFICATION.md for the endpoint, raw evidence and measurement limits.
+The fixed-profile model matrix, terminal throughput and final acceptance
+reconciliation remain open. No distribution or tag is planned.
+
 The WAL recovery fix was pushed to origin/main as
 `c73058cd557ca424cbff1c4a2fab04eed563041c` and verified remotely.
 The final storage-fault audit found SQLite silently discarding a corrupted

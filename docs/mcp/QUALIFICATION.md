@@ -5,6 +5,37 @@ their original failures and pending work; subsequent evidence supersedes only
 the specific checks it actually covers. The active task list is in
 [implementation status](IMPLEMENTATION-STATUS.md).
 
+## P6 Android input latency and native regression (2026-09-24)
+
+`lomi-mcp-control-1tJWXL` **PASS**, with 74 tools and all 91 primary checks
+plus the file/editor/Git/layout/Android assertions. This repeats the full
+native profile after the WAL protection and artifact revision correction.
+Android input was required and ran (`androidInputQualification=RUN`).
+
+The optional `LOMI_MCP_ANDROID_LATENCY=1` probe measured 50 color transitions
+through real stdio MCP input and the retained production Android canvas,
+after one initial transition and three discarded measured warmups.
+Nearest-rank p95 was **136 ms**, maximum **144 ms**, against the 150 ms budget.
+The measurement starts at main-webview `performance.now()` before input and
+ends at the second animation-frame callback after drawing the changed guest
+pixel. It includes receipt/input/frame transport, excludes model latency, and
+is a browser presentation proxy rather than a photodiode measurement.
+One WebGL pixel read per frame adds probe overhead. The prototype wrapper is
+test-only and restored after measurement; production rendering is unchanged.
+
+Host: Apple M3, macOS 27.0 (26A428), AC power, visible focused window, DPR 2.
+Dedicated API 36 AOSP ARM64 device: cold boot, Host GPU, 720×1280 portrait;
+hardware, source and canvas dimensions all matched. The 50 raw samples,
+three warmups and geometry are in `android-latency.json`. Inputs used ordered
+sequences 9–116 after the existing Unicode/rotation qualification.
+No other build or model trial ran during the measurement.
+
+`cleanup.json` confirms normal host exit 0 and private app-data removal;
+`android-cleanup-after.json` confirms graceful guest exit and private ADB
+shutdown. Log: `/tmp/lomi-mcp-android-latency-full.log`. Terminal throughput,
+the fixed-profile 20×3 actual-model matrix and final acceptance reconciliation
+remain open; this does not qualify other devices or platforms.
+
 ## P6 WAL corruption and read-only storage (2026-09-24)
 
 The new crash test exposed a missing recovery guard. A subprocess checkpointed
