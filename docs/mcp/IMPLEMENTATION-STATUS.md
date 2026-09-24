@@ -42,6 +42,15 @@ installer publication or private client-configuration writes.
 
 ## Current work
 
+Actual Codex routing milestone `42dfa9411676fba1a2e798b6614db881f9d26e75`
+was pushed to origin/main and verified. E01 subsequently passed in EFPfJF:
+Codex ran inside a real ordinary Lomi PTY, created a distinct execution PTY,
+opened/captured its server in WKWebView, preserved the origin session and
+returned exit 0 to it. Process ancestry and native resource IDs were checked
+independently; no competing action occurred; host cleanup passed.
+The required 20-task × 3-run prefer-Lomi routing matrix remains incomplete,
+including APK, two-workspace and reconnect categories. P6 is still open.
+
 P6 recovery and regression milestone was pushed to origin/main as
 `6ca72bf4cf71e47d0ab64ac9f990abb04d5b8b1b`; the dependency audit followed as
 `6b6330df50d970f3a34764f7b5bd6d09ce338f54`. Both remote SHAs were verified.

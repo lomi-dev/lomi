@@ -7,6 +7,27 @@ the specific checks it actually covers. The active task list is in
 
 ## P6 actual Codex model routing — in progress (2026-09-24)
 
+**E01 origin-terminal scenario: EFPfJF passed.** The actual Codex 0.156.1 /
+gpt-6-sol client ran beneath an ordinary Lomi Zsh PTY. Native verification
+matched shell PID 68162 → fixture Node PID 68165 → Codex app-server PID 68250
+while the model client was still connected. Its origin panel
+`ed6637d3-37a7-47e0-902a-877f64ce1fdc` retained terminal session
+`9cba64e6-d1a2-4996-92c6-12d1dab3adb8`; the model created execution panel
+`21de0a7bd823c2f7c28739c7269a87f9` with a different live PTY.
+The 16 model-selected MCP calls did not mutate the origin or use competing
+execution. The actual server, WKWebView URL/heading and image were checked;
+the native browser screenshot was inspected. The client returned exit 0 to
+the same origin shell. Host exit 0 and private app-data removal confirmed.
+Artifacts: `lomi-mcp-control-EFPfJF`; log
+`/tmp/lomi-mcp-routing-origin-server.log`. Run with
+`LOMI_MCP_ROUTING_ONLY=origin-server node --experimental-strip-types tests/native/run-mcp-control.mjs`.
+The isolated PTY retains its private shell home; only the Codex child uses
+the existing subscription-login home, without copying credentials or changing
+client configuration. This closes E01's previously missing native origin
+evidence, not the remaining routing categories/repetitions.
+Probe Clippy with warnings denied passed (`/tmp/lomi-mcp-routing-origin-clippy.log`),
+as did Rust/changed-file formatting and JavaScript syntax checks.
+
 Pinned Codex CLI 0.156.1, configured model gpt-6-sol, OpenAI provider, existing
 ChatGPT subscription authentication. The runner rejects API-key authentication
 and keeps client configuration files unchanged. Each trial starts an ephemeral
@@ -32,7 +53,7 @@ Executed categories:
   report confirms native postconditions and no competing action; cleanup exited
   normally and removed private app data. The Codex process itself was launched
   by the native fixture, not yet inside a Lomi origin terminal; the complete
-  E01 origin scenario remains open.
+  E01 origin scenario was subsequently verified by EFPfJF above.
 - Native form: **dzL2Kq passed**. A fresh model session started its own server,
   opened the actual native browser, filled `Zażółć 🙂`, submitted once and
   captured the saved page. The independent native oracle observed exactly one
@@ -76,8 +97,9 @@ rerun. Neither failure reached terminal execution or submitted the form.
 Reports separate model-selected calls from direct bootstrap/pairing calls and
 record the model, effective features/catalog, client-approved tools, completed
 turn, competing actions and independently checked postconditions. Remaining
-categories, repeats and native origin protection are not inferred from these
-passes. This does not meet the proposed 20-task × 3-run reliability threshold.
+categories and repeats are not inferred from these passes. The task prompt
+requires 20 different tasks × 3 runs for the declared profile; that matrix
+remains incomplete. The strict profile is not selected or claimed.
 
 ## P6 full native regression (2026-09-24)
 

@@ -3074,6 +3074,7 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
     if std::env::var_os("LOMI_MCP_ROUTING_ONLY").is_some() {
         routing_probe::qualify(
             app,
+            &mut wire,
             &settings,
             &workspace,
             helper,

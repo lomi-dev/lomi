@@ -91,6 +91,7 @@ process.once('SIGINT', () => {
       expectedTools: ["lomi_status"],
     },
   };
+  cases["origin-server"] = { ...cases["dev-server"] };
   await writeFile(
     join(folder, "routing-cases.json"),
     JSON.stringify(cases, null, 2),
