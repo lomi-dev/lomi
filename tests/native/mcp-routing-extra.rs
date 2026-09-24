@@ -234,7 +234,19 @@ pub(super) fn browser(
         }
         "browser-navigation" => {
             if state["details"].as_u64().unwrap_or(0) == 0
-                || !saw(report, "lomi_browser_snapshot", "Details")
+                || !calls(report).any(|i| {
+                    let data = &i["result"]["structuredContent"]["data"];
+                    i["tool"] == "lomi_browser_snapshot"
+                        && i["result"]["structuredContent"]["status"] == "ok"
+                        && data["url"]
+                            .as_str()
+                            .is_some_and(|url| url.ends_with("/details"))
+                        && data["elements"].as_array().is_some_and(|elements| {
+                            elements
+                                .iter()
+                                .any(|e| e["role"] == "heading" && e["name"] == "Details")
+                        })
+                })
             {
                 return Err("Model did not observe the actual details navigation".into());
             }

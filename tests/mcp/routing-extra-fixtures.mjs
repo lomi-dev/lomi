@@ -90,6 +90,10 @@ for(const signal of ['SIGHUP','SIGTERM'])process.on(signal,async()=>{
   return {
     gitHead,
     cases: {
+      reconnect: {
+        prompt: `Run ${command("require('node:fs').appendFileSync('routing-once.txt','once\\n');console.log('ROUTING_ONCE_WRITTEN')")} exactly once in a new Lomi terminal. Read the actual output and verify command completion. Do not repeat the command; a later fresh client will inspect its single effect.`,
+        expectedTools: terminal,
+      },
       "external-playwright": {
         prompt: `The existing routing-external.mjs test explicitly launches its own Playwright Chromium browser. Run ${quote(node)} routing-external.mjs in a separate Lomi terminal, read ROUTING_EXTERNAL, and explain which browser actually verified the page. Leave the test running for inspection. Do not describe its external screenshot as a Lomi browser-panel capture.`,
         expectedTools: terminal,

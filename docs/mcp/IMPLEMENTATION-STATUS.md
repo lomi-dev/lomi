@@ -42,6 +42,16 @@ installer publication or private client-configuration writes.
 
 ## Current work
 
+Manual reconnect N8154I passed two fresh actual-client sessions with a single
+preserved file effect, distinct approvals and denial of the old receipt.
+The expanded batch additionally passed terminal interrupt/binary output,
+Unicode contenteditable, same-panel navigation and Git review. REPL needs a
+fixture expected-tool correction; file rename exposed a misleading revision
+error and needs a product correction. See QUALIFICATION.md and routing-matrix.json.
+Twenty distinct task fixtures are now defined; three matrix rows have all
+three complete passes. Dual native clients, in-flight disconnect and native
+application restart acceptance remain under active audit.
+
 Expanded routing trials now pass terminal-exit, files-search, browser-select
 and external-playwright with independent native postconditions. Scope-denied
 has three fixed-profile passes (Nh2EEe, sL1uSU, oCvt22), making three complete
@@ -51,7 +61,7 @@ verified fixture-only Ctrl+C after model observation now permits normal exit.
 Final browser-select nAUFba and external-playwright m7oy2s exited 0, with all
 recorded external processes absent. Both screenshots and model explanations
 were reviewed. See QUALIFICATION.md for failed attempts and corrective evidence.
-Nineteen task fixtures are defined; manual reconnect remains to implement.
+At that milestone nineteen task fixtures were defined.
 Unexecuted definitions and historical failures do not count as matrix passes.
 
 Throughput milestone `a021adc192a6c797967fc4de6775f417656fd28e` was

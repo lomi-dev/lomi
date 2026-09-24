@@ -4,6 +4,8 @@ use super::*;
 mod android;
 #[path = "mcp-routing-extra.rs"]
 mod extra;
+#[path = "mcp-routing-reconnect.rs"]
+mod reconnect;
 #[path = "mcp-routing-workspaces.rs"]
 mod workspaces;
 
@@ -29,8 +31,10 @@ async fn approve(
     wait_for(settings, &format!("Boolean({article})")).await?;
     evaluate(settings, &format!("(()=>{{const e=({article}).querySelector('select');e.value={workspace};e.dispatchEvent(new Event('change',{{bubbles:true}}));return true;}})()")).await?;
     if case != "scope-denied" {
-        let files_only = case.starts_with("files-") || case == "git-review";
-        let terminal_only = case.starts_with("terminal-") || case == "external-playwright";
+        let files_only =
+            case.starts_with("files-") || matches!(case, "git-review" | "reconnect-read");
+        let terminal_only = case.starts_with("terminal-")
+            || matches!(case, "external-playwright" | "reconnect-write");
         let mut labels = if files_only {
             vec![]
         } else {
@@ -39,7 +43,7 @@ async fn approve(
                 "Allow selecting and closing panels",
             ]
         };
-        if case.starts_with("files-") || case == "git-review" {
+        if files_only {
             labels.push("Allow reading project files");
         }
         if case == "files-rename" {
@@ -136,6 +140,9 @@ async fn verify(
     }
     if report["expectedToolsSucceeded"] != true {
         return Err("A required model tool failed or omitted its screenshot image".into());
+    }
+    if case.starts_with("reconnect-") {
+        return reconnect::verify(app, directory, case, report).await;
     }
     if case == "two-workspaces" {
         return workspaces::verify(app, directory, report).await;
@@ -387,13 +394,37 @@ pub(super) async fn qualify(
     directory: &Path,
     fixture: &Value,
 ) -> Result<Value, String> {
-    let case = std::env::var("LOMI_MCP_ROUTING_ONLY").map_err(|e| e.to_string())?;
+    if std::env::var("LOMI_MCP_ROUTING_ONLY").as_deref() == Ok("reconnect") {
+        reconnect::qualify(app, wire, settings, workspace, helper, directory, fixture).await
+    } else {
+        qualify_once(app, wire, settings, workspace, helper, directory, fixture).await
+    }
+}
+
+async fn qualify_once(
+    app: &tauri::AppHandle,
+    wire: &mut Wire,
+    settings: &Webview,
+    workspace: &Value,
+    helper: &Value,
+    directory: &Path,
+    fixture: &Value,
+) -> Result<Value, String> {
+    let case = fixture["routingCase"]
+        .as_str()
+        .map(String::from)
+        .or_else(|| std::env::var("LOMI_MCP_ROUTING_ONLY").ok())
+        .ok_or("Missing routing case")?;
+    let prefix = fixture["routingPhase"].as_str().unwrap_or("routing");
     let cases = read_json(&directory.join("project/routing-cases.json"))?;
-    let task = cases.get(&case).ok_or("Unknown routing case")?;
-    let control_path = directory.join("routing-control.json");
-    let ready_path = directory.join("routing-approval-ready.json");
-    let result_path = directory.join("routing-result.json");
-    let postconditions_path = directory.join("routing-native.json");
+    let task = fixture
+        .get("routingTask")
+        .or_else(|| cases.get(&case))
+        .ok_or("Unknown routing case")?;
+    let control_path = directory.join(format!("{prefix}-control.json"));
+    let ready_path = directory.join(format!("{prefix}-approval-ready.json"));
+    let result_path = directory.join(format!("{prefix}-result.json"));
+    let postconditions_path = directory.join(format!("{prefix}-native.json"));
     let mut helper = helper.clone();
     if case == "unavailable" {
         helper["args"] = json!([]);
@@ -409,8 +440,8 @@ pub(super) async fn qualify(
     )?;
     let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/mcp/codex-routing.mjs");
     let mut child = if origin.is_null() {
-        let log =
-            std::fs::File::create(directory.join("routing.log")).map_err(|e| e.to_string())?;
+        let log = std::fs::File::create(directory.join(format!("{prefix}.log")))
+            .map_err(|e| e.to_string())?;
         Some(
             tokio::process::Command::new("node")
                 .arg(&script)
@@ -424,7 +455,7 @@ pub(super) async fn qualify(
     } else {
         let terminal_fixture = read_json(&directory.join("terminal-fixture.json"))?;
         let quote = |value: &str| format!("'{}'", value.replace('\'', "'\\''"));
-        let command = format!("printf 'ROUTING_ORIGIN_SHELL:%s\\n' \"$$\"; {} {} {} > {} 2>&1; printf '\\nROUTING_CLIENT_EXIT:%s\\n' \"$?\"\r",quote(terminal_fixture["node"].as_str().ok_or("Missing Node")?),quote(script.to_str().ok_or("Invalid script path")?),quote(control_path.to_str().ok_or("Invalid control path")?),quote(directory.join("routing.log").to_str().ok_or("Invalid log path")?));
+        let command = format!("printf 'ROUTING_ORIGIN_SHELL:%s\\n' \"$$\"; {} {} {} > {} 2>&1; printf '\\nROUTING_CLIENT_EXIT:%s\\n' \"$?\"\r",quote(terminal_fixture["node"].as_str().ok_or("Missing Node")?),quote(script.to_str().ok_or("Invalid script path")?),quote(control_path.to_str().ok_or("Invalid control path")?),quote(directory.join(format!("{prefix}.log")).to_str().ok_or("Invalid log path")?));
         let main = app.get_webview("main").ok_or("Missing main")?;
         javascript(&main, &format!("await window.__TAURI_INTERNALS__.invoke('write_terminal',{{id:{},data:{}}});return true;", origin["terminalSessionId"],json!(command))).await?;
         None
@@ -469,7 +500,7 @@ pub(super) async fn qualify(
                     .map_err(|e| e.to_string())?;
                 if !exit.success() {
                     write_json(
-                        &directory.join("routing-command-cleanup.json"),
+                        &directory.join(format!("{prefix}-command-cleanup.json")),
                         &stop_fixture_commands(app, &report).await?,
                     )?;
                     return Err("Routing client failed after native checks".into());
@@ -497,7 +528,7 @@ pub(super) async fn qualify(
                 }
             }
             write_json(
-                &directory.join("routing-command-cleanup.json"),
+                &directory.join(format!("{prefix}-command-cleanup.json")),
                 &stop_fixture_commands(app, &report).await?,
             )?;
             observation?;

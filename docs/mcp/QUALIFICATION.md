@@ -5,6 +5,43 @@ their original failures and pending work; subsequent evidence supersedes only
 the specific checks it actually covers. The active task list is in
 [implementation status](IMPLEMENTATION-STATUS.md).
 
+## P6 manual reconnect and additional task observations (2026-09-24)
+
+Reconnect N8154I passed two actual gpt-6-sol/medium client sessions in one
+native app. The first wrote exactly `once\n`, completed in its owned native
+PTY and exited; both its Node/client and app-server PIDs were confirmed absent.
+The second used a distinct native pairing request and fresh files-read-only
+grant. Its attempt to read the original operation returned TARGET_NOT_FOUND;
+it read the existing exact file without executing a command. Native evidence
+confirmed one effect, no replay and no competing action. Normal host cleanup
+completed in 361 ms. This qualifies manual client replacement with reapproval;
+it does not qualify an application restart or transparent session resumption.
+
+The same source-frozen batch LfdIzQ passed terminal-interrupt SElRs6 (exact
+command exited 130, original shell ready), terminal-binary IcpoNz (actual raw
+`00 FF 01` bytes), browser-editable 0hUOqu (one exact Unicode submission), and
+browser-navigation V628mk (page-specific Details heading and /details snapshot,
+then original URL in the same retained panel). Model final answers and the
+editable screenshot were reviewed; all observed completed trials had normal
+cleanup and zero competing actions. Git-review sivenL also passed, with exact working diff and unchanged file,
+index and HEAD. Its final explanation was reviewed. Files-rename hRw3ID failed:
+the model supplied the directory hash as expectedRevision, and the broker
+misleadingly returned RESOURCE_EXHAUSTED twice. The model reported the failure
+and preserved the source file. Its parameter description and error category
+need correction, followed by a fresh native model trial.
+Workspace all-target probe Clippy passed in
+`/tmp/lomi-mcp-routing-reconnect-clippy.log`.
+
+REPL TKT6O3 completed through terminal_input: actual Node prompt, sum 42 and
+Unicode output, `.exit`, then shell-ready observation. Its fixture incorrectly
+required terminal_run as well, so the run failed before native postconditions
+were checked. It is retained as a fixture failure; the expected-tools check
+will permit the valid input path and a fresh run must verify native state.
+
+The [machine-readable routing ledger](routing-matrix.json) records the selected
+fixed-profile attempts, including failures, and separates native completion,
+Lomi selection and fallback observations. Unexecuted cells remain open.
+
 ## P6 additional routing fixtures — in progress (2026-09-24)
 
 The first expanded batch `lomi-mcp-routing-matrix-zdsHFu` passed
