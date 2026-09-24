@@ -48,7 +48,7 @@ or acronym.
   revision checks, encoding preservation, and native file watches.
 - `src/editor-preferences.ts` validates indentation preferences;
   `src/EditorPreferencesProvider.tsx` synchronizes them across windows.
-  Settings → Editor owns writes to `editor-preferences.json` through
+  Persisted editor preferences in `editor-preferences.json` are handled through
   `src-tauri/src/editor_preferences.rs`. Apply changes to shared buffers through
   CodeMirror compartments without replacing text, selections, or undo history.
   The editor status bar changes indentation and language for the current shared

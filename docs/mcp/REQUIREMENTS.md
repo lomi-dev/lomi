@@ -1004,7 +1004,7 @@ proof are recorded separately in IMPLEMENTATION-STATUS.md.
 
 `lomi_settings_open` requires a live explicitly approved workspace anchor and
 `settings.open`, independently from file reads and settings mutation. Its closed
-page enum is keybinds/themes/plugins/editor/terminal/about/chat-ai/android/agent-control.
+page enum is keybinds/themes/plugins/terminal/about/chat-ai/android/agent-control.
 The input carries the expected domain revision and the existing durable retry
 identity. It requests the existing Settings window/page through the trusted main
 bridge, preserves all workspaces/runtimes, and performs no preference write or

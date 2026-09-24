@@ -1855,7 +1855,6 @@ async fn qualify_settings_open(
         ("android", "Android"),
         ("about", "About"),
         ("agent-control", "Agent control"),
-        ("editor", "Editor"),
     ] {
         main.app_handle()
             .get_window("settings")

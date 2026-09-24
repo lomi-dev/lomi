@@ -146,7 +146,7 @@ for (const version of ["2025-11-25", "2026-07-28"]) {
       settingsReply.data.result = {
         kind: "settings_opened",
         workspaceId: "workspace",
-        page: "editor",
+        page: "terminal",
         requested: true,
       };
       const settingsOutput = ajv.compile(
@@ -164,12 +164,13 @@ for (const version of ["2025-11-25", "2026-07-28"]) {
       );
       const settingsArgs = {
         workspaceId: "workspace",
-        page: "editor",
+        page: "terminal",
         expectedRevision: "1",
         retryEpoch: "epoch",
         requestKey: "settings",
       };
       assert.ok(settingsInput(settingsArgs));
+      assert.equal(settingsInput({ ...settingsArgs, page: "editor" }), false);
       assert.equal(
         settingsInput({ ...settingsArgs, page: "credentials" }),
         false,
@@ -612,7 +613,7 @@ for (const version of ["2025-11-25", "2026-07-28"]) {
             },
             lomi_settings_open: {
               workspaceId: "workspace",
-              page: "editor",
+              page: "terminal",
               expectedRevision: "1",
               retryEpoch: "epoch",
               requestKey: "settings-open",

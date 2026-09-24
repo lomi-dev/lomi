@@ -1,6 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
-  Code,
   MessageSquare,
   Monitor,
   Info,
@@ -9,6 +8,7 @@ import {
   Puzzle,
   Terminal,
   RotateCcw,
+  ShieldCheck,
   X,
 } from "./icons";
 import { listen } from "@tauri-apps/api/event";
@@ -17,7 +17,6 @@ import ChatSettingsPage from "./chat/ChatSettingsPage";
 import PluginsPage from "./plugins/PluginsPage";
 import ThemesPage from "./ThemesPage";
 import TerminalSettingsPage from "./TerminalSettingsPage";
-import EditorSettingsPage from "./EditorSettingsPage";
 import { IconButton, WindowControls } from "./ui";
 import { api, errorMessage, macOS, native } from "./api";
 import { version } from "../package.json";
@@ -44,7 +43,6 @@ export default function SettingsWindow() {
       requested === "agent-control" ||
       requested === "chat-ai" ||
       requested === "plugins" ||
-      requested === "editor" ||
       requested === "themes" ||
       requested === "terminal" ||
       requested === "about"
@@ -72,7 +70,6 @@ export default function SettingsWindow() {
           "agent-control",
           "chat-ai",
           "keybinds",
-          "editor",
           "themes",
           "terminal",
           "about",
@@ -180,14 +177,6 @@ export default function SettingsWindow() {
           </button>
           <button
             className="settings-nav-item"
-            aria-current={page === "editor" ? "page" : undefined}
-            onClick={() => setPage("editor")}
-          >
-            <Code size={16} />
-            Editor
-          </button>
-          <button
-            className="settings-nav-item"
             aria-current={page === "terminal" ? "page" : undefined}
             onClick={() => setPage("terminal")}
           >
@@ -228,19 +217,19 @@ export default function SettingsWindow() {
           </button>
           <button
             className="settings-nav-item"
+            aria-current={page === "agent-control" ? "page" : undefined}
+            onClick={() => setPage("agent-control")}
+          >
+            <ShieldCheck size={16} />
+            Agent control
+          </button>
+          <button
+            className="settings-nav-item settings-nav-about"
             aria-current={page === "about" ? "page" : undefined}
             onClick={() => setPage("about")}
           >
             <Info size={16} />
             About
-          </button>
-          <button
-            className="settings-nav-item"
-            aria-current={page === "agent-control" ? "page" : undefined}
-            onClick={() => setPage("agent-control")}
-          >
-            <Code size={16} />
-            Agent control
           </button>
         </nav>
         {page === "agent-control" ? (
@@ -301,8 +290,6 @@ export default function SettingsWindow() {
           <TerminalSettingsPage />
         ) : page === "themes" ? (
           <ThemesPage />
-        ) : page === "editor" ? (
-          <EditorSettingsPage />
         ) : (
           <main className="keybindings-page">
             <header className="settings-page-heading">

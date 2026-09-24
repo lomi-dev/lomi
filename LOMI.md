@@ -48,7 +48,7 @@ or acronym.
   revision checks, encoding preservation, and native file watches.
 - `src/editor-preferences.ts` validates indentation preferences;
   `src/EditorPreferencesProvider.tsx` synchronizes them across windows.
-  Settings → Editor owns writes to `editor-preferences.json` through
+  Persisted editor preferences in `editor-preferences.json` are handled through
   `src-tauri/src/editor_preferences.rs`. Apply changes to shared buffers through
   CodeMirror compartments without replacing text, selections, or undo history.
   The editor status bar changes indentation and language for the current shared
@@ -193,8 +193,8 @@ or acronym.
   windows without restarting terminals, and preserve invalid settings until
   explicit recovery. Prevent conflicting shortcut assignments.
 - Keep project, editor, Git, and terminal commands restricted to the main window.
-  Settings may manage keybindings, editor preferences, terminal preferences, and theme packages, listen for updates, and
-  use its own window controls. Only settings may write these preferences or
+  Settings may manage keybindings, terminal preferences, and theme packages, listen for updates, and
+  use its own window controls. Only settings may write those preferences or
   import/create theme packages; both windows may read and apply themes.
 - Git mutations must follow an explicit UI action. Preserve the user's identity
   and exact commit text; never silently stage, commit, push, or add attribution.

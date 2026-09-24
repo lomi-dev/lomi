@@ -3144,7 +3144,12 @@ svg {
   min-height: 0;
 }
 .settings-navigation {
-  flex: 0 0 var(--settings-nav-width);
+  display: flex;
+  flex: 0 0 max(var(--settings-nav-width), 170px);
+  flex-direction: column;
+  gap: var(--space-4);
+  min-height: 0;
+  overflow-y: auto;
   padding: var(--settings-nav-padding);
   border-right: var(--border-width) solid var(--color-surface-variant);
   background: var(--color-surface);
@@ -3155,12 +3160,13 @@ svg {
   gap: var(--settings-nav-item-gap);
   padding: var(--settings-nav-item-padding);
   width: 100%;
+  text-align: left;
+  white-space: nowrap;
   border-radius: var(--radius-control);
   background: transparent;
   color: var(--color-surface-text);
 }
 .keybindings-page,
-.editor-settings-page,
 .terminal-settings-page,
 .themes-page {
   flex: 1;
@@ -3922,21 +3928,6 @@ svg {
   color: var(--color-surface-variant-text);
   font-size: var(--font-size-11);
 }
-.editor-setting-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-16);
-  padding: var(--editor-setting-padding);
-  border-bottom: var(--border-width) solid var(--color-surface-variant);
-}
-.editor-setting-row .select-trigger {
-  flex-shrink: 0;
-  width: 150px;
-}
-.editor-indentation-help {
-  margin-top: var(--space-20);
-}
 .keybinding-controls {
   display: flex;
   align-items: center;
@@ -4153,29 +4144,22 @@ svg {
   }
 }
 @media (max-width: 720px) {
-  .settings-navigation {
-    flex-basis: min(var(--settings-nav-width), 120px);
-    padding: var(--settings-nav-padding);
-  }
   .keybindings-page,
-  .editor-settings-page,
   .terminal-settings-page,
   .themes-page {
     padding: min(var(--settings-page-padding), var(--space-20));
   }
-  .keybinding-row,
-  .editor-setting-row {
+  .keybinding-row {
     flex-wrap: wrap;
     gap: var(--space-8);
   }
-  .terminal-settings-page .settings-page-heading,
-  .editor-settings-page .settings-page-heading {
+  .terminal-settings-page .settings-page-heading {
     flex-wrap: wrap;
   }
 }
 
-.settings-nav-item + .settings-nav-item {
-  margin-top: var(--space-4);
+.settings-navigation > .settings-nav-about {
+  margin-top: auto;
 }
 .settings-nav-item:hover,
 .settings-nav-item[aria-current="page"] {
@@ -4197,42 +4181,6 @@ input,
 textarea,
 select {
   background: var(--input-background);
-}
-.theme-library {
-  margin-top: var(--space-20);
-  padding: var(--theme-library-padding);
-  border: var(--border-width) solid var(--color-outline);
-  border-radius: var(--radius-menu);
-  background: var(--color-surface);
-}
-.theme-library-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--space-12);
-}
-.theme-library-heading > div {
-  flex: 1 1 200px;
-}
-.theme-library h2 {
-  margin: 0 0 var(--space-4);
-  font-size: var(--font-size);
-  font-weight: 500;
-}
-.theme-library p {
-  margin: 0;
-  color: var(--color-surface-variant-text);
-  font-size: var(--font-size-12);
-  line-height: 1.6;
-}
-.theme-directory {
-  display: block;
-  margin-top: var(--space-12);
-  overflow-wrap: anywhere;
-  color: var(--color-surface-variant-text);
-  font: var(--font-size-11)/1.6 var(--font-family-mono);
-  user-select: text;
 }
 .theme-symbol {
   display: grid;
@@ -5129,6 +5077,9 @@ details[open] > .disclosure-summary > .disclosure-summary-icon {
 .themes-page .catalog-heading-actions {
   flex-wrap: wrap;
   max-width: 100%;
+}
+.themes-page .catalog-content > .catalog-categories {
+  margin-bottom: var(--space-12);
 }
 .catalog-toolbar {
   margin-bottom: var(--space-12);

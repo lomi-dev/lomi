@@ -623,35 +623,6 @@ export default function ThemesPage() {
             })}
           </div>
         )}
-        <section className="theme-library" aria-label="Theme library">
-          <div className="theme-library-heading">
-            <div>
-              <h2>Your theme folder</h2>
-              <p>
-                Import Lomi folders, VS Code extension folders, color or icon
-                theme files, or VSIX packages. Refresh after editing files.
-              </p>
-              <p className="settings-help">
-                VS Code exchange includes colors, syntax rules, file icons and
-                interface icons with their images and fonts. Editor highlighting
-                may differ. Custom layouts, CSS and backgrounds remain Lomi
-                features.
-              </p>
-            </div>
-            <button
-              className="button"
-              disabled={busy || !native}
-              onClick={() =>
-                void run(() => api("open_themes_folder", { id: null }), "")
-              }
-            >
-              <FolderOpen size={14} aria-hidden="true" /> Open folder
-            </button>
-          </div>
-          {catalog.directory && (
-            <code className="theme-directory">{catalog.directory}</code>
-          )}
-        </section>
       </div>
       {editing && (
         <ThemeEditor

@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { newProject, newSession, openFileTab } from "../../src/model";
-import { chooseOption, mockDesktop } from "./desktop";
+import { mockDesktop } from "./desktop";
 
 const indentButton = (page: Page) =>
   page.getByRole("button", {
@@ -59,7 +59,6 @@ async function selectLanguage(page: Page, language: string) {
 
 test("the footer changes indentation inline for the current buffer without changing defaults or losing undo", async ({
   page,
-  context,
 }) => {
   await openReadme(page);
   await replaceText(page, "    old\nkeep");
@@ -96,14 +95,13 @@ test("the footer changes indentation inline for the current buffer without chang
     /\d+ tabs|\d+ terminals|Lomi/,
   );
 
-  const settings = await context.newPage();
-  await mockDesktop(settings);
-  await settings.goto("/?window=settings&page=editor");
-  await chooseOption(
-    settings.getByRole("combobox", { name: "Tab size" }),
-    "8 spaces",
-  );
-  await expect(settings.getByRole("status")).toHaveText("Saved");
+  await page.evaluate(async () => {
+    localStorage.setItem(
+      "test-editor-preferences",
+      JSON.stringify({ version: 1, tabSize: 8, insertSpaces: true }),
+    );
+    await (window as any).__nativeTest.emitEvent("editor-preferences-changed");
+  });
   await expect(indentButton(page)).toHaveText("Spaces: 2");
   await indentButton(page).click();
   await page

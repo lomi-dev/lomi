@@ -49,7 +49,7 @@ async function install(page: Page) {
     } else if (route.request().url().endsWith("/styles/parts/controls.css")) {
       await route.fulfill({
         contentType: "text/css",
-        body: '@media (min-width: 500px) { .theme-library { background-image: url("../../images/wall%20paper.svg"); } }',
+        body: '@media (min-width: 500px) { .catalog-content { background-image: url("../../images/wall%20paper.svg"); } }',
       });
     } else if (route.request().url().endsWith(".css"))
       await route.fulfill({
@@ -381,7 +381,7 @@ test("a theme updates both windows and hidden terminals without replacing PTYs",
   );
   expect(
     await preferences
-      .locator(".theme-library")
+      .locator(".catalog-content")
       .evaluate((node) => getComputedStyle(node).backgroundImage),
   ).toContain("/images/wall%20paper.svg");
   await preferences.getByRole("button", { name: "Use Lomi theme" }).click();
@@ -449,18 +449,21 @@ test("folder controls import themes without selecting them and fit the minimum w
 }, testInfo) => {
   await install(page);
   await settings(page);
-  await page.getByRole("button", { name: "Open folder", exact: true }).click();
-  expect((await calls(page, "open_themes_folder"))[0].args.id).toBeNull();
   await page
     .getByRole("button", { name: "Import folder", exact: true })
     .click();
   await expect(
     page.getByRole("button", { name: "Use Imported theme theme" }),
   ).toBeVisible();
+  await page
+    .getByRole("article", { name: "Imported theme" })
+    .getByRole("button", { name: "Open theme folder" })
+    .click();
+  expect((await calls(page, "open_themes_folder"))[0].args.id).toBe("imported");
   expect(await calls(page, "save_theme_preferences")).toHaveLength(0);
   await page.getByRole("button", { name: "Use Imported theme theme" }).click();
   await expect(
-    page.getByRole("button", { name: "Open folder", exact: true }),
+    page.getByRole("button", { name: "Import folder", exact: true }),
   ).toHaveCSS("border-radius", "12px");
   await page.setViewportSize({ width: 560, height: 420 });
   expect(

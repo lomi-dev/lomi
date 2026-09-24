@@ -91,7 +91,6 @@ pub async fn open_settings(
             "keybinds"
                 | "themes"
                 | "plugins"
-                | "editor"
                 | "terminal"
                 | "about"
                 | "chat-ai"

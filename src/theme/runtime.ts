@@ -393,6 +393,7 @@ export function compileTheme(
       ...(navigation !== "right"
         ? {
             display: "flex",
+            "flex-direction": "row",
             "flex-wrap": "wrap",
             flex: "0 0 auto",
             gap: "var(--space-4)",

@@ -8,42 +8,43 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test("selects support keyboard navigation, cancellation, typeahead and scrolling", async ({
+test("selects support keyboard navigation, cancellation, typeahead and small windows", async ({
   page,
 }, testInfo) => {
   await mockDesktop(page, false);
-  await page.goto("/?window=settings&page=editor");
-  const size = page.getByRole("combobox", { name: "Tab size" });
-  await size.click();
+  await page.goto("/?window=settings&page=themes");
+  const status = page.getByRole("combobox", { name: "Theme status" });
+  await status.click();
   await expect(
-    page.getByRole("option", { name: "4 spaces", exact: true }),
+    page.getByRole("option", { name: "All themes", exact: true }),
   ).toHaveAttribute("aria-selected", "true");
-  await size.press("End");
-  const last = page.getByRole("option", { name: "16 spaces", exact: true });
+  await status.press("End");
+  const last = page.getByRole("option", {
+    name: "Needs attention",
+    exact: true,
+  });
   await expect(last).toBeInViewport();
-  await expect(size).toHaveAttribute(
+  await expect(status).toHaveAttribute(
     "aria-activedescendant",
     (await last.getAttribute("id"))!,
   );
-  await size.press("Escape");
+  await status.press("Escape");
   await expect(page.getByRole("listbox")).toHaveCount(0);
-  await expect(size).toHaveText("4 spaces");
-  await expect(size).toBeFocused();
-  await size.click();
-  await size.click();
+  await expect(status).toHaveText("All themes");
+  await expect(status).toBeFocused();
+  await status.click();
+  await status.click();
   await expect(page.getByRole("listbox")).toHaveCount(0);
-  await size.press("2");
-  await size.press("Enter");
-  await expect(size).toHaveText("2 spaces");
-  await expect(page.getByRole("status")).toHaveText("Saved");
-  const style = page.getByRole("combobox", { name: "Indent using" });
-  await style.press("t");
-  await style.press("Tab");
-  await expect(style).toHaveText("Tab characters");
+  await status.press("n");
+  await status.press("Enter");
+  await expect(status).toHaveText("Needs attention");
+  await status.press("Home");
+  await status.press("Enter");
+  await expect(status).toHaveText("All themes");
   await expect(page.getByRole("listbox")).toHaveCount(0);
   await page.setViewportSize({ width: 560, height: 420 });
-  await size.click();
-  await size.press("End");
+  await status.click();
+  await status.press("End");
   await expect(last).toBeInViewport();
   const bounds = (await page.getByRole("listbox").boundingBox())!;
   expect(bounds.y).toBeGreaterThanOrEqual(0);
@@ -51,9 +52,9 @@ test("selects support keyboard navigation, cancellation, typeahead and scrolling
   await page.screenshot({
     path: testInfo.outputPath("select-small-window.png"),
   });
-  await page.getByRole("heading", { name: "Editor", exact: true }).click();
+  await page.getByRole("heading", { name: "Themes", exact: true }).click();
   await expect(page.getByRole("listbox")).toHaveCount(0);
-  await expect(size).toHaveText("2 spaces");
+  await expect(status).toHaveText("All themes");
 });
 
 test("theme dropdowns stay above a scrolling dialog and Enter never submits the form", async ({

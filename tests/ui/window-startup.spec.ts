@@ -71,9 +71,9 @@ test("settings become ready only after subscribing to requested pages", async ({
   await page.evaluate(() => (window as any).__subscribeSettings());
   await expect.poll(ready).toHaveLength(1);
   await page.evaluate(() =>
-    (window as any).__nativeTest.emitEvent("settings-page-changed", "editor"),
+    (window as any).__nativeTest.emitEvent("settings-page-changed", "terminal"),
   );
-  await expect(page.getByRole("heading", { name: "Editor" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Terminal" })).toBeVisible();
 });
 
 test("settings handle a first focus before the preload reply arrives", async ({

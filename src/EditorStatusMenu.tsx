@@ -3,7 +3,6 @@ import { createPortal } from "react-dom";
 import { ArrowLeft, Check } from "./icons";
 import type { EditorDocument } from "./editor-runtime";
 import { editorLanguage, editorLanguages } from "./editor-languages";
-import { api, errorMessage } from "./api";
 
 type Step = "indentation" | "spaces" | "tabs" | "display" | "language";
 interface Item {
@@ -84,15 +83,6 @@ export default function EditorStatusMenu({
         detail: status.customIndentation ? undefined : "Current",
         divider: true,
         run: () => finish(() => editor.setIndentation(null)),
-      },
-      {
-        label: "Configure Defaults…",
-        run: () =>
-          finish(() => {
-            void api("open_settings", { page: "editor" }).catch((error) =>
-              editor.reportError(errorMessage(error)),
-            );
-          }),
       },
     ];
   } else {

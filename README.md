@@ -137,9 +137,10 @@ _The native Git view, displaying a real commit from the Lomi repository._
 
 ### Make it your own
 
-Settings opens in a separate window. Change keyboard shortcuts, editor
-indentation, terminal appearance, and panel focus behavior. Appearance follows
-the system by default, with manual light and dark options.
+Settings opens in a separate window. Change keyboard shortcuts, terminal
+appearance, and panel focus behavior there. Change indentation for the current
+file from the editor status bar. Appearance follows the system by default, with
+manual light and dark options.
 
 Agent notifications are enabled by default in **Settings → Terminal**. Choose
 **Configure Claude Code…** and approve the displayed configuration file in the
