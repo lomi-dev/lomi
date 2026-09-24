@@ -7,6 +7,7 @@ import {
   readFileSync,
   realpathSync,
   unlinkSync,
+  utimesSync,
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,12 +21,12 @@ const macConfig = JSON.parse(
   readFileSync(path.join(tauriDirectory, "tauri.macos.conf.json"), "utf8"),
 );
 const binary = realpathSync(process.argv[2]);
-const contents = path.join(
+const appBundle = path.join(
   path.dirname(binary),
   "dev-bundle",
   `${config.productName}.app`,
-  "Contents",
 );
+const contents = path.join(appBundle, "Contents");
 const resources = path.join(contents, "Resources");
 const executable = path.join(contents, "MacOS", path.basename(binary));
 const compiledIcons = path.join(tauriDirectory, "target", "macos-icon");
@@ -77,5 +78,11 @@ execFileSync(
     }),
   },
 );
+
+// Replacing existing resources does not update their ancestor directories.
+// Advance the bundle timestamps so LaunchServices refreshes its cached icon.
+const preparedAt = new Date();
+utimesSync(contents, preparedAt, preparedAt);
+utimesSync(appBundle, preparedAt, preparedAt);
 
 console.log(executable);

@@ -38,8 +38,11 @@ before bundling (including standalone `tauri bundle`). The bundle contains:
 - `CFBundleIconName = Lomi`, supplied by `src-tauri/Info.plist`.
 
 The development runner creates a `.app` with the same resources. On startup,
-the existing native development hook clears Tauri's static icon override so
-AppKit can use the layered bundle icon.
+the runner updates the `Contents` and `.app` modification times after preparing
+the executable, resources, and `Info.plist`. This signals LaunchServices to
+refresh cached bundle metadata, including the Dock icon. The existing native
+development hook clears Tauri's static icon override so AppKit can use the
+layered bundle icon.
 
 On macOS 26 and later, select Default, Dark, Clear, or Tinted in System Settings
 under Appearance and check the Dock/Finder icon in light and dark appearance.
