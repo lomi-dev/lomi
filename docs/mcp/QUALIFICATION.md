@@ -6,7 +6,70 @@ the specific checks it actually covers. The active task list is in
 [implementation status](IMPLEMENTATION-STATUS.md).
 
 The concise [acceptance record](ACCEPTANCE.md) maps the selected product and
-security observations to this evidence. Overall acceptance remains in progress.
+security observations to this evidence. The selected source scope is VERIFIED
+on the recorded macOS ARM64 host; excluded scopes remain NOT_SELECTED.
+
+## Final selected-scope qualification (2026-09-24)
+
+P0–P6 are VERIFIED for the user's selected macOS ARM64 source delivery. P7,
+further theme/plugin MCP work, application lifecycle MCP tools, distribution,
+installers, releases and tags remain NOT_SELECTED. This is not cross-platform,
+strict-routing or packaged-release qualification.
+
+The final APK batch tyiQWW passed 2/2. Both actual model runs built the fixture
+APK through a Lomi terminal, imported its exact immutable bytes, obtained native
+installation approval, installed and launched org.lomi.inputtest, entered
+`ROUTING Zażółć 🙂` and submitted exactly once. Independent decoded Android UI
+and same-device/generation streaming assertions passed. Both final screenshots
+were visually inspected. Both hosts exited normally, removed private app data
+and stopped the owned guest/private ADB without force.
+
+| Run    | Device generation                    | Approved and installed SHA-256                                   | Normal exit wait |
+| ------ | ------------------------------------ | ---------------------------------------------------------------- | ---------------- |
+| F9ocAD | 19b5cb84-8b74-4371-9617-9b7318c14ec7 | 94972015a56c69beef57076c0d3c60ef2554030ae3b5180c529bd28cc147e89c | 252 ms           |
+| 9QoRB6 | 72d84faf-717d-4420-917d-87252a855c1a | fcbaefd5de4324439407cc600ded76ea0037b9371bdf93ccf8f17f2479a80acf | 170 ms           |
+
+Together with SOE0wa, APK has three complete passes. The complete ledger contains
+67 attempts: 60 complete passes, 64 native-postcondition completions, 67 completed
+model turns, 67 Lomi selections, zero observed competing actions and zero silent
+fallbacks. Every one of the 20 task rows has at least three complete passes.
+The seven failed attempts remain recorded; native task completion alone does
+not erase a cleanup failure. The historical 0KCGWi shutdown cause remains
+unresolved as described in ACCEPTANCE.md; no retroactive success is claimed.
+
+All 67 stored reports passed exact effective-profile comparison with hdyUBf:
+Codex CLI 0.156.1, gpt-6-sol, openai provider, medium effort, prefer-Lomi,
+feature values, instruction sources, private-configuration write count and the
+74-tool set. All 60 successful attempts have passed native results, normal exit,
+recorded cleanup and absent private app-data directories. External/browser and
+Android cleanup assertions were rechecked from their saved reports.
+
+Product/helper/test code was unchanged across p0GALB and tyiQWW. Before final
+documentation reconciliation, the source fingerprint was verified as
+`4ebf3ab32ccf7b4fe7088ce28fe9ca0f47b7689566abd78eee43de81cf622016`.
+The final native mcp-probe executable SHA-256 was
+`7e072b450b1f1069e1525bf925bf192220c87eff27d1b024bc35b052ce074684`.
+The latest product correction is dcaaa703bee9c6892e04b8ba13e8279be6806e83;
+subsequent delivery commits record evidence, documentation and final formatting
+of one existing broker regression test. The fixture README and test formatting
+participate in the source fingerprint, but change no executed behavior. No release build or installer is claimed.
+
+Final read-only process reconciliation found no matching qualification
+app/helper/server/browser/emulator processes; private ADB port 15047 had no
+listener. The licensed SDK/AVD, private fixture signing key, logs, images and
+fixture projects are retained for reproduction. No cleanup targeted the user's
+shared emulator, shared ADB or unrelated files. Evidence paths and operational
+limits are recorded in ACCEPTANCE.md and USAGE.md.
+
+Final validation passed: exact source/runtime/document mapping for all 74 tools,
+all local documentation links, all 67 effective profiles, cleanup/app-data checks,
+Prettier, Node syntax for both routing wrappers, git diff --check and workspace
+Rust formatting. The first final `cargo fmt --all --check` found only formatting
+in the existing file-move revision regression; rustfmt corrected that test and
+the repeated workspace check passed. No product logic changed after the routing
+runs. Earlier parser regressions, helper wire tests and workspace all-target
+mcp-probe Clippy remain recorded below; no new behavior required rerunning the
+full model matrix after documentation/formatting edits.
 
 ## Completed file, Git and reconnect routing rows (2026-09-24)
 

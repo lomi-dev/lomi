@@ -1,8 +1,9 @@
 # Selected MCP acceptance record
 
-Status: **IN_PROGRESS** on 2026-09-24. The selected adapters are implemented;
-final acceptance still requires the complete actual-model routing matrix,
-final validation, documentation reconciliation and final push.
+Status: **VERIFIED — selected source scope, macOS ARM64** on 2026-09-24.
+P0–P6 are complete for the explicitly selected scope. The actual-model gate has
+20 distinct tasks with three complete passes each. P7, further theme/plugin MCP,
+application lifecycle MCP and distribution remain NOT_SELECTED.
 This record summarizes the detailed, dated evidence in
 [QUALIFICATION.md](QUALIFICATION.md), including failed attempts.
 
@@ -34,8 +35,8 @@ It does not replace the three-run routing gate below.
 | --- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | E01 | VERIFIED                  | EFPfJF: actual Codex descendant of the origin PTY starts a separate Lomi execution PTY; native page/PNG and origin protection observed. Fixed-profile repetitions are recorded separately.                                                                               |
 | E02 | VERIFIED                  | Native WKWebView action/snapshot/PNG in 1tJWXL; actual-model form QDQtUj, 0SEf7i and MF5HV5 each produced exactly one Unicode submission and normal cleanup.                                                                                                             |
-| E03 | VERIFIED                  | Actual-model m7oy2s launched external Playwright; native PID ancestry and PNG confirmed Chromium, and the final answer distinguished it from a Lomi browser panel. All recorded child PIDs exited.                                                                       |
-| E04 | VERIFIED                  | Actual-model SOE0wa built/imported/approved/installed/launched the fixture APK and submitted Unicode once. Actual guest UI, same device/generation and panel screenshot confirmed the result.                                                                            |
+| E03 | VERIFIED                  | Actual-model m7oy2s, KnKa7X and oKImyU launched external Playwright; native PID ancestry and PNG confirmed Chromium, and the final answer distinguished it from a Lomi browser panel. All recorded child PIDs exited.                                                    |
+| E04 | VERIFIED                  | Actual-model SOE0wa, F9ocAD and 9QoRB6 built/imported/approved/installed/launched the fixture APK and submitted Unicode once. Actual guest UI, same device/generation and panel screenshot confirmed the result.                                                         |
 | E05 | VERIFIED                  | Native retained layout in 1tJWXL, YWPPVZ and ErnuOt: PTY/browser/Android identities survive selected moves; Android zoom and shared source views survive transfer.                                                                                                       |
 | E06 | VERIFIED                  | 1tJWXL editor-read.json rejects a stale revision. editor-edits.json records failed / none / REVISION_CONFLICT, unchanged buffer and a single undo restoring the original text. Existing UI save-race tests preserve later human edits.                                   |
 | E07 | VERIFIED                  | KoF9rh: two real helper processes with identical claimed clientInfo require independent Settings approvals. Distinct workspace PTYs retain correct output despite focus on the other workspace; the second client continues after the first disconnects.                 |
@@ -79,21 +80,41 @@ It does not replace the three-run routing gate below.
 | Terminal parser throughput             | Median 238.5 / 248 ms, +3.98% | fhyMJU; 20 alternating pairs, 2 MiB; same-build ordinary versus observed PTY, not an old-build or visible-paint comparison              |
 | Android input to presented-image proxy | p95 136 ms, max 144 ms        | 1tJWXL; 50 measured plus 3 warmup samples; MCP input to second animation frame after changed guest pixels, not a photodiode measurement |
 
-## Actual-model gate and outstanding work
+## Actual-model gate and known limitations
 
-The requirement is at least 20 distinct tasks with three completed executions
-each in the declared profile. [routing-matrix.json](routing-matrix.json) is the
-attempt ledger, including failures; a model's answer alone is not a pass. Native
-postconditions, normal host exit and cleanup must also pass. Results from a
-different/unrecorded effective profile are not counted.
+[routing-matrix.json](routing-matrix.json) records all 67 attempts in the declared
+profile, including the seven failed attempts. All 20 distinct tasks have at
+least three complete passes. A complete pass requires independent native
+postconditions, normal host exit and cleanup, not only the model's answer.
 
-Remaining work: finish the matrix and final validation, reconcile final
-documentation and push the completed work to origin/main. Native 5Gfkz6 verifies
-real guest-storage refusal; helper wire tests pass after correcting the stale
-Android layout descriptions. A prior REPL attempt 0KCGWi completed
-its task but required exit 143; its cause is unresolved and that attempt remains
-failed. Fresh vFL2iy exited normally with bounded exit diagnostics armed. No
-claim is made that the old failure's root cause was fixed.
+| Observation                         | Recorded result                                                                                                             |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Complete passes                     | 60/67 attempts; 20 tasks × 3 complete passes                                                                                |
+| Native task postconditions          | 64/67 attempts                                                                                                              |
+| Completed model turns               | 67/67 attempts                                                                                                              |
+| Selected Lomi                       | 67/67 attempts                                                                                                              |
+| Competing actions / silent fallback | 0 / 0 observed                                                                                                              |
+| Effective-profile audit             | All 67 match CLI, model, provider, effort, features, instruction sources, private-configuration write count and 74-tool set |
+
+All final answers from the successful repeated trials were reviewed against
+native results. Representative browser images and both final Android images
+were visually inspected; this does not claim manual inspection of every repeated
+image. The successful APK repetitions also cover normal installation after the
+storage-refusal parser correction. Native 5Gfkz6 verifies real guest-storage
+refusal and preservation of the previously installed package.
+
+Seven earlier attempts remain failed. In particular, REPL 0KCGWi completed its
+task but required exit 143; the cause of that fixture shutdown remains unresolved.
+Fresh vFL2iy exited normally with bounded exit diagnostics armed, and the REPL
+row has three complete passes. No claim is made that the old failure's root
+cause was fixed. These historical failures are not counted as successful runs.
+
+The source implementation uses bounded receipts/retry epochs (4096 each) and
+refuses admission when the durable budget is full; it does not silently discard
+deduplication history. [USAGE.md](USAGE.md) describes this operational limit.
+The broker uses the host account, browser networkIsolation is none, and this is
+a prefer-Lomi profile. Other host architectures/operating systems, strict routing,
+installers, signing, updates and distribution are not qualified by this record.
 
 The dependency audit recorded no known vulnerabilities at execution time, with
 separate unmaintained-crate advisories, a Linux-only glib advisory and a low
@@ -113,4 +134,9 @@ The licensed SDK/AVD is retained for qualification at
 `/tmp/lomi-android-stage0-mcp-20260923/native-managed-ca5c1615-3555-4833-a00f-e563569bf434`.
 Individual finished profiles record normal app exit, private app-data removal
 and, where used, stopped owned Android/private ADB or external browser processes.
-The overall task is still active; final process/resource reconciliation remains.
+Final reconciliation found no matching qualification app/helper/server/browser/
+emulator processes and no listener on private ADB port 15047. All 60 successful
+attempts have normal exit and absent private app-data directories. The licensed
+SDK/AVD and its private fixture signing key are retained; logs, screenshots and
+fixture projects remain as local temporary evidence. No shared emulator or ADB
+was stopped. No installer, release or tag was created.

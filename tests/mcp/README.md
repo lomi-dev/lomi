@@ -1,7 +1,9 @@
 # MCP qualification fixtures
 
 These fixtures exercise the production MCP helper, broker and native adapters.
-The catalog currently contains 74 tools; qualification is still in progress.
+The catalog contains 74 tools. The selected macOS ARM64 source scope and
+20-task actual-model gate are verified in the
+[acceptance record](../../docs/mcp/ACCEPTANCE.md).
 See [usage](../../docs/mcp/USAGE.md) for pairing and client setup.
 
 - `pnpm test:rust` runs the complete Cargo workspace, including protocol, helper and control-core tests. Native installation/GUI probes remain opt-in.
@@ -18,4 +20,4 @@ SHA-256-checked executable with fresh app data, Vite and client processes.
 Changing relevant sources stops the batch before another trial. Do not run
 other native builds or edit fixture/product sources during a batch.
 
-See `docs/mcp/QUALIFICATION.md` for executed results, platform limits and pending acceptance gates. Successful fixture calls do not qualify model routing, authorization, the UI bridge or production adapters.
+See `docs/mcp/QUALIFICATION.md` for executed results, retained failed attempts and platform limits. Successful fixture calls do not qualify model routing, authorization, the UI bridge or production adapters.

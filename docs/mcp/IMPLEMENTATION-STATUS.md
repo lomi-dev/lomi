@@ -23,46 +23,49 @@ installer publication or private client-configuration writes.
 
 ## Milestones
 
-| Stage | State        | Acceptance                                                                                                |
-| ----- | ------------ | --------------------------------------------------------------------------------------------------------- |
-| P0    | VERIFIED     | Selected SDK/client, native WKWebView, Bash/Zsh PTY, managed Android and authenticated IPC on macOS ARM64 |
-| P1    | VERIFIED     | Authenticated broker, exact grants, durable receipts, scoped UI bridge and native revoke                  |
-| P2    | VERIFIED     | Workspace, retained PTY and native browser end-to-end; client routing repetitions tracked under P6        |
-| P3    | VERIFIED     | Native browser actions, observations, screenshots, immutable artifacts and profile isolation              |
-| P4    | VERIFIED     | Selected managed Android build/import/install/launch/input path, protected generations and cleanup        |
-| P5.1  | VERIFIED     | Scoped disk/editor operations, shared buffers, conflicts, previews and real full-disk preservation        |
-| P5.2  | VERIFIED     | Guarded Git observations/views and all seven typed mutations with exact native approval                   |
-| P5.3  | VERIFIED     | Selected project/workspace/panel lifecycle, mixed layout and Chat/Android descendants                     |
-| P5.4  | VERIFIED     | Selected Settings open/read/editor/terminal/shortcut writes; further themes/plugins NOT_SELECTED          |
-| P5.5  | VERIFIED     | Android setup, device management and protected recovery on the qualified host                             |
-| P5.6  | VERIFIED     | Seven Chat AI tools and retained layout; local provider fixture, no paid request                          |
-| P5.7  | VERIFIED     | Advanced browser/PTY; application close/restart/update tools NOT_SELECTED                                 |
-| P6    | IN_PROGRESS  | Functional/safety/performance evidence recorded; finish actual-model repetitions and final reconciliation |
-| P7    | NOT_SELECTED | No optional extension selected                                                                            |
+| Stage | State        | Acceptance                                                                                                                                   |
+| ----- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| P0    | VERIFIED     | Selected SDK/client, native WKWebView, Bash/Zsh PTY, managed Android and authenticated IPC on macOS ARM64                                    |
+| P1    | VERIFIED     | Authenticated broker, exact grants, durable receipts, scoped UI bridge and native revoke                                                     |
+| P2    | VERIFIED     | Workspace, retained PTY and native browser end-to-end; client routing repetitions tracked under P6                                           |
+| P3    | VERIFIED     | Native browser actions, observations, screenshots, immutable artifacts and profile isolation                                                 |
+| P4    | VERIFIED     | Selected managed Android build/import/install/launch/input path, protected generations and cleanup                                           |
+| P5.1  | VERIFIED     | Scoped disk/editor operations, shared buffers, conflicts, previews and real full-disk preservation                                           |
+| P5.2  | VERIFIED     | Guarded Git observations/views and all seven typed mutations with exact native approval                                                      |
+| P5.3  | VERIFIED     | Selected project/workspace/panel lifecycle, mixed layout and Chat/Android descendants                                                        |
+| P5.4  | VERIFIED     | Selected Settings open/read/editor/terminal/shortcut writes; further themes/plugins NOT_SELECTED                                             |
+| P5.5  | VERIFIED     | Android setup, device management and protected recovery on the qualified host                                                                |
+| P5.6  | VERIFIED     | Seven Chat AI tools and retained layout; local provider fixture, no paid request                                                             |
+| P5.7  | VERIFIED     | Advanced browser/PTY; application close/restart/update tools NOT_SELECTED                                                                    |
+| P6    | VERIFIED     | Selected source scope: 20 actual-model tasks × 3 complete passes, native faults/performance, final documentation and resource reconciliation |
+| P7    | NOT_SELECTED | No optional extension selected                                                                                                               |
 
 VERIFIED applies only to the selected macOS ARM64 contracts and their documented
 limits. It does not qualify another operating system, a strict routing profile,
 or distribution. See REQUIREMENTS.md for all 74 tools and QUALIFICATION.md for
 executed evidence, retained failures and per-profile cleanup.
 
-## Current work
+## Final state
 
-Native dual-client isolation, real application restart, in-flight command/click/
-APK disconnects and product browser-profile separation have passed with normal
-cleanup. Their artifacts and scope are recorded in QUALIFICATION.md. The focused
-ADB guard regression and workspace all-target mcp-probe Clippy also passed.
-The fixed-profile actual-model matrix remains IN_PROGRESS: 58 complete passes
-and 19 complete three-run rows are recorded. Source-frozen batch p0GALB finished
-20/20 with normal cleanup. All 65 recorded attempts match the effective profile.
-The final two APK repetitions are running with the isolated Android fixture;
-application/helper/test sources remain frozen until that batch ends. The complete
-acceptance record is in ACCEPTANCE.md; final validation, documentation
-reconciliation and the final push remain pending.
+The selected MCP source implementation is complete on the recorded macOS ARM64
+host. All 74 exposed tools have mapped adapter evidence. P0–P6 are VERIFIED for
+this scope; P7, further theme/plugin MCP, application lifecycle MCP tools and
+distribution remain NOT_SELECTED.
 
-Stale Android layout descriptions and the native pre-session storage-refusal
-parser are fixed and verified in dcaaa703bee9c6892e04b8ba13e8279be6806e83 on
-origin/main. Native 5Gfkz6, two parser regressions, eight wire tests, workspace
-all-target mcp-probe Clippy, formatting/syntax, catalog and link checks passed.
+The actual-model ledger records 60 complete passes over 20 tasks, with three
+complete passes per task, and retains seven failed attempts. All 67 attempts
+match the declared effective profile. The final Android repetitions F9ocAD and
+9QoRB6 verified exact APK installation, launch, Unicode input and one form
+submission, followed by normal app/guest/private-ADB cleanup. All successful
+attempts have absent private app-data directories. Final process reconciliation
+found no remaining matching qualification processes or private ADB listener.
+
+[ACCEPTANCE.md](ACCEPTANCE.md) records E01–E12, S01–S16, performance, platform
+boundaries and the unresolved historical fixture-shutdown failure. The final
+source fingerprint and validation are in QUALIFICATION.md. Product/helper/test
+code remained unchanged through the last routing batches; final edits reconcile
+documentation and apply rustfmt to one existing broker regression test. Delivery consists of ordinary commits to origin/main, with
+no tags, release, installer or private client-configuration writes.
 
 ## Milestone history
 

@@ -200,9 +200,10 @@ draft flush precede native checkpointed cancellation; an admission barrier
 prevents replacement sends until layout settlement. Shared views preserve the
 runtime, failed saves preserve views with an uncertain receipt after a save
 attempt, and history is never deleted by closure.
-The catalog below records adapter evidence on macOS ARM64. The complete P6
-client-routing gate remains separate and in progress; a verified adapter does
-not imply a completed 20-task matrix or qualification on another host.
+The catalog below records adapter evidence on macOS ARM64. The separate P6
+client-routing gate is now VERIFIED: 20 tasks each have three complete passes,
+recorded in routing-matrix.json and ACCEPTANCE.md. Neither adapter evidence nor
+that gate qualifies another host or the excluded distribution scope.
 
 The source contracts remain normative. Later full native runs ifJdyT and 1tJWXL
 cover the current 74-tool catalog and multiple-project binding; separate native

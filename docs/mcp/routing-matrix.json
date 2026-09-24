@@ -1,5 +1,5 @@
 {
-  "status": "IN_PROGRESS",
+  "status": "VERIFIED",
   "platform": "macOS ARM64 27.0 (26A428), Apple M3",
   "profile": {
     "client": "Codex CLI 0.156.1",
@@ -39,8 +39,8 @@
     },
     {
       "task": "apk",
-      "executions": 1,
-      "completePasses": 1
+      "executions": 3,
+      "completePasses": 3
     },
     {
       "task": "origin-server",
@@ -1694,6 +1694,66 @@
       "selectedLomi": true,
       "competingActions": [],
       "silentFallback": false,
+      "toolCalls": 37,
+      "error": null,
+      "cleanup": {
+        "hostExited": true,
+        "appDataRemoved": true,
+        "retainedForRestart": false,
+        "exitCode": 0,
+        "signal": null,
+        "exitWaitMs": 252
+      },
+      "externalCleanup": null,
+      "androidCleanup": {
+        "deviceId": "c38f8ddd-0b24-4cae-81a1-fd9fcdd1e2e2",
+        "processAlive": false,
+        "forced": false,
+        "privateAdbStopped": true
+      },
+      "batch": "tyiQWW",
+      "artifact": "lomi-mcp-control-F9ocAD",
+      "sourceFingerprint": "4ebf3ab32ccf7b4fe7088ce28fe9ca0f47b7689566abd78eee43de81cf622016"
+    },
+    {
+      "task": "apk",
+      "repeat": 2,
+      "passed": true,
+      "taskCompleted": true,
+      "modelTurnCompleted": true,
+      "selectedLomi": true,
+      "competingActions": [],
+      "silentFallback": false,
+      "toolCalls": 39,
+      "error": null,
+      "cleanup": {
+        "hostExited": true,
+        "appDataRemoved": true,
+        "retainedForRestart": false,
+        "exitCode": 0,
+        "signal": null,
+        "exitWaitMs": 170
+      },
+      "externalCleanup": null,
+      "androidCleanup": {
+        "deviceId": "c38f8ddd-0b24-4cae-81a1-fd9fcdd1e2e2",
+        "processAlive": false,
+        "forced": false,
+        "privateAdbStopped": true
+      },
+      "batch": "tyiQWW",
+      "artifact": "lomi-mcp-control-9QoRB6",
+      "sourceFingerprint": "4ebf3ab32ccf7b4fe7088ce28fe9ca0f47b7689566abd78eee43de81cf622016"
+    },
+    {
+      "task": "apk",
+      "repeat": 1,
+      "passed": true,
+      "taskCompleted": true,
+      "modelTurnCompleted": true,
+      "selectedLomi": true,
+      "competingActions": [],
+      "silentFallback": false,
       "toolCalls": 39,
       "error": null,
       "cleanup": {
@@ -1721,6 +1781,7 @@
     "APK SOE0wa predates the explicit model pin, but its complete recorded effective profile was checked and matches; included with provenance.",
     "taskCompleted is the native-postcondition flag; fixture failures may prevent observing a task the model actually performed.",
     "REPL TKT6O3 omitted terminal_run but used a valid terminal_input path; its overstrict fixture expectation was corrected; fresh native reruns are recorded separately.",
-    "Reconciled external process cleanup of failed Mjejft and 8np8fE is documented in QUALIFICATION.md; original failure rows are preserved."
+    "Reconciled external process cleanup of failed Mjejft and 8np8fE is documented in QUALIFICATION.md; original failure rows are preserved.",
+    "VERIFIED is the selected macOS ARM64 prefer-Lomi routing gate: 20 tasks each have at least three complete passes. It does not qualify strict routing, another platform or distribution."
   ]
 }

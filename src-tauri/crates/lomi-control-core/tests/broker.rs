@@ -6328,11 +6328,20 @@ async fn file_move_replays_after_source_disappears_and_requires_separate_scope()
         let mut wrong_domain = input.clone();
         wrong_domain.expected_revision = revision;
         assert!(matches!(
-            client.call(Request::FilesMutate(wrong_domain)).await.unwrap(),
-            Reply::Error { code: ErrorCode::RevisionConflict, .. }
+            client
+                .call(Request::FilesMutate(wrong_domain))
+                .await
+                .unwrap(),
+            Reply::Error {
+                code: ErrorCode::RevisionConflict,
+                ..
+            }
         ));
         assert!(commands.try_recv().is_err());
-        assert_eq!(std::fs::read(project.join("source.txt")).unwrap(), b"original");
+        assert_eq!(
+            std::fs::read(project.join("source.txt")).unwrap(),
+            b"original"
+        );
         assert!(!project.join("renamed.txt").exists());
     }
     let reply = client

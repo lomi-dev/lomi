@@ -1,14 +1,15 @@
-# Local MCP development preview
+# Local MCP setup and usage
 
-This is an implementation preview, not the completed v1 release. The current
-native evidence is from macOS on Apple Silicon. See [implementation status](IMPLEMENTATION-STATUS.md)
-for unfinished work and [qualification](QUALIFICATION.md) for the exact tests,
-versions and limitations. A working connection does not qualify every tool or
-another operating system.
+The selected MCP source implementation is complete and verified on macOS with
+Apple Silicon. It exposes 74 tools for the authorized terminal, native browser,
+managed Android, files/editor, Git, layout, Settings and Chat workflows.
+The [acceptance record](ACCEPTANCE.md) lists the executed tests, versions and
+limitations; [implementation status](IMPLEMENTATION-STATUS.md) records P0–P6.
+Windows, Linux and macOS Intel remain unqualified.
 
-The user narrowed this delivery on 2026-09-23: further theme/plugin MCP work,
-application lifecycle tools and distribution/installers are excluded. Completed
-modules are delivered as ordinary commits on origin/main, without tags or releases.
+This delivery excludes further theme/plugin MCP work, application lifecycle MCP
+tools and distribution/installers. It consists of ordinary source commits on
+origin/main, without tags or releases. Build and pair locally as follows.
 
 ## Run and pair
 

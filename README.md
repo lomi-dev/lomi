@@ -91,7 +91,7 @@ take control or revoke the connection from Lomi.
 
 See the [MCP setup guide](docs/mcp/USAGE.md) for building the matching stdio
 helper and pairing it. The [acceptance record](docs/mcp/ACCEPTANCE.md) lists
-completed tests, remaining qualification work and host limitations.
+completed tests, the selected delivery scope and host limitations.
 
 ### Run a local Android phone
 
