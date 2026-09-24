@@ -108,6 +108,17 @@ process.once('SIGINT', () => {
       maxToolActions: 90,
       turnTimeoutMs: 360000,
     },
+    "two-workspaces": {
+      prompt:
+        "Create a new workspace named Routing second in the same temporary project as Visible workspace. Create a separate Lomi terminal in each workspace. Run printf 'ROUTING_FIRST\\n' only in Visible workspace and printf 'ROUTING_SECOND\\n' only in Routing second. Select Routing second and leave it selected. Read both terminal outputs after the workspace switch to verify that both sessions are retained. Leave both terminals open; do not use Private workspace.",
+      expectedTools: [
+        "lomi_workspace_create",
+        "lomi_terminal_create",
+        "lomi_terminal_run",
+        "lomi_workspace_update",
+        "lomi_terminal_read",
+      ],
+    },
   };
   cases["origin-server"] = { ...cases["dev-server"] };
   await writeFile(

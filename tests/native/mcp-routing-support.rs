@@ -2,6 +2,8 @@
 use super::*;
 #[path = "mcp-routing-android.rs"]
 mod android;
+#[path = "mcp-routing-workspaces.rs"]
+mod workspaces;
 
 fn read_json(path: &Path) -> Result<Value, String> {
     serde_json::from_slice(&std::fs::read(path).map_err(|e| e.to_string())?)
@@ -29,6 +31,9 @@ async fn approve(
             "Allow terminal creation, command execution and output reads",
             "Allow selecting and closing panels",
         ];
+        if case == "two-workspaces" {
+            labels.push("Allow workspace creation, renaming and selection");
+        }
         if case == "fix-test" {
             labels.extend([
                 "Allow reading project files",
@@ -36,7 +41,7 @@ async fn approve(
                 "Allow editing loaded buffers",
                 "Allow saving editor files",
             ]);
-        } else if case != "apk" {
+        } else if !matches!(case, "apk" | "two-workspaces") {
             labels.extend([
                 "Allow opening and navigating isolated browser panels",
                 "Allow reading page text, form structure and browser logs",
@@ -55,7 +60,7 @@ async fn approve(
         }
         if case == "apk" {
             android::grant(settings, &article, directory).await?;
-        } else if case != "fix-test" {
+        } else if !matches!(case, "fix-test" | "two-workspaces") {
             evaluate(settings,&format!("(()=>{{const e=({article}).querySelector('textarea');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,{origin});e.dispatchEvent(new Event('input',{{bubbles:true}}));return true;}})()")).await?;
         }
     }
@@ -114,6 +119,9 @@ async fn verify(
     }
     if report["expectedToolsSucceeded"] != true {
         return Err("A required model tool failed or omitted its screenshot image".into());
+    }
+    if case == "two-workspaces" {
+        return workspaces::verify(app, directory, report).await;
     }
     let main = app.get_webview("main").ok_or("Missing main")?;
     let resources: Vec<_> = calls

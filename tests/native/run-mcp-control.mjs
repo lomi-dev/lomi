@@ -38,7 +38,15 @@ if (androidRoot) {
     JSON.stringify({ deviceId: device.id, name: device.name }),
   );
 }
-const identifier = `dev.lomi.mcp-control-${Date.now()}`;
+const batchIdentifier = process.env.LOMI_MCP_BATCH_IDENTIFIER;
+if (
+  batchIdentifier &&
+  !/^dev\.lomi\.mcp-control-batch-[a-f0-9]{32}$/.test(batchIdentifier)
+)
+  throw Error("Invalid disposable batch identifier");
+// Sequential batch runs can reuse the compiled identity. mkdir below remains
+// exclusive, so a live or incompletely cleaned fixture cannot be overwritten.
+const identifier = batchIdentifier ?? `dev.lomi.mcp-control-${Date.now()}`;
 const appData = join(homedir(), "Library/Application Support", identifier);
 const folder = join(directory, "project");
 await mkdir(folder);

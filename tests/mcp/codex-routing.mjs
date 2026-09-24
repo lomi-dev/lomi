@@ -239,6 +239,7 @@ try {
   );
   started = await call("thread/start", {
     cwd: control.cwd,
+    model: "gpt-6-sol",
     modelProvider: "openai",
     ephemeral: true,
     approvalPolicy: "never",
@@ -250,6 +251,7 @@ try {
         : ""),
   });
   const threadId = started.thread.id;
+  assert.equal(started.model, "gpt-6-sol");
   assert.equal(started.reasoningEffort, "medium");
   report.reasoningEffort = started.reasoningEffort;
   const features = [];

@@ -42,6 +42,13 @@ installer publication or private client-configuration writes.
 
 ## Current work
 
+Android latency milestone `7091bcbeb957a99e40813346f1591442d6ccc9e3`
+was pushed to origin/main and verified. Two-workspace actual-model routing
+then passed 3/3 (u7KQSR, IemlCy, YitjKG), with gpt-6-sol and medium effort
+pinned, independently verified retained PTYs/outputs/selection, no competing
+actions and complete cleanup. This is one completed row of the 20×3 matrix.
+Terminal throughput measurement is now being qualified separately.
+
 Android/import milestone `42ed05a7f1912e9df1a5a0cf3269e7024b6b1e66` was
 pushed to origin/main and verified remotely. The subsequent full native run
 1tJWXL passed with 74 tools, 91 primary checks and required Android input.

@@ -5,6 +5,32 @@ their original failures and pending work; subsequent evidence supersedes only
 the specific checks it actually covers. The active task list is in
 [implementation status](IMPLEMENTATION-STATUS.md).
 
+## P6 fixed-profile two-workspace model trials (2026-09-24)
+
+**3/3 PASS:** u7KQSR, IemlCy, YitjKG, fresh native app data and Codex
+sessions each time. Codex CLI 0.156.1, explicitly pinned/asserted gpt-6-sol
+and medium effort, prefer-Lomi. The model created Routing second in the same
+temporary project, created one execution terminal per authorized workspace,
+printed the distinct requested marker in each, selected the second workspace,
+and read both outputs after switching. Independent native checks confirmed
+two distinct running PTYs with matching session/workspace IDs, each output
+only in its intended terminal, both model reads and the retained selection.
+The first native screenshot was visually inspected.
+
+The runs made 23, 25 and 24 model-selected MCP calls respectively. Each
+completed, selected Lomi and recorded zero competing actions (therefore no
+silent fallback). All host exits were normal with private app data removed.
+Raw reports, native evidence and screenshots are under their
+`lomi-mcp-control-*` directories; the sequential batch ledger is
+`lomi-mcp-routing-matrix-c0jNjS/results.json` in the host temporary directory.
+The batch uses an exclusive disposable application identity and stops if
+cleanup is incomplete. Reusing that identity did not avoid Tauri rebuilding
+in these trials; no build-speed improvement is claimed.
+
+This fills one task's three executions in the required 20×3 matrix. Earlier
+single successes and trials without recorded medium effort do not silently
+fill other fixed-profile cells. P6 remains open.
+
 ## P6 Android input latency and native regression (2026-09-24)
 
 `lomi-mcp-control-1tJWXL` **PASS**, with 74 tools and all 91 primary checks
