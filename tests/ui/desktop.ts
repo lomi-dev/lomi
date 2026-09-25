@@ -88,7 +88,7 @@ export async function mockDesktop(
         aboutInfo: {
           platform,
           arch: platform === "macos" ? "aarch64" : "x86_64",
-          version: "0.4.0",
+          version: "0.5.0",
           identifier: "dev.lomi.desktop",
         },
         androidPreparation: null,
