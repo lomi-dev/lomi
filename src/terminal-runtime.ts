@@ -456,7 +456,15 @@ export class TerminalRuntime {
       options.fontWeightBold,
     ]);
     const measureFont = this.measuredFont !== font;
-    if (measureFont) await loadTerminalFonts(this.terminal.options);
+    if (measureFont) {
+      await loadTerminalFonts(this.terminal.options);
+      if (
+        !this.attached ||
+        this.disposed ||
+        generation !== this.rendererGeneration
+      )
+        return;
+    }
     let webgl: WebglAddon | undefined;
     try {
       const { WebglAddon } = await (webglModule ??=
@@ -507,6 +515,12 @@ export class TerminalRuntime {
       // Replacing xterm's DOM renderer changes styles and can invalidate WebKit's
       // loaded font faces. Its WebGL atlas may already contain fallback glyphs.
       await loadTerminalFonts(this.terminal.options);
+      if (
+        !this.attached ||
+        this.disposed ||
+        generation !== this.rendererGeneration
+      )
+        return;
       await document.fonts.ready;
       if (
         !this.attached ||
@@ -517,6 +531,22 @@ export class TerminalRuntime {
       const fontFamily = this.terminal.options.fontFamily;
       this.terminal.options.fontFamily = `${fontFamily} `;
       this.terminal.options.fontFamily = fontFamily;
+      // Metric invalidation can start another font-loading cycle. Discard glyphs
+      // only after the final font change settles, before revealing or starting a PTY.
+      await loadTerminalFonts(this.terminal.options);
+      if (
+        !this.attached ||
+        this.disposed ||
+        generation !== this.rendererGeneration
+      )
+        return;
+      await document.fonts.ready;
+      if (
+        !this.attached ||
+        this.disposed ||
+        generation !== this.rendererGeneration
+      )
+        return;
       this.terminal.clearTextureAtlas();
       // Returning panes reuse their measurements without loading fonts again.
       this.measuredFont = font;
