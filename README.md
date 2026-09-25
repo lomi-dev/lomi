@@ -1,264 +1,188 @@
 <div align="center">
-  <img src="public/app-icon.png" width="88" height="88" alt="Lomi icon" />
+  <img src="public/app-icon.png" width="112" height="112" alt="Lomi app icon" />
   <h1>Lomi</h1>
-  <p><strong>Your terminal, code, and browser in one desktop workspace.</strong></p>
-  <p>A local development environment for Linux, macOS, and Windows.</p>
+  <p><strong>The open-source desktop workspace for terminal-driven development.</strong></p>
+  <p>Native terminals, a code editor, browser previews, Git and your coding agents in one window.</p>
   <p>
+    <a href="https://github.com/lomi-dev/lomi/releases/latest"><img src="https://img.shields.io/github/v/release/lomi-dev/lomi?label=release&color=C8FF3D&labelColor=0B0D0C" alt="Latest release" /></a>
+    <a href="https://github.com/lomi-dev/lomi/releases"><img src="https://img.shields.io/github/downloads/lomi-dev/lomi/total?color=C8FF3D&labelColor=0B0D0C" alt="Downloads" /></a>
+    <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-C8FF3D?labelColor=0B0D0C" alt="macOS, Linux and Windows" />
+    <a href="LICENSE"><img src="https://img.shields.io/github/license/lomi-dev/lomi?color=C8FF3D&labelColor=0B0D0C" alt="Apache-2.0 license" /></a>
+  </p>
+  <p>
+    <a href="https://lomi.dev">Website</a> ·
     <a href="https://github.com/lomi-dev/lomi/releases/latest">Download</a> ·
-    <a href="#work-in-one-workspace">Features</a> ·
-    <a href="#keyboard-shortcuts">Shortcuts</a> ·
-    <a href="#develop-from-source">Development</a> ·
+    <a href="#features">Features</a> ·
+    <a href="#documentation">Docs</a> ·
+    <a href="#build-from-source">Build from source</a> ·
     <a href="https://github.com/lomi-dev/lomi/issues">Report an issue</a>
   </p>
 </div>
 
-![Lomi with the file explorer, a TypeScript editor, passing tests, and a running Vite server in two terminal panels.](docs/images/workbench.png)
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/workbench-light.png" />
+  <img src="docs/images/workbench.png" alt="Lomi with the Explorer, src/model.ts open in the editor, and a native terminal below it showing passing tests." />
+</picture>
 
-Open a project folder, arrange your panels, and get to work. Lomi brings
-native terminals, file editing, browser previews, and Git into the same window.
-Create separate workspaces for different tasks while keeping their shells running
-in the background.
+## What is Lomi?
 
-_Screenshots show a native Linux development build with the bundled DeepMono dark
-theme. This README describes the current development branch; see the
-[release notes](https://github.com/lomi-dev/lomi/releases) for the
-features included in each download._
+Lomi is a local development workspace for macOS, Linux and Windows. Open a
+project folder and arrange real shells, editors, browser previews, Git views and
+AI chats side by side. Keep separate workspaces for separate tasks; their
+terminals keep running in the background while you switch.
 
-## Download and install
+Run Claude Code, Codex, Gemini CLI or any other CLI agent in a Lomi terminal,
+and let it work with your workspace over MCP once you approve it. Lomi is built
+with Tauri 2 and Rust and uses the system webview. There is no account and no
+telemetry: API keys stay in your system credential store, and history stays on
+your device.
 
-Choose a package from the [latest release](https://github.com/lomi-dev/lomi/releases/latest).
+## Screenshots
 
-| Platform            | Package                                                  |
-| ------------------- | -------------------------------------------------------- |
-| Linux x86_64        | AppImage, `.deb` for Debian/Ubuntu, or `.rpm` for Fedora |
-| macOS Apple Silicon | `aarch64.dmg`                                            |
-| macOS Intel         | `x64.dmg`                                                |
-| Windows x64         | `.exe` installer or `.msi`                               |
+<table>
+  <tr>
+    <td width="50%" align="center"><img src="docs/images/browser.png" alt="A terminal running an Astro dev server next to a browser panel previewing the page, with the Workspaces sidebar listing two projects." /><br /><sub>Preview a local dev server next to the terminal that runs it</sub></td>
+    <td width="50%" align="center"><img src="docs/images/source-control.png" alt="Source Control history beside a commit with its changed files and a Rust diff." /><br /><sub>Browse history, inspect commits and review diffs</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/images/agent-control.png" alt="Settings, Agent control page listing Claude Code, Codex, Gemini CLI and other MCP clients." /><br /><sub>Connect coding agents to Lomi over MCP</sub></td>
+    <td align="center"><img src="docs/images/themes.png" alt="Settings, Themes page with the active Lomi theme, DeepMono and VS Code import." /><br /><sub>Built-in themes, light and dark modes, VS Code import</sub></td>
+  </tr>
+</table>
 
-On Arch Linux, install the prebuilt [AUR package](https://aur.archlinux.org/packages/lomi-bin):
+## Features
 
-```sh
-yay -S lomi-bin
-```
+### Workspaces
 
-The [lomi](https://aur.archlinux.org/packages/lomi) AUR package builds
-from source. For an AppImage, enable **Allow executing file as program** in your
-file manager before opening it.
+- A project is a folder; each named workspace keeps its own tabs. Dock
+  terminals, editors, browsers, chats and phones in any split layout, and place
+  Workspaces, Explorer and Source Control on either side.
+- Sessions restore projects, layouts and working directories with fresh shells.
+  Commands are never replayed; running processes, terminal output and unsaved
+  edits are not restored.
 
-Check for updates in **Settings → About**. Windows and macOS can install signed
-update packages after checking open work and saving the session. Linux provides
-package-manager or download instructions. See the [release guide](docs/releases.md)
-for packaging and signing details.
+### Terminals
 
-## Work in one workspace
+- Native shells through `portable-pty`, rendered by xterm.js with WebGL. Output
+  keeps streaming in hidden tabs and other workspaces.
+- Bash, Zsh, Fish, PowerShell and Command Prompt, plus WSL distributions on
+  Windows.
+- Find, multiline command input, command blocks and a terminal overview appear
+  only when you ask for them.
+- Dropped files become shell-quoted paths, and screenshots paste straight into
+  CLI agents such as Codex.
 
-On first launch, choose **Open folder or repository**. Open a file from Explorer,
-run a command in the terminal, or use the **+** button to add a tab. For a separate
-task in the same folder, open the Workspaces sidebar and choose **New workspace**.
+### Code and files
 
-- **Keep your shell running.** Split terminals, switch tabs, and move between
-  workspaces while background processes continue. Use installed shells, including
-  Bash, Zsh, Fish, PowerShell, and Windows Command Prompt; WSL distributions appear
-  as separate environments on Windows.
-- **Arrange panels around the task.** Dock terminals, files, browsers, and AI chats beside
-  one another. Move panels without restarting shells or losing editor buffers.
-  Maximize a panel when you need more space.
-- **Edit files where you work.** Browse and search the project, create and rename
-  files, and edit with syntax highlighting. Views of the same file share edits
-  and undo history. Markdown files include a live preview.
-- **View images in the workspace.** Open PNG/APNG, JPEG/JFIF, WebP, GIF, SVG,
-  AVIF, ICO, and BMP files from Explorer. Previews support fit, actual size,
-  zoom, transparency, and reload from disk, including in split panels and
-  restored tabs. TIFF, TGA, DDS, PNM, QOI, HDR, OpenEXR, and Farbfeld use native
-  conversion for preview without changing the original file. Previews accept
-  files up to 32 MiB; native conversion is limited to 16 megapixels and 128 MiB
-  of decoded pixels. Converted previews show the first image in 8-bit RGBA;
-  webview support determines which AVIF and animated image variants can play.
-- **Preview local services.** Browser panels use the operating system's webview.
-  The address bar suggests discovered local HTTP servers; pages retain their
-  state when you switch tabs or workspaces.
-- **Separate projects and tasks.** A project is a folder; its named workspaces
-  hold separate sets of tabs. Place Workspaces, Explorer, and Source Control on
-  either side of the window.
+- CodeMirror 6 with syntax highlighting for TypeScript, Rust, Python, Go,
+  C/C++, Java, HTML, CSS, JSON, YAML, SQL, Markdown and more.
+- Views of one file share edits and undo history. Unsaved work is never
+  discarded silently; encodings, line endings and permissions are preserved.
+- Explorer with project search and file operations, live Markdown and SVG
+  previews, and image previews from PNG and WebP to TIFF and OpenEXR.
 
-### Connect a local MCP client
+### Git
 
-Source builds on macOS Apple Silicon include **Settings → Agent control**.
-Pair a local MCP client and grant access to selected workspaces, tools and
-resources. The client uses Lomi's retained terminals, native browser panels,
-managed Android devices, files, Git and selected Chat conversations. You can
-take control or revoke the connection from Lomi.
+- Source Control for every repository in a project: stage, unstage, commit,
+  fetch, pull and push.
+- Paginated history, commit details and read-only diffs in their own tabs.
+  Nothing is staged, committed or pushed without an explicit action.
 
-The optional **YOLO mode** switch automatically pairs local MCP clients and
-approves supported operations across all workspaces. It defaults to off and is
-saved separately from automatic server startup. Turning it off ends current
-sessions and restores manual approvals.
+### Browser and Android
 
-See the [MCP setup guide](docs/mcp/USAGE.md) for building the matching stdio
-helper and pairing it. The [acceptance record](docs/mcp/ACCEPTANCE.md) lists
-completed tests, the selected delivery scope and host limitations.
+- Browser panels use the system webview, suggest local dev servers and keep
+  their state across tabs. Pages get a separate storage profile and no
+  application privileges.
+- Virtual Android phones run inside a panel, without Android Studio or an
+  emulator window. Setup is currently available on macOS with Apple Silicon.
 
-### Run a local Android phone
+### Coding agents
 
-Choose **+ → New android symulator** and prepare tools, a system image and a
-virtual phone in **Settings → Android**. Android runs inside the panel, without
-an external emulator window or Android Studio. Browse recent stable Android
-versions and available Pixel profiles, then use Fit, 25–300% zoom and pan in
-each view. Screenshots retain the phone's full resolution. Native qualification
-covers the recorded macOS ARM64 host; Android setup and Start remain disabled
-on other hosts pending their native tests. See the [Android guide](docs/android.md)
-for setup, controls, device data and current limits.
+- On macOS and Linux, Lomi recognizes more than 30 CLI agents in its terminals
+  and offers their missing titlebar, notification and MCP integrations.
+  Configuration changes only after a click and keeps a backup.
+- **Agent control** lets a paired agent use Lomi's terminals, browser panels,
+  files, Git, Android phones and chats through MCP, limited to the workspaces
+  and permissions you approve. It currently requires macOS with Apple Silicon.
 
-### Chat with your own AI providers
+### Chat AI
 
-Choose **+ → Chat AI**, then add a named connection in **Settings → Chat AI**.
-OpenAI, Anthropic and Google Gemini use your own API keys. Choose the system
-credential store or explicit session-only storage, set a default model, and
-optionally run the paid, fixed-prompt connection test. Installed builds include
-Node; no Node installation, Lomi account or Vercel account is required.
+- Chat with OpenAI, Anthropic, Google Gemini, xAI, OpenRouter, DeepSeek or
+  NVIDIA using your own API keys. Stream, retry, branch by editing, search local
+  history and export to Markdown or JSON.
+- Responses cannot run commands or edit files.
 
-Chats support streaming, Stop, Retry, preserved Edit/Regenerate variants, local
-searchable history, shared drafts, Markdown/JSON export, and explicitly attached
-UTF-8 text or PNG/JPEG/WebP images. Dock chats beside existing panels; switching
-workspaces keeps generation running. Responses cannot execute commands or edit
-files. See [Chat AI usage and data storage](docs/chat-ai.md) for limits, privacy,
-recovery and the current native validation scope.
+### Make it yours
 
-### Review changes without leaving the workspace
+- Lomi and DeepMono themes in light, dark or system mode. Create JSONC themes
+  with CSS and local assets, or import and export VS Code color and icon themes.
+- Configurable shortcuts and optional focus-follows-pointer.
+- Trusted local plugins add views, sidebars and commands. Launch with
+  `lomi --safe-mode` to skip third-party plugins and themes.
 
-Inspect working-tree and staged diffs, stage or unstage files, and write commits
-from Source Control. Browse repository history and open a commit to inspect its
-message, changed files, and read-only diffs. Remote actions include fetch, pull,
-and push.
+## Install
 
-![Lomi showing repository history, a selected commit, its changed files, and the diff for Explorer.tsx.](docs/images/source-control.png)
+Download the package for your platform from the
+[latest release](https://github.com/lomi-dev/lomi/releases/latest).
 
-_The native Git view, displaying a real commit from the Lomi repository._
+| Platform                     | Package                                             |
+| ---------------------------- | --------------------------------------------------- |
+| macOS, Apple Silicon / Intel | `aarch64.dmg` / `x64.dmg`, signed and notarized     |
+| Windows x64                  | `x64-setup.exe` or `.msi`                           |
+| Linux x86_64                 | AppImage, `.deb` (Debian/Ubuntu) or `.rpm` (Fedora) |
 
-### Make it your own
+On macOS and Windows, **Settings → About** installs signed updates after
+checking for unsaved work. On Linux, update through your package manager or
+download the new package. Windows installers are not Authenticode-signed yet,
+so SmartScreen may ask for confirmation.
 
-Settings opens in a separate window. Change keyboard shortcuts, terminal
-appearance, and panel focus behavior there. Change indentation for the current
-file from the editor status bar. Appearance follows the system by default, with
-manual light and dark options.
-
-Agent notifications are enabled by default in **Settings → Terminal**. Choose
-**Configure Claude Code…** and approve the displayed configuration file in the
-main window, then start a new Claude Code session. Lomi preserves existing
-hooks and settings and makes a backup before writing. Alerts identify the
-workspace and terminal when Claude finishes responding or needs input while the
-main window is in the background, including hidden terminals. Turn off
-**Agent notifications** to stop alerts immediately without restarting terminals.
-Finishing a response does not guarantee that the task succeeded.
-
-Setup targets local Claude Code's `settings.json` under `CLAUDE_CONFIG_DIR` when
-Lomi inherits it, otherwise `~/.claude`. WSL, SSH, and custom per-terminal
-configuration locations need their own hook configuration. Notifications also
-depend on the operating system's notification settings; Windows requires an
-installed build for the correct application identity.
-
-![The native Lomi settings window on the Keybinds page, showing workspace shortcuts and the focus-follows-pointer option.](docs/images/keybindings.png)
-
-- **Themes:** use the default Lomi theme, choose the built-in DeepMono alternative,
-  or create and import JSONC theme
-  packages with local assets and CSS. See [theme authoring](themes/README.md).
-- **Plugins:** install trusted local packages that add views, sidebars, and
-  commands. See the [plugin SDK](https://github.com/lomi-dev/plugin-sdk).
-- **Recovery:** launch with `lomi --safe-mode` to skip third-party plugins
-  and themes.
+> [!NOTE]
+> Lomi was previously published as SimpleBench. Releases up to v0.4.0 and the
+> `simplebench-bin` AUR package still use that name; `lomi-bin` and `lomi`
+> join the AUR with the first Lomi release. This README describes the `main`
+> branch, and the [release notes](https://github.com/lomi-dev/lomi/releases)
+> list what each version includes.
 
 ## Keyboard shortcuts
 
-These are the defaults on Linux and Windows. On macOS, use **Cmd** in place of
-**Ctrl**, except terminal overview, which remains **Ctrl+Tab**. Reassign shortcuts
-in **Settings → Keybinds**.
+Defaults for Linux and Windows. On macOS, use **Cmd** instead of **Ctrl**,
+except for the terminal overview. Change any shortcut in **Settings → Keybinds**.
 
-| Action                                 | Shortcut                        |
-| -------------------------------------- | ------------------------------- |
-| Show commands                          | `Ctrl+Shift+P`                  |
-| Add a terminal beside the active panel | `Ctrl+D`                        |
-| Add a terminal below the active panel  | `Ctrl+Shift+D`                  |
-| Close the active panel                 | `Ctrl+W`                        |
-| Create / close a tab                   | `Ctrl+Shift+T` / `Ctrl+Shift+W` |
-| Next / previous tab                    | `Ctrl+PageDown` / `Ctrl+PageUp` |
-| Toggle terminal overview               | `Ctrl+Tab`                      |
-| Toggle Explorer / Source Control       | `Ctrl+Shift+E` / `Ctrl+Shift+G` |
-| Save a file                            | `Ctrl+S`                        |
-| Find in a file / terminal              | `Ctrl+F` / `Ctrl+Shift+F`       |
-| Copy / paste in a terminal             | `Ctrl+Shift+C` / `Ctrl+Shift+V` |
-| Open settings                          | `Ctrl+,`                        |
+| Action                           | Shortcut                        |
+| -------------------------------- | ------------------------------- |
+| Show commands                    | `Ctrl+Shift+P`                  |
+| Split terminal right / below     | `Ctrl+D` / `Ctrl+Shift+D`       |
+| Close the active panel           | `Ctrl+W`                        |
+| New / close tab                  | `Ctrl+Shift+T` / `Ctrl+Shift+W` |
+| Next / previous tab              | `Ctrl+PageDown` / `Ctrl+PageUp` |
+| Terminal overview                | `Ctrl+Tab`                      |
+| Toggle Explorer / Source Control | `Ctrl+Shift+E` / `Ctrl+Shift+G` |
+| Find in file / terminal          | `Ctrl+F` / `Ctrl+Shift+F`       |
+| Copy / paste in a terminal       | `Ctrl+Shift+C` / `Ctrl+Shift+V` |
+| Open Settings                    | `Ctrl+,`                        |
 
-Terminal titles are hidden by default. Press **Ctrl** to reveal them for five
-seconds, or hold it for more than one second to keep them visible until release.
-Enable **Settings → Terminal → Always show terminal titles** to keep published
-titles visible. Hold **Ctrl** and drag a terminal title to move its panel. Additional commands
-include multiline terminal input, command blocks, environment selection, and
-interface zoom. Enable **Focus follows pointer** to focus a terminal or editor
-by moving the pointer over it.
+Terminal titles are hidden by default: press **Ctrl** to reveal them, or hold it
+and drag a title to move its panel.
 
-## Work with CLI agents
+## Documentation
 
-Run your installed coding CLIs in ordinary terminal panels. Lomi displays
-the terminal titles they publish, including conversation titles when the CLI
-supports and enables them.
+| Guide                                                | Covers                                                 |
+| ---------------------------------------------------- | ------------------------------------------------------ |
+| [Chat AI](docs/chat-ai.md)                           | Providers, keys, history, attachments and privacy      |
+| [Android phones](docs/android.md)                    | Setup, controls, device data and platform limits       |
+| [Agent control](docs/mcp/USAGE.md)                   | MCP server, pairing, permissions and YOLO mode         |
+| [CLI agent integrations](docs/cli-agents.md)         | Supported agents, configuration files and manual setup |
+| [Terminal clipboard](docs/terminal-clipboard.md)     | Pasting images into CLI agents                         |
+| [Themes](themes/README.md)                           | JSONC theme packages, assets, CSS and VS Code themes   |
+| [Plugin SDK](https://github.com/lomi-dev/plugin-sdk) | Building trusted local plugins                         |
+| [Releases](docs/releases.md)                         | Packaging, signing and publishing                      |
 
-Paste a screenshot or copied image into a terminal using **Cmd+V** on macOS,
-**Ctrl+V** on Windows, or the configurable **Paste into terminal** shortcut
-(**Ctrl+Shift+V** on Linux/Windows, **Cmd+Shift+V** on macOS). Lomi saves
-the image as a local PNG and pastes its quoted path, which Codex recognizes as
-an image attachment. For a foreground local `agy` process on macOS/Linux,
-Lomi invokes its existing image-paste action instead, so it creates a
-native media attachment. Neither route needs CLI plugins or configuration
-changes. Pasting never presses Enter, and ordinary clipboard text keeps working.
-Native attachment behavior has been verified on macOS with Codex and agy;
-other platforms have not yet been qualified.
+## Build from source
 
-Saved PNGs stay in the application's `terminal-clipboard` cache after closing a
-terminal or restarting Lomi, so pending CLI drafts can still use them.
-The cache holds up to 512 MiB or 2048 images; if full, the error shows the folder
-where you can remove images you no longer need. Each saved PNG is limited to
-32 megapixels and 32 MiB of PNG data. agy manages its own imported attachment.
-Images are local files, not uploads;
-remote SSH sessions and containers need their own access to those files.
-
-Lomi recognizes 30 coding agents plus Antigravity CLI on macOS and Linux.
-The status bar offers each agent’s supported missing integrations. See the
-[CLI integration matrix](docs/cli-agents.md) for supported agents, MCP formats,
-manual setup and version limitations. Click **Enable …
-notifications**, **Enable … Lomi MCP**, or **Enable … titlebar** to configure that
-feature. Notifications support Codex and Claude Code; MCP is available on
-qualified macOS Apple Silicon hosts. Configured features disappear. Each suggestion has its own close button; closing
-it hides only that feature for that CLI until Lomi restarts.
-
-Changes preserve other settings and save a backup. Restart or reload the CLI to
-apply them; Antigravity titles can also be activated with `/title on`. Lomi does
-not restart the CLI or resume conversations automatically. Settings → Agent
-control lists all agents and installs MCP in one supported user configuration or
-in bulk. Clients without automatic setup show the required manual steps.
-See [MCP setup](docs/mcp/USAGE.md) for pairing and client approvals.
-
-## What survives a restart
-
-Lomi saves project folders, workspaces, tabs, panel layouts, and working
-directories. Reopening a session starts fresh shells when their tabs are visited.
-It does not replay commands or restore previous processes, terminal output, or
-unsaved file contents.
-
-Unsaved edits and undo history remain available while switching views during a
-session. Closing their final view or exiting offers **Save**, **Discard**, or
-**Cancel**; failed saves retain the edits. External disk changes reload clean
-buffers, while modified buffers require a choice before replacement.
-
-## Develop from source
-
-The application uses **Tauri 2 and Rust** for native integration, **React and
-TypeScript** for the interface, **CodeMirror** for editing, and **xterm.js** for
-terminal rendering.
-
-Install Node.js **22.14 or newer**, pnpm (the version declared in
-[package.json](package.json)), and stable Rust. Follow the
-[Tauri platform prerequisites](https://v2.tauri.app/start/prerequisites/) for
-Linux libraries, macOS developer tools, or Windows build tools and WebView2.
+Install Node.js 22.14 or newer, pnpm (the version pinned in
+[package.json](package.json)), stable Rust, and the
+[Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your
+platform.
 
 ```sh
 git clone https://github.com/lomi-dev/lomi.git
@@ -267,75 +191,47 @@ pnpm install --frozen-lockfile
 pnpm tauri dev
 ```
 
-For frontend-only development, run `pnpm dev` and open
-`http://127.0.0.1:1420`. Native terminals, filesystem operations, and embedded
-browser panels require the desktop application.
+`pnpm dev` serves only the frontend at `http://127.0.0.1:1420`. Terminals, file
+access and browser panels need the desktop application.
 
-### Validation
-
-Run the checks appropriate to your changes:
-
-| Check                                 | Command                                                                     |
-| ------------------------------------- | --------------------------------------------------------------------------- |
-| TypeScript                            | `pnpm check`                                                                |
-| Model and behavior tests              | `pnpm test`                                                                 |
-| Frontend and documentation formatting | `pnpm format:check`                                                         |
-| Frontend build                        | `pnpm build`                                                                |
-| Rust compilation                      | `cargo check --manifest-path src-tauri/Cargo.toml --locked`                 |
-| Rust and native PTY tests             | `cargo test --manifest-path src-tauri/Cargo.toml --locked`                  |
-| Rust formatting                       | `cargo fmt --manifest-path src-tauri/Cargo.toml --check`                    |
-| Rust lints                            | `cargo clippy --manifest-path src-tauri/Cargo.toml --locked -- -D warnings` |
-
-Run the interface tests after installing Playwright's Chromium:
+### Validation and builds
 
 ```sh
-pnpm exec playwright install chromium
-pnpm test:ui
+pnpm check          # TypeScript, plugin SDK contract and AI runtime
+pnpm test           # model and behavior tests
+pnpm test:ui        # Playwright interface tests (install Chromium first)
+pnpm format:check   # frontend and documentation formatting
+cargo test   --manifest-path src-tauri/Cargo.toml --locked
+cargo clippy --manifest-path src-tauri/Cargo.toml --locked -- -D warnings
+cargo fmt    --manifest-path src-tauri/Cargo.toml --check
 ```
 
-Run the same interface suite in WebKit to cover the browser engine family used
-on macOS:
+Install Playwright's browser with `pnpm exec playwright install chromium`, or
+`webkit` for `pnpm test:ui:webkit`. Playwright mocks native commands, so changes
+to PTYs, webviews and native windows also need a check in the desktop app.
 
-```sh
-pnpm exec playwright install webkit
-pnpm test:ui:webkit
-```
+Build an executable with `pnpm tauri build --no-bundle`, or platform installers
+with `pnpm tauri build`.
 
-Playwright tests mock native commands. Changes to PTYs, webviews, and native
-windows also need verification in the desktop application.
-
-Build a desktop executable with `pnpm tauri build --no-bundle`, or build platform
-installers with `pnpm tauri build`. See [releases](docs/releases.md) for signing and
-publishing requirements.
-
-### Find your way around
-
-| Location                                             | Responsibility                                       |
-| ---------------------------------------------------- | ---------------------------------------------------- |
-| [src/model.ts](src/model.ts)                         | Session data and layout transformations              |
-| [src/Workbench.tsx](src/Workbench.tsx)               | Projects, workspaces, tabs, and persistence          |
-| [src/terminal-runtime.ts](src/terminal-runtime.ts)   | Terminal lifecycle and output streaming              |
-| [src/editor-runtime.ts](src/editor-runtime.ts)       | Shared editor buffers and history                    |
-| [src-tauri/src](src-tauri/src)                       | Native shells, files, Git, webviews, and permissions |
-| [plugin-sdk](https://github.com/lomi-dev/plugin-sdk) | External plugin authoring contract                   |
-| [themes](themes)                                     | Theme documentation, baseline palette, and schema    |
-| [tests](tests)                                       | Model, interface, and native checks                  |
+**Stack:** Tauri 2, Rust, `portable-pty`, React 19, TypeScript, Vite, xterm.js,
+CodeMirror 6, Dockview and AI SDK. [AGENTS.md](AGENTS.md) maps the source tree
+and its invariants.
 
 ## Contributing
 
-Read [AGENTS.md](AGENTS.md) before making changes. Keep changes focused, write
-technical comments in English, and use `type(scope): short imperative summary`
-for commit and pull request titles. Include actual validation results and use
-[the pull request template](.github/pull_request_template.md). Preserve the
-configured Git identity and do not add AI co-author attribution.
-
-For documentation changes, keep screenshots aligned with the actual interface.
-[Capture notes](docs/screenshots.md) describe the images used here.
+Issues and pull requests are welcome. Read [AGENTS.md](AGENTS.md) before
+changing code, keep changes focused, and use
+`type(scope): short imperative summary` for commit and pull request titles.
+Fill in the [pull request template](.github/pull_request_template.md) with the
+checks you actually ran. Do not add AI co-author attribution. Keep screenshots
+aligned with the real interface; [capture notes](docs/screenshots.md) describe
+how the images above were made.
 
 ## License
 
 Copyright 2026 Maciej Kolerski. Licensed under [Apache 2.0](LICENSE).
-The default Lomi theme follows the Lomi Brandbook and Design System.
-The optional built-in DeepMono palette is based on DeepMono by viewerofall.
-Manrope is bundled under the SIL Open Font License; see
-[its license](public/fonts/manrope/OFL.txt).
+
+The default Lomi theme follows the Lomi Brandbook and Design System. The
+optional DeepMono palette is based on DeepMono by viewerofall. Bundled fonts,
+including Manrope and JetBrains Mono, keep their own licenses in
+[public/fonts](public/fonts).
