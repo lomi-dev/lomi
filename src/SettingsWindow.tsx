@@ -14,12 +14,12 @@ import {
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import ChatSettingsPage from "./chat/ChatSettingsPage";
+import AboutSettingsPage from "./AboutSettingsPage";
 import PluginsPage from "./plugins/PluginsPage";
 import ThemesPage from "./ThemesPage";
 import TerminalSettingsPage from "./TerminalSettingsPage";
 import { IconButton, WindowControls } from "./ui";
-import { api, errorMessage, macOS, native } from "./api";
-import { version } from "../package.json";
+import { errorMessage, macOS, native } from "./api";
 import {
   bindingConflict,
   formatShortcut,
@@ -253,26 +253,11 @@ export default function SettingsWindow() {
         ) : page === "chat-ai" ? (
           <ChatSettingsPage />
         ) : page === "about" ? (
-          <SettingsPage title="About" description={`Lomi ${version}`}>
-            {error && <SettingsNotice tone="error">{error}</SettingsNotice>}
-            <SettingRow
-              label="Updates"
-              description="Checked automatically at startup. Details open in the workspace window."
-            >
-              <button
-                className="button"
-                disabled={!native}
-                onClick={() => {
-                  setError("");
-                  void api("request_update_check").catch((error) =>
-                    setError(errorMessage(error)),
-                  );
-                }}
-              >
-                Check for updates
-              </button>
-            </SettingRow>
-          </SettingsPage>
+          <AboutSettingsPage
+            error={error}
+            onError={setError}
+            onClearError={() => setError("")}
+          />
         ) : page === "plugins" ? (
           <PluginsPage />
         ) : page === "terminal" ? (

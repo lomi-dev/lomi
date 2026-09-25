@@ -136,3 +136,12 @@ export const X = product("X", Lucide.X);
 export const MessageSquare = Lucide.MessageSquare;
 export const Paperclip = Lucide.Paperclip;
 export const Send = Lucide.Send;
+export const Github = Lucide.createLucideIcon("Github", [
+  [
+    "path",
+    {
+      d: "M9 19c-4.3 1.3-4.3-2.2-6-2.7m12 5v-3.9a3.4 3.4 0 0 0-.9-2.7c3-.3 6.2-1.5 6.2-6.9a5.4 5.4 0 0 0-1.5-3.7A5 5 0 0 0 18.7.4S17.5 0 15 1.8a13.4 13.4 0 0 0-7 0C5.5 0 4.3.4 4.3.4a5 5 0 0 0-.1 3.7 5.4 5.4 0 0 0-1.5 3.8c0 5.3 3.2 6.5 6.2 6.8a3.4 3.4 0 0 0-.9 2.7v3.9",
+      key: "mark",
+    },
+  ],
+]);

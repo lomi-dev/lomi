@@ -2,9 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "settings",
   "description": "Settings window controls, update notifications, and theme folder selection.",
-  "webviews": [
-    "settings"
-  ],
+  "webviews": ["settings"],
   "permissions": [
     "dialog:allow-open",
     "clipboard-manager:allow-write-text",
@@ -60,6 +58,15 @@
         },
         {
           "url": "https://platform.claude.com/settings/keys"
+        },
+        {
+          "url": "https://github.com/lomi-dev/lomi"
+        },
+        {
+          "url": "https://github.com/lomi-dev/lomi/issues"
+        },
+        {
+          "url": "https://lomi.dev"
         }
       ]
     }

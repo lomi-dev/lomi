@@ -14,6 +14,29 @@ pub struct SettingsWindow {
     lifecycle: Mutex<Lifecycle>,
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AboutInfo {
+    platform: String,
+    arch: String,
+    version: String,
+    identifier: String,
+}
+
+#[tauri::command]
+pub fn about_info(window: Window) -> Result<AboutInfo, String> {
+    if window.label() != "settings" {
+        return Err("About information is available only in Settings.".into());
+    }
+    let app = window.app_handle();
+    Ok(AboutInfo {
+        platform: std::env::consts::OS.into(),
+        arch: std::env::consts::ARCH.into(),
+        version: app.package_info().version.to_string(),
+        identifier: app.config().identifier.clone(),
+    })
+}
+
 pub async fn prepare(app: &tauri::AppHandle) -> Result<(), String> {
     let state = app.state::<SettingsWindow>();
     // Preloading and rapid clicks must share one webview. Creation stays off

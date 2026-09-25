@@ -85,6 +85,12 @@ export async function mockDesktop(
         updateDownloadError: "",
         updateInstallError: "",
         updateRestartError: "",
+        aboutInfo: {
+          platform,
+          arch: platform === "macos" ? "aarch64" : "x86_64",
+          version: "0.4.0",
+          identifier: "dev.lomi.desktop",
+        },
         androidPreparation: null,
         androidExitError: "",
         androidExitDelay: 0,
@@ -637,6 +643,7 @@ export async function mockDesktop(
             await emitEvent("editor-files-changed", [key]);
             return file.revision;
           }
+          if (command === "about_info") return desktop.__nativeTest.aboutInfo;
           if (command === "app_info")
             return {
               directory: "/project",

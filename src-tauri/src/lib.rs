@@ -359,6 +359,7 @@ pub fn run() {
                 browser::agent_browser_interact,
                 browser::servers::local_web_servers,
                 app_info,
+                settings_window::about_info,
                 updater::update_environment,
                 updater::check_app_update,
                 updater::request_update_check,
