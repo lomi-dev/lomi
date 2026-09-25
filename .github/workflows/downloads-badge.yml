@@ -1,0 +1,44 @@
+name: "downloads badge"
+
+on:
+  schedule:
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: downloads-badge
+
+jobs:
+  publish-count:
+    runs-on: ubuntu-latest
+    steps:
+      - name: publish package download count
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The updater fetches latest.json on every launch, so updater
+          # metadata and signatures are excluded from the package count.
+          count=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[].assets[] | select(.name | test("\\.(json|sig)$") | not) | .download_count' \
+            | awk '{ total += $1 } END { print total + 0 }')
+          badge=$(jq -cn --arg count "$count" '{schemaVersion: 1, label: "downloads", message: $count}')
+          current=$(gh api -H "Accept: application/vnd.github.raw+json" \
+            "repos/$GITHUB_REPOSITORY/contents/downloads.json?ref=badges" 2>/dev/null || true)
+          if [ "$badge" = "$current" ]; then
+            echo "Package downloads unchanged: $count"
+            exit 0
+          fi
+
+          mkdir badges
+          cd badges
+          printf '%s\n' "$badge" > downloads.json
+          git init -q -b badges
+          git add downloads.json
+          git -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "chore(badges): update package download count"
+          git push -q --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" badges
+          echo "Published package downloads: $count"

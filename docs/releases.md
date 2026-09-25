@@ -8,9 +8,9 @@ did not exist when this workflow was prepared on 2026-09-11.
 
 ## Release workflow
 
-`.github/workflows/release.yml` is the only GitHub Actions workflow. It is
+`.github/workflows/release.yml` is the only release workflow. It is
 named **publish** and starts when a version tag matching `v*` is pushed.
-Branch pushes and pull requests do not start a workflow, and there is no
+Branch pushes and pull requests do not start a workflow, and **publish** has no
 manual dispatch trigger. Create release tags using the `vX.Y.Z` format below.
 The workflow follows Simple Voice's `publish-tauri` matrix:
 
@@ -38,6 +38,12 @@ formatting checks and Clippy run locally. TypeScript checking remains part of
 the frontend build, and release metadata and signatures are verified before
 publication. Run the relevant local checks before tagging, as described in the
 [development guide](../README.md#validation-and-builds).
+
+The README downloads badge counts release packages only. Every six hours, or
+when started manually, `.github/workflows/downloads-badge.yml` sums release
+assets except `.json` and `.sig` files, because the updater fetches
+`latest.json` on every launch. It force-pushes the resulting Shields endpoint
+file as the only commit on the `badges` branch; keep that branch.
 
 Lomi selects Xcode 26.3 to compile its Icon Composer source and uses its
 own pnpm version. It does not need Simple Voice's audio, Vulkan, or ONNX build

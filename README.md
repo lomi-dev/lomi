@@ -5,7 +5,7 @@
   <p>Native terminals, a code editor, browser previews, Git and your coding agents in one window.</p>
   <p>
     <a href="https://github.com/lomi-dev/lomi/releases/latest"><img src="https://img.shields.io/github/v/release/lomi-dev/lomi?label=release&color=C8FF3D&labelColor=0B0D0C" alt="Latest release" /></a>
-    <a href="https://github.com/lomi-dev/lomi/releases"><img src="https://img.shields.io/github/downloads/lomi-dev/lomi/total?color=C8FF3D&labelColor=0B0D0C" alt="Downloads" /></a>
+    <a href="https://github.com/lomi-dev/lomi/releases"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Flomi-dev%2Flomi%2Fbadges%2Fdownloads.json&color=C8FF3D&labelColor=0B0D0C" alt="Package downloads" /></a>
     <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-C8FF3D?labelColor=0B0D0C" alt="macOS, Linux and Windows" />
     <a href="LICENSE"><img src="https://img.shields.io/github/license/lomi-dev/lomi?color=C8FF3D&labelColor=0B0D0C" alt="Apache-2.0 license" /></a>
   </p>
