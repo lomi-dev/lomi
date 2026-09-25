@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { newProject, newSession, splitPane } from "../../src/model";
 import { mockDesktop } from "./desktop";
+import { dragPreviewDivider, storedPreviewRatio } from "./preview-resize";
 
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="160">
   <rect width="320" height="160" rx="24" fill="#737373"/>
@@ -146,6 +147,47 @@ test("SVG switches between preview and code with live unsaved edits, undo, save 
   expect(
     await page.evaluate(() => (window as any).__svgExecuted),
   ).toBeUndefined();
+});
+
+test("the SVG preview divider resizes the source and keeps the live image rendered", async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 800, height: 420 });
+  await setup(page);
+  await openSvg(page);
+  const draft = svg.replace('width="320"', 'width="640"');
+  await replaceText(page, draft);
+  const editor = await page.locator(".cm-editor").elementHandle();
+  await page.getByRole("button", { name: "Preview SVG", exact: true }).click();
+  await expectImageWidth(page, 640);
+
+  const divider = page.getByRole("separator", {
+    name: "Resize preview",
+  });
+  const source = page.locator(".editor-host");
+  const preview = page.locator(".image-preview");
+  const originalSourceWidth = (await source.boundingBox())!.width;
+  const originalPreviewWidth = (await preview.boundingBox())!.width;
+  await dragPreviewDivider(page, divider, 70);
+  await expect
+    .poll(() => storedPreviewRatio(page, "vector.SVG"))
+    .toBeGreaterThan(0.6);
+  await expect
+    .poll(async () => (await source.boundingBox())!.width)
+    .toBeGreaterThan(originalSourceWidth + 30);
+  await expect
+    .poll(async () => (await preview.boundingBox())!.width)
+    .toBeLessThan(originalPreviewWidth - 30);
+  await expectImageWidth(page, 640);
+  await expect(page.locator(".cm-content")).toContainText('width="640"');
+  expect(
+    await editor!.evaluate(
+      (node) => node === document.querySelector(".cm-editor"),
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath("svg-resized-preview.png"),
+  });
 });
 
 test("SVG preview recovers from invalid edits and follows external changes without losing dirty text", async ({

@@ -329,7 +329,7 @@
 }
 .editor-content.is-split {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 3px minmax(0, 1fr);
 }
 .editor-content.has-preview .cm-content {
   padding-bottom: 64px;
@@ -369,10 +369,6 @@
   padding: var(--markdown-padding);
   color: var(--color-surface-text);
   background: var(--color-background);
-}
-.editor-content.is-split > .markdown-preview,
-.editor-content.is-split > .image-preview {
-  border-left: var(--border-width) solid var(--color-outline);
 }
 .markdown-content {
   max-width: var(--markdown-max-width);
@@ -1641,6 +1637,20 @@ svg {
 }
 .split-divider[aria-orientation="horizontal"] {
   cursor: row-resize;
+}
+.file-preview-divider {
+  position: relative;
+  left: auto;
+  top: auto;
+  width: auto;
+  height: auto;
+}
+.file-preview-divider::before {
+  position: absolute;
+  inset-block: 0;
+  left: -3px;
+  width: 9px;
+  content: "";
 }
 .terminal-pane {
   box-shadow: var(--pane-shadow);

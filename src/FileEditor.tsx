@@ -9,7 +9,12 @@ import {
   useSyncExternalStore,
 } from "react";
 import { Redo2, RotateCcw, Save, Search, Undo2, X } from "./icons";
-import type { EditorPosition, FileTab, FilePreviewView } from "./model";
+import {
+  SPLIT_DIVIDER_SIZE,
+  type EditorPosition,
+  type FileTab,
+  type FilePreviewView,
+} from "./model";
 import { errorMessage } from "./api";
 import { loadedEditor, openEditorDocument } from "./editor-service";
 import type { EditorDocument } from "./editor-runtime";
@@ -32,6 +37,7 @@ interface Props {
   onClose?: () => void;
   onPosition: (position: EditorPosition) => void;
   onPreviewView: (view: FilePreviewView) => void;
+  onPreviewResize: (ratio: number) => void;
   onOpenFile: (root: string, relative: string) => void;
 }
 
@@ -100,6 +106,7 @@ function DocumentEditor({
   document,
   onPosition,
   onPreviewView,
+  onPreviewResize,
   onOpenFile,
 }: Props & { document: EditorDocument }) {
   const agentPreview = useAgentPreview(tab.id);
@@ -115,6 +122,10 @@ function DocumentEditor({
   const markdown = isMarkdownFile(tab.relative);
   const svg = isSvgFile(tab.relative);
   const view = markdown || svg ? (tab.previewView ?? "editor") : "editor";
+  const previewRatio =
+    typeof tab.previewRatio === "number" && Number.isFinite(tab.previewRatio)
+      ? Math.max(0.1, Math.min(0.9, tab.previewRatio))
+      : 0.5;
   const sourceVisible = view !== "preview";
   const wasSourceVisible = useRef(sourceVisible);
   useLayoutEffect(() => {
@@ -163,6 +174,8 @@ function DocumentEditor({
       onChange={onPreviewView}
     />
   );
+  const resizePreview = (ratio: number) =>
+    onPreviewResize(Math.max(0.1, Math.min(0.9, ratio)));
   return (
     <section className="file-editor" aria-label={`Editor for ${tab.title}`}>
       <header className="editor-heading" data-pane-drag-handle>
@@ -246,8 +259,72 @@ function DocumentEditor({
       )}
       <div
         className={`editor-content${view === "split" ? " is-split" : ""}${markdown || svg ? " has-preview" : ""}`}
+        style={
+          view === "split"
+            ? {
+                gridTemplateColumns: `minmax(0, ${previewRatio}fr) ${SPLIT_DIVIDER_SIZE}px minmax(0, ${1 - previewRatio}fr)`,
+              }
+            : undefined
+        }
       >
         {sourceVisible && <div className="editor-host" ref={host} />}
+        {view === "split" && (
+          <div
+            className="split-divider file-preview-divider"
+            role="separator"
+            aria-label="Resize preview"
+            aria-orientation="vertical"
+            aria-valuemin={10}
+            aria-valuemax={90}
+            aria-valuenow={Math.round(previewRatio * 100)}
+            tabIndex={0}
+            onDoubleClick={() => resizePreview(0.5)}
+            onKeyDown={(event) => {
+              if (event.key === "Home" || event.key === "End") {
+                event.preventDefault();
+                resizePreview(event.key === "Home" ? 0.1 : 0.9);
+              } else if (
+                ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(
+                  event.key,
+                )
+              ) {
+                event.preventDefault();
+                resizePreview(
+                  previewRatio +
+                    (["ArrowLeft", "ArrowUp"].includes(event.key)
+                      ? -0.05
+                      : 0.05),
+                );
+              }
+            }}
+            onPointerDown={(event) => {
+              if (!event.isPrimary || event.button !== 0) return;
+              event.preventDefault();
+              event.currentTarget.setPointerCapture(event.pointerId);
+            }}
+            onPointerMove={(event) => {
+              if (!event.currentTarget.hasPointerCapture(event.pointerId))
+                return;
+              const bounds =
+                event.currentTarget.parentElement?.getBoundingClientRect();
+              if (!bounds) return;
+              const availableWidth = bounds.width - SPLIT_DIVIDER_SIZE;
+              if (availableWidth <= 0) return;
+              resizePreview(
+                (event.clientX - bounds.left - SPLIT_DIVIDER_SIZE / 2) /
+                  availableWidth,
+              );
+            }}
+            onPointerUp={(event) => {
+              if (event.currentTarget.hasPointerCapture(event.pointerId))
+                event.currentTarget.releasePointerCapture(event.pointerId);
+            }}
+            onPointerCancel={(event) => {
+              if (event.currentTarget.hasPointerCapture(event.pointerId))
+                event.currentTarget.releasePointerCapture(event.pointerId);
+            }}
+          />
+        )}
         {view !== "editor" && svg && (
           <SvgPreview
             tab={tab}

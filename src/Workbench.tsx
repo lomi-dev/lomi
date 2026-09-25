@@ -66,6 +66,7 @@ import {
   layoutPanes,
   updateFilePosition,
   updateFilePreviewView,
+  updateFilePreviewRatio,
   basename,
   canSplitPane,
   mapLayout,
@@ -2414,6 +2415,11 @@ export default function Workbench() {
                         updateFilePreviewView(state, tab.id, view),
                       )
                     }
+                    onPreviewResize={(ratio) =>
+                      change((state) =>
+                        updateFilePreviewRatio(state, tab.id, ratio),
+                      )
+                    }
                     onPosition={(position) =>
                       change((state) =>
                         updateFilePosition(state, tab.id, position),
@@ -2464,6 +2470,11 @@ export default function Workbench() {
                     }
                     onPreviewView={(id, view) =>
                       change((state) => updateFilePreviewView(state, id, view))
+                    }
+                    onPreviewResize={(id, ratio) =>
+                      change((state) =>
+                        updateFilePreviewRatio(state, id, ratio),
+                      )
                     }
                     onOpenFile={(root, relative) =>
                       void openFile(relative, root)

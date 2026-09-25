@@ -10,6 +10,7 @@ import {
   openFileTab,
   restoreSession,
   updateFilePosition,
+  updateFilePreviewRatio,
   updateFilePreviewView,
 } from "../src/model.ts";
 
@@ -60,10 +61,12 @@ test("Markdown view modes retain file identities and positions in tabs and split
   const file = fileTabs(state)[0];
   const position = { anchor: 12, head: 24, scrollTop: 140, scrollLeft: 10 };
   state = updateFilePosition(state, file.id, position);
+  state = updateFilePreviewRatio(state, file.id, 0.72);
   state = updateFilePreviewView(state, file.id, "preview");
   assert.deepEqual(fileTabs(state)[0], {
     ...file,
     position,
+    previewRatio: 0.72,
     previewView: "preview",
   });
   state.projects[0].workspaces[0] = mergeTabs(
@@ -82,6 +85,7 @@ test("Markdown view modes retain file identities and positions in tabs and split
   };
   const restored = restoreSession(JSON.parse(JSON.stringify(state)), info);
   assert.equal(fileTabs(restored)[0].previewView, "split");
+  assert.equal(fileTabs(restored)[0].previewRatio, 0.72);
   assert.deepEqual(fileTabs(restored)[0].position, position);
   assert.equal(fileTabs(restored)[0].id, file.id);
   const legacy = JSON.parse(JSON.stringify(restored));
@@ -100,4 +104,54 @@ test("Markdown view modes retain file identities and positions in tabs and split
     fileTabs(restoreSession(invalid, info))[0].previewView,
     undefined,
   );
+});
+
+test("file preview ratios stay bounded and restore only finite values", () => {
+  const project = newProject("/project", "bash");
+  let state = {
+    ...newSession(),
+    projects: [project],
+    activeProjectId: project.id,
+  };
+  const workspace = project.workspaces[0];
+  state = openFileTab(state, workspace.id, project.path, "README.md");
+  const file = fileTabs(state)[0];
+
+  state = updateFilePreviewRatio(state, file.id, 0.72);
+  state = updateFilePreviewView(state, file.id, "split");
+  const info = {
+    directory: "/project",
+    home: "/home/test",
+    platform: "linux",
+    profiles: [],
+  };
+  const restored = restoreSession(JSON.parse(JSON.stringify(state)), info);
+  assert.equal(fileTabs(restored)[0].previewRatio, 0.72);
+  assert.equal(
+    fileTabs(updateFilePreviewRatio(state, file.id, -1))[0].previewRatio,
+    0.1,
+  );
+  assert.equal(
+    fileTabs(updateFilePreviewRatio(state, file.id, 2))[0].previewRatio,
+    0.9,
+  );
+  assert.equal(
+    fileTabs(updateFilePreviewRatio(state, file.id, Number.NaN))[0]
+      .previewRatio,
+    0.72,
+  );
+
+  const invalid = JSON.parse(JSON.stringify(state));
+  invalid.projects[0].workspaces[0].tabs.find(
+    (tab: { id: string }) => tab.id === file.id,
+  ).previewRatio = "0.6";
+  assert.equal(
+    fileTabs(restoreSession(invalid, info))[0].previewRatio,
+    undefined,
+  );
+  const outOfRange = JSON.parse(JSON.stringify(state));
+  outOfRange.projects[0].workspaces[0].tabs.find(
+    (tab: { id: string }) => tab.id === file.id,
+  ).previewRatio = 4;
+  assert.equal(fileTabs(restoreSession(outOfRange, info))[0].previewRatio, 0.9);
 });

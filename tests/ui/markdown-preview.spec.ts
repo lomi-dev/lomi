@@ -9,6 +9,7 @@ import {
   newSession,
   openFileTab,
 } from "../../src/model";
+import { dragPreviewDivider, storedPreviewRatio } from "./preview-resize";
 
 const markdown = [
   "# Lomi",
@@ -120,6 +121,84 @@ test("the corner button opens a live split preview of unsaved Markdown without r
   ).toEqual([]);
 });
 
+test("the Markdown preview divider resizes the live split and supports keyboard bounds and reset", async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 800, height: 420 });
+  await openReadme(page);
+  await replaceText(
+    page,
+    "# Resized preview\n\nUnsaved Markdown remains live.",
+  );
+  const editor = await page.locator(".cm-editor").elementHandle();
+  await page
+    .getByRole("button", { name: "Preview Markdown", exact: true })
+    .click();
+  const preview = page.getByRole("region", {
+    name: "Markdown preview for README.md",
+  });
+  await expect(
+    preview.getByRole("heading", { name: "Resized preview" }),
+  ).toBeVisible();
+  const divider = page.getByRole("separator", {
+    name: "Resize preview",
+  });
+  await expect(divider).toHaveCount(1);
+  await expect(page.locator(".split-divider.file-preview-divider")).toHaveCount(
+    1,
+  );
+  const source = page.locator(".editor-host");
+  const markdownPreview = page.locator(".markdown-preview");
+  const originalSourceWidth = (await source.boundingBox())!.width;
+  const originalPreviewWidth = (await markdownPreview.boundingBox())!.width;
+  await dragPreviewDivider(page, divider, 80);
+  await expect
+    .poll(() => storedPreviewRatio(page, "README.md"))
+    .toBeGreaterThan(0.6);
+  await expect
+    .poll(async () => (await source.boundingBox())!.width)
+    .toBeGreaterThan(originalSourceWidth + 30);
+  await expect
+    .poll(async () => (await markdownPreview.boundingBox())!.width)
+    .toBeLessThan(originalPreviewWidth - 30);
+  expect(
+    await editor!.evaluate(
+      (node) => node === document.querySelector(".cm-editor"),
+    ),
+  ).toBe(true);
+  await expect(page.locator(".cm-content")).toContainText("Unsaved Markdown");
+  await expect(
+    preview.getByRole("heading", { name: "Resized preview" }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("markdown-resized-preview.png"),
+  });
+
+  await page.locator(".cm-content").focus();
+  await page.keyboard.press("Control+z");
+  await expect(page.locator(".cm-content")).toContainText(
+    "A text file preview.",
+  );
+  await expect(preview.getByRole("heading", { name: "Project" })).toBeVisible();
+  await page.keyboard.press("Control+Shift+z");
+  await expect(
+    preview.getByRole("heading", { name: "Resized preview" }),
+  ).toBeVisible();
+
+  await divider.focus();
+  const draggedRatio = (await storedPreviewRatio(page, "README.md"))!;
+  await page.keyboard.press("ArrowRight");
+  await expect
+    .poll(() => storedPreviewRatio(page, "README.md"))
+    .toBeCloseTo(draggedRatio + 0.05, 2);
+  await page.keyboard.press("End");
+  await expect.poll(() => storedPreviewRatio(page, "README.md")).toBe(0.9);
+  await page.keyboard.press("Home");
+  await expect.poll(() => storedPreviewRatio(page, "README.md")).toBe(0.1);
+  await divider.dblclick();
+  await expect.poll(() => storedPreviewRatio(page, "README.md")).toBe(0.5);
+});
+
 test("preview-only mode survives tab switches and restoration, and returning to code preserves edits and undo", async ({
   page,
 }) => {
@@ -127,6 +206,17 @@ test("preview-only mode survives tab switches and restoration, and returning to 
   await replaceText(page, "# Unsaved draft");
   await page
     .getByRole("button", { name: "Preview Markdown", exact: true })
+    .click();
+  const divider = page.getByRole("separator", {
+    name: "Resize preview",
+  });
+  await dragPreviewDivider(page, divider, 60);
+  await expect
+    .poll(() => storedPreviewRatio(page, "README.md"))
+    .toBeGreaterThan(0.55);
+  const resizedRatio = (await storedPreviewRatio(page, "README.md"))!;
+  await page
+    .getByRole("button", { name: "Close Markdown preview", exact: true })
     .click({ button: "right" });
   const menu = page.getByRole("menu", { name: "Markdown preview options" });
   await expect(menu.getByRole("menuitemradio")).toHaveCount(2);
@@ -134,6 +224,16 @@ test("preview-only mode survives tab switches and restoration, and returning to 
     .getByRole("menuitemradio", { name: "Preview only", exact: true })
     .click();
   await expect(page.locator(".cm-editor")).toHaveCount(0);
+  await expect(divider).toHaveCount(0);
+  const previewOnlyBounds = (await page
+    .locator(".markdown-preview")
+    .boundingBox())!;
+  const previewContentBounds = (await page
+    .locator(".editor-content")
+    .boundingBox())!;
+  expect(
+    Math.abs(previewOnlyBounds.width - previewContentBounds.width),
+  ).toBeLessThan(2);
   await expect(
     page.getByRole("heading", { name: "Unsaved draft" }),
   ).toBeVisible();
@@ -143,6 +243,9 @@ test("preview-only mode survives tab switches and restoration, and returning to 
     page.getByRole("heading", { name: "Unsaved draft" }),
   ).toBeVisible();
   await expect(page.locator(".cm-editor")).toHaveCount(0);
+  await expect
+    .poll(() => storedPreviewRatio(page, "README.md"))
+    .toBeCloseTo(resizedRatio, 2);
   await page.keyboard.press("Control+w");
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
@@ -153,6 +256,14 @@ test("preview-only mode survives tab switches and restoration, and returning to 
     .getByRole("button", { name: "Close Markdown preview", exact: true })
     .click();
   await expect(page.locator(".cm-content")).toContainText("# Unsaved draft");
+  await expect(divider).toHaveCount(0);
+  const sourceBounds = (await page.locator(".editor-host").boundingBox())!;
+  const codeContentBounds = (await page
+    .locator(".editor-content")
+    .boundingBox())!;
+  expect(Math.abs(sourceBounds.width - codeContentBounds.width)).toBeLessThan(
+    2,
+  );
   await page.keyboard.press("Control+z");
   await expect(page.locator(".cm-content")).toContainText(
     "A text file preview.",
@@ -160,6 +271,13 @@ test("preview-only mode survives tab switches and restoration, and returning to 
   await page.keyboard.press("Control+Shift+z");
   await page
     .getByRole("button", { name: "Preview Markdown", exact: true })
+    .click();
+  await expect(divider).toBeVisible();
+  await expect
+    .poll(() => storedPreviewRatio(page, "README.md"))
+    .toBeCloseTo(resizedRatio, 2);
+  await page
+    .getByRole("button", { name: "Close Markdown preview", exact: true })
     .click({ button: "right" });
   await page
     .getByRole("menuitemradio", { name: "Preview only", exact: true })
@@ -171,6 +289,9 @@ test("preview-only mode survives tab switches and restoration, and returning to 
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem("test-session")))
     .toContain('"previewView":"preview"');
+  await expect
+    .poll(() => storedPreviewRatio(page, "README.md"))
+    .toBeCloseTo(resizedRatio, 2);
   await expect
     .poll(() =>
       page.evaluate(() => {
@@ -188,10 +309,38 @@ test("preview-only mode survives tab switches and restoration, and returning to 
     page.getByRole("heading", { name: "Unsaved draft" }),
   ).toBeVisible();
   await expect(page.locator(".cm-editor")).toHaveCount(0);
+  await expect
+    .poll(() => storedPreviewRatio(page, "README.md"))
+    .toBeCloseTo(resizedRatio, 2);
   await page
     .getByRole("button", { name: "Close Markdown preview", exact: true })
     .click();
   await expect(page.locator(".cm-content")).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("test-session")))
+    .not.toContain("previewView");
+  await page
+    .getByRole("button", { name: "Preview Markdown", exact: true })
+    .click();
+  await expect(divider).toBeVisible();
+  await expect
+    .poll(() => storedPreviewRatio(page, "README.md"))
+    .toBeCloseTo(resizedRatio, 2);
+  const restoredSourceWidth = (await page
+    .locator(".editor-host")
+    .boundingBox())!.width;
+  const restoredPreviewWidth = (await page
+    .locator(".markdown-preview")
+    .boundingBox())!.width;
+  expect(
+    Math.abs(
+      restoredSourceWidth / (restoredSourceWidth + restoredPreviewWidth) -
+        resizedRatio,
+    ),
+  ).toBeLessThan(0.03);
+  await page
+    .getByRole("button", { name: "Close Markdown preview", exact: true })
+    .click();
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem("test-session")))
     .not.toContain("previewView");
@@ -375,6 +524,25 @@ test("Markdown controls also work in a file panel without restarting its neighbo
   await page
     .getByRole("button", { name: "Preview Markdown", exact: true })
     .click();
+  const fileEditor = page.locator(".file-editor");
+  const fileContent = fileEditor.locator(".editor-content");
+  const divider = fileEditor.getByRole("separator", {
+    name: "Resize preview",
+  });
+  const source = fileEditor.locator(".editor-host");
+  const preview = fileEditor.locator(".markdown-preview");
+  const sourceWidth = (await source.boundingBox())!.width;
+  const previewWidth = (await preview.boundingBox())!.width;
+  await dragPreviewDivider(page, divider, 45);
+  await expect
+    .poll(() => storedPreviewRatio(page, "README.Md"))
+    .toBeGreaterThan(0.52);
+  await expect
+    .poll(async () => (await source.boundingBox())!.width)
+    .toBeGreaterThan(sourceWidth + 15);
+  await expect
+    .poll(async () => (await preview.boundingBox())!.width)
+    .toBeLessThan(previewWidth - 15);
   await expect(
     page.getByRole("heading", { name: "Panel preview" }),
   ).toBeVisible();
@@ -385,10 +553,20 @@ test("Markdown controls also work in a file panel without restarting its neighbo
     .getByRole("menuitemradio", { name: "Preview only", exact: true })
     .click();
   await expect(page.locator(".cm-editor")).toHaveCount(0);
+  await expect(divider).toHaveCount(0);
+  const previewOnlyBounds = (await preview.boundingBox())!;
+  const previewContentBounds = (await fileContent.boundingBox())!;
+  expect(
+    Math.abs(previewOnlyBounds.width - previewContentBounds.width),
+  ).toBeLessThan(2);
   await page
     .getByRole("button", { name: "Close Markdown preview", exact: true })
     .click();
   await expect(page.locator(".cm-content")).toBeFocused();
+  await expect(divider).toHaveCount(0);
+  const codeBounds = (await source.boundingBox())!;
+  const codeContentBounds = (await fileContent.boundingBox())!;
+  expect(Math.abs(codeBounds.width - codeContentBounds.width)).toBeLessThan(2);
   await page.keyboard.press("Control+z");
   await expect(page.locator(".cm-content")).not.toContainText("Panel preview");
   expect(

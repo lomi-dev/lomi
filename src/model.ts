@@ -91,6 +91,7 @@ export interface FileTab {
   untitled?: true;
   position?: EditorPosition;
   previewView?: FilePreviewView;
+  previewRatio?: number;
   agentPreview?: true;
 }
 export type FilePreviewView = "editor" | "split" | "preview";
@@ -1010,6 +1011,18 @@ export function updateFilePreviewView(
   });
 }
 
+export function updateFilePreviewRatio(
+  session: Session,
+  id: string,
+  ratio: number,
+): Session {
+  if (!Number.isFinite(ratio)) return session;
+  return updateFile(session, id, (file) => ({
+    ...file,
+    previewRatio: Math.max(0.1, Math.min(0.9, ratio)),
+  }));
+}
+
 export function updateFile(
   session: Session,
   id: string,
@@ -1122,6 +1135,11 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
   const file = (node: Record<string, unknown>, cwd: string): FileTab => {
     const position = record(node.position);
     const previewView = node.previewView ?? node.markdownView;
+    const previewRatio =
+      typeof node.previewRatio === "number" &&
+      Number.isFinite(node.previewRatio)
+        ? Math.max(0.1, Math.min(0.9, node.previewRatio))
+        : undefined;
     const offset = (value: unknown) =>
       typeof value === "number" && Number.isFinite(value)
         ? Math.max(0, Math.floor(value))
@@ -1142,6 +1160,7 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
       previewView === "preview"
         ? { previewView }
         : {}),
+      ...(previewRatio !== undefined ? { previewRatio } : {}),
       ...(node.position
         ? {
             position: {

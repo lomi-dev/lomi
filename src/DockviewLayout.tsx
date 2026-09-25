@@ -39,6 +39,7 @@ export default function DockviewLayout(props: Props) {
       "profileId",
       "position",
       "previewView",
+      "previewRatio",
       "title",
       "customTitle",
       "url",

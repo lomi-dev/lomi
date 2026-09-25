@@ -46,6 +46,7 @@ interface Props {
   onMove: (id: string, targetId: string, side: TabDropSide) => void;
   onFilePosition: (id: string, position: EditorPosition) => void;
   onPreviewView: (id: string, view: FilePreviewView) => void;
+  onPreviewResize: (id: string, ratio: number) => void;
   onOpenFile: (root: string, relative: string) => void;
   onClosePane: (id: string) => void;
 }
@@ -223,6 +224,9 @@ export default function SplitView({
                         onOpenFile={props.onOpenFile}
                         onPreviewView={(view) =>
                           props.onPreviewView(layout.id, view)
+                        }
+                        onPreviewResize={(ratio) =>
+                          props.onPreviewResize(layout.id, ratio)
                         }
                         active={props.activePaneId === layout.id}
                         onClose={() => props.onClosePane(layout.id)}
