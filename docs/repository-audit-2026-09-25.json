@@ -1,0 +1,592 @@
+{
+  "scope": "All seven public repositories owned by lomi-dev",
+  "verified_at": "2026-09-25T12:02:12.972963+00:00",
+  "changed_fields": ["description", "homepage", "topics"],
+  "unrelated_repository_settings_verified_unchanged": [
+    "visibility",
+    "private",
+    "archived",
+    "default_branch",
+    "has_issues",
+    "has_wiki",
+    "has_projects",
+    "has_discussions",
+    "allow_forking",
+    "web_commit_signoff_required",
+    "security_and_analysis"
+  ],
+  "repositories": [
+    {
+      "repository": "lomi-dev/lomi",
+      "url": "https://github.com/lomi-dev/lomi",
+      "before": {
+        "description": "Your terminal, code editor, browser previews, and Git in one desktop workspace. Built with Tauri and Rust for Linux, macOS, and Windows.",
+        "homepage": "https://lomi.dev/",
+        "topics": []
+      },
+      "after": {
+        "description": "Open-source desktop workspace for terminal-driven development, with native terminals, a code editor, browser previews, Git and AI chat. Built with Tauri and Rust for macOS, Linux and Windows.",
+        "homepage": "https://lomi.dev/",
+        "topics": [
+          "ai",
+          "code-editor",
+          "desktop-app",
+          "developer-tools",
+          "git",
+          "lomi",
+          "rust",
+          "tauri",
+          "terminal",
+          "typescript"
+        ]
+      },
+      "settings": {
+        "visibility": "public",
+        "private": false,
+        "archived": false,
+        "default_branch": "main",
+        "has_issues": true,
+        "has_wiki": true,
+        "has_projects": true,
+        "has_discussions": false,
+        "allow_forking": true,
+        "web_commit_signoff_required": false,
+        "security_and_analysis": {
+          "secret_scanning": {
+            "status": "disabled"
+          },
+          "secret_scanning_push_protection": {
+            "status": "disabled"
+          },
+          "dependabot_security_updates": {
+            "status": "disabled"
+          },
+          "secret_scanning_non_provider_patterns": {
+            "status": "disabled"
+          },
+          "secret_scanning_validity_checks": {
+            "status": "disabled"
+          }
+        }
+      },
+      "license": {
+        "key": "apache-2.0",
+        "name": "Apache License 2.0",
+        "spdx_id": "Apache-2.0",
+        "url": "https://api.github.com/licenses/apache-2.0",
+        "node_id": "MDc6TGljZW5zZTI="
+      },
+      "default_branch_protection": {
+        "error": "gh: Branch not protected (HTTP 404)",
+        "body": "{\"message\":\"Branch not protected\",\"documentation_url\":\"https://docs.github.com/rest/branches/branch-protection#get-branch-protection\",\"status\":\"404\"}"
+      },
+      "rulesets": [],
+      "actions_permissions": {
+        "enabled": true,
+        "allowed_actions": "all",
+        "sha_pinning_required": false
+      },
+      "dependabot_alerts_enabled": false
+    },
+    {
+      "repository": "lomi-dev/lomi-web",
+      "url": "https://github.com/lomi-dev/lomi-web",
+      "before": {
+        "description": null,
+        "homepage": "https://www.lomi.dev",
+        "topics": []
+      },
+      "after": {
+        "description": "Source for lomi.dev: Lomi's website and newsletter signup, built with Astro, React and TypeScript. Currently a work-in-progress landing page.",
+        "homepage": "https://lomi.dev/",
+        "topics": [
+          "astro",
+          "landing-page",
+          "lomi",
+          "react",
+          "tailwindcss",
+          "typescript",
+          "website"
+        ]
+      },
+      "settings": {
+        "visibility": "public",
+        "private": false,
+        "archived": false,
+        "default_branch": "main",
+        "has_issues": true,
+        "has_wiki": false,
+        "has_projects": true,
+        "has_discussions": false,
+        "allow_forking": true,
+        "web_commit_signoff_required": false,
+        "security_and_analysis": {
+          "secret_scanning": {
+            "status": "disabled"
+          },
+          "secret_scanning_push_protection": {
+            "status": "disabled"
+          },
+          "dependabot_security_updates": {
+            "status": "disabled"
+          },
+          "secret_scanning_non_provider_patterns": {
+            "status": "disabled"
+          },
+          "secret_scanning_validity_checks": {
+            "status": "disabled"
+          }
+        }
+      },
+      "license": null,
+      "default_branch_protection": {
+        "error": "gh: Branch not protected (HTTP 404)",
+        "body": "{\"message\":\"Branch not protected\",\"documentation_url\":\"https://docs.github.com/rest/branches/branch-protection#get-branch-protection\",\"status\":\"404\"}"
+      },
+      "rulesets": [],
+      "actions_permissions": {
+        "enabled": true,
+        "allowed_actions": "all",
+        "sha_pinning_required": false
+      },
+      "dependabot_alerts_enabled": true
+    },
+    {
+      "repository": "lomi-dev/plugin-sdk",
+      "url": "https://github.com/lomi-dev/plugin-sdk",
+      "before": {
+        "description": "Public plugin SDK for Lomi: types, runtime contract, validation and build helpers.",
+        "homepage": null,
+        "topics": []
+      },
+      "after": {
+        "description": "Public SDK for Lomi plugins: TypeScript APIs, the shared runtime contract, manifest validation and build helpers.",
+        "homepage": "https://github.com/lomi-dev/plugin-sdk#readme",
+        "topics": [
+          "developer-tools",
+          "lomi",
+          "plugin-sdk",
+          "plugins",
+          "react",
+          "sdk",
+          "typescript"
+        ]
+      },
+      "settings": {
+        "visibility": "public",
+        "private": false,
+        "archived": false,
+        "default_branch": "main",
+        "has_issues": true,
+        "has_wiki": true,
+        "has_projects": true,
+        "has_discussions": false,
+        "allow_forking": true,
+        "web_commit_signoff_required": false,
+        "security_and_analysis": {
+          "secret_scanning": {
+            "status": "disabled"
+          },
+          "secret_scanning_push_protection": {
+            "status": "disabled"
+          },
+          "dependabot_security_updates": {
+            "status": "disabled"
+          },
+          "secret_scanning_non_provider_patterns": {
+            "status": "disabled"
+          },
+          "secret_scanning_validity_checks": {
+            "status": "disabled"
+          }
+        }
+      },
+      "license": {
+        "key": "apache-2.0",
+        "name": "Apache License 2.0",
+        "spdx_id": "Apache-2.0",
+        "url": "https://api.github.com/licenses/apache-2.0",
+        "node_id": "MDc6TGljZW5zZTI="
+      },
+      "default_branch_protection": {
+        "error": "gh: Branch not protected (HTTP 404)",
+        "body": "{\"message\":\"Branch not protected\",\"documentation_url\":\"https://docs.github.com/rest/branches/branch-protection#get-branch-protection\",\"status\":\"404\"}"
+      },
+      "rulesets": [],
+      "actions_permissions": {
+        "enabled": false,
+        "sha_pinning_required": false
+      },
+      "dependabot_alerts_enabled": true
+    },
+    {
+      "repository": "lomi-dev/plugin-tools",
+      "url": "https://github.com/lomi-dev/plugin-tools",
+      "before": {
+        "description": "CLI, project generator, templates and examples for Lomi plugins.",
+        "homepage": null,
+        "topics": []
+      },
+      "after": {
+        "description": "Command-line tools for checking, building, diagnosing and packaging Lomi plugins, with testing helpers and the Workspace info example.",
+        "homepage": "https://github.com/lomi-dev/plugin-tools#readme",
+        "topics": [
+          "cli",
+          "developer-tools",
+          "javascript",
+          "lomi",
+          "nodejs",
+          "plugins",
+          "testing"
+        ]
+      },
+      "settings": {
+        "visibility": "public",
+        "private": false,
+        "archived": false,
+        "default_branch": "main",
+        "has_issues": true,
+        "has_wiki": true,
+        "has_projects": true,
+        "has_discussions": false,
+        "allow_forking": true,
+        "web_commit_signoff_required": false,
+        "security_and_analysis": {
+          "secret_scanning": {
+            "status": "disabled"
+          },
+          "secret_scanning_push_protection": {
+            "status": "disabled"
+          },
+          "dependabot_security_updates": {
+            "status": "disabled"
+          },
+          "secret_scanning_non_provider_patterns": {
+            "status": "disabled"
+          },
+          "secret_scanning_validity_checks": {
+            "status": "disabled"
+          }
+        }
+      },
+      "license": {
+        "key": "apache-2.0",
+        "name": "Apache License 2.0",
+        "spdx_id": "Apache-2.0",
+        "url": "https://api.github.com/licenses/apache-2.0",
+        "node_id": "MDc6TGljZW5zZTI="
+      },
+      "default_branch_protection": {
+        "error": "gh: Branch not protected (HTTP 404)",
+        "body": "{\"message\":\"Branch not protected\",\"documentation_url\":\"https://docs.github.com/rest/branches/branch-protection#get-branch-protection\",\"status\":\"404\"}"
+      },
+      "rulesets": [],
+      "actions_permissions": {
+        "enabled": false,
+        "sha_pinning_required": false
+      },
+      "dependabot_alerts_enabled": true
+    },
+    {
+      "repository": "lomi-dev/create-lomi-plugin",
+      "url": "https://github.com/lomi-dev/create-lomi-plugin",
+      "before": {
+        "description": "Create Lomi plugin projects with versioned templates and independently released SDK/CLI dependencies",
+        "homepage": null,
+        "topics": []
+      },
+      "after": {
+        "description": "Standalone generator for Lomi plugin projects, with panel, sidebar, command and theme templates and pinned SDK/CLI dependencies.",
+        "homepage": "https://github.com/lomi-dev/create-lomi-plugin#readme",
+        "topics": [
+          "cli",
+          "developer-tools",
+          "lomi",
+          "nodejs",
+          "plugins",
+          "project-generator",
+          "scaffolding",
+          "templates"
+        ]
+      },
+      "settings": {
+        "visibility": "public",
+        "private": false,
+        "archived": false,
+        "default_branch": "main",
+        "has_issues": true,
+        "has_wiki": true,
+        "has_projects": true,
+        "has_discussions": false,
+        "allow_forking": true,
+        "web_commit_signoff_required": false,
+        "security_and_analysis": {
+          "secret_scanning": {
+            "status": "disabled"
+          },
+          "secret_scanning_push_protection": {
+            "status": "disabled"
+          },
+          "dependabot_security_updates": {
+            "status": "disabled"
+          },
+          "secret_scanning_non_provider_patterns": {
+            "status": "disabled"
+          },
+          "secret_scanning_validity_checks": {
+            "status": "disabled"
+          }
+        }
+      },
+      "license": {
+        "key": "apache-2.0",
+        "name": "Apache License 2.0",
+        "spdx_id": "Apache-2.0",
+        "url": "https://api.github.com/licenses/apache-2.0",
+        "node_id": "MDc6TGljZW5zZTI="
+      },
+      "default_branch_protection": {
+        "error": "gh: Branch not protected (HTTP 404)",
+        "body": "{\"message\":\"Branch not protected\",\"documentation_url\":\"https://docs.github.com/rest/branches/branch-protection#get-branch-protection\",\"status\":\"404\"}"
+      },
+      "rulesets": [],
+      "actions_permissions": {
+        "enabled": false,
+        "sha_pinning_required": false
+      },
+      "dependabot_alerts_enabled": true
+    },
+    {
+      "repository": "lomi-dev/simplevoice",
+      "url": "https://github.com/lomi-dev/simplevoice",
+      "before": {
+        "description": "Speech-to-Text app built with Tauri V2",
+        "homepage": "https://simplevoice.app",
+        "topics": []
+      },
+      "after": {
+        "description": "Local speech-to-text and voice typing for macOS, Linux and Windows, with offline models and optional cloud providers. Built with Tauri and Rust.",
+        "homepage": "https://simplevoice.app",
+        "topics": [
+          "desktop-app",
+          "offline",
+          "rust",
+          "speech-to-text",
+          "tauri",
+          "transcription",
+          "voice-typing",
+          "whisper"
+        ]
+      },
+      "settings": {
+        "visibility": "public",
+        "private": false,
+        "archived": false,
+        "default_branch": "main",
+        "has_issues": true,
+        "has_wiki": false,
+        "has_projects": true,
+        "has_discussions": false,
+        "allow_forking": true,
+        "web_commit_signoff_required": false,
+        "security_and_analysis": {
+          "secret_scanning": {
+            "status": "disabled"
+          },
+          "secret_scanning_push_protection": {
+            "status": "disabled"
+          },
+          "dependabot_security_updates": {
+            "status": "disabled"
+          },
+          "secret_scanning_non_provider_patterns": {
+            "status": "disabled"
+          },
+          "secret_scanning_validity_checks": {
+            "status": "disabled"
+          }
+        }
+      },
+      "license": {
+        "key": "apache-2.0",
+        "name": "Apache License 2.0",
+        "spdx_id": "Apache-2.0",
+        "url": "https://api.github.com/licenses/apache-2.0",
+        "node_id": "MDc6TGljZW5zZTI="
+      },
+      "default_branch_protection": {
+        "error": "gh: Branch not protected (HTTP 404)",
+        "body": "{\"message\":\"Branch not protected\",\"documentation_url\":\"https://docs.github.com/rest/branches/branch-protection#get-branch-protection\",\"status\":\"404\"}"
+      },
+      "rulesets": [],
+      "actions_permissions": {
+        "enabled": true,
+        "allowed_actions": "all",
+        "sha_pinning_required": false
+      },
+      "dependabot_alerts_enabled": false
+    },
+    {
+      "repository": "lomi-dev/auth-frontend",
+      "url": "https://github.com/lomi-dev/auth-frontend",
+      "before": {
+        "description": null,
+        "homepage": null,
+        "topics": []
+      },
+      "after": {
+        "description": "Placeholder repository for the Lomi authentication frontend. No code or documentation has been published yet.",
+        "homepage": "https://lomi.dev/",
+        "topics": ["authentication", "frontend", "lomi"]
+      },
+      "settings": {
+        "visibility": "public",
+        "private": false,
+        "archived": false,
+        "default_branch": "main",
+        "has_issues": true,
+        "has_wiki": true,
+        "has_projects": true,
+        "has_discussions": false,
+        "allow_forking": true,
+        "web_commit_signoff_required": false,
+        "security_and_analysis": {
+          "secret_scanning": {
+            "status": "disabled"
+          },
+          "secret_scanning_push_protection": {
+            "status": "disabled"
+          },
+          "dependabot_security_updates": {
+            "status": "disabled"
+          },
+          "secret_scanning_non_provider_patterns": {
+            "status": "disabled"
+          },
+          "secret_scanning_validity_checks": {
+            "status": "disabled"
+          }
+        }
+      },
+      "license": null,
+      "default_branch_protection": {
+        "error": "gh: Branch not found (HTTP 404)",
+        "body": "{\"message\":\"Branch not found\",\"documentation_url\":\"https://docs.github.com/rest/branches/branch-protection#get-branch-protection\",\"status\":\"404\"}"
+      },
+      "rulesets": [],
+      "actions_permissions": {
+        "enabled": true,
+        "allowed_actions": "all",
+        "sha_pinning_required": false
+      },
+      "dependabot_alerts_enabled": true
+    }
+  ],
+  "links_and_registry": [
+    {
+      "url": "https://lomi.dev/",
+      "status": 200,
+      "final_url": "https://lomi.dev/",
+      "title": "lomi: Work in progress"
+    },
+    {
+      "url": "https://www.lomi.dev/",
+      "status": 200,
+      "final_url": "https://www.lomi.dev/",
+      "title": "lomi: Work in progress"
+    },
+    {
+      "url": "https://simplevoice.app/",
+      "status": 200,
+      "final_url": "https://simplevoice.app/",
+      "title": "Simplevoice | Offline speech-to-text for desktop"
+    },
+    {
+      "url": "https://github.com/lomi-dev/docs-app/blob/main/src/content/docs/plugins/quick-start.md",
+      "status": 404,
+      "final_url": "https://github.com/lomi-dev/docs-app/blob/main/src/content/docs/plugins/quick-start.md",
+      "title": "Page not found · GitHub · GitHub"
+    },
+    {
+      "url": "https://registry.npmjs.org/@lomi-dev%2fplugin-sdk",
+      "status": 200,
+      "final_url": "https://registry.npmjs.org/@lomi-dev%2fplugin-sdk",
+      "tags": {
+        "next": "1.1.0-alpha.0",
+        "latest": "1.1.0-alpha.0"
+      },
+      "versions": ["1.1.0-alpha.0"],
+      "error": null
+    },
+    {
+      "url": "https://registry.npmjs.org/@lomi-dev%2fplugin-cli",
+      "status": 200,
+      "final_url": "https://registry.npmjs.org/@lomi-dev%2fplugin-cli",
+      "tags": {
+        "next": "0.1.0-alpha.1",
+        "latest": "0.1.0-alpha.1"
+      },
+      "versions": ["0.1.0-alpha.1"],
+      "error": null
+    },
+    {
+      "url": "https://registry.npmjs.org/create-lomi-plugin",
+      "status": 200,
+      "final_url": "https://registry.npmjs.org/create-lomi-plugin",
+      "tags": {
+        "next": "0.1.0-alpha.2",
+        "latest": "0.1.0-alpha.1"
+      },
+      "versions": ["0.1.0-alpha.1", "0.1.0-alpha.2"],
+      "error": null
+    }
+  ],
+  "homepage_checks": [
+    {
+      "url": "https://github.com/lomi-dev/plugin-sdk#readme",
+      "response": "200\nhttps://github.com/lomi-dev/plugin-sdk#readme",
+      "error": null
+    },
+    {
+      "url": "https://github.com/lomi-dev/plugin-tools#readme",
+      "response": "200\nhttps://github.com/lomi-dev/plugin-tools#readme",
+      "error": null
+    },
+    {
+      "url": "https://github.com/lomi-dev/create-lomi-plugin#readme",
+      "response": "200\nhttps://github.com/lomi-dev/create-lomi-plugin#readme",
+      "error": null
+    },
+    {
+      "url": "https://github.com/MaciejKolerski/simplevoice/releases",
+      "response": "200\nhttps://github.com/lomi-dev/simplevoice/releases",
+      "error": null
+    }
+  ],
+  "readme_relative_links": [
+    {
+      "repo": "simplevoice",
+      "missing_relative_readme_targets": []
+    },
+    {
+      "repo": "lomi",
+      "missing_relative_readme_targets": []
+    },
+    {
+      "repo": "lomi-web",
+      "missing_relative_readme_targets": []
+    },
+    {
+      "repo": "plugin-tools",
+      "missing_relative_readme_targets": []
+    },
+    {
+      "repo": "plugin-sdk",
+      "missing_relative_readme_targets": []
+    },
+    {
+      "repo": "create-lomi-plugin",
+      "missing_relative_readme_targets": []
+    }
+  ]
+}
