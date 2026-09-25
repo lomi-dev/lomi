@@ -224,7 +224,7 @@ pub(crate) fn prepare(
         .draft(&conversation.id)
         .map_err(|_| ErrorCode::StorageUnavailable)?;
     let start = start_input(command, draft.text)?;
-    let context = generation::context(
+    let mut context = generation::context(
         store,
         &backend.owner.root,
         &start,
@@ -233,6 +233,7 @@ pub(crate) fn prepare(
         &|| check().map_err(error_string),
     )
     .map_err(failure)?;
+    backend.attach_mcp_context(&mut context, &conversation);
     // Approval renders every attachment name. Larger sets need an explicit
     // paginated review before this path can support them.
     if context.attachments.len() > 100 {

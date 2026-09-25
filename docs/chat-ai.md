@@ -53,20 +53,46 @@ its views. Markdown exports the active branch; JSON includes all branches and
 the draft. Both describe attachments without embedding their binary files.
 Restarting restores saved text, never a paid request or unsaved RAM.
 
+## Lomi MCP tools
+
+Chat AI uses the same tool catalog and native dispatch as Lomi's MCP server.
+The model can call the server's tools, receive text, structured results and
+images, and continue its answer using those results. The current server exposes
+tools; it does not advertise MCP resources or prompts. This integration connects
+to Lomi's own server, not arbitrary external MCP servers.
+
+Enable **Settings → Agent control** on a supported host. The first tool use in
+a conversation starts a session labelled **Lomi Chat AI** with that conversation's
+identifier. Approve the session in Agent control and select its workspaces and
+permissions. If the model reports that approval is pending, approve it and ask
+the chat to continue. Existing native approvals for protected actions still apply.
+Each conversation has its own session; permissions are not copied from a CLI
+agent or another conversation. Disabling Agent control or revoking access also
+applies to Chat AI. The current native control transport is qualified for
+macOS on Apple Silicon; other hosts retain ordinary chat without control access.
+
+Tool calls and results appear in the conversation and are saved with its history.
+Reopening or reconnecting a conversation restores these records without executing
+the tools again. **Stop** cancels pending work; it cannot undo an action already
+performed. A generation has a bounded number of model steps and tool calls.
+Tool calling also depends on the selected provider and model supporting it.
+
 ## Attachments and limits
 
 Choose files with the composer’s plus button, drag from Explorer or the operating system,
 or paste an image. Files are copied locally before sending, and previews/removal
-are available in the composer. Nothing reads the project, editor, terminal or
-clipboard automatically. Sensitive filenames require explicit confirmation.
-Only the active conversation branch and its chosen files go to the selected API.
+are available in the composer. Sensitive filenames require explicit confirmation.
+The active conversation branch and its chosen files go to the selected API.
+When an approved MCP tool reads application or project data, that tool's result
+also becomes part of the conversation and is sent to the selected provider.
 Changing connection shows which provider will receive that history.
 
 - Text messages: 128 KiB UTF-8; text attachments: 1 MiB each.
 - Images: PNG, JPEG or WebP, 10 MiB and 20 megapixels each.
 - Up to 10 attachments and 20 MiB total per message.
 - Serialized request context: 40 MiB; providers can impose lower token limits.
-- Responses: 2 MiB, with an additional cumulative stream-event bound.
+- Text and reasoning: 2 MiB; responses including MCP results: 16 MiB, with
+  additional cumulative stream-event bounds. Each MCP result is at most 8 MiB.
 - One active generation per conversation and four across the application,
   including connection tests/catalog operations.
 

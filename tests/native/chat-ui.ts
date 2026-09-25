@@ -14,7 +14,7 @@ type Packet = {
   snapshot?: {
     message: {
       id: string;
-      parts: { type: "text" | "reasoning"; text: string }[];
+      parts: { type: string; text?: string }[];
     };
     blocks: Record<
       string,
@@ -25,6 +25,13 @@ type Packet = {
   status?: string;
 };
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function snapshotText(snapshot: NonNullable<Packet["snapshot"]>["message"]) {
+  return snapshot.parts
+    .filter((part) => part.type === "text")
+    .map((part) => part.text ?? "")
+    .join("");
+}
 
 export async function run() {
   const mode = await invoke<{ live: boolean }>("chat_probe_backend", {
@@ -81,6 +88,13 @@ export async function run() {
               messageId: packet.snapshot.message.id,
             });
             for (const [id, block] of Object.entries(packet.snapshot.blocks)) {
+              const part = packet.snapshot.message.parts[block.index];
+              if (
+                !part ||
+                part.type !== block.type ||
+                typeof part.text !== "string"
+              )
+                throw Error("Snapshot block does not match its message part");
               controller.enqueue({
                 type: block.type === "text" ? "text-start" : "reasoning-start",
                 id,
@@ -88,7 +102,7 @@ export async function run() {
               controller.enqueue({
                 type: block.type === "text" ? "text-delta" : "reasoning-delta",
                 id,
-                delta: packet.snapshot.message.parts[block.index].text,
+                delta: part.text,
               });
               if (!block.open)
                 controller.enqueue({
@@ -167,7 +181,8 @@ export async function run() {
   if (
     !snapshot ||
     snapshot.epoch !== 2 ||
-    !snapshot.snapshot?.message.parts[0].text.includes("日本語")
+    !snapshot.snapshot ||
+    !snapshotText(snapshot.snapshot.message).includes("日本語")
   )
     throw Error("Snapshot lost Unicode prefix");
   // Measure active presentation separately from the minimized-window recovery.
@@ -199,7 +214,7 @@ export async function run() {
       ?.parts.filter((p) => p.type === "text")
       .map((p) => p.text)
       .join("") ?? "";
-  if (!text.startsWith(snapshot.snapshot.message.parts[0].text))
+  if (!text.startsWith(snapshotText(snapshot.snapshot.message)))
     throw Error("SDK parser lost the snapshot prefix");
   const nativeStopMs = performance.now() - start;
   await invoke("chat_probe_backend");

@@ -3,11 +3,26 @@ import { z } from "zod";
 export const VERSION = 1;
 export const MAX_CONTEXT = 40 * 1024 * 1024;
 export const MAX_FRAME = 96 * 1024;
-export const MAX_RESPONSE = 2 * 1024 * 1024;
+export const MAX_RESPONSE = 16 * 1024 * 1024;
+export const MAX_TEXT_RESPONSE = 2 * 1024 * 1024;
+export const MAX_TOOL_RESULT = 8 * 1024 * 1024;
+export const MAX_TOOL_RESULTS = 16 * 1024 * 1024;
+export const MAX_TOOL_INPUT = 64 * 1024;
+export const MAX_TOOL_CALLS = 128;
+export const MAX_TOOL_STEPS = 32;
+export const MAX_TOOL_FRAME_DATA = 48 * 1024;
+export const MAX_TOOL_FRAME_BYTES = 32 * 1024;
 export const id = z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/);
-const part = z.discriminatedUnion("type", [
+const providerMetadata = z.record(z.string(), z.json()).optional();
+const toolMetadata = z.record(z.string(), z.json()).optional();
+const part = z.union([
   z
-    .object({ type: z.literal("text"), text: z.string().max(MAX_CONTEXT) })
+    .object({
+      type: z.literal("text"),
+      text: z.string().max(MAX_CONTEXT),
+      state: z.enum(["streaming", "done"]).optional(),
+      providerMetadata,
+    })
     .strict(),
   z
     .object({
@@ -18,9 +33,85 @@ const part = z.discriminatedUnion("type", [
         .max(14 * 1024 * 1024)
         .regex(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/),
       filename: z.string().max(255).optional(),
+      providerMetadata,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("reasoning"),
+      id: z.string().max(256).optional(),
+      text: z.string().max(MAX_CONTEXT),
+      state: z.enum(["streaming", "done"]).optional(),
+      providerMetadata,
+    })
+    .strict(),
+  z.object({ type: z.literal("step-start") }).strict(),
+  z
+    .object({
+      type: z.literal("dynamic-tool"),
+      toolName: z.string().min(1).max(100),
+      toolCallId: id,
+      state: z.literal("input-streaming"),
+      input: z.json().optional(),
+      title: z.string().max(1024).optional(),
+      toolMetadata,
+      providerExecuted: z.boolean().optional(),
+      callProviderMetadata: providerMetadata,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("dynamic-tool"),
+      toolName: z.string().min(1).max(100),
+      toolCallId: id,
+      state: z.literal("input-available"),
+      input: z.json(),
+      title: z.string().max(1024).optional(),
+      toolMetadata,
+      providerExecuted: z.boolean().optional(),
+      callProviderMetadata: providerMetadata,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("dynamic-tool"),
+      toolName: z.string().min(1).max(100),
+      toolCallId: id,
+      state: z.literal("output-available"),
+      input: z.json(),
+      output: z.json(),
+      title: z.string().max(1024).optional(),
+      toolMetadata,
+      providerExecuted: z.boolean().optional(),
+      callProviderMetadata: providerMetadata,
+      resultProviderMetadata: providerMetadata,
+      preliminary: z.boolean().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("dynamic-tool"),
+      toolName: z.string().min(1).max(100),
+      toolCallId: id,
+      state: z.literal("output-error"),
+      input: z.json().optional(),
+      rawInput: z.json().optional(),
+      errorText: z.string().max(8192),
+      title: z.string().max(1024).optional(),
+      toolMetadata,
+      providerExecuted: z.boolean().optional(),
+      callProviderMetadata: providerMetadata,
+      resultProviderMetadata: providerMetadata,
     })
     .strict(),
 ]);
+const mcpTool = z
+  .object({
+    name: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/),
+    description: z.string().max(16 * 1024),
+    inputSchema: z.record(z.string(), z.json()),
+  })
+  .strict();
 export const generation = z
   .object({
     operation: z
@@ -44,7 +135,7 @@ export const generation = z
           .object({
             id,
             role: z.enum(["user", "assistant"]),
-            parts: z.array(part).max(100),
+            parts: z.array(part).max(1024),
           })
           .strict(),
       )
@@ -57,7 +148,38 @@ export const generation = z
     maxOutputTokens: z.number().int().min(1).max(32768).default(4096),
     temperature: z.number().min(0).max(2).optional(),
   })
-  .strict();
+  .extend({
+    mcp: z
+      .object({
+        tools: z.array(mcpTool).max(MAX_TOOL_CALLS),
+        instructions: z.string().max(128 * 1024),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.operation !== "generate" && value.mcp !== undefined) {
+      context.addIssue({
+        code: "custom",
+        path: ["mcp"],
+        message: "MCP tools are available only for generation.",
+      });
+    }
+    if (value.mcp) {
+      const names = new Set<string>();
+      value.mcp.tools.forEach((tool, index) => {
+        if (names.has(tool.name)) {
+          context.addIssue({
+            code: "custom",
+            path: ["mcp", "tools", index, "name"],
+            message: "MCP tool names must be unique.",
+          });
+        }
+        names.add(tool.name);
+      });
+    }
+  });
 export type Generation = z.infer<typeof generation>;
 export const frame = z
   .object({
@@ -70,20 +192,41 @@ export const frame = z
       "generate",
       "cancel",
       "shutdown",
+      "tool-result-begin",
+      "tool-result-append",
+      "tool-result-end",
     ]),
     payload: z
       .object({
         data: z
           .string()
-          .max(48 * 1024)
+          .max(MAX_TOOL_FRAME_DATA)
           .regex(/^[A-Za-z0-9+/]*={0,2}$/)
           .optional(),
+        toolCallId: id.optional(),
       })
       .strict()
       .nullable()
       .optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    const payload = value.payload;
+    if (
+      value.type === "tool-result-begin" ||
+      value.type === "tool-result-end"
+    ) {
+      if (!payload?.toolCallId || payload.data !== undefined) {
+        context.addIssue({ code: "custom", path: ["payload"] });
+      }
+    } else if (value.type === "tool-result-append") {
+      if (!payload?.toolCallId || payload.data === undefined) {
+        context.addIssue({ code: "custom", path: ["payload"] });
+      }
+    } else if (payload?.toolCallId !== undefined) {
+      context.addIssue({ code: "custom", path: ["payload", "toolCallId"] });
+    }
+  });
 export interface Event {
   protocolVersion: 1;
   requestId: string;
@@ -92,6 +235,7 @@ export interface Event {
     | "models"
     | "ready"
     | "chunk"
+    | "tool-call"
     | "message-snapshot"
     | "completed"
     | "cancelled"

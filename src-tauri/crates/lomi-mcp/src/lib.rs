@@ -1,4 +1,5 @@
 pub mod bounded_stdio;
+pub mod chat;
 
 mod server;
 

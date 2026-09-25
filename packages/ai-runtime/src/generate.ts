@@ -1,5 +1,6 @@
 import {
   convertToModelMessages,
+  stepCountIs,
   streamText,
   toUIMessageStream,
   validateUIMessages,
@@ -11,8 +12,10 @@ import {
   type Emit,
   errorCode,
   MAX_RESPONSE,
+  MAX_TOOL_STEPS,
   VERSION,
 } from "./protocol.ts";
+import { createMcpTools, type McpExecutor } from "./mcp.ts";
 import { Snapshot } from "./snapshot.ts";
 
 globalThis.AI_SDK_LOG_WARNINGS = false;
@@ -23,6 +26,7 @@ export async function generate(
   controller: AbortController,
   emit: Emit,
   model: LanguageModel,
+  executeMcpTool?: McpExecutor,
 ) {
   if (input.operation === "test-connection")
     input = {
@@ -49,6 +53,24 @@ export async function generate(
       payload,
     });
   const snapshot = new Snapshot(input.assistantId);
+  const tools =
+    input.operation === "generate"
+      ? createMcpTools(
+          input.mcp,
+          executeMcpTool ??
+            (async () => {
+              throw new Error("unsupported-input");
+            }),
+          (error) => {
+            if (
+              error instanceof Error &&
+              ["unsupported-input", "response-limit"].includes(error.message)
+            )
+              failure = error.message;
+            else failure ??= errorCode(error);
+          },
+        )
+      : undefined;
   let failure: string | undefined;
   let usage: unknown;
   let rawBytes = 0;
@@ -62,12 +84,22 @@ export async function generate(
   try {
     if (controller.signal.aborted)
       throw new DOMException("Cancelled", "AbortError");
-    const messages = await validateUIMessages({ messages: input.messages });
+    const messages = await validateUIMessages({
+      messages: input.messages,
+      tools,
+    });
     if (messages.at(-1)?.role !== "user") throw new Error("protocol");
     const result = streamText({
       model,
-      messages: await convertToModelMessages(messages),
-      system: input.system || undefined,
+      messages: await convertToModelMessages(messages, {
+        tools,
+        ignoreIncompleteToolCalls: true,
+      }),
+      system:
+        [input.system, input.mcp?.instructions].filter(Boolean).join("\n\n") ||
+        undefined,
+      ...(tools ? { tools } : {}),
+      stopWhen: stepCountIs(MAX_TOOL_STEPS),
       maxOutputTokens: input.maxOutputTokens,
       ...(input.temperature === undefined
         ? {}
@@ -98,7 +130,7 @@ export async function generate(
             rawBytes += Buffer.byteLength(JSON.stringify(part));
             // streamText internally retains a tee. Bound bytes AND tiny event count
             // before that tee rather than assuming its unused branch is drained.
-            if (++count > 32768 || rawBytes > 2 * MAX_RESPONSE) {
+            if (++count > 32768 || rawBytes > MAX_RESPONSE) {
               failure = "response-limit";
               controller.abort();
               throw new Error("response-limit");
@@ -123,18 +155,41 @@ export async function generate(
         case "reasoning-start":
         case "text-end":
         case "reasoning-end":
-          chunk = { type: raw.type, id: raw.id };
+          chunk = {
+            type: raw.type,
+            id: snapshot.namespace(raw.id),
+            ...(raw.providerMetadata != null
+              ? { providerMetadata: raw.providerMetadata }
+              : {}),
+          };
           break;
         case "text-delta":
         case "reasoning-delta":
-          chunk = { type: raw.type, id: raw.id, delta: raw.delta };
+          chunk = {
+            type: raw.type,
+            id: snapshot.namespace(raw.id),
+            delta: raw.delta,
+            ...(raw.providerMetadata != null
+              ? { providerMetadata: raw.providerMetadata }
+              : {}),
+          };
+          break;
+        case "tool-input-available":
+        case "tool-input-error":
+        case "tool-output-available":
+        case "tool-output-error":
+          chunk = raw;
+          break;
+        case "start-step":
+          chunk = raw;
           break;
         case "error":
           failure ??= "network";
           continue;
         case "finish":
         case "abort":
-        case "start-step":
+        case "tool-input-start":
+        case "tool-input-delta":
         case "finish-step":
           continue;
         default:

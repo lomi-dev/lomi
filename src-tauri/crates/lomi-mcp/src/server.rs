@@ -4,6 +4,7 @@ use crate::bounded_stdio::BoundedStdin;
 use lomi_control_protocol::control::Request;
 use lomi_control_protocol::{control::*, EmptyInput, ErrorCode, MAX_FRAME_BYTES};
 use rmcp::{model::*, service::RequestContext, ErrorData, RoleServer, ServerHandler, ServiceExt};
+use serde_json::Value;
 use std::sync::{Arc, Mutex};
 
 #[path = "output_schema.rs"]
@@ -20,9 +21,91 @@ struct Helper {
     connection: Arc<Mutex<Connection>>,
 }
 
-fn catalog() -> &'static [Tool] {
+pub(crate) fn catalog() -> &'static [Tool] {
     static CATALOG: std::sync::OnceLock<Vec<Tool>> = std::sync::OnceLock::new();
     CATALOG.get_or_init(build_catalog)
+}
+
+pub(crate) fn parse_tool_request(name: &str, arguments: Value) -> Result<Request, String> {
+    if !catalog().iter().any(|tool| tool.name == name) {
+        return Err("Unknown tool".into());
+    }
+    if serde_json::to_vec(&arguments)
+        .map_err(|_| "Invalid arguments".to_string())?
+        .len()
+        > lomi_control_protocol::MAX_METADATA_BYTES
+    {
+        return Err("Arguments exceed 64 KiB".into());
+    }
+    serde_json::from_value(serde_json::json!({"tool":name,"arguments":arguments}))
+        .map_err(|_| "Unknown tool or invalid arguments".into())
+}
+
+pub(crate) fn encode_tool_result(mut result: Reply) -> Result<Value, String> {
+    let image = match &mut result {
+        Reply::Ok {
+            data: Data::Artifact { image, .. },
+            ..
+        } => image.take(),
+        _ => None,
+    };
+    let error = matches!(result, Reply::Error { .. });
+    let value = serde_json::to_value(result).map_err(|_| "Cannot encode result".to_string())?;
+    let mut response = if error {
+        CallToolResult::structured_error(value)
+    } else {
+        CallToolResult::structured(value)
+    };
+    if let Some(image) = image {
+        response
+            .content
+            .push(ContentBlock::image(image, "image/png"));
+    }
+    serde_json::to_value(response).map_err(|_| "Cannot encode result".into())
+}
+
+pub(crate) fn tool_catalog() -> Vec<Value> {
+    catalog()
+        .iter()
+        .filter_map(|tool| {
+            let value = serde_json::to_value(tool).ok()?;
+            let input_schema = value
+                .get("inputSchema")
+                .or_else(|| value.get("input_schema"))?
+                .clone();
+            Some(serde_json::json!({
+                "name": tool.name,
+                "description": tool.description,
+                "inputSchema": input_schema,
+            }))
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shared_parser_and_encoder_keep_mcp_result_shape() {
+        let request = parse_tool_request("lomi_status", serde_json::json!({})).unwrap();
+        assert!(matches!(request, Request::Status(_)));
+        assert!(parse_tool_request("not-a-lomi-tool", serde_json::json!({})).is_err());
+
+        let result = encode_tool_result(Reply::ok(Data::Status {
+            connection: "app_unavailable".into(),
+            pairing_request_id: None,
+            instance_id: None,
+            ui_ready: false,
+            platform: "test".into(),
+            capabilities: Vec::new(),
+            limitations: Vec::new(),
+        }))
+        .unwrap();
+        assert!(result["content"].is_array());
+        assert!(result["structuredContent"].is_object());
+        assert_eq!(result["isError"], false);
+    }
 }
 
 fn build_catalog() -> Vec<Tool> {
@@ -251,39 +334,17 @@ impl ServerHandler for Helper {
         request: CallToolRequestParams,
         _: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
-        if !catalog().iter().any(|tool| tool.name == request.name) {
-            return Err(ErrorData::invalid_params("Unknown tool", None));
-        }
-        if serde_json::to_vec(&request.arguments)
-            .map_err(|_| ErrorData::invalid_params("Invalid arguments", None))?
-            .len()
-            > lomi_control_protocol::MAX_METADATA_BYTES
-        {
-            return Err(ErrorData::invalid_params("Arguments exceed 64 KiB", None));
-        }
-        let request:Request=serde_json::from_value(serde_json::json!({"tool":request.name,"arguments":request.arguments.unwrap_or_default()}))
-            .map_err(|_|ErrorData::invalid_params("Unknown tool or invalid arguments",None))?;
-        let mut result = self.call(request).await;
-        let image = match &mut result {
-            Reply::Ok {
-                data: Data::Artifact { image, .. },
-                ..
-            } => image.take(),
-            _ => None,
-        };
-        let error = matches!(result, Reply::Error { .. });
-        let value = serde_json::to_value(result)
+        let tool_name = request.name;
+        let request = parse_tool_request(
+            &tool_name,
+            Value::Object(request.arguments.unwrap_or_default()),
+        )
+        .map_err(|_| ErrorData::invalid_params("Unknown tool or invalid arguments", None))?;
+        let result = self.call(request).await;
+        let response = encode_tool_result(result)
             .map_err(|_| ErrorData::internal_error("Cannot encode result", None))?;
-        let mut response = if error {
-            CallToolResult::structured_error(value)
-        } else {
-            CallToolResult::structured(value)
-        };
-        if let Some(image) = image {
-            response
-                .content
-                .push(ContentBlock::image(image, "image/png"));
-        }
+        let response: CallToolResult = serde_json::from_value(response)
+            .map_err(|_| ErrorData::internal_error("Cannot encode result", None))?;
         Ok(response.into())
     }
 }

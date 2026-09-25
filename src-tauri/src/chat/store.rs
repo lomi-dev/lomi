@@ -529,7 +529,7 @@ impl Store {
             status,
             "active" | "completed" | "cancelled" | "failed" | "interrupted"
         ) || !parts.is_array()
-            || parts.to_string().len() > 2 * 1024 * 1024
+            || parts.to_string().len() > 16 * 1024 * 1024
         {
             return Err("Invalid response checkpoint.".into());
         }

@@ -52,8 +52,9 @@ export async function mockChats(page: Page) {
       modelPreviews: [],
       pendingModelPreviews: [],
       failPreferences: false,
-      starts: 0,
+      starts: Number(localStorage.getItem("chat-test-starts") ?? 0),
       stops: 0,
+      toolScenario: null,
       requests,
       conversations,
     };
@@ -63,13 +64,15 @@ export async function mockChats(page: Page) {
       clearInterval(request.timer);
       const loaded = conversations[request.input.conversationId];
       loaded.request.status = status;
+      loaded.request.sequence = request.sequence;
       request.message.status = status;
-      request.channel.onmessage({
-        type: "chunk",
-        epoch: request.epoch,
-        sequence: ++request.sequence,
-        chunk: { type: "text-end", id: "text" },
-      });
+      for (const id of request.openTextIds ?? ["text"])
+        request.channel.onmessage({
+          type: "chunk",
+          epoch: request.epoch,
+          sequence: ++request.sequence,
+          chunk: { type: "text-end", id },
+        });
       request.channel.onmessage({ type: "terminal", status });
       save();
     };
@@ -169,17 +172,48 @@ export async function mockChats(page: Page) {
         return;
       }
       if (command === "chat_subscribe") {
-        const request = requests.get(args.requestId);
+        let request = requests.get(args.requestId);
+        if (!request) {
+          const loaded = Object.values(conversations).find(
+            (value: any) => value.request?.id === args.requestId,
+          ) as any;
+          if (!loaded || loaded.request.status !== "active") return false;
+          request = {
+            input: {
+              conversationId: loaded.conversation.id,
+              requestId: loaded.request.id,
+              assistantId: loaded.request.assistantId,
+            },
+            channel: args.channel,
+            sequence: loaded.request.sequence ?? 0,
+            epoch: 0,
+            message: loaded.messages.find(
+              (message: any) => message.id === loaded.request.assistantId,
+            ),
+            done: false,
+            openTextIds: [],
+          };
+          requests.set(args.requestId, request);
+        }
         if (!request) return false;
         request.channel = args.channel;
         request.epoch++;
+        const blocks: Record<string, unknown> = {};
+        request.message.parts.forEach((part: any, index: number) => {
+          if (part.type === "text" || part.type === "reasoning")
+            blocks[`snapshot-${index}`] = {
+              index,
+              type: part.type,
+              open: part.state === "streaming",
+            };
+        });
         args.channel.onmessage({
           type: "snapshot",
           epoch: request.epoch,
           sequence: request.sequence,
           snapshot: {
             message: structuredClone(request.message),
-            blocks: { text: { index: 0, type: "text", open: !request.done } },
+            blocks,
           },
           terminal: request.done
             ? { type: "terminal", status: request.message.status }
@@ -191,6 +225,10 @@ export async function mockChats(page: Page) {
         const input = args.input,
           loaded = conversations[input.conversationId];
         desktop.__chatTest.starts++;
+        localStorage.setItem(
+          "chat-test-starts",
+          String(desktop.__chatTest.starts),
+        );
         const user = {
           id: input.userId,
           role: "user",
@@ -215,6 +253,7 @@ export async function mockChats(page: Page) {
           id: input.requestId,
           assistantId: input.assistantId,
           status: "active",
+          sequence: 0,
         };
         loaded.conversation.revision++;
         loaded.conversation.title = input.text.slice(0, 40);
@@ -232,6 +271,7 @@ export async function mockChats(page: Page) {
           message: assistant,
           done: false,
           timer: 0,
+          openTextIds: ["text"],
         };
         requests.set(input.requestId, request);
         setTimeout(() => {
@@ -242,6 +282,125 @@ export async function mockChats(page: Page) {
             sequence: ++request.sequence,
             chunk: { type: "start", messageId: input.assistantId },
           });
+          const toolScenario = desktop.__chatTest.toolScenario;
+          if (toolScenario) {
+            const inputValue = { workspaceId: "workspace-fixture" };
+            const callProviderMetadata = { openai: { call: "fixture-call" } };
+            const resultProviderMetadata = {
+              openai: { result: "fixture-result" },
+            };
+            const toolPart: any = {
+              type: "dynamic-tool",
+              toolName: "lomi_workspace_list",
+              toolCallId: "call-fixture",
+              state:
+                toolScenario === "error"
+                  ? "output-error"
+                  : toolScenario === "pending"
+                    ? "input-available"
+                    : "output-available",
+              input: inputValue,
+              callProviderMetadata,
+              resultProviderMetadata,
+            };
+            if (toolScenario === "error") {
+              toolPart.errorText = "The fixture tool was denied.";
+            } else if (toolScenario === "mcp-error") {
+              toolPart.output = {
+                isError: true,
+                content: [
+                  { type: "text", text: "The MCP server reported an error." },
+                ],
+              };
+            } else if (toolScenario !== "pending") {
+              toolPart.output = {
+                content: [
+                  { type: "text", text: "Found one workspace." },
+                  {
+                    type: "image",
+                    mimeType: "image/png",
+                    data: "iVBORw0KGgoAAAANSUhEUgAAAGAAAAAoCAYAAAABk/85AAAAZklEQVR4nO3RMREAIBDAsJeDHJTgfwMZDM3QvXeZdfbVv+b3QD0AANoBANAOAIB2AAC0AwCgHQAA7QAAaAcAQDsAANoBANAOAIB2AAC0AwCgHQAA7QAAaAcAQDsAANoBANAOAIB2D6rmbKWxvtA6AAAAAElFTkSuQmCC",
+                  },
+                  {
+                    type: "image",
+                    mimeType: "image/png",
+                    data: "https://example.invalid/image.png",
+                  },
+                ],
+                structuredContent: {
+                  count: 1,
+                  name: "Fixture workspace",
+                  encodedImage: "A".repeat(2048),
+                },
+              };
+            }
+            assistant.parts = [
+              { type: "text", text: "Before the tool.", state: "done" },
+              { type: "step-start" },
+              toolPart,
+              ...(toolScenario === "pending"
+                ? []
+                : [
+                    {
+                      type: "text",
+                      text: "After the tool.",
+                      state: "streaming",
+                    },
+                  ]),
+            ];
+            const emitChunk = (chunk: any) => {
+              args.channel.onmessage({
+                type: "chunk",
+                epoch: request.epoch,
+                sequence: ++request.sequence,
+                chunk,
+              });
+              loaded.request.sequence = request.sequence;
+            };
+            emitChunk({ type: "text-start", id: "before" });
+            emitChunk({
+              type: "text-delta",
+              id: "before",
+              delta: "Before the tool.",
+            });
+            emitChunk({ type: "text-end", id: "before" });
+            emitChunk({ type: "start-step" });
+            emitChunk({
+              type: "tool-input-available",
+              toolCallId: "call-fixture",
+              toolName: "lomi_workspace_list",
+              input: inputValue,
+              dynamic: true,
+              providerMetadata: callProviderMetadata,
+            });
+            if (toolScenario === "error")
+              emitChunk({
+                type: "tool-output-error",
+                toolCallId: "call-fixture",
+                errorText: toolPart.errorText,
+                dynamic: true,
+                providerMetadata: resultProviderMetadata,
+              });
+            else if (toolScenario !== "pending")
+              emitChunk({
+                type: "tool-output-available",
+                toolCallId: "call-fixture",
+                output: toolPart.output,
+                dynamic: true,
+                providerMetadata: resultProviderMetadata,
+              });
+            if (toolScenario !== "pending") {
+              emitChunk({ type: "text-start", id: "after" });
+              emitChunk({
+                type: "text-delta",
+                id: "after",
+                delta: "After the tool.",
+              });
+              request.openTextIds = ["after"];
+            } else request.openTextIds = [];
+            save();
+            return;
+          }
           args.channel.onmessage({
             type: "chunk",
             epoch: 0,

@@ -151,7 +151,7 @@ pub async fn chat_main(
     tauri::async_runtime::spawn_blocking(move || {
         let _permit = permit;
         if let MainAction::Delete { id } = &input {
-            backend.close(std::slice::from_ref(id))?;
+            backend.close_for_delete(id)?;
         }
         let mut services = backend
             .services
@@ -215,6 +215,7 @@ pub async fn chat_main(
             }
             MainAction::Delete { id } => {
                 store.delete(&id)?;
+                backend.release_mcp_session(&id);
                 let _ = app.emit_to(
                     tauri::EventTarget::webview("main"),
                     "chat-conversation-deleted",

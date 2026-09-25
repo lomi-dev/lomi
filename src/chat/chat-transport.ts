@@ -1,6 +1,8 @@
 import { Channel } from "@tauri-apps/api/core";
 import type { ChatTransport, UIMessage, UIMessageChunk } from "ai";
 import { api, errorMessage } from "../api";
+import { snapshotToChunks } from "./chat-snapshot";
+import type { ChatMessageSnapshot } from "./chat-snapshot";
 import type { Accepted, Start } from "./types";
 import type { ChatSent } from "../agent-chat";
 export interface AgentGeneration {
@@ -17,13 +19,7 @@ export interface Packet {
   status?: string;
   error?: string;
   result?: { code?: string };
-  snapshot?: {
-    message: UIMessage;
-    blocks: Record<
-      string,
-      { index: number; type: "text" | "reasoning"; open: boolean }
-    >;
-  };
+  snapshot?: ChatMessageSnapshot;
   terminal?: Packet | null;
 }
 export class NativeTransport implements ChatTransport<UIMessage> {
@@ -149,28 +145,8 @@ export class NativeTransport implements ChatTransport<UIMessage> {
           if (packet.type === "snapshot" && packet.snapshot) {
             epoch = packet.epoch;
             sequence = packet.sequence;
-            controller.enqueue({
-              type: "start",
-              messageId: packet.snapshot.message.id,
-            });
-            for (const [id, block] of Object.entries(packet.snapshot.blocks)) {
-              const part = packet.snapshot.message.parts[block.index];
-              if (part.type !== "text" && part.type !== "reasoning") continue;
-              controller.enqueue({
-                type: block.type === "text" ? "text-start" : "reasoning-start",
-                id,
-              });
-              controller.enqueue({
-                type: block.type === "text" ? "text-delta" : "reasoning-delta",
-                id,
-                delta: part.text,
-              });
-              if (!block.open)
-                controller.enqueue({
-                  type: block.type === "text" ? "text-end" : "reasoning-end",
-                  id,
-                });
-            }
+            for (const chunk of snapshotToChunks(packet.snapshot))
+              controller.enqueue(chunk);
             if (packet.terminal) queue.unshift(packet.terminal);
             return;
           }

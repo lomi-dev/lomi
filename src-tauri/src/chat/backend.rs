@@ -11,12 +11,17 @@ use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, AtomicI64, Ordering},
+        atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering},
         Arc, Condvar, Mutex,
     },
     time::{Duration, Instant},
 };
 use tauri::{ipc::Channel, Manager};
+
+const MAX_MCP_CALLS: usize = 128;
+const MAX_MCP_INPUT_BYTES: usize = 64 * 1024;
+const MAX_MCP_RESULT_BYTES: usize = 8 * 1024 * 1024;
+const MAX_MCP_RESULT_TOTAL_BYTES: usize = 16 * 1024 * 1024;
 
 pub struct Services {
     pub store: Result<Store, String>,
@@ -34,6 +39,19 @@ pub struct Request {
     saved_bytes: AtomicI64,
     pub result: Mutex<Value>,
     pub done: (Mutex<Option<Result<(), String>>>, Condvar),
+    pub mcp_session: Mutex<Option<Arc<lomi_mcp::chat::ChatSession>>>,
+    mcp_calls: Mutex<McpCalls>,
+    mcp_result_bytes: AtomicUsize,
+    mcp_task: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
+}
+#[derive(Default)]
+struct McpCalls {
+    ids: HashSet<String>,
+    active: Option<String>,
+}
+struct McpSessionEntry {
+    session: Arc<lomi_mcp::chat::ChatSession>,
+    last_used: Instant,
 }
 pub struct Backend {
     pub services: Mutex<Services>,
@@ -42,21 +60,32 @@ pub struct Backend {
     pub changing: Mutex<HashSet<String>>,
     pub(super) closing: Mutex<HashMap<String, Box<dyn Fn() -> bool + Send + Sync>>>,
     pub cancelled: Mutex<HashSet<String>>,
+    mcp_sessions: Mutex<HashMap<String, McpSessionEntry>>,
     process: Mutex<Option<Arc<Process>>>,
     node: PathBuf,
     bundle: PathBuf,
+    #[cfg(unix)]
+    endpoint_provider: Arc<dyn Fn() -> Option<lomi_control_core::broker::Endpoint> + Send + Sync>,
 }
 impl Backend {
+    #[cfg(all(test, unix))]
+    pub(super) fn set_test_endpoint_provider(
+        &mut self,
+        provider: impl Fn() -> Option<lomi_control_core::broker::Endpoint> + Send + Sync + 'static,
+    ) {
+        self.endpoint_provider = Arc::new(provider);
+    }
+
     #[cfg(feature = "chat-probe")]
     pub fn probe_process_id(&self) -> Option<u32> {
         self.process.lock().unwrap().as_ref().map(|p| p.id())
     }
     pub fn open(app: &tauri::AppHandle) -> Result<Arc<Self>, String> {
-        let root = app
+        let app_data = app
             .path()
             .app_data_dir()
-            .map_err(|_| "Cannot locate chat data.")?
-            .join("chat-ai");
+            .map_err(|_| "Cannot locate chat data.")?;
+        let root = app_data.join("chat-ai");
         let owner = Owner::acquire(root)?;
         let mut store = Store::open(&owner.root);
         if let Ok(opened) = &mut store {
@@ -74,6 +103,17 @@ impl Backend {
             &owner.root,
             SystemSecrets,
         );
+        #[cfg(unix)]
+        let endpoint_provider = {
+            let app = app.clone();
+            Arc::new(move || {
+                let control = app.state::<crate::agent_control::Control>();
+                control
+                    .required()
+                    .ok()
+                    .map(|broker| broker.endpoint.clone())
+            })
+        };
         let (node, bundle) = if cfg!(debug_assertions) {
             let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
             (
@@ -124,11 +164,93 @@ impl Backend {
             changing: Mutex::new(HashSet::new()),
             closing: Mutex::new(HashMap::new()),
             cancelled: Mutex::new(HashSet::new()),
+            mcp_sessions: Mutex::new(HashMap::new()),
             process: Mutex::new(None),
             node,
             bundle,
+            #[cfg(unix)]
+            endpoint_provider,
         }))
     }
+
+    fn mcp_session(
+        &self,
+        conversation: &super::store::Conversation,
+    ) -> Arc<lomi_mcp::chat::ChatSession> {
+        const MAX_RETAINED_SESSIONS: usize = 64;
+        let mut label = format!(
+            "Lomi Chat AI {}",
+            conversation.id.chars().take(32).collect::<String>()
+        );
+        if label.len() > 80 {
+            label.truncate(80);
+        }
+        #[cfg(unix)]
+        let endpoint = (self.endpoint_provider)();
+        let mut sessions = self.mcp_sessions.lock().unwrap();
+        if let Some(entry) = sessions.get_mut(&conversation.id) {
+            #[cfg(unix)]
+            let same_endpoint = entry.session.matches_endpoint(endpoint.as_ref());
+            #[cfg(not(unix))]
+            let same_endpoint = true;
+            if same_endpoint && !entry.session.is_revoked() {
+                entry.last_used = Instant::now();
+                return entry.session.clone();
+            }
+            if let Some(entry) = sessions.remove(&conversation.id) {
+                entry.session.close();
+            }
+        }
+        if sessions.len() >= MAX_RETAINED_SESSIONS {
+            let active = self
+                .requests
+                .lock()
+                .unwrap()
+                .values()
+                .filter(|request| request.done.0.lock().unwrap().is_none())
+                .filter_map(|request| request.conversation.clone())
+                .collect::<HashSet<_>>();
+            if let Some(oldest) = sessions
+                .iter()
+                .filter(|(id, _)| !active.contains(*id))
+                .min_by_key(|(_, entry)| entry.last_used)
+                .map(|(id, _)| id.clone())
+            {
+                if let Some(entry) = sessions.remove(&oldest) {
+                    entry.session.close();
+                }
+            }
+        }
+        #[cfg(unix)]
+        let session = Arc::new(lomi_mcp::chat::ChatSession::new(endpoint, label));
+        #[cfg(not(unix))]
+        let session = Arc::new(lomi_mcp::chat::ChatSession::new(label));
+        sessions.insert(
+            conversation.id.clone(),
+            McpSessionEntry {
+                session: session.clone(),
+                last_used: Instant::now(),
+            },
+        );
+        session
+    }
+
+    pub(super) fn attach_mcp_context(
+        &self,
+        context: &mut super::generation::Context,
+        conversation: &super::store::Conversation,
+    ) -> Arc<lomi_mcp::chat::ChatSession> {
+        let session = self.mcp_session(conversation);
+        context.payload["mcp"] = json!({
+            "tools": session.tools(),
+            "instructions": session.instructions_for_origin(
+                &conversation.origin.project_id,
+                &conversation.origin.workspace_id,
+            ),
+        });
+        session
+    }
+
     fn process(self: &Arc<Self>) -> Result<Arc<Process>, String> {
         runtime_supported()?;
         let mut slot = self
@@ -249,8 +371,13 @@ impl Backend {
                     .iter()
                     .enumerate()
                 {
-                    delivery.snapshot["blocks"][format!("stored-{index}")] =
-                        json!({"index":index,"type":part["type"],"open":false});
+                    if matches!(part["type"].as_str(), Some("text" | "reasoning")) {
+                        let mut block = json!({"index":index,"type":part["type"],"open":false});
+                        if let Some(id) = part.get("id").filter(|id| id.is_string()) {
+                            block["id"] = id.clone();
+                        }
+                        delivery.snapshot["blocks"][format!("stored-{index}")] = block;
+                    }
                 }
                 delivery.terminal = Some(json!({"type":"terminal","status":message.status}));
                 channel
@@ -302,7 +429,7 @@ impl Backend {
         }
         drop(requests);
         let store = services.store.as_ref().map_err(|e| e.clone())?;
-        let context = super::generation::context(
+        let mut context = super::generation::context(
             store,
             &self.owner.root,
             &input,
@@ -310,6 +437,7 @@ impl Backend {
             &connection,
             &check,
         )?;
+        let mcp_session = self.attach_mcp_context(&mut context, &loaded);
         preflight(&input, &loaded, &connection, &context)?;
         check()?;
         let key = settings.key(&connection_id)?;
@@ -343,6 +471,10 @@ impl Backend {
             cancelled: AtomicBool::new(self.cancelled.lock().unwrap().remove(&input.request_id)),
             result: Mutex::new(Value::Null),
             done: (Mutex::new(None), Condvar::new()),
+            mcp_session: Mutex::new(Some(mcp_session)),
+            mcp_calls: Mutex::new(McpCalls::default()),
+            mcp_result_bytes: AtomicUsize::new(0),
+            mcp_task: Mutex::new(None),
         });
         {
             let mut requests = self.requests.lock().unwrap();
@@ -390,7 +522,7 @@ impl Backend {
         }
         Ok(serde_json::to_value(accepted).unwrap())
     }
-    fn event(&self, event: Event) {
+    fn event(self: &Arc<Self>, event: Event) {
         let Some(request) = self
             .requests
             .lock()
@@ -400,20 +532,33 @@ impl Backend {
         else {
             return;
         };
-        if request.done.0.lock().unwrap().is_some() {
+        if request.finalizing.load(Ordering::Acquire) || request.done.0.lock().unwrap().is_some() {
+            return;
+        }
+        let terminal = matches!(event.r#type.as_str(), "completed" | "cancelled" | "failed");
+        if request.cancelled.load(Ordering::Acquire) {
+            if terminal {
+                self.finish(&event.request_id, &request, "cancelled", &event.payload);
+            }
             return;
         }
         if request.conversation.is_none() {
             match event.r#type.as_str() {
                 "models" => *request.result.lock().unwrap() = event.payload,
                 "completed" | "failed" | "cancelled" => {
-                    self.finish(&event.request_id, &request, &event.r#type, &event.payload)
+                    let status = if request.cancelled.load(Ordering::Acquire) {
+                        "cancelled"
+                    } else {
+                        event.r#type.as_str()
+                    };
+                    self.finish(&event.request_id, &request, status, &event.payload)
                 }
                 _ => (),
             }
             return;
         }
         match event.r#type.as_str() {
+            "tool-call" => self.tool_call(&event.request_id, &request, &event.payload),
             "chunk" => {
                 let packet = request
                     .delivery
@@ -442,15 +587,168 @@ impl Backend {
             }
             "message-snapshot" => (),
             "completed" | "cancelled" | "failed" => {
-                self.finish(&event.request_id, &request, &event.r#type, &event.payload)
+                let status = if request.cancelled.load(Ordering::Acquire) {
+                    "cancelled"
+                } else {
+                    event.r#type.as_str()
+                };
+                self.finish(&event.request_id, &request, status, &event.payload)
             }
             _ => (),
         }
+    }
+
+    fn tool_call(self: &Arc<Self>, id: &str, request: &Arc<Request>, payload: &Value) {
+        let Some(session) = request.mcp_session.lock().unwrap().as_ref().cloned() else {
+            let _ = self.cancel_known(id, request);
+            return;
+        };
+        let Some(tool_call_id) = payload["toolCallId"].as_str().map(str::to_owned) else {
+            let _ = self.cancel_known(id, request);
+            return;
+        };
+        if !super::process::valid_id(&tool_call_id) {
+            let _ = self.cancel_known(id, request);
+            return;
+        }
+        let (tool_name, input) = (
+            payload["toolName"].as_str().map(str::to_owned),
+            payload.get("input").cloned().unwrap_or(Value::Null),
+        );
+        {
+            let mut calls = request.mcp_calls.lock().unwrap();
+            if calls.active.is_some()
+                || calls.ids.contains(&tool_call_id)
+                || calls.ids.len() >= MAX_MCP_CALLS
+            {
+                drop(calls);
+                let _ = self.cancel_known(id, request);
+                return;
+            }
+            calls.ids.insert(tool_call_id.clone());
+            calls.active = Some(tool_call_id.clone());
+        }
+        if request.finalizing.load(Ordering::Acquire)
+            || request.cancelled.load(Ordering::Acquire)
+            || request.done.0.lock().unwrap().is_some()
+        {
+            return;
+        }
+        let input_size = serde_json::to_vec(&input)
+            .map(|bytes| bytes.len())
+            .unwrap_or(usize::MAX);
+        let input_error = if input_size > MAX_MCP_INPUT_BYTES {
+            Some("Lomi tool arguments exceed 64 KiB.")
+        } else if !input.is_object() {
+            Some("Lomi tool arguments must be a JSON object.")
+        } else if tool_name
+            .as_deref()
+            .is_none_or(|name| !session.has_tool(name))
+        {
+            Some("Unknown Lomi MCP tool.")
+        } else {
+            None
+        };
+        let name = tool_name.unwrap_or_default();
+        let backend = self.clone();
+        let request = request.clone();
+        let request_task = request.clone();
+        let request_id = id.to_owned();
+        let tool_call_for_task = tool_call_id.clone();
+        register_mcp_task(&request, || {
+            tauri::async_runtime::spawn(async move {
+                if request_task.finalizing.load(Ordering::Acquire)
+                    || request_task.cancelled.load(Ordering::Acquire)
+                    || request_task.done.0.lock().unwrap().is_some()
+                {
+                    return;
+                }
+                let mut result = if let Some(message) = input_error {
+                    lomi_mcp::chat::error_result(message)
+                } else {
+                    session.call(&name, input).await
+                };
+                let mut bytes = serde_json::to_vec(&result)
+                .unwrap_or_else(|_| b"{\"isError\":true,\"content\":[{\"type\":\"text\",\"text\":\"Cannot encode Lomi result.\"}]}".to_vec());
+                if bytes.len() > MAX_MCP_RESULT_BYTES {
+                    result = lomi_mcp::chat::error_result("Lomi tool result exceeds 8 MiB.");
+                    bytes = serde_json::to_vec(&result).unwrap_or_default();
+                }
+                let current = request_task.mcp_result_bytes.load(Ordering::Acquire);
+                if current.saturating_add(bytes.len()) > MAX_MCP_RESULT_TOTAL_BYTES {
+                    result = lomi_mcp::chat::error_result(
+                        "Lomi tool results exceeded the 16 MiB request limit.",
+                    );
+                    bytes = serde_json::to_vec(&result).unwrap_or_default();
+                }
+                if current.saturating_add(bytes.len()) > MAX_MCP_RESULT_TOTAL_BYTES {
+                    let _ = backend.cancel_known(&request_id, &request_task);
+                    return;
+                }
+                request_task
+                    .mcp_result_bytes
+                    .fetch_add(bytes.len(), Ordering::AcqRel);
+                if request_task.cancelled.load(Ordering::Acquire)
+                    || request_task.finalizing.load(Ordering::Acquire)
+                    || request_task.done.0.lock().unwrap().is_some()
+                {
+                    return;
+                }
+                let process = backend.process.lock().ok().and_then(|slot| slot.clone());
+                let Some(process) = process else {
+                    let _ = backend.cancel_known(&request_id, &request_task);
+                    return;
+                };
+                let transfer_id = request_id.clone();
+                let transfer_call_id = tool_call_for_task.clone();
+                let completion_request = request_task.clone();
+                let completion_call_id = tool_call_for_task.clone();
+                let transfer = tauri::async_runtime::spawn_blocking(move || {
+                    process.tool_result(&transfer_id, &transfer_call_id, &bytes, move || {
+                        let mut calls = completion_request.mcp_calls.lock().unwrap();
+                        if calls.active.as_deref() == Some(completion_call_id.as_str()) {
+                            calls.active = None;
+                        }
+                        completion_request.mcp_task.lock().unwrap().take();
+                    })
+                })
+                .await;
+                if transfer.is_err()
+                    || transfer
+                        .is_ok_and(|result| result.is_err() && result != Err("cancelled".into()))
+                {
+                    if !request_task.cancelled.load(Ordering::Acquire) {
+                        let _ = backend.cancel_known(&request_id, &request_task);
+                    }
+                }
+            })
+        });
     }
     fn finish(&self, id: &str, request: &Request, status: &str, result: &Value) {
         if request.finalizing.swap(true, Ordering::AcqRel) {
             return;
         }
+        // A dead process has no acknowledged terminal response, even when
+        // shutdown also stopped pending tool work.
+        let status = if status != "interrupted" && request.cancelled.load(Ordering::Acquire) {
+            "cancelled"
+        } else {
+            status
+        };
+        if request.mcp_calls.lock().unwrap().active.is_some() {
+            if let Some(session) = request.mcp_session.lock().unwrap().as_ref() {
+                session.close();
+            }
+        }
+        if let Some(task) = request
+            .mcp_task
+            .lock()
+            .ok()
+            .and_then(|mut slot| slot.take())
+        {
+            task.abort();
+        }
+        request.mcp_session.lock().unwrap().take();
         if request.conversation.is_none() {
             let mut value = request.result.lock().unwrap();
             if !value.is_object() {
@@ -571,12 +869,27 @@ impl Backend {
             return Ok(());
         }
         request.cancelled.store(true, Ordering::Release);
-        if let Ok(slot) = self.process.try_lock() {
-            if let Some(process) = slot.as_ref() {
-                process.cancel(id)?;
+        if request.mcp_calls.lock().unwrap().active.is_some() {
+            if let Some(session) = request.mcp_session.lock().unwrap().as_ref() {
+                session.close();
             }
         }
-        Ok(())
+        if let Some(task) = request
+            .mcp_task
+            .lock()
+            .ok()
+            .and_then(|mut slot| slot.take())
+        {
+            task.abort();
+        }
+        let mut process_result = Ok(());
+        if let Ok(slot) = self.process.try_lock() {
+            if let Some(process) = slot.as_ref() {
+                process_result = process.cancel(id);
+            }
+        }
+        self.finish(id, request, "cancelled", &json!({}));
+        process_result
     }
     pub fn close_all(&self) -> Result<(), String> {
         let requests = self
@@ -586,7 +899,13 @@ impl Backend {
             .iter()
             .map(|(id, r)| (id.clone(), r.clone()))
             .collect();
-        self.close_requests(requests)
+        self.close_requests(requests)?;
+        let mut sessions = self.mcp_sessions.lock().unwrap();
+        for entry in sessions.values() {
+            entry.session.close();
+        }
+        sessions.clear();
+        Ok(())
     }
     pub fn close(&self, conversations: &[String]) -> Result<(), String> {
         let requests = self
@@ -601,7 +920,33 @@ impl Backend {
             })
             .map(|(id, r)| (id.clone(), r.clone()))
             .collect::<Vec<_>>();
+        self.close_requests(requests)?;
+        self.release_mcp_sessions(conversations);
+        Ok(())
+    }
+    pub(super) fn close_for_delete(&self, conversation: &str) -> Result<(), String> {
+        let requests = self
+            .requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(_, request)| request.conversation.as_deref() == Some(conversation))
+            .map(|(id, request)| (id.clone(), request.clone()))
+            .collect();
         self.close_requests(requests)
+    }
+    pub(super) fn release_mcp_session(&self, conversation: &str) {
+        if let Some(entry) = self.mcp_sessions.lock().unwrap().remove(conversation) {
+            entry.session.close();
+        }
+    }
+    fn release_mcp_sessions(&self, conversations: &[String]) {
+        let mut sessions = self.mcp_sessions.lock().unwrap();
+        for conversation in conversations {
+            if let Some(entry) = sessions.remove(conversation) {
+                entry.session.close();
+            }
+        }
     }
     fn close_requests(&self, requests: Vec<(String, Arc<Request>)>) -> Result<(), String> {
         for (id, request) in requests {
@@ -620,9 +965,44 @@ impl Backend {
         Ok(())
     }
     pub fn stop(&self) {
+        for request in self.requests.lock().unwrap().values() {
+            request.cancelled.store(true, Ordering::Release);
+            if let Some(task) = request
+                .mcp_task
+                .lock()
+                .ok()
+                .and_then(|mut slot| slot.take())
+            {
+                task.abort();
+            }
+        }
+        let mut sessions = self.mcp_sessions.lock().unwrap();
+        for entry in sessions.values() {
+            entry.session.close();
+        }
+        sessions.clear();
+        drop(sessions);
         if let Some(process) = self.process.lock().unwrap().take() {
             process.stop();
         }
+    }
+}
+
+fn register_mcp_task(
+    request: &Arc<Request>,
+    spawn: impl FnOnce() -> tauri::async_runtime::JoinHandle<()>,
+) -> bool {
+    let mut slot = request.mcp_task.lock().unwrap();
+    let task = spawn();
+    if request.cancelled.load(Ordering::Acquire)
+        || request.finalizing.load(Ordering::Acquire)
+        || request.done.0.lock().unwrap().is_some()
+    {
+        task.abort();
+        false
+    } else {
+        *slot = Some(task);
+        true
     }
 }
 impl Drop for Backend {
@@ -740,6 +1120,10 @@ impl Backend {
             cancelled: AtomicBool::new(false),
             result: Mutex::new(Value::Null),
             done: (Mutex::new(None), Condvar::new()),
+            mcp_session: Mutex::new(None),
+            mcp_calls: Mutex::new(McpCalls::default()),
+            mcp_result_bytes: AtomicUsize::new(0),
+            mcp_task: Mutex::new(None),
         });
         requests.insert(id.clone(), request.clone());
         Ok((id, request))
@@ -823,13 +1207,17 @@ pub(super) fn capability(provider: &str, model: &str, name: &str) -> bool {
 }
 
 #[cfg(test)]
+#[path = "backend_mcp_tests.rs"]
+mod mcp_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::chat::{
         preferences::Connection,
         store::{Config, Origin},
     };
-    fn setup() -> (tempfile::TempDir, Arc<Backend>) {
+    pub(super) fn setup() -> (tempfile::TempDir, Arc<Backend>) {
         let temp = tempfile::tempdir().unwrap();
         let owner = Owner::acquire(temp.path().join("chat-ai")).unwrap();
         let store = Store::open(&owner.root);
@@ -866,6 +1254,7 @@ mod tests {
             changing: Mutex::new(HashSet::new()),
             closing: Mutex::new(HashMap::new()),
             cancelled: Mutex::new(HashSet::new()),
+            mcp_sessions: Mutex::new(HashMap::new()),
             process: Mutex::new(None),
             node: root.join(format!(
                 "binaries/lomi-node-{}{}",
@@ -873,10 +1262,12 @@ mod tests {
                 if cfg!(windows) { ".exe" } else { "" }
             )),
             bundle: root.join("../packages/ai-runtime/src/fixture.ts"),
+            #[cfg(unix)]
+            endpoint_provider: Arc::new(|| None),
         });
         (temp, backend)
     }
-    fn input(backend: &Backend, id: &str) -> Start {
+    pub(super) fn input(backend: &Backend, id: &str) -> Start {
         let mut services = backend.services.lock().unwrap();
         let store = services.store.as_mut().unwrap();
         store
@@ -909,7 +1300,7 @@ mod tests {
             text: "Unicode 日本語".into(),
         }
     }
-    fn channel() -> Channel<Value> {
+    pub(super) fn channel() -> Channel<Value> {
         Channel::new(|_| Ok(()))
     }
     #[test]
@@ -1218,7 +1609,7 @@ mod tests {
         drop(services);
         backend.stop();
     }
-    fn finished(request: &Request) -> Result<(), String> {
+    pub(super) fn finished(request: &Request) -> Result<(), String> {
         let done = request.done.0.lock().unwrap();
         let result = request
             .done
@@ -1309,10 +1700,18 @@ mod tests {
             .load("durable", 0)
             .unwrap();
         assert_eq!(stored.request.unwrap()["status"], "cancelled");
-        assert!(stored.messages.last().unwrap().parts[0]["text"]
-            .as_str()
+        let response_text = stored
+            .messages
+            .last()
             .unwrap()
-            .contains("日本語"));
+            .parts
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|part| part["type"] == "text")
+            .filter_map(|part| part["text"].as_str())
+            .collect::<String>();
+        assert!(response_text.contains("日本語"));
         backend.stop();
     }
     #[test]

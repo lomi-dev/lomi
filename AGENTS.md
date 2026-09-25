@@ -94,7 +94,10 @@ or acronym.
   Build preparation stages verified Node 24 archives;
   generation uses only the shipped binary and bundle, no shell or system Node.
   Keys travel only from native storage to this private process. Disable SDK
-  retries and raw warnings/errors; never add tools, MCP or command execution.
+  retries and raw warnings/errors. Chat tools use the shared `lomi-mcp` catalog
+  and native authenticated connection; preserve Agent control pairing, grants,
+  cancellation and revocation. Never execute commands in the AI process or
+  accept webview-supplied tool catalogs, endpoints or credentials.
   Settings alone changes connections/keys or runs paid tests. Browser child
   views remain excluded by the global trusted-app caller check.
 - Chat credentials use keyring 3.6.3 or explicitly chosen session-only memory.

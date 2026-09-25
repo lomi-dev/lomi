@@ -38,6 +38,7 @@ import type { ChatRuntime } from "./chat-runtime";
 import type { Attachment, Config } from "./types";
 import ChatHistory from "./ChatHistory";
 import { textOf } from "./types";
+import { ToolPart } from "./ToolPart";
 import capabilities from "./model-capabilities.json";
 import { ModelSelect } from "./ModelSelect";
 import { modelLabel, suggestedModel } from "./models";
@@ -390,7 +391,14 @@ export default function ChatPane({
                               />
                             </div>
                           </details>
-                        ) : (
+                        ) : part.type === "dynamic-tool" ? (
+                          <ToolPart
+                            key={part.toolCallId}
+                            part={part}
+                            messageStatus={saved?.status}
+                            busy={state.busy}
+                          />
+                        ) : part.type === "step-start" ? null : (
                           <p key={i}>
                             Unsupported saved content. Export JSON to preserve
                             this message.
@@ -670,6 +678,18 @@ export default function ChatPane({
             <span className="chat-status" role="status">
               {state.status}
             </span>
+            <p className="chat-mcp-guidance">
+              MCP tools and their approval behavior are managed in{" "}
+              <button
+                type="button"
+                onClick={() =>
+                  run(api("open_settings", { page: "agent-control" }))
+                }
+              >
+                Settings → Agent control
+              </button>
+              .
+            </p>
             <p className="chat-disclaimer" id={disclaimerId}>
               Chat AI może popełniać błędy. Sprawdź ważne informacje.
             </p>

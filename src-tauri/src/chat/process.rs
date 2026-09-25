@@ -16,7 +16,9 @@ use std::{
 
 const FRAME_BYTES: usize = 32 * 1024;
 const MAX_CONTEXT: usize = 40 * 1024 * 1024;
-const MAX_EVENT: usize = 3 * 1024 * 1024;
+const MAX_EVENT: usize = 17 * 1024 * 1024;
+const MAX_TOOL_RESULT: usize = 8 * 1024 * 1024;
+const TOOL_DATA_BYTES: usize = 32 * 1024;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -32,10 +34,17 @@ struct Transfer {
     id: String,
     data: Vec<u8>,
 }
+struct ToolFrame {
+    id: String,
+    frame_type: String,
+    payload: Value,
+    before_write: Option<Box<dyn FnOnce() + Send>>,
+}
 
 pub struct Process {
     child: Arc<Mutex<Child>>,
     data: SyncSender<Transfer>,
+    tool_frames: SyncSender<ToolFrame>,
     control: SyncSender<String>,
     cancelled: Arc<Mutex<HashMap<String, Instant>>>,
     completed: Arc<Mutex<VecDeque<String>>>,
@@ -76,6 +85,7 @@ impl Process {
         let cancelled = Arc::new(Mutex::new(HashMap::<String, Instant>::new()));
         let completed = Arc::new(Mutex::new(VecDeque::<String>::new()));
         let (data, incoming) = mpsc::sync_channel::<Transfer>(4);
+        let (tool_frames, tool_incoming) = mpsc::sync_channel::<ToolFrame>(8);
         let (control, commands) = mpsc::sync_channel::<String>(16);
         let (events, received) = mpsc::sync_channel::<Event>(16);
         let writer_stop = stopped.clone();
@@ -93,6 +103,20 @@ impl Process {
                 stdin.write_all(b"\n")?;
                 stdin.flush()
             };
+            let write_tool_frame = |stdin: &mut std::process::ChildStdin,
+                                    mut frame: ToolFrame|
+             -> std::io::Result<()> {
+                if writer_cancel.lock().unwrap().contains_key(&frame.id) {
+                    return Ok(());
+                }
+                if let Some(before_write) = frame.before_write.take() {
+                    before_write();
+                }
+                if writer_cancel.lock().unwrap().contains_key(&frame.id) {
+                    return Ok(());
+                }
+                write(stdin, &frame.id, &frame.frame_type, frame.payload)
+            };
             let result = (|| -> std::io::Result<()> {
                 write(&mut stdin, "handshake", "hello", Value::Null)?;
                 loop {
@@ -101,6 +125,10 @@ impl Process {
                     }
                     while let Ok(id) = commands.try_recv() {
                         write(&mut stdin, &id, "cancel", Value::Null)?;
+                    }
+                    if let Ok(frame) = tool_incoming.try_recv() {
+                        write_tool_frame(&mut stdin, frame)?;
+                        continue;
                     }
                     let transfer = match incoming.recv_timeout(Duration::from_millis(10)) {
                         Ok(value) => value,
@@ -114,6 +142,9 @@ impl Process {
                     for chunk in transfer.data.chunks(FRAME_BYTES) {
                         while let Ok(id) = commands.try_recv() {
                             write(&mut stdin, &id, "cancel", Value::Null)?;
+                        }
+                        if let Ok(frame) = tool_incoming.try_recv() {
+                            write_tool_frame(&mut stdin, frame)?;
                         }
                         if writer_cancel.lock().unwrap().contains_key(&transfer.id) {
                             break;
@@ -203,6 +234,7 @@ impl Process {
             Self {
                 child,
                 data,
+                tool_frames,
                 control,
                 cancelled,
                 completed,
@@ -243,6 +275,68 @@ impl Process {
         cancelled.entry(id.into()).or_insert_with(Instant::now);
         // The deadline remains armed even if the writer is blocked or its queue is full.
         let _ = self.control.try_send(id.into());
+        Ok(())
+    }
+
+    pub fn tool_result(
+        &self,
+        id: &str,
+        tool_call_id: &str,
+        result: &[u8],
+        before_end: impl FnOnce() + Send + 'static,
+    ) -> Result<(), String> {
+        if !valid_id(id) || !valid_id(tool_call_id) || self.stopped.load(Ordering::Acquire) {
+            return Err("AI process unavailable.".into());
+        }
+        if result.len() > MAX_TOOL_RESULT {
+            return Err("The Lomi tool result exceeds 8 MiB.".into());
+        }
+        self.queue_tool_frame(
+            id,
+            "tool-result-begin",
+            json!({"toolCallId":tool_call_id}),
+            None,
+        )?;
+        for chunk in result.chunks(TOOL_DATA_BYTES) {
+            if self.cancelled.lock().unwrap().contains_key(id) {
+                return Err("cancelled".into());
+            }
+            self.queue_tool_frame(
+                id,
+                "tool-result-append",
+                json!({"toolCallId":tool_call_id,"data":encode(chunk)}),
+                None,
+            )?;
+        }
+        if self.cancelled.lock().unwrap().contains_key(id) {
+            return Err("cancelled".into());
+        }
+        self.queue_tool_frame(
+            id,
+            "tool-result-end",
+            json!({"toolCallId":tool_call_id}),
+            Some(Box::new(before_end)),
+        )
+    }
+
+    fn queue_tool_frame(
+        &self,
+        id: &str,
+        frame_type: &str,
+        payload: Value,
+        before_write: Option<Box<dyn FnOnce() + Send>>,
+    ) -> Result<(), String> {
+        if self.cancelled.lock().unwrap().contains_key(id) {
+            return Err("cancelled".into());
+        }
+        self.tool_frames
+            .send(ToolFrame {
+                id: id.into(),
+                frame_type: frame_type.into(),
+                payload,
+                before_write,
+            })
+            .map_err(|_| "AI process unavailable.")?;
         Ok(())
     }
 
