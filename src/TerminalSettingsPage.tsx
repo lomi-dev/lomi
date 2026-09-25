@@ -1,4 +1,10 @@
 import { DisclosureSummary } from "./ui";
+import {
+  SettingRow,
+  SettingsNotice,
+  SettingsPage,
+  SettingsSection,
+} from "./settings-ui";
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import Select from "./Select";
@@ -73,24 +79,20 @@ const labels: Record<string, string> = {
 };
 const help: Record<string, string> = {
   alwaysShowTitles: "When off, hold Control to reveal a title.",
-  agentNotifications:
-    "Show Claude Code alerts while Lomi is in the background.",
-  windowsShell: "Used for new terminals. Existing terminals keep their shell.",
-  fontSize: "The size of terminal text, in pixels.",
-  lineHeight: "1–3 times the font height.",
-  letterSpacing: "−2 to 20 px between characters.",
-  cursorWidth: "1–10 px; applies to the bar cursor.",
-  minimumContrastRatio:
-    "1 keeps exact colors. Higher values increase text contrast, up to 21.",
-  scrollback:
-    "0–100,000 lines per terminal. Lowering this discards older output; it cannot be restored.",
+  agentNotifications: "Claude Code alerts while Lomi is in the background.",
+  windowsShell: "Applies to new terminals.",
+  fontSize: "In pixels.",
+  lineHeight: "1–3 × font size.",
+  letterSpacing: "−2 to 20 px.",
+  cursorWidth: "1–10 px, bar cursor only.",
+  minimumContrastRatio: "1 keeps exact colors; up to 21.",
+  scrollback: "Up to 100,000 lines. Lowering it discards older output.",
   smoothScrollDuration: "0 disables animation; up to 1,000 ms.",
-  tabStopWidth:
-    "Sets the number of spaces in a terminal tab stop. It does not change shell completion or editor indentation.",
+  tabStopWidth: "Spaces per tab stop in terminal output.",
   wordSeparator:
-    "Characters that separate words when you double-click. Spaces count too.",
-  customGlyphs: "Used by the accelerated renderer.",
-  rescaleOverlappingGlyphs: "Used by the accelerated renderer.",
+    "Characters that end a word on double-click, including spaces.",
+  customGlyphs: "Accelerated renderer only.",
+  rescaleOverlappingGlyphs: "Accelerated renderer only.",
 };
 const labelFor = (key: string) =>
   labels[key] ??
@@ -128,112 +130,107 @@ function Setting({
       ? `Restore theme default for ${label}`
       : `Restore default behavior for ${label}`;
   return (
-    <div
-      className={`terminal-setting-row${typeof value === "boolean" ? " terminal-setting-toggle-row" : ""}`}
+    <SettingRow
+      label={label}
+      htmlFor={id}
+      description={help[name]}
+      descriptionId={`${id}-help`}
     >
-      <div className="keybinding-label">
-        <label htmlFor={id}>{label}</label>
-        {help[name] && <small id={`${id}-help`}>{help[name]}</small>}
-      </div>
-      <div className="terminal-setting-controls">
-        {typeof value === "boolean" ? (
+      {typeof value === "boolean" ? (
+        <input
+          id={id}
+          type="checkbox"
+          role="switch"
+          className="settings-switch"
+          checked={value}
+          aria-describedby={help[name] ? `${id}-help` : undefined}
+          disabled={disabled}
+          onChange={(event) => change(event.target.checked)}
+        />
+      ) : choices ? (
+        <Select
+          id={id}
+          value={String(value)}
+          disabled={disabled}
+          aria-describedby={help[name] ? `${id}-help` : undefined}
+          onChange={change}
+          options={[...new Set([String(value), ...choices])].map((choice) => ({
+            value: choice,
+            label: labelFor(choice),
+          }))}
+        />
+      ) : (
+        <>
+          {color && (
+            <input
+              type="color"
+              aria-label={`${label} picker`}
+              disabled={disabled}
+              value={/^#[\da-f]{6}/i.test(text) ? text.slice(0, 7) : "#000000"}
+              onChange={(event) =>
+                change(
+                  event.target.value + (text.length === 9 ? text.slice(7) : ""),
+                )
+              }
+            />
+          )}
           <input
             id={id}
-            type="checkbox"
-            role="switch"
-            className="settings-switch"
-            checked={value}
-            aria-describedby={help[name] ? `${id}-help` : undefined}
-            disabled={disabled}
-            onChange={(event) => change(event.target.checked)}
-          />
-        ) : choices ? (
-          <Select
-            id={id}
-            value={String(value)}
+            type={range ? "number" : "text"}
+            value={text}
             disabled={disabled}
             aria-describedby={help[name] ? `${id}-help` : undefined}
-            onChange={change}
-            options={[...new Set([String(value), ...choices])].map(
-              (choice) => ({ value: choice, label: labelFor(choice) }),
-            )}
-          />
-        ) : (
-          <>
-            {color && (
-              <input
-                type="color"
-                aria-label={`${label} picker`}
-                disabled={disabled}
-                value={
-                  /^#[\da-f]{6}/i.test(text) ? text.slice(0, 7) : "#000000"
-                }
-                onChange={(event) =>
-                  change(
-                    event.target.value +
-                      (text.length === 9 ? text.slice(7) : ""),
-                  )
-                }
-              />
-            )}
-            <input
-              id={id}
-              type={range ? "number" : "text"}
-              value={text}
-              disabled={disabled}
-              aria-describedby={help[name] ? `${id}-help` : undefined}
-              min={range?.[0]}
-              max={range?.[1]}
-              step={
-                [
-                  "cursorWidth",
-                  "scrollback",
-                  "smoothScrollDuration",
-                  "tabStopWidth",
-                ].includes(name)
-                  ? 1
-                  : "any"
+            min={range?.[0]}
+            max={range?.[1]}
+            step={
+              [
+                "cursorWidth",
+                "scrollback",
+                "smoothScrollDuration",
+                "tabStopWidth",
+              ].includes(name)
+                ? 1
+                : "any"
+            }
+            maxLength={color ? 9 : name === "wordSeparator" ? 200 : 500}
+            placeholder={color ? "Automatic" : undefined}
+            spellCheck={false}
+            onChange={(event) => setText(event.target.value)}
+            onBlur={(event) => {
+              if (text !== String(value)) {
+                if (event.target.checkValidity())
+                  change(range ? (text.trim() ? Number(text) : NaN) : text);
+                else event.target.reportValidity();
               }
-              maxLength={color ? 9 : name === "wordSeparator" ? 200 : 500}
-              placeholder={color ? "Automatic" : undefined}
-              spellCheck={false}
-              onChange={(event) => setText(event.target.value)}
-              onBlur={(event) => {
-                if (text !== String(value)) {
-                  if (event.target.checkValidity())
-                    change(range ? (text.trim() ? Number(text) : NaN) : text);
-                  else event.target.reportValidity();
-                }
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") event.currentTarget.blur();
-                if (event.key === "Escape") {
-                  event.preventDefault();
-                  setText(String(value));
-                }
-              }}
-            />
-          </>
-        )}
-        {reset ? (
-          <button
-            type="button"
-            className="icon-button"
-            aria-label={resetLabel}
-            title={resetLabel}
-            disabled={disabled}
-            onClick={reset}
-          >
-            <RotateCcw size={14} />
-          </button>
-        ) : typeof value !== "boolean" ? (
-          <span
-            className="terminal-setting-reset-placeholder"
-            aria-hidden="true"
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") event.currentTarget.blur();
+              if (event.key === "Escape") {
+                event.preventDefault();
+                setText(String(value));
+              }
+            }}
           />
-        ) : null}
-      </div>
-    </div>
+        </>
+      )}
+      {reset ? (
+        <button
+          type="button"
+          className="icon-button"
+          aria-label={resetLabel}
+          title={resetLabel}
+          disabled={disabled}
+          onClick={reset}
+        >
+          <RotateCcw size={14} />
+        </button>
+      ) : typeof value !== "boolean" ? (
+        <span
+          className="terminal-setting-reset-placeholder"
+          aria-hidden="true"
+        />
+      ) : null}
+    </SettingRow>
   );
 }
 
@@ -455,48 +452,56 @@ export default function TerminalSettingsPage() {
   };
 
   return (
-    <main className="terminal-settings-page">
-      <header className="settings-page-heading">
-        <div className="terminal-settings-heading-copy">
-          <h1>Terminal</h1>
-          <p>
-            Make your terminal comfortable to read. Changes save automatically.
-          </p>
-        </div>
-        <div className="terminal-settings-header-actions">
-          <span className="keybindings-status" role="status">
-            {!preferences.ready ? "Loading…" : busy ? "Saving…" : status || " "}
-          </span>
-        </div>
-      </header>
-
+    <SettingsPage
+      title="Terminal"
+      className="terminal-settings-page"
+      description="Text, colors and behavior for all terminals."
+      status={!preferences.ready ? "Loading…" : busy ? "Saving…" : status}
+      actions={
+        <button
+          type="button"
+          className="button"
+          disabled={!preferences.ready || busy}
+          onClick={() => {
+            void persist(defaultTerminalPreferences).then((saved) => {
+              if (saved) {
+                setFontMode("theme");
+                setFontDraft("");
+              }
+            });
+          }}
+        >
+          <RotateCcw size={14} /> Reset all
+        </button>
+      }
+    >
       {(error || preferences.error) && (
-        <div className="keybindings-error terminal-settings-error" role="alert">
-          <span>{preferences.error || error}</span>
-          {preferences.error ? (
-            <button
-              className="text-button"
-              disabled={!preferences.ready || busy}
-              onClick={() => {
-                setError("");
-                void preferences.reload();
-              }}
-            >
-              Retry loading
-            </button>
-          ) : (
-            <button className="text-button" onClick={() => setError("")}>
-              Dismiss
-            </button>
-          )}
-        </div>
+        <SettingsNotice
+          tone="error"
+          action={
+            preferences.error ? (
+              <button
+                className="text-button"
+                disabled={!preferences.ready || busy}
+                onClick={() => {
+                  setError("");
+                  void preferences.reload();
+                }}
+              >
+                Retry loading
+              </button>
+            ) : (
+              <button className="text-button" onClick={() => setError("")}>
+                Dismiss
+              </button>
+            )
+          }
+        >
+          {preferences.error || error}
+        </SettingsNotice>
       )}
 
-      <section
-        className="terminal-settings-section terminal-settings-preview"
-        aria-labelledby="terminal-preview-title"
-      >
-        <h2 id="terminal-preview-title">Preview</h2>
+      <SettingsSection title="Preview">
         <div
           className="terminal-preview-surface"
           role="img"
@@ -516,86 +521,76 @@ export default function TerminalSettingsPage() {
             </div>
           </div>
         </div>
-      </section>
+      </SettingsSection>
 
-      <section className="terminal-settings-section" aria-label="Text & cursor">
-        <h2>Text &amp; cursor</h2>
-        <div className="terminal-setting-row">
-          <div className="keybinding-label">
-            <label htmlFor="terminal-setting-font">Font</label>
-            <small id="terminal-setting-font-help">
-              Choose a font or keep the theme default.
-            </small>
-          </div>
-          <div className="terminal-setting-controls">
-            <Select
-              id="terminal-setting-font"
-              value={fontMode}
-              disabled={disabled}
-              aria-describedby="terminal-setting-font-help"
-              onChange={(value) => void changeFontChoice(value)}
-              options={[
-                { value: "theme", label: "Theme default" },
-                { value: "jetbrains", label: "JetBrains Mono" },
-                { value: "custom", label: "Custom font…" },
-              ]}
-            />
-            <span
-              className="terminal-setting-reset-placeholder"
-              aria-hidden="true"
-            />
-          </div>
-        </div>
+      <SettingsSection title="Text & cursor">
+        <SettingRow label="Font" htmlFor="terminal-setting-font">
+          <Select
+            id="terminal-setting-font"
+            value={fontMode}
+            disabled={disabled}
+            onChange={(value) => void changeFontChoice(value)}
+            options={[
+              { value: "theme", label: "Theme default" },
+              { value: "jetbrains", label: "JetBrains Mono" },
+              { value: "custom", label: "Custom font…" },
+            ]}
+          />
+          <span
+            className="terminal-setting-reset-placeholder"
+            aria-hidden="true"
+          />
+        </SettingRow>
         {fontMode === "custom" && (
-          <div className="terminal-setting-row terminal-font-family-row">
-            <div className="keybinding-label">
-              <label htmlFor="terminal-setting-font-family">Font family</label>
-              <small id="terminal-setting-font-family-help">
-                Use an installed font. Advanced users can enter comma-separated
-                fallback families.
-              </small>
-            </div>
-            <div className="terminal-setting-controls">
-              <input
-                id="terminal-setting-font-family"
-                type="text"
-                value={fontDraft}
+          <SettingRow
+            label="Font family"
+            htmlFor="terminal-setting-font-family"
+            description="An installed font. Separate fallbacks with commas."
+            descriptionId="terminal-setting-font-family-help"
+          >
+            <input
+              id="terminal-setting-font-family"
+              type="text"
+              value={fontDraft}
+              disabled={disabled}
+              aria-describedby="terminal-setting-font-family-help"
+              maxLength={500}
+              placeholder="e.g. Iosevka"
+              spellCheck={false}
+              autoComplete="off"
+              onChange={(event) => setFontDraft(event.target.value)}
+              onBlur={() => void saveCustomFont()}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") event.currentTarget.blur();
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  setFontDraft(fontFamilyOverride ?? "");
+                }
+              }}
+            />
+            {fontFamilyOverride !== undefined ? (
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Restore theme default for Font family"
+                title="Restore theme default"
                 disabled={disabled}
-                aria-describedby="terminal-setting-font-family-help"
-                maxLength={500}
-                placeholder="e.g. Iosevka"
-                spellCheck={false}
-                autoComplete="off"
-                onChange={(event) => setFontDraft(event.target.value)}
-                onBlur={() => void saveCustomFont()}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") event.currentTarget.blur();
-                  if (event.key === "Escape") {
-                    event.preventDefault();
-                    setFontDraft(fontFamilyOverride ?? "");
-                  }
-                }}
+                onClick={resetFont}
+              >
+                <RotateCcw size={14} />
+              </button>
+            ) : (
+              <span
+                className="terminal-setting-reset-placeholder"
+                aria-hidden="true"
               />
-              {fontFamilyOverride !== undefined && (
-                <button
-                  type="button"
-                  className="icon-button"
-                  aria-label="Restore theme default for Font family"
-                  title="Restore theme default"
-                  disabled={disabled}
-                  onClick={resetFont}
-                >
-                  <RotateCcw size={14} />
-                </button>
-              )}
-            </div>
-          </div>
+            )}
+          </SettingRow>
         )}
         {(["fontSize", "cursorStyle"] as const).map(appearanceSetting)}
-      </section>
+      </SettingsSection>
 
-      <section className="terminal-settings-section" aria-label="Everyday use">
-        <h2>Everyday use</h2>
+      <SettingsSection title="General">
         <Setting
           name="alwaysShowTitles"
           value={preferences.value.alwaysShowTitles}
@@ -638,14 +633,10 @@ export default function TerminalSettingsPage() {
                   })
           }
         />
-        <div className="terminal-setting-row terminal-settings-helper-action">
-          <div className="keybinding-label">
-            <span>Claude Code setup</span>
-            <small>
-              Set up alerts in the main window. Lomi asks before changing Claude
-              Code settings.
-            </small>
-          </div>
+        <SettingRow
+          label="Claude Code setup"
+          description="Lomi asks before changing Claude Code settings."
+        >
           <button
             type="button"
             className="button"
@@ -661,139 +652,119 @@ export default function TerminalSettingsPage() {
           >
             Configure Claude Code…
           </button>
-        </div>
-      </section>
+        </SettingRow>
+      </SettingsSection>
 
-      <details className="terminal-settings-details terminal-settings-disclosure">
+      <details className="settings-disclosure">
         <DisclosureSummary>Customize colors</DisclosureSummary>
-        <p className="settings-help">
-          Terminal colors follow your theme until you change them. Custom colors
-          stay the same in light and dark mode. Enter #RRGGBB or #RRGGBBAA for
-          opacity.
-        </p>
-        {terminalColors.slice(0, 7).map(colorSetting)}
-        <details className="terminal-settings-details terminal-settings-nested">
-          <DisclosureSummary>ANSI palette and search colors</DisclosureSummary>
-          {terminalColors.slice(7).map(colorSetting)}
-        </details>
-      </details>
-
-      <details className="terminal-settings-details terminal-settings-disclosure">
-        <DisclosureSummary>Advanced settings</DisclosureSummary>
-        <section
-          className="terminal-settings-advanced-group"
-          aria-label="Text and cursor details"
-        >
-          <h3>Text and cursor details</h3>
-          {(
-            [
-              "fontWeight",
-              "fontWeightBold",
-              "lineHeight",
-              "letterSpacing",
-              "cursorInactiveStyle",
-              "cursorBlink",
-              "cursorWidth",
-            ] as const
-          ).map(appearanceSetting)}
-        </section>
-        <section
-          className="terminal-settings-advanced-group"
-          aria-label="Scrolling"
-        >
-          <h3>Scrolling</h3>
-          {(
-            [
-              "scrollback",
-              "scrollSensitivity",
-              "fastScrollSensitivity",
-              "smoothScrollDuration",
-              "scrollOnUserInput",
-              "scrollOnEraseInDisplay",
-            ] as const
-          ).map(behaviorSetting)}
-        </section>
-        <section
-          className="terminal-settings-advanced-group"
-          aria-label="Keyboard and selection"
-        >
-          <h3>Keyboard and selection</h3>
-          {windows && (
-            <Setting
-              name="windowsShell"
-              value={preferences.value.windowsShell}
-              choices={["powershell", "cmd"]}
-              disabled={disabled}
-              resetKind="behavior"
-              change={(value) =>
-                void persist({
-                  ...preferences.value,
-                  windowsShell: value as TerminalPreferences["windowsShell"],
-                })
-              }
-              reset={
-                preferences.value.windowsShell === "powershell"
-                  ? undefined
-                  : () =>
-                      void persist({
-                        ...preferences.value,
-                        windowsShell: "powershell",
-                      })
-              }
-            />
-          )}
-          {(
-            [
-              "tabStopWidth",
-              "altClickMovesCursor",
-              "rightClickSelectsWord",
-              "macOptionIsMeta",
-              "macOptionClickForcesSelection",
-              "wordSeparator",
-            ] as const
-          ).map(behaviorSetting)}
-        </section>
-        <section
-          className="terminal-settings-advanced-group"
-          aria-label="Accessibility and rendering"
-        >
-          <h3>Accessibility and rendering</h3>
-          {(
-            ["minimumContrastRatio", "drawBoldTextInBrightColors"] as const
-          ).map(appearanceSetting)}
-          {(
-            [
-              "screenReaderMode",
-              "customGlyphs",
-              "rescaleOverlappingGlyphs",
-            ] as const
-          ).map(behaviorSetting)}
-        </section>
-      </details>
-
-      <footer className="terminal-settings-footer">
-        <div>
-          <strong>Reset defaults</strong>
-          <p>
-            Restore all terminal text, colors, and behavior to their defaults.
+        <div className="settings-disclosure-body">
+          <p className="settings-help">
+            Colors follow the theme until changed. Use #RRGGBB, or #RRGGBBAA for
+            opacity.
           </p>
+          {terminalColors.slice(0, 7).map(colorSetting)}
+          <details className="settings-disclosure terminal-settings-nested">
+            <DisclosureSummary>
+              ANSI palette and search colors
+            </DisclosureSummary>
+            <div className="settings-disclosure-body">
+              {terminalColors.slice(7).map(colorSetting)}
+            </div>
+          </details>
         </div>
-        <button
-          type="button"
-          className="text-button terminal-settings-reset"
-          disabled={!preferences.ready || busy}
-          onClick={() => {
-            void persist(defaultTerminalPreferences).then((saved) => {
-              if (saved) {
-                setFontMode("theme");
-                setFontDraft("");
-              }
-            });
-          }}
-        >
-          <RotateCcw size={14} /> Reset defaults
-        </button>
-      </footer>
-    </main>
+      </details>
+
+      <details className="settings-disclosure">
+        <DisclosureSummary>Advanced settings</DisclosureSummary>
+        <div className="settings-disclosure-body">
+          <section
+            className="settings-subsection"
+            aria-label="Text and cursor details"
+          >
+            <h3>Text and cursor details</h3>
+            {(
+              [
+                "fontWeight",
+                "fontWeightBold",
+                "lineHeight",
+                "letterSpacing",
+                "cursorInactiveStyle",
+                "cursorBlink",
+                "cursorWidth",
+              ] as const
+            ).map(appearanceSetting)}
+          </section>
+          <section className="settings-subsection" aria-label="Scrolling">
+            <h3>Scrolling</h3>
+            {(
+              [
+                "scrollback",
+                "scrollSensitivity",
+                "fastScrollSensitivity",
+                "smoothScrollDuration",
+                "scrollOnUserInput",
+                "scrollOnEraseInDisplay",
+              ] as const
+            ).map(behaviorSetting)}
+          </section>
+          <section
+            className="settings-subsection"
+            aria-label="Keyboard and selection"
+          >
+            <h3>Keyboard and selection</h3>
+            {windows && (
+              <Setting
+                name="windowsShell"
+                value={preferences.value.windowsShell}
+                choices={["powershell", "cmd"]}
+                disabled={disabled}
+                resetKind="behavior"
+                change={(value) =>
+                  void persist({
+                    ...preferences.value,
+                    windowsShell: value as TerminalPreferences["windowsShell"],
+                  })
+                }
+                reset={
+                  preferences.value.windowsShell === "powershell"
+                    ? undefined
+                    : () =>
+                        void persist({
+                          ...preferences.value,
+                          windowsShell: "powershell",
+                        })
+                }
+              />
+            )}
+            {(
+              [
+                "tabStopWidth",
+                "altClickMovesCursor",
+                "rightClickSelectsWord",
+                "macOptionIsMeta",
+                "macOptionClickForcesSelection",
+                "wordSeparator",
+              ] as const
+            ).map(behaviorSetting)}
+          </section>
+          <section
+            className="settings-subsection"
+            aria-label="Accessibility and rendering"
+          >
+            <h3>Accessibility and rendering</h3>
+            {(
+              ["minimumContrastRatio", "drawBoldTextInBrightColors"] as const
+            ).map(appearanceSetting)}
+            {(
+              [
+                "screenReaderMode",
+                "customGlyphs",
+                "rescaleOverlappingGlyphs",
+              ] as const
+            ).map(behaviorSetting)}
+          </section>
+        </div>
+      </details>
+    </SettingsPage>
   );
 }

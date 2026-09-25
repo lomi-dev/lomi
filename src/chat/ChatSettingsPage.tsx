@@ -3,6 +3,12 @@ import { listen } from "@tauri-apps/api/event";
 import { api, errorMessage, native } from "../api";
 import { newId } from "../model";
 import { DisclosureSummary, Modal } from "../ui";
+import {
+  SettingRow,
+  SettingsNotice,
+  SettingsPage,
+  SettingsSection,
+} from "../settings-ui";
 import ContextMenu from "../ContextMenu";
 import Select from "../Select";
 import {
@@ -219,51 +225,46 @@ export default function ChatSettingsPage() {
       className="chat-provider-detail"
       aria-label={`${preset.name} configuration`}
     >
-      <div className="chat-provider-heading">
-        <span>Available in chat</span>
-        <label className="chat-provider-toggle">
-          <input
-            type="checkbox"
-            role="switch"
-            aria-label={`Enable ${connection.name}`}
-            checked={connection.enabled}
-            disabled={busy}
-            onChange={(event) => {
-              const enabled = event.target.checked;
-              void run(() =>
-                save({
-                  ...data,
-                  connections: data.connections.map((c) =>
-                    c.id === connection.id ? { ...c, enabled } : c,
-                  ),
-                }),
-              );
-            }}
-          />
-          <span aria-hidden="true" />
-        </label>
-      </div>
-      <div className="chat-key-heading">
-        <span>API key</span>
+      <SettingRow label="Available in chat">
+        <input
+          type="checkbox"
+          role="switch"
+          className="settings-switch"
+          aria-label={`Enable ${connection.name}`}
+          checked={connection.enabled}
+          disabled={busy}
+          onChange={(event) => {
+            const enabled = event.target.checked;
+            void run(() =>
+              save({
+                ...data,
+                connections: data.connections.map((c) =>
+                  c.id === connection.id ? { ...c, enabled } : c,
+                ),
+              }),
+            );
+          }}
+        />
+      </SettingRow>
+      <SettingRow
+        label="API key"
+        description={
+          connection.secretId
+            ? connection.secretMode === "session"
+              ? "Session only. Re-enter after restarting."
+              : "Saved in the system credential store."
+            : "Add a key to use this provider."
+        }
+      >
         <button
-          className="chat-text-button"
+          className="text-button"
           type="button"
           onClick={() =>
             void openUrl(preset.keyURL).catch((e) => setError(errorMessage(e)))
           }
         >
-          Get API key <ExternalLink size={12} />
+          Get API key <ExternalLink size={12} aria-hidden="true" />
         </button>
-      </div>
-      <div className="chat-key-summary">
-        <ShieldCheck size={16} aria-hidden="true" />
-        <span>
-          {connection?.secretId
-            ? connection.secretMode === "session"
-              ? "Session-only key · re-enter after restarting"
-              : "Key saved in system credential store"
-            : "Add a key to start using this provider"}
-        </span>
         <button
           className="button"
           disabled={busy}
@@ -271,235 +272,242 @@ export default function ChatSettingsPage() {
         >
           {connection.secretId ? "Edit key" : "Add key"}
         </button>
-      </div>
-      <details className="chat-models-section">
+      </SettingRow>
+      <details className="settings-disclosure chat-models-section">
         <DisclosureSummary>
-          Models{" "}
-          <span className="chat-model-count">{models.length} available</span>
+          Models
+          <span className="settings-disclosure-meta">
+            {models.length} available
+          </span>
         </DisclosureSummary>
-        <div className="chat-model-heading">
-          <div>
+        <div className="settings-disclosure-body">
+          <div className="chat-model-heading">
+            <div>
+              <button
+                className="button"
+                disabled={busy || !connection?.enabled || !connection.secretId}
+                onClick={() =>
+                  connection &&
+                  void run(async () => {
+                    const result = await api<{
+                      status: string;
+                      result?: { code?: string };
+                    }>("chat_connection_action", {
+                      connectionId: connection.id,
+                      model: "",
+                      operation: "list-models",
+                    });
+                    if (result.status !== "completed")
+                      throw new Error(
+                        `Could not refresh models: ${result.result?.code ?? result.status}. Your previous models are still available.`,
+                      );
+                    await reload();
+                    setStatus("Model catalog updated");
+                  })
+                }
+              >
+                <RefreshCw size={13} /> Refresh models
+              </button>
+              <button
+                className="button"
+                disabled={
+                  busy || !connection || connection.models.length >= 1000
+                }
+                onClick={() => {
+                  setNewModel("");
+                  setError("");
+                  setAddingModel(true);
+                }}
+              >
+                <Plus size={13} /> Add model
+              </button>
+            </div>
+          </div>
+          {models.length > 6 && (
+            <label className="chat-model-search">
+              <Search size={14} aria-hidden="true" />
+              <input
+                type="search"
+                aria-label="Search models"
+                placeholder="Search models…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </label>
+          )}
+          <ul className="chat-provider-models" aria-label="Provider models">
+            {models
+              .filter((id) => id.toLowerCase().includes(search.toLowerCase()))
+              .map((id) => {
+                const isDefault =
+                  !!connection &&
+                  data.defaults.connectionId === connection.id &&
+                  data.defaults.model === id;
+                const vision = capabilities.models.some(
+                  (m) => m.provider === provider && m.id === id && m.images,
+                );
+                return (
+                  <li key={id}>
+                    <div>
+                      <code>{id}</code>
+                      {vision && (
+                        <span className="chat-model-badge">Vision</span>
+                      )}
+                    </div>
+                    <button
+                      className={`chat-model-default ${isDefault ? "is-default" : ""}`}
+                      type="button"
+                      disabled={
+                        busy ||
+                        !connection?.enabled ||
+                        !connection.secretId ||
+                        isDefault
+                      }
+                      aria-label={
+                        isDefault
+                          ? `${id} is the default model`
+                          : `Use ${id} by default`
+                      }
+                      onClick={() =>
+                        connection &&
+                        void run(() =>
+                          save({
+                            ...data,
+                            defaults: {
+                              ...data.defaults,
+                              connectionId: connection.id,
+                              model: id,
+                              temperature: null,
+                              configured: true,
+                            },
+                          }),
+                        )
+                      }
+                    >
+                      {isDefault ? (
+                        <>
+                          <Check size={13} /> Default
+                        </>
+                      ) : (
+                        "Use by default"
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+            {!models.some((id) =>
+              id.toLowerCase().includes(search.toLowerCase()),
+            ) && (
+              <li className="chat-model-empty">No models match “{search}”.</li>
+            )}
+          </ul>
+        </div>
+      </details>
+      {connection && (
+        <details className="settings-disclosure chat-provider-tools">
+          <DisclosureSummary>Connection tools</DisclosureSummary>
+          <div className="settings-disclosure-body">
+            <dl className="chat-provider-endpoint">
+              <div>
+                <dt>Base URL</dt>
+                <dd>{preset.baseURL}</dd>
+              </div>
+              <div>
+                <dt>API format</dt>
+                <dd>{preset.format}</dd>
+              </div>
+            </dl>
+            <ModelSelect
+              connection={connection}
+              value={
+                testModel[connection.id] ??
+                (data.defaults.connectionId === connection.id
+                  ? data.defaults.model
+                  : suggestedModel(connection))
+              }
+              onChange={(model) =>
+                setTestModel({ ...testModel, [connection.id]: model })
+              }
+            />
             <button
               className="button"
-              disabled={busy || !connection?.enabled || !connection.secretId}
+              disabled={
+                busy ||
+                !connection.enabled ||
+                !connection.secretId ||
+                !validModelId(
+                  testModel[connection.id] ??
+                    (data.defaults.connectionId === connection.id
+                      ? data.defaults.model
+                      : suggestedModel(connection)),
+                )
+              }
               onClick={() =>
-                connection &&
                 void run(async () => {
                   const result = await api<{
                     status: string;
                     result?: { code?: string };
                   }>("chat_connection_action", {
                     connectionId: connection.id,
-                    model: "",
-                    operation: "list-models",
+                    model:
+                      testModel[connection.id] ??
+                      (data.defaults.connectionId === connection.id
+                        ? data.defaults.model
+                        : suggestedModel(connection)),
+                    operation: "test-connection",
                   });
+                  await reload();
                   if (result.status !== "completed")
                     throw new Error(
-                      `Could not refresh models: ${result.result?.code ?? result.status}. Your previous models are still available.`,
+                      `Connection test failed: ${result.result?.code ?? result.status}`,
                     );
-                  await reload();
-                  setStatus("Model catalog updated");
+                  setStatus("Connection test succeeded");
                 })
               }
             >
-              <RefreshCw size={13} /> Refresh models
+              Test connection
             </button>
-            <button
-              className="button"
-              disabled={busy || !connection || connection.models.length >= 1000}
-              onClick={() => {
-                setNewModel("");
-                setError("");
-                setAddingModel(true);
-              }}
-            >
-              <Plus size={13} /> Add model
-            </button>
-          </div>
-        </div>
-        <p className="chat-field-help">
-          Choose a default for new conversations, or refresh to find more
-          models.
-        </p>
-        {models.length > 6 && (
-          <label className="chat-model-search">
-            <Search size={14} aria-hidden="true" />
-            <input
-              type="search"
-              aria-label="Search models"
-              placeholder="Search models…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </label>
-        )}
-        <ul className="chat-provider-models" aria-label="Provider models">
-          {models
-            .filter((id) => id.toLowerCase().includes(search.toLowerCase()))
-            .map((id) => {
-              const isDefault =
-                !!connection &&
-                data.defaults.connectionId === connection.id &&
-                data.defaults.model === id;
-              const vision = capabilities.models.some(
-                (m) => m.provider === provider && m.id === id && m.images,
-              );
-              return (
-                <li key={id}>
-                  <div>
-                    <code>{id}</code>
-                    {vision && <span className="chat-model-badge">Vision</span>}
-                  </div>
-                  <button
-                    className={`chat-model-default ${isDefault ? "is-default" : ""}`}
-                    type="button"
-                    disabled={
-                      busy ||
-                      !connection?.enabled ||
-                      !connection.secretId ||
-                      isDefault
-                    }
-                    aria-label={
-                      isDefault
-                        ? `${id} is the default model`
-                        : `Use ${id} by default`
-                    }
-                    onClick={() =>
-                      connection &&
-                      void run(() =>
-                        save({
-                          ...data,
-                          defaults: {
-                            ...data.defaults,
-                            connectionId: connection.id,
-                            model: id,
-                            temperature: null,
-                            configured: true,
-                          },
-                        }),
-                      )
-                    }
-                  >
-                    {isDefault ? (
-                      <>
-                        <Check size={13} /> Default
-                      </>
-                    ) : (
-                      "Use by default"
-                    )}
-                  </button>
-                </li>
-              );
-            })}
-          {!models.some((id) =>
-            id.toLowerCase().includes(search.toLowerCase()),
-          ) && (
-            <li className="chat-model-empty">No models match “{search}”.</li>
-          )}
-        </ul>
-      </details>
-      {connection && (
-        <details className="chat-advanced chat-provider-tools">
-          <DisclosureSummary>Connection tools</DisclosureSummary>
-          <dl className="chat-provider-endpoint">
-            <div>
-              <dt>Base URL</dt>
-              <dd>{preset.baseURL}</dd>
-            </div>
-            <div>
-              <dt>API format</dt>
-              <dd>{preset.format}</dd>
-            </div>
-          </dl>
-          <ModelSelect
-            connection={connection}
-            value={
-              testModel[connection.id] ??
-              (data.defaults.connectionId === connection.id
-                ? data.defaults.model
-                : suggestedModel(connection))
-            }
-            onChange={(model) =>
-              setTestModel({ ...testModel, [connection.id]: model })
-            }
-          />
-          <button
-            className="button"
-            disabled={
-              busy ||
-              !connection.enabled ||
-              !connection.secretId ||
-              !validModelId(
-                testModel[connection.id] ??
-                  (data.defaults.connectionId === connection.id
-                    ? data.defaults.model
-                    : suggestedModel(connection)),
-              )
-            }
-            onClick={() =>
-              void run(async () => {
-                const result = await api<{
-                  status: string;
-                  result?: { code?: string };
-                }>("chat_connection_action", {
-                  connectionId: connection.id,
-                  model:
-                    testModel[connection.id] ??
-                    (data.defaults.connectionId === connection.id
-                      ? data.defaults.model
-                      : suggestedModel(connection)),
-                  operation: "test-connection",
-                });
-                await reload();
-                if (result.status !== "completed")
-                  throw new Error(
-                    `Connection test failed: ${result.result?.code ?? result.status}`,
-                  );
-                setStatus("Connection test succeeded");
-              })
-            }
-          >
-            Test connection
-          </button>
-          <p className="chat-field-help">
-            Sends a short prompt with a 32-token output limit. May incur
-            provider charges. No project content is sent.
-          </p>
-          {connection.testStatus && (
-            <p>
-              Last test: {connection.testStatus} · {connection.testedModel}
+            <p className="settings-help">
+              Sends a short prompt (32 tokens max) without project content. Your
+              provider may charge for it.
             </p>
-          )}
-          <div className="chat-connection-danger">
-            {connection.secretId && (
-              <button
-                className="button"
-                disabled={busy}
-                onClick={() => setRemovingKey(connection)}
-              >
-                Remove key
-              </button>
+            {connection.testStatus && (
+              <p className="settings-help">
+                Last test: {connection.testStatus} · {connection.testedModel}
+              </p>
             )}
-            <button
-              className="button"
-              disabled={busy}
-              onClick={() => confirmRemoval(connection)}
-            >
-              Remove provider
-            </button>
+            <div className="chat-connection-danger">
+              {connection.secretId && (
+                <button
+                  className="button button-danger"
+                  disabled={busy}
+                  onClick={() => setRemovingKey(connection)}
+                >
+                  Remove key
+                </button>
+              )}
+              <button
+                className="button button-danger"
+                disabled={busy}
+                onClick={() => confirmRemoval(connection)}
+              >
+                Remove provider
+              </button>
+            </div>
           </div>
         </details>
       )}
     </section>
   );
   return (
-    <main className="keybindings-page chat-settings">
-      <header className="settings-page-heading">
-        <div>
-          <h1>Chat AI</h1>
-          <p>Connect your AI providers and set up your conversations.</p>
-        </div>
-        {data && (
+    <SettingsPage
+      title="Chat AI"
+      description="AI providers and defaults for new conversations."
+      className="chat-settings"
+      busy={busy}
+      status={loading ? "Loading…" : busy ? "Working…" : status}
+      actions={
+        data && (
           <button
             className="button"
             disabled={busy}
@@ -512,60 +520,55 @@ export default function ChatSettingsPage() {
           >
             <Plus size={14} /> Add provider
           </button>
-        )}
-      </header>
+        )
+      }
+    >
       {error &&
         !editing &&
         !addingModel &&
         !removingKey &&
         !deleting &&
-        !recovering && (
-          <p className="chat-error" role="alert">
-            {error}
-          </p>
-        )}
-      {(busy || status) && (
-        <p className="chat-settings-status" role="status">
-          {busy ? "Working…" : status}
-        </p>
-      )}
-      {loading ? (
-        <p role="status">Loading providers…</p>
-      ) : !data ? (
-        <section>
-          <p>
-            Chat AI settings are unavailable. Existing preferences have been
-            preserved.
-          </p>
-          <button
-            className="button"
-            disabled={busy}
-            onClick={() =>
-              void run(async () => {
-                await api("chat_recover", { target: "settings", reset: false });
-                await reload();
-              })
-            }
-          >
-            Retry opening settings
-          </button>
-          <button
-            className="button"
-            disabled={busy}
-            onClick={() => setRecovering(true)}
-          >
-            Recover settings…
-          </button>
-        </section>
+        !recovering && <SettingsNotice tone="error">{error}</SettingsNotice>}
+      {loading ? null : !data ? (
+        <SettingsNotice
+          tone="error"
+          role="status"
+          action={
+            <div className="settings-notice-actions">
+              <button
+                className="button"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    await api("chat_recover", {
+                      target: "settings",
+                      reset: false,
+                    });
+                    await reload();
+                  })
+                }
+              >
+                Retry opening settings
+              </button>
+              <button
+                className="button"
+                disabled={busy}
+                onClick={() => setRecovering(true)}
+              >
+                Recover settings…
+              </button>
+            </div>
+          }
+        >
+          Chat AI settings couldn’t be opened. Your preferences are preserved.
+        </SettingsNotice>
       ) : (
         <>
-          <section
+          <SettingsSection
+            title="Providers"
+            count={data.connections.length}
             className="chat-providers"
-            aria-labelledby="chat-providers-title"
           >
-            <h2 id="chat-providers-title" className="chat-section-title">
-              Providers <span>{data.connections.length}</span>
-            </h2>
             {data.connections.length ? (
               <ul className="chat-provider-list" aria-label="Your providers">
                 {data.connections.map((item) => (
@@ -631,13 +634,13 @@ export default function ChatSettingsPage() {
                 ))}
               </ul>
             ) : (
-              <div className="chat-providers-empty">
+              <div className="settings-empty chat-providers-empty">
                 <MessageSquare size={24} aria-hidden="true" />
                 <h3>Connect your first provider</h3>
                 <p>Add a provider with your API key to start chatting.</p>
               </div>
             )}
-          </section>
+          </SettingsSection>
           {!!data.connections.length && (
             <ChatDefaults
               saved={data}
@@ -645,9 +648,9 @@ export default function ChatSettingsPage() {
               onSave={(next) => run(() => save(next))}
             />
           )}
-          <p className="chat-storage-note">
-            <ShieldCheck size={15} /> Keys are kept in your system credential
-            store by default. Conversation history stays on this device.
+          <p className="settings-footnote">
+            <ShieldCheck size={15} aria-hidden="true" /> Keys stay in your
+            system credential store. Conversation history stays on this device.
           </p>
         </>
       )}
@@ -685,7 +688,7 @@ export default function ChatSettingsPage() {
         >
           {choosingProvider ? (
             <div className="dialog-form chat-provider-picker">
-              <p>Choose a provider to connect with your API key.</p>
+              <p>Choose a provider to connect.</p>
               <div className="chat-provider-choices">
                 {providerIds.map((id) => (
                   <button
@@ -949,9 +952,8 @@ export default function ChatSettingsPage() {
                   </label>
                   {data.connections.some((c) => c.id === editing.id) && (
                     <p>
-                      Changing the key or storage mode stops active requests
-                      using this connection and preserves their responses.
-                      Changing storage requires a new key.
+                      Changing the key or storage stops active replies. Changing
+                      storage requires a new key.
                     </p>
                   )}
                 </details>
@@ -966,7 +968,7 @@ export default function ChatSettingsPage() {
                     Cancel
                   </button>
                   <button
-                    className="button chat-primary-button"
+                    className="button button-primary"
                     disabled={
                       busy ||
                       (!originalConnection && catalog.status !== "ready") ||
@@ -1029,8 +1031,7 @@ export default function ChatSettingsPage() {
               />
             </label>
             <p className="chat-field-help">
-              Use the exact model ID from {preset.name}. Adding a model does not
-              send a request or verify access.
+              Use the exact ID from {preset.name}. Access isn’t verified.
             </p>
             {error && <p role="alert">{error}</p>}
             <div className="dialog-actions">
@@ -1043,7 +1044,7 @@ export default function ChatSettingsPage() {
                 Cancel
               </button>
               <button
-                className="button chat-primary-button"
+                className="button button-primary"
                 disabled={busy || !validModelId(newModel.trim())}
               >
                 Add model
@@ -1062,10 +1063,9 @@ export default function ChatSettingsPage() {
         >
           <div className="dialog-form">
             <p>
-              The original preferences will be moved to a private recovery
-              folder beside the preferences file. Start with empty connection
-              settings; conversation history remains. Keys whose identities
-              cannot be read may remain in the system credential store.
+              Current preferences move to a private recovery folder and
+              connections start empty. Conversation history stays. Unreadable
+              keys may remain in the system credential store.
             </p>
             <button
               className="button"
@@ -1173,6 +1173,6 @@ export default function ChatSettingsPage() {
           </div>
         </Modal>
       )}
-    </main>
+    </SettingsPage>
   );
 }

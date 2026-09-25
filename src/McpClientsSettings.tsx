@@ -5,6 +5,7 @@ import { CliAgentIcon } from "./CliAgentIcon";
 import { ArrowLeft, Check, ChevronRight, RefreshCw, Search } from "./icons";
 import type { TitleProcess } from "./terminal-runtime";
 import { DisclosureSummary } from "./ui";
+import { SettingsNotice } from "./settings-ui";
 
 interface McpClient {
   cli: TitleProcess["cli"];
@@ -199,38 +200,26 @@ export function McpClientsSettings({
           </div>
 
           {!native && (
-            <p className="agent-control-empty">
+            <SettingsNotice>
               Client setup is available in the Lomi desktop app.
-            </p>
+            </SettingsNotice>
           )}
           {loadError && (
-            <div className="keybindings-error" role="alert">
+            <SettingsNotice tone="error">
               Could not read client configurations: {loadError}
-            </div>
+            </SettingsNotice>
           )}
-          {error && (
-            <div
-              className="keybindings-error"
-              role="alert"
-              style={{ whiteSpace: "pre-line" }}
-            >
-              {error}
-            </div>
-          )}
-          {status && (
-            <p className="agent-control-notice" role="status">
-              {status}
-            </p>
-          )}
+          {error && <SettingsNotice tone="error">{error}</SettingsNotice>}
+          {status && <SettingsNotice role="status">{status}</SettingsNotice>}
 
           {loading && !clients.length ? (
-            <p className="agent-control-empty" role="status">
+            <p className="settings-help" role="status">
               Checking client configurations…
             </p>
           ) : !clients.length ? (
             !loadError &&
             native && (
-              <p className="agent-control-empty">
+              <p className="settings-empty">
                 No supported client configurations were found.
               </p>
             )
@@ -345,9 +334,9 @@ export function McpClientsSettings({
                 </div>
               )}
 
-              <details className="agent-control-details">
+              <details className="settings-disclosure agent-control-details">
                 <DisclosureSummary>All client configurations</DisclosureSummary>
-                <div className="agent-control-details-content">
+                <div className="settings-disclosure-body agent-control-details-content">
                   <ul className="agent-setup-client-list">
                     {clients.map((client) => (
                       <li key={client.cli}>
@@ -365,9 +354,8 @@ export function McpClientsSettings({
                     ))}
                   </ul>
                   <p className="settings-help">
-                    Set up every eligible client in one go. This updates their
-                    user configurations for all projects and starts the local
-                    server. Client applications are not installed.
+                    Adds Lomi to every eligible client for all projects and
+                    starts the server. Client apps aren’t installed.
                   </p>
                   <button
                     type="button"
@@ -441,35 +429,21 @@ export function McpClientsSettings({
               : selected.manualReason
                 ? selected.manualReason
                 : selected.error
-                  ? "Automatic setup is unavailable for this client until the reported issue is resolved."
+                  ? "Automatic setup is unavailable until the issue below is resolved."
                   : `Adds Lomi to ${selected.name} for all projects and starts the local server.`}
           </p>
           {loadError && (
-            <div className="keybindings-error" role="alert">
+            <SettingsNotice tone="error">
               Could not read client configurations: {loadError}
-            </div>
+            </SettingsNotice>
           )}
-          {error && (
-            <div
-              className="keybindings-error"
-              role="alert"
-              style={{ whiteSpace: "pre-line" }}
-            >
-              {error}
-            </div>
-          )}
-          {status && (
-            <p className="agent-control-notice" role="status">
-              {status}
-            </p>
-          )}
+          {error && <SettingsNotice tone="error">{error}</SettingsNotice>}
+          {status && <SettingsNotice role="status">{status}</SettingsNotice>}
           {selected.notice && (
-            <p className="agent-control-notice">{selected.notice}</p>
+            <SettingsNotice tone="warning">{selected.notice}</SettingsNotice>
           )}
           {selected.error && (
-            <p className="keybindings-error" role="alert">
-              {selected.error}
-            </p>
+            <SettingsNotice tone="error">{selected.error}</SettingsNotice>
           )}
           {selected.configured ? (
             <p className="settings-help" role="status">
@@ -498,9 +472,9 @@ export function McpClientsSettings({
             </div>
           )}
 
-          <details className="agent-control-details">
+          <details className="settings-disclosure agent-control-details">
             <DisclosureSummary>Setup details</DisclosureSummary>
-            <div className="agent-control-details-content">
+            <div className="settings-disclosure-body agent-control-details-content">
               <dl>
                 <dt>Configuration path</dt>
                 <dd>{selected.path || "Not reported"}</dd>

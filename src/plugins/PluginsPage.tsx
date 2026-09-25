@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
-  ChevronDown,
   Download,
   Puzzle,
   RefreshCw,
@@ -14,7 +13,8 @@ import {
 import { api, errorMessage } from "../api";
 import { useThemes } from "../ThemeProvider";
 import Select from "../Select";
-import { IconButton, Modal } from "../ui";
+import { DisclosureSummary, IconButton, Modal } from "../ui";
+import { SettingsNotice, SettingsPage } from "../settings-ui";
 import { usePlugins } from "./PluginsProvider";
 import type { PluginEntry } from "./host";
 interface Finished {
@@ -137,231 +137,231 @@ export default function PluginsPage() {
     searchInput.current?.focus();
   };
   return (
-    <main className="keybindings-page plugins-page catalog-page">
-      <div className="catalog-content">
-        <header className="settings-page-heading">
-          <div>
-            <h1>Plugins</h1>
-            <p>Customize your workspace with local plugins.</p>
-          </div>
-          <div className="catalog-heading-actions">
-            <IconButton
-              title="Refresh plugins"
-              disabled={busy || !!pending}
-              onClick={() => void plugins.reload()}
-            >
-              <RefreshCw size={16} />
-            </IconButton>
-            <button
-              className="button button-primary"
-              disabled={busy || !!pending}
-              onClick={() =>
-                void run(async () => {
-                  const path = await open({
-                    directory: true,
-                    multiple: false,
-                    title: "Import plugin package",
-                  });
-                  if (typeof path === "string") {
-                    await api("import_plugin", { path });
-                    clearFilters();
-                  }
-                })
-              }
-            >
-              <Download size={15} aria-hidden="true" />
-              Import plugin
-            </button>
-          </div>
-        </header>
-        {plugins.catalog.safeMode && (
-          <p className="catalog-notice" role="status">
-            Safe startup is active. Third-party code is skipped. Restart
-            normally after disabling the faulty plugin.
-          </p>
-        )}
-        {(error || plugins.error) && (
-          <p className="catalog-notice text-error" role="alert">
-            {error || plugins.error}
-          </p>
-        )}
-        {plugins.error && (
-          <p className="settings-help">
-            Recovery: close Lomi, back up plugins/installed.json by renaming it
-            to installed.backup.json in the application data folder, then
-            restart with --safe-mode and reimport your packages. Keep package
-            folders and the session file.
-          </p>
-        )}
-        {pending && (
-          <p className="catalog-notice" role="status">
-            Resolve unsaved plugin views in the workspace window to finish.
-          </p>
-        )}
-        <div className="catalog-toolbar">
-          <div className="catalog-search">
-            <Search size={16} aria-hidden="true" />
-            <input
-              ref={searchInput}
-              type="search"
-              aria-label="Search plugins"
-              placeholder="Search plugins…"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-            {search && (
-              <IconButton
-                title="Clear search"
-                onClick={() => {
-                  setSearch("");
-                  searchInput.current?.focus();
-                }}
-              >
-                <X size={14} />
-              </IconButton>
-            )}
-          </div>
-          <Select
-            aria-label="Plugin status"
-            value={filter}
-            onChange={setFilter}
-            options={[
-              { value: "all", label: "All plugins" },
-              { value: "enabled", label: "Enabled" },
-              { value: "disabled", label: "Disabled" },
-              { value: "attention", label: "Needs attention" },
-            ]}
-          />
-        </div>
-        <div className="catalog-filter-row">
-          <div
-            className="catalog-categories"
-            role="group"
-            aria-label="Plugin categories"
+    <SettingsPage
+      title="Plugins"
+      description="Local plugins that extend your workspace."
+      wide
+      className="plugins-page catalog-page"
+      contentClassName="catalog-content"
+      actions={
+        <>
+          <IconButton
+            title="Refresh plugins"
+            disabled={busy || !!pending}
+            onClick={() => void plugins.reload()}
           >
-            {[{ value: "all", label: "All types" }, ...categories].map(
-              ({ value, label }) => (
-                <button
-                  key={value}
-                  aria-pressed={category === value}
-                  onClick={() => setCategory(value)}
-                >
-                  {label}
-                </button>
-              ),
-            )}
-          </div>
-          <span className="catalog-count" role="status">
-            {entries.length === installed.length
-              ? `${entries.length} installed`
-              : `${entries.length} of ${installed.length}`}
-          </span>
-        </div>
-        {entries.length === 0 ? (
-          <div className="catalog-empty">
-            {installed.length ? (
-              <Search size={30} aria-hidden="true" />
-            ) : (
-              <Puzzle size={30} aria-hidden="true" />
-            )}
-            <h2>
-              {installed.length
-                ? "No matching plugins"
-                : "No plugins installed."}
-            </h2>
-            <p>
-              {installed.length
-                ? "Try a different search or reset your filters."
-                : "Import a local package to get started."}
+            <RefreshCw size={16} />
+          </IconButton>
+          <button
+            className="button button-primary"
+            disabled={busy || !!pending}
+            onClick={() =>
+              void run(async () => {
+                const path = await open({
+                  directory: true,
+                  multiple: false,
+                  title: "Import plugin package",
+                });
+                if (typeof path === "string") {
+                  await api("import_plugin", { path });
+                  clearFilters();
+                }
+              })
+            }
+          >
+            <Download size={15} aria-hidden="true" />
+            Import plugin
+          </button>
+        </>
+      }
+    >
+      {plugins.catalog.safeMode && (
+        <SettingsNotice tone="warning" role="status">
+          Safe startup: third-party code is skipped. Disable the faulty plugin,
+          then restart normally.
+        </SettingsNotice>
+      )}
+      {(error || plugins.error) && (
+        <SettingsNotice tone="error">
+          <p>{error || plugins.error}</p>
+          {plugins.error && (
+            <p className="settings-help">
+              To recover, close Lomi, rename plugins/installed.json to
+              installed.backup.json, restart with --safe-mode and reimport your
+              packages.
             </p>
-            {(search || filter !== "all" || category !== "all") && (
-              <button className="button" onClick={clearFilters}>
-                Clear filters
+          )}
+        </SettingsNotice>
+      )}
+      {pending && (
+        <SettingsNotice role="status">
+          Resolve unsaved plugin views in the workspace window to finish.
+        </SettingsNotice>
+      )}
+      <div className="catalog-toolbar">
+        <div className="catalog-search">
+          <Search size={16} aria-hidden="true" />
+          <input
+            ref={searchInput}
+            type="search"
+            aria-label="Search plugins"
+            placeholder="Search plugins…"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+          {search && (
+            <IconButton
+              title="Clear search"
+              onClick={() => {
+                setSearch("");
+                searchInput.current?.focus();
+              }}
+            >
+              <X size={14} />
+            </IconButton>
+          )}
+        </div>
+        <Select
+          aria-label="Plugin status"
+          value={filter}
+          onChange={setFilter}
+          options={[
+            { value: "all", label: "All plugins" },
+            { value: "enabled", label: "Enabled" },
+            { value: "disabled", label: "Disabled" },
+            { value: "attention", label: "Needs attention" },
+          ]}
+        />
+      </div>
+      <div className="catalog-filter-row">
+        <div
+          className="catalog-categories"
+          role="group"
+          aria-label="Plugin categories"
+        >
+          {[{ value: "all", label: "All types" }, ...categories].map(
+            ({ value, label }) => (
+              <button
+                key={value}
+                aria-pressed={category === value}
+                onClick={() => setCategory(value)}
+              >
+                {label}
               </button>
-            )}
-          </div>
-        ) : (
-          <div className="catalog-list">
-            {entries.map((entry) => {
-              const name = entry.manifest?.name ?? entry.id;
-              const problem = entry.error || entry.status?.error;
-              const state = problem
-                ? "Needs attention"
-                : entry.restartRequired
-                  ? "Restart required"
-                  : entry.enabled && plugins.catalog.safeMode
-                    ? "Paused in safe startup"
-                    : entry.enabled
-                      ? "Enabled"
-                      : "Disabled";
-              return (
-                <article
-                  className="catalog-card"
-                  key={entry.id}
-                  aria-label={name}
-                >
-                  <header className="catalog-card-heading">
-                    <span className="theme-symbol" aria-hidden="true">
-                      <Puzzle size={19} />
-                    </span>
-                    <div className="catalog-card-title">
-                      <h2>{name}</h2>
-                      <span>
-                        {entry.manifest?.version
-                          ? `v${entry.manifest.version}`
-                          : "Unknown version"}
-                      </span>
-                    </div>
-                    {entry.manifest?.entry && (
-                      <input
-                        type="checkbox"
-                        role="switch"
-                        className="settings-switch"
-                        aria-label={`Enable ${name}`}
-                        checked={entry.enabled}
-                        disabled={busy || !!pending || !!entry.error}
-                        onChange={() =>
-                          entry.enabled
-                            ? void run(() => remove(entry, false))
-                            : setTrust(entry)
-                        }
-                      />
-                    )}
-                  </header>
-                  {entry.manifest?.description && (
-                    <p className="catalog-description">
-                      {entry.manifest.description}
-                    </p>
-                  )}
-                  <div className="catalog-card-meta">
-                    <div className="catalog-tags">
-                      {categories
-                        .filter(
-                          ({ value }) =>
-                            entry.manifest?.contributes?.[value]?.length,
-                        )
-                        .map(({ value, label }) => (
-                          <span key={value}>{label}</span>
-                        ))}
-                    </div>
-                    <span
-                      className={`plugin-state${problem ? " text-error" : ""}`}
-                      data-enabled={
-                        entry.enabled && !plugins.catalog.safeMode && !problem
-                      }
-                    >
-                      {state}
+            ),
+          )}
+        </div>
+        <span className="catalog-count" role="status">
+          {entries.length === installed.length
+            ? `${entries.length} installed`
+            : `${entries.length} of ${installed.length}`}
+        </span>
+      </div>
+      {entries.length === 0 ? (
+        <div className="catalog-empty">
+          {installed.length ? (
+            <Search size={30} aria-hidden="true" />
+          ) : (
+            <Puzzle size={30} aria-hidden="true" />
+          )}
+          <h2>
+            {installed.length ? "No matching plugins" : "No plugins installed."}
+          </h2>
+          <p>
+            {installed.length
+              ? "Try a different search or reset your filters."
+              : "Import a local package to get started."}
+          </p>
+          {(search || filter !== "all" || category !== "all") && (
+            <button className="button" onClick={clearFilters}>
+              Clear filters
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="catalog-list">
+          {entries.map((entry) => {
+            const name = entry.manifest?.name ?? entry.id;
+            const problem = entry.error || entry.status?.error;
+            const state = problem
+              ? "Needs attention"
+              : entry.restartRequired
+                ? "Restart required"
+                : entry.enabled && plugins.catalog.safeMode
+                  ? "Paused in safe startup"
+                  : entry.enabled
+                    ? "Enabled"
+                    : "Disabled";
+            return (
+              <article
+                className="catalog-card"
+                key={entry.id}
+                aria-label={name}
+              >
+                <header className="catalog-card-heading">
+                  <span className="theme-symbol" aria-hidden="true">
+                    <Puzzle size={19} />
+                  </span>
+                  <div className="catalog-card-title">
+                    <h2>{name}</h2>
+                    <span>
+                      {entry.manifest?.version
+                        ? `v${entry.manifest.version}`
+                        : "Unknown version"}
                     </span>
                   </div>
-                  {(entry.error || entry.status?.error) && (
-                    <p className="text-error" role="alert">
-                      {entry.error || entry.status?.error}
-                    </p>
+                  {entry.manifest?.entry && (
+                    <input
+                      type="checkbox"
+                      role="switch"
+                      className="settings-switch"
+                      aria-label={`Enable ${name}`}
+                      checked={entry.enabled}
+                      disabled={busy || !!pending || !!entry.error}
+                      onChange={() =>
+                        entry.enabled
+                          ? void run(() => remove(entry, false))
+                          : setTrust(entry)
+                      }
+                    />
                   )}
-                  {entry.restartRequired && (
-                    <p className="plugin-restart" role="status">
-                      Replacement code requires a restart. Running terminals
-                      will end after the close checks succeed.{" "}
+                </header>
+                {entry.manifest?.description && (
+                  <p className="catalog-description">
+                    {entry.manifest.description}
+                  </p>
+                )}
+                <div className="catalog-card-meta">
+                  <div className="catalog-tags">
+                    {categories
+                      .filter(
+                        ({ value }) =>
+                          entry.manifest?.contributes?.[value]?.length,
+                      )
+                      .map(({ value, label }) => (
+                        <span key={value}>{label}</span>
+                      ))}
+                  </div>
+                  <span
+                    className={`plugin-state${problem ? " text-error" : ""}`}
+                    data-enabled={
+                      entry.enabled && !plugins.catalog.safeMode && !problem
+                    }
+                  >
+                    {state}
+                  </span>
+                </div>
+                {(entry.error || entry.status?.error) && (
+                  <p className="text-error" role="alert">
+                    {entry.error || entry.status?.error}
+                  </p>
+                )}
+                {entry.restartRequired && (
+                  <SettingsNotice
+                    tone="warning"
+                    role="status"
+                    className="plugin-restart"
+                    action={
                       <button
                         className="button"
                         disabled={busy || !!pending}
@@ -371,62 +371,60 @@ export default function PluginsPage() {
                       >
                         Restart Lomi
                       </button>
-                    </p>
-                  )}
-                  <footer className="catalog-card-footer">
-                    <details className="plugin-details">
-                      <summary>
-                        Details <ChevronDown size={13} aria-hidden="true" />
-                      </summary>
-                      <dl>
-                        <dt>Plugin ID</dt>
-                        <dd>{entry.id}</dd>
-                        <dt>Source</dt>
-                        <dd>{entry.source}</dd>
-                        {entry.manifest?.entry && (
-                          <>
-                            <dt>Trust</dt>
-                            <dd>
-                              {entry.trustedRevision === entry.revision
-                                ? "Trusted revision"
-                                : "Not trusted"}
-                            </dd>
-                          </>
-                        )}
-                        {entry.status && (
-                          <>
-                            <dt>Runtime</dt>
-                            <dd>{entry.status.phase}</dd>
-                          </>
-                        )}
-                      </dl>
-                    </details>
-                    <button
-                      className="plugin-uninstall"
-                      disabled={busy || !!pending}
-                      onClick={() =>
-                        entry.themeIds?.includes(
-                          themes.preferences.active ?? "",
-                        )
-                          ? setFallback(entry)
-                          : void run(() => remove(entry, true))
-                      }
-                    >
-                      <Trash2 size={13} aria-hidden="true" />
-                      Uninstall
-                    </button>
-                  </footer>
-                </article>
-              );
-            })}
-          </div>
-        )}
-        <p className="plugins-trust-note settings-help">
-          <ShieldCheck size={15} aria-hidden="true" />
-          Only enable plugins you trust. Importing a package does not run its
-          code.
-        </p>
-      </div>
+                    }
+                  >
+                    Restart to load the new code. Running terminals will end.
+                  </SettingsNotice>
+                )}
+                <footer className="catalog-card-footer">
+                  <details className="plugin-details">
+                    <DisclosureSummary>Details</DisclosureSummary>
+                    <dl>
+                      <dt>Plugin ID</dt>
+                      <dd>{entry.id}</dd>
+                      <dt>Source</dt>
+                      <dd>{entry.source}</dd>
+                      {entry.manifest?.entry && (
+                        <>
+                          <dt>Trust</dt>
+                          <dd>
+                            {entry.trustedRevision === entry.revision
+                              ? "Trusted revision"
+                              : "Not trusted"}
+                          </dd>
+                        </>
+                      )}
+                      {entry.status && (
+                        <>
+                          <dt>Runtime</dt>
+                          <dd>{entry.status.phase}</dd>
+                        </>
+                      )}
+                    </dl>
+                  </details>
+                  <button
+                    className="button button-danger plugin-uninstall"
+                    disabled={busy || !!pending}
+                    onClick={() =>
+                      entry.themeIds?.includes(themes.preferences.active ?? "")
+                        ? setFallback(entry)
+                        : void run(() => remove(entry, true))
+                    }
+                  >
+                    <Trash2 size={13} aria-hidden="true" />
+                    Uninstall
+                  </button>
+                </footer>
+              </article>
+            );
+          })}
+        </div>
+      )}
+      <p className="settings-footnote">
+        <ShieldCheck size={15} aria-hidden="true" />
+        Only enable plugins you trust. Importing a package does not run its
+        code.
+      </p>
       {trust && (
         <Modal
           protectTheme
@@ -436,19 +434,14 @@ export default function PluginsPage() {
           }}
         >
           <div className="dialog-form">
-            <p>
-              {trust.id} · {trust.manifest?.version}
-            </p>
-            <p>Source: {trust.source}</p>
-            <p>
-              Enabling this plugin executes trusted code with application
-              access, including files and terminals available to Lomi. It is not
-              sandboxed. Approve only code you trust.
-            </p>
             <p className="settings-help">
-              Approval applies to this installed revision. Changed code requires
-              a new review.
+              {trust.id} · {trust.manifest?.version} · {trust.source}
             </p>
+            <p>
+              This plugin runs unsandboxed with the same access as Lomi,
+              including your files and terminals. Enable only code you trust.
+            </p>
+            <p className="settings-help">Approval covers this version only.</p>
             <div className="dialog-actions">
               <button
                 className="button"
@@ -486,9 +479,8 @@ export default function PluginsPage() {
         >
           <div className="dialog-form">
             <p>
-              This package supplies the selected theme. Switch to Lomi before
-              uninstalling it. The package stays installed if the switch or its
-              close checks fail.
+              This package provides the active theme. Lomi switches to its
+              default theme first.
             </p>
             <div className="dialog-actions">
               <button
@@ -515,6 +507,6 @@ export default function PluginsPage() {
           </div>
         </Modal>
       )}
-    </main>
+    </SettingsPage>
   );
 }

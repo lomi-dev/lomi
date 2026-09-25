@@ -2,6 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { api, errorMessage, native } from "../api";
 import { listen } from "@tauri-apps/api/event";
 import { DisclosureSummary, IconButton, Modal } from "../ui";
+import {
+  SettingRow,
+  SettingsNotice,
+  SettingsPage,
+  SettingsSection,
+} from "../settings-ui";
 import ContextMenu from "../ContextMenu";
 import {
   RefreshCw,
@@ -108,7 +114,7 @@ function Confirmation({
             Cancel
           </button>
           <button
-            className="button danger"
+            className="button button-danger"
             disabled={busy || (!!value.name && text !== value.name)}
           >
             {busy ? "Applying…" : value.title}
@@ -530,32 +536,35 @@ export default function AndroidSettingsPage() {
   );
 
   return (
-    <main className="keybindings-page android-settings-page">
-      <header className="settings-page-heading">
-        <div>
-          <h1>Android</h1>
-          <p>Local virtual phones, inside your workspace.</p>
-        </div>
-      </header>
+    <SettingsPage
+      title="Android"
+      description="Virtual phones that run inside your workspace."
+      className="android-settings-page"
+      busy={busy}
+      status={!snapshot && state.loading ? "Loading…" : notice}
+    >
       {(error || state.error) && (
-        <div className="keybindings-error" role="alert">
-          <span>{error || state.error}</span>
-          <button className="text-button" onClick={() => void perform(reload)}>
-            Retry
-          </button>
-        </div>
-      )}
-      {notice && (
-        <p role="status" className="settings-help">
-          {notice}
-        </p>
+        <SettingsNotice
+          tone="error"
+          action={
+            <button
+              className="text-button"
+              onClick={() => void perform(reload)}
+            >
+              Retry
+            </button>
+          }
+        >
+          {error || state.error}
+        </SettingsNotice>
       )}
       {!snapshot ? (
-        <p role="status" className="settings-help">
-          {state.loading
-            ? "Checking the managed Android environment…"
-            : "Android environment could not be loaded. Retry after resolving the error above."}
-        </p>
+        !state.loading &&
+        !(error || state.error) && (
+          <SettingsNotice tone="error">
+            Android settings couldn’t be loaded.
+          </SettingsNotice>
+        )
       ) : (
         <>
           {progress && progress.phase !== "succeeded" && !operationImageId && (
@@ -567,28 +576,35 @@ export default function AndroidSettingsPage() {
             />
           )}
           {!snapshot.qualified && (
-            <p className="keybindings-error" role="status">
-              Android setup is not available on this computer yet. You can still
-              stop existing phones and recover their data.
-            </p>
+            <SettingsNotice tone="warning" role="status">
+              Android setup isn’t available on this computer yet. Existing
+              phones can still be stopped and recovered.
+            </SettingsNotice>
           )}
           {snapshot.acceleration.action && (
-            <p className="keybindings-error" role="alert">
+            <SettingsNotice tone="warning" role="alert">
               {snapshot.acceleration.action}
-            </p>
+            </SettingsNotice>
           )}
           {Object.entries(snapshot.errors).map(([name, message]) => (
-            <p key={name} className="keybindings-error" role="alert">
+            <SettingsNotice key={name} tone="error">
               {name}: {message}
-            </p>
+            </SettingsNotice>
           ))}
           {!!snapshot.recovery.length && !advancedOpen && (
-            <button
-              className="text-button"
-              onClick={() => setAdvancedOpen(true)}
+            <SettingsNotice
+              tone="warning"
+              action={
+                <button
+                  className="text-button"
+                  onClick={() => setAdvancedOpen(true)}
+                >
+                  Review recovery options
+                </button>
+              }
             >
-              Review recovery options
-            </button>
+              Some Android files need recovery.
+            </SettingsNotice>
           )}
           {(!toolsReady || !installedImages.length || !devices.length) && (
             <section className="android-setup" aria-label="Android setup">
@@ -604,10 +620,10 @@ export default function AndroidSettingsPage() {
               </h2>
               <p className="settings-help">
                 {setupStep === 1
-                  ? "Install the tools to run a virtual phone in your workspace. You only need to do this once."
+                  ? "A one-time download of the tools that run virtual phones."
                   : setupStep === 2
-                    ? "Download a version of Android for your phone. Choose Google Play if you need the Play Store."
-                    : "Pick a phone model and give it a name. Your apps and data will stay on this phone."}
+                    ? "Pick Google Play if you need the Play Store."
+                    : "Pick a phone model and a name. Apps and data stay on the phone."}
               </p>
               <button
                 className="button button-primary"
@@ -644,18 +660,22 @@ export default function AndroidSettingsPage() {
               </button>
               {setupStep === 3 && !snapshot.profiles.length && (
                 <p className="settings-help">
-                  Phone models could not be loaded. Repair Android tools in
-                  Advanced.
+                  Phone models couldn’t be loaded. Repair the tools in Advanced.
                 </p>
               )}
             </section>
           )}
           {!!devices.length && (
-            <section className="android-phones" aria-label="Your phones">
-              <div className="android-section-heading">
-                <h2>
-                  Your phones <span>{devices.length}</span>
-                </h2>
+            <SettingsSection
+              title="Your phones"
+              count={devices.length}
+              className="android-phones"
+              description={
+                setup
+                  ? "Open a phone to return to the workspace where you started."
+                  : undefined
+              }
+              actions={
                 <button
                   className="button"
                   disabled={
@@ -670,13 +690,8 @@ export default function AndroidSettingsPage() {
                 >
                   <Plus size={14} /> Create device
                 </button>
-              </div>
-              {setup && (
-                <p className="settings-help">
-                  Open a phone to return to the workspace where you started
-                  setup.
-                </p>
-              )}
+              }
+            >
               <div className="android-phone-list">
                 {devices.map((device) => {
                   const status = snapshot.statuses.find(
@@ -854,17 +869,17 @@ export default function AndroidSettingsPage() {
                   );
                 })}
               </div>
-            </section>
+            </SettingsSection>
           )}
           {alive && (
             <p className="settings-help android-install-hint">
               Stop running phones before changing Android tools or versions.
             </p>
           )}
-          <div className="android-disclosure">
+          <div className="settings-disclosure">
             <button
               ref={imagesHeading}
-              className="android-disclosure-toggle"
+              className="settings-disclosure-toggle"
               aria-expanded={imagesOpen}
               aria-controls="android-versions"
               onClick={() => {
@@ -872,13 +887,14 @@ export default function AndroidSettingsPage() {
                 if (!imagesOpen && !catalog) void perform(() => loadCatalog());
               }}
             >
-              <ChevronRight size={15} />
-              <span>
-                <strong>Android versions</strong>
-                <span>Download and manage phone systems</span>
-              </span>
+              <ChevronRight
+                className="disclosure-summary-icon"
+                size={14}
+                aria-hidden="true"
+              />
+              Android versions
               {operationImageId && downloading ? (
-                <span className="android-disclosure-meta android-download-indicator">
+                <span className="settings-disclosure-meta android-download-indicator">
                   {progress?.phase === "cancelling"
                     ? "Cancelling…"
                     : progress && progress.total > 0
@@ -887,14 +903,14 @@ export default function AndroidSettingsPage() {
                 </span>
               ) : (
                 !!installedImages.length && (
-                  <span className="android-disclosure-meta">
+                  <span className="settings-disclosure-meta">
                     {installedImages.length} installed
                   </span>
                 )
               )}
             </button>
             <section
-              className="android-disclosure-body"
+              className="settings-disclosure-body"
               id="android-versions"
               hidden={!imagesOpen}
               aria-label="Android versions"
@@ -965,11 +981,6 @@ export default function AndroidSettingsPage() {
               <h3 className="android-versions-heading">
                 Available to download
               </h3>
-              <p className="settings-help">
-                Google Play includes the Play Store. Google APIs provides Google
-                services for testing. AOSP is a minimal system without Google
-                services.
-              </p>
               <div className="android-actions">
                 <button
                   className="button"
@@ -1064,60 +1075,63 @@ export default function AndroidSettingsPage() {
               )}
             </section>
           </div>
-          <div className="android-disclosure">
+          <div className="settings-disclosure">
             <button
-              className="android-disclosure-toggle"
+              className="settings-disclosure-toggle"
               aria-expanded={advancedOpen}
               aria-controls="android-advanced"
               onClick={() => setAdvancedOpen(!advancedOpen)}
             >
-              <ChevronRight size={15} />
-              <span>
-                <strong>Advanced</strong>
-                <span>Tools, storage and troubleshooting</span>
-              </span>
+              <ChevronRight
+                className="disclosure-summary-icon"
+                size={14}
+                aria-hidden="true"
+              />
+              Advanced
               {toolsReady && (
                 <Check
-                  className="android-disclosure-meta"
+                  className="settings-disclosure-meta"
                   size={14}
                   aria-label="Tools installed"
                 />
               )}
             </button>
             <div
-              className="android-disclosure-body"
+              className="settings-disclosure-body"
               id="android-advanced"
               hidden={!advancedOpen}
             >
-              <button
-                className="button"
-                disabled={busy || state.loading}
-                onClick={() => void perform(reload)}
-              >
-                <RefreshCw size={14} /> Refresh status
-              </button>
-              <section className="keybindings-group" aria-label="Environment">
+              <section className="settings-subsection" aria-label="Environment">
                 <h3>Android tools</h3>
-                <div className="android-row">
-                  <div>
-                    <strong>
-                      {snapshot.acceleration.available
-                        ? "Hardware acceleration available"
-                        : "System preparation required"}
-                    </strong>
-                    <p className="settings-help">
-                      {snapshot.host} · {snapshot.acceleration.backend}
-                    </p>
-                  </div>
-                </div>
-                <p className="settings-help android-path">
-                  Managed SDK: <code>{snapshot.sdkPath}</code>
-                </p>
-                <p className="settings-help">
-                  SDK manager {snapshot.toolchain.cli.version} and private Java{" "}
-                  {snapshot.toolchain.java.version}:{" "}
-                  {snapshot.toolchainReady ? "prepared" : "not prepared"}.
-                </p>
+                <SettingRow
+                  label={
+                    snapshot.acceleration.available
+                      ? "Hardware acceleration available"
+                      : "System preparation required"
+                  }
+                  description={`${snapshot.host} · ${snapshot.acceleration.backend}`}
+                >
+                  <button
+                    className="button"
+                    disabled={busy || state.loading}
+                    onClick={() => void perform(reload)}
+                  >
+                    <RefreshCw size={14} /> Refresh status
+                  </button>
+                </SettingRow>
+                <SettingRow
+                  label="Managed SDK"
+                  className="android-path"
+                  description={
+                    <>
+                      <code>{snapshot.sdkPath}</code>
+                      <br />
+                      SDK manager {snapshot.toolchain.cli.version} · Java{" "}
+                      {snapshot.toolchain.java.version} ·{" "}
+                      {snapshot.toolchainReady ? "Prepared" : "Not prepared"}
+                    </>
+                  }
+                />
                 {usage && (
                   <details className="android-storage">
                     <DisclosureSummary>
@@ -1130,9 +1144,8 @@ export default function AndroidSettingsPage() {
                       used · {formatBytes(usage.freeBytes)} free
                     </DisclosureSummary>
                     <p className="settings-help">
-                      Reserve for growth of existing phones:{" "}
-                      {formatBytes(usage.growthReserveBytes)}. Sparse files can
-                      grow up to their configured data capacity.
+                      Reserved for phone growth:{" "}
+                      {formatBytes(usage.growthReserveBytes)}
                     </p>
                     <dl>
                       {Object.entries(usage.directories).map(([name, size]) => (
@@ -1188,12 +1201,6 @@ export default function AndroidSettingsPage() {
                     Repair tools
                   </button>
                 </div>
-                {alive && (
-                  <p className="settings-help">
-                    Stop running phones before installing, repairing, removing
-                    or rolling back components.
-                  </p>
-                )}
                 {snapshot.requiredTools
                   .filter((id) => installed[id])
                   .map((id) => (
@@ -1239,13 +1246,12 @@ export default function AndroidSettingsPage() {
               </section>
               {!!installedImages.length && (
                 <section
-                  className="keybindings-group"
+                  className="settings-subsection"
                   aria-label="Image repairs"
                 >
                   <h3>Repair Android versions</h3>
                   <p className="settings-help">
-                    Re-download the installed version. Your phones and their
-                    data are kept.
+                    Re-download an installed version.
                   </p>
                   {installedImages.map((pkg) => (
                     <div className="android-row" key={pkg.id}>
@@ -1265,11 +1271,10 @@ export default function AndroidSettingsPage() {
                   ))}
                 </section>
               )}
-              <section className="keybindings-group" aria-label="Maintenance">
+              <section className="settings-subsection" aria-label="Maintenance">
                 <h3>Storage and troubleshooting</h3>
                 <p className="settings-help">
-                  Free up space or fix an incomplete installation. Your phones
-                  and their data are kept.
+                  Repairs and cleanup keep your phones and their data.
                 </p>
                 <div className="android-actions">
                   <button
@@ -1314,11 +1319,10 @@ export default function AndroidSettingsPage() {
                     <div>
                       <strong>Recover {item.file}</strong>
                       <p className="settings-help">
-                        The original damaged file is preserved before
-                        replacement. Device data is kept.
+                        The damaged file is kept.{" "}
                         {item.backupRevision !== null
-                          ? ` Saved backup revision: ${item.backupRevision}.`
-                          : " No valid previous backup is available."}
+                          ? `Backup revision ${item.backupRevision} is available.`
+                          : "No valid backup is available."}
                       </p>
                     </div>
                     <div className="android-actions">
@@ -1411,6 +1415,6 @@ export default function AndroidSettingsPage() {
           onDone={reload}
         />
       )}
-    </main>
+    </SettingsPage>
   );
 }

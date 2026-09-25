@@ -281,9 +281,7 @@ test("appearance overrides survive theme changes and resetting follows the activ
   await expect
     .poll(() => options(main, id))
     .toMatchObject({ fontSize: 17, theme: { red: "#ff1234ff" } });
-  await page
-    .getByRole("button", { name: "Reset defaults", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Reset all", exact: true }).click();
   await expect
     .poll(() => options(main, id))
     .toMatchObject({ fontSize: 17, theme: { red: "#aabbccff" } });
@@ -313,7 +311,7 @@ test("font choices, collapsed settings, and the CSS preview follow saved appeara
     page.getByRole("button", { name: "Configure Claude Code…", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Reset defaults", exact: true }),
+    page.getByRole("button", { name: "Reset all", exact: true }),
   ).toBeVisible();
   await expect(page.getByText("More settings", { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("Line height", { exact: true })).toBeHidden();
@@ -496,9 +494,7 @@ test("font choices, collapsed settings, and the CSS preview follow saved appeara
     path: testInfo.outputPath("terminal-settings-font-custom-small.png"),
   });
 
-  await page
-    .getByRole("button", { name: "Reset defaults", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Reset all", exact: true }).click();
   await expect(page.getByRole("status")).toHaveText("Saved");
   expect((await savedPreferences(page)).appearance).not.toHaveProperty(
     "fontFamily",
@@ -547,9 +543,7 @@ test("failed saves retain working preferences and corrupt files require explicit
       localStorage.getItem("test-terminal-preferences"),
     ),
   ).toBe('{"version":99,"future":"preserve"}');
-  await page
-    .getByRole("button", { name: "Reset defaults", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Reset all", exact: true }).click();
   await expect(page.getByRole("alert")).toHaveCount(0);
   await expect(page.getByLabel("Font size", { exact: true })).toHaveValue("16");
 });

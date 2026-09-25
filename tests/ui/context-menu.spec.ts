@@ -43,9 +43,7 @@ test("settings blocks browser menus on its background and form fields", async ({
 }) => {
   await mockDesktop(page);
   await page.goto("/?window=settings&page=terminal");
-  await expectBrowserMenuBlocked(
-    page.getByLabel("Font family", { exact: true }),
-  );
+  await expectBrowserMenuBlocked(page.getByLabel("Font size", { exact: true }));
   await expectBrowserMenuBlocked(page.locator(".titlebar"));
   await expectBrowserMenuBlocked(page.locator("body"));
 });

@@ -149,7 +149,9 @@ test("the setting applies across windows, survives reload and resets to hidden",
   await settings.setViewportSize({ width: 920, height: 680 });
   await settings.screenshot({ path: testInfo.outputPath("title-setting.png") });
   await settings
-    .getByRole("button", { name: "Reset Always show terminal titles" })
+    .getByRole("button", {
+      name: "Restore default behavior for Always show terminal titles",
+    })
     .click();
   await expect(toggle).not.toBeChecked();
   await expect(heading).toHaveAttribute("aria-hidden", "true");

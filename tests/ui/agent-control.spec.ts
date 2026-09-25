@@ -140,11 +140,11 @@ test("Android metadata approval requires a selected device and grants only read 
     exact: true,
   });
   await recovery.click();
-  await expect(page.locator(".keybindings-status")).toHaveText(
+  await expect(page.locator(".settings-status")).toHaveText(
     "No file recovery data has been created.",
   );
   await recovery.click();
-  await expect(page.locator(".keybindings-status")).toHaveText(
+  await expect(page.locator(".settings-status")).toHaveText(
     "Recovery folder opened.",
   );
   await recovery.scrollIntoViewIfNeeded();

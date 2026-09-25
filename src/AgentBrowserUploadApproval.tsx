@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { SettingsSection } from "./settings-ui";
 import type { ControlState } from "./agent-control";
 
 type Requests = NonNullable<
@@ -15,11 +16,7 @@ export function AgentBrowserUploadApproval({
 }) {
   if (!requests.length) return null;
   return (
-    <section
-      className="keybindings-group"
-      aria-labelledby="control-uploads-heading"
-    >
-      <h2 id="control-uploads-heading">Browser upload requests</h2>
+    <SettingsSection title="Browser upload requests">
       {requests.map((request) => (
         <article className="agent-control-request" key={request.operationId}>
           <h3>
@@ -90,6 +87,6 @@ export function AgentBrowserUploadApproval({
           </div>
         </article>
       ))}
-    </section>
+    </SettingsSection>
   );
 }

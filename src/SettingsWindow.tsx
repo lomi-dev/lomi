@@ -30,11 +30,21 @@ import { useKeybindings } from "./KeybindingsProvider";
 import ReadyWindow from "./ReadyWindow";
 import { useWindowZoom } from "./useWindowZoom";
 import { useProtectedTheme } from "./useProtectedTheme";
+import {
+  SettingRow,
+  SettingsNotice,
+  SettingsPage,
+  SettingsSection,
+} from "./settings-ui";
 
 const AndroidSettingsPage = lazy(() => import("./android/AndroidSettingsPage"));
 const AgentControlSettingsPage = lazy(
   () => import("./AgentControlSettingsPage"),
 );
+
+function SettingsLoading({ title }: { title: string }) {
+  return <SettingsPage title={title} status="Loading…" />;
+}
 
 export default function SettingsWindow() {
   const [page, setPage] = useState(() => {
@@ -233,34 +243,22 @@ export default function SettingsWindow() {
           </button>
         </nav>
         {page === "agent-control" ? (
-          <Suspense
-            fallback={
-              <main className="keybindings-page" role="status">
-                Loading agent control…
-              </main>
-            }
-          >
+          <Suspense fallback={<SettingsLoading title="Agent control" />}>
             <AgentControlSettingsPage />
           </Suspense>
         ) : page === "android" ? (
-          <Suspense
-            fallback={
-              <main className="keybindings-page" role="status">
-                Loading Android settings…
-              </main>
-            }
-          >
+          <Suspense fallback={<SettingsLoading title="Android" />}>
             <AndroidSettingsPage />
           </Suspense>
         ) : page === "chat-ai" ? (
           <ChatSettingsPage />
         ) : page === "about" ? (
-          <main className="keybindings-page">
-            <header className="settings-page-heading">
-              <div>
-                <h1>Lomi</h1>
-                <p>Version {version}</p>
-              </div>
+          <SettingsPage title="About" description={`Lomi ${version}`}>
+            {error && <SettingsNotice tone="error">{error}</SettingsNotice>}
+            <SettingRow
+              label="Updates"
+              description="Checked automatically at startup. Details open in the workspace window."
+            >
               <button
                 className="button"
                 disabled={!native}
@@ -273,17 +271,8 @@ export default function SettingsWindow() {
               >
                 Check for updates
               </button>
-            </header>
-            <p className="settings-help">
-              Lomi checks GitHub Releases for updates after startup. Update
-              details open in the workspace window.
-            </p>
-            {error && (
-              <p className="keybindings-error" role="alert">
-                {error}
-              </p>
-            )}
-          </main>
+            </SettingRow>
+          </SettingsPage>
         ) : page === "plugins" ? (
           <PluginsPage />
         ) : page === "terminal" ? (
@@ -291,14 +280,18 @@ export default function SettingsWindow() {
         ) : page === "themes" ? (
           <ThemesPage />
         ) : (
-          <main className="keybindings-page">
-            <header className="settings-page-heading">
-              <div>
-                <h1>Keybinds</h1>
-                <p>
-                  Customize shortcuts for terminals, tabs, and the workspace.
-                </p>
-              </div>
+          <SettingsPage
+            title="Keybinds"
+            className="keybindings-page"
+            description="Click a shortcut to record new keys. Cleared shortcuts pass their keys to the terminal."
+            status={
+              !preferences.ready
+                ? "Loading…"
+                : recording
+                  ? "Press keys · Escape cancels"
+                  : status
+            }
+            actions={
               <button
                 className="button"
                 disabled={!preferences.ready || busy}
@@ -307,49 +300,32 @@ export default function SettingsWindow() {
                 <RotateCcw size={14} />
                 Reset all
               </button>
-            </header>
-            <p className="settings-help">
-              Click a shortcut and press a new key combination. Changes apply
-              immediately. Escape cancels recording.
-            </p>
-            <p className="settings-help">
-              Clear a shortcut to pass those keys to the terminal. Shortcuts are
-              active while Lomi is focused.
-            </p>
+            }
+          >
             {(error || preferences.error) && (
-              <div className="keybindings-error" role="alert">
-                <span>{error || preferences.error}</span>
-                {preferences.error && (
-                  <button
-                    className="text-button"
-                    onClick={() => void preferences.reload()}
-                  >
-                    Retry loading
-                  </button>
-                )}
-              </div>
+              <SettingsNotice
+                tone="error"
+                action={
+                  preferences.error && (
+                    <button
+                      className="text-button"
+                      onClick={() => void preferences.reload()}
+                    >
+                      Retry loading
+                    </button>
+                  )
+                }
+              >
+                {error || preferences.error}
+              </SettingsNotice>
             )}
-            <div className="keybindings-status" role="status">
-              {!preferences.ready
-                ? "Loading shortcuts…"
-                : recording
-                  ? "Press a shortcut, or Escape to cancel."
-                  : status}
-            </div>
-            <section className="keybindings-group" aria-label="Panel focus">
-              <h2>Panel focus</h2>
-              <div className="keybinding-row">
-                <label
-                  htmlFor="focus-follows-pointer"
-                  className="keybinding-label"
-                >
-                  Focus follows pointer
-                  <small id="pointer-focus-help">
-                    On: typing, pasting, and shortcuts use the panel under the
-                    mouse. Off: they use the panel you clicked. Moving outside
-                    the panels keeps the current panel active.
-                  </small>
-                </label>
+            <SettingsSection title="Panel focus">
+              <SettingRow
+                label="Focus follows pointer"
+                htmlFor="focus-follows-pointer"
+                description="Typing, paste and shortcuts go to the panel under the mouse."
+                descriptionId="pointer-focus-help"
+              >
                 <input
                   id="focus-follows-pointer"
                   className="settings-switch"
@@ -362,25 +338,20 @@ export default function SettingsWindow() {
                     void persist(preferences.bindings, event.target.checked)
                   }
                 />
-              </div>
-            </section>
+              </SettingRow>
+            </SettingsSection>
             {[
               ...new Set(preferences.actions.map((action) => action.group)),
             ].map((group) => (
-              <section
-                className="keybindings-group"
-                key={group}
-                aria-label={group}
-              >
-                <h2>{group}</h2>
+              <SettingsSection title={group} key={group}>
                 {preferences.actions
                   .filter((action) => action.group === group)
                   .map((action) => (
-                    <div className="keybinding-row" key={action.id}>
-                      <div className="keybinding-label">
-                        <span>{action.label}</span>
-                        <small>{action.description}</small>
-                      </div>
+                    <SettingRow
+                      key={action.id}
+                      label={action.label}
+                      description={action.description}
+                    >
                       <div className="keybinding-controls">
                         <button
                           ref={
@@ -469,11 +440,11 @@ export default function SettingsWindow() {
                           <RotateCcw size={14} />
                         </IconButton>
                       </div>
-                    </div>
+                    </SettingRow>
                   ))}
-              </section>
+              </SettingsSection>
             ))}
-          </main>
+          </SettingsPage>
         )}
       </div>
     </div>

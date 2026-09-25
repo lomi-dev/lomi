@@ -99,28 +99,43 @@ test("models can be added, refreshed, searched and used as defaults without a pa
   ).toBeVisible();
 });
 
-test("unsaved chat defaults are not persisted by a connection action", async ({
+test("chat defaults save on blur and keep text when saving fails", async ({
   page,
 }) => {
-  await page.getByRole("button", { name: /Fixture/ }).click();
-  await page.getByText("Chat preferences", { exact: false }).first().click();
-  await page
-    .getByRole("textbox", { name: "System instructions" })
-    .fill("Unfinished draft");
-  await page.getByRole("switch", { name: "Enable Fixture" }).uncheck();
-  const saved = await page.evaluate(() =>
-    JSON.parse(localStorage.getItem("chat-preferences")!),
+  const instructions = page.getByRole("textbox", {
+    name: "System instructions",
+  });
+  const saved = () =>
+    page.evaluate(
+      () =>
+        JSON.parse(localStorage.getItem("chat-preferences") ?? "null")?.defaults
+          .system ?? "",
+    );
+  await instructions.fill("Unfinished draft");
+  expect(await saved()).toBe("");
+  await instructions.blur();
+  await expect(page.getByRole("status")).toHaveText("Saved");
+  expect(await saved()).toBe("Unfinished draft");
+  await page.evaluate(() => {
+    (window as any).__chatTest.failPreferences = true;
+  });
+  await instructions.fill("Kept after a failure");
+  await instructions.blur();
+  await expect(page.getByRole("alert")).toContainText(
+    "credential store is locked",
   );
-  expect(saved.defaults.system).toBe("");
-  await expect(
-    page.getByRole("textbox", { name: "System instructions" }),
-  ).toHaveValue("Unfinished draft");
-  await page.getByRole("button", { name: "Save defaults" }).click();
-  await expect(page.getByRole("alert")).toContainText("conflict");
-  await page.getByRole("button", { name: "Discard changes" }).click();
-  await expect(
-    page.getByRole("textbox", { name: "System instructions" }),
-  ).toHaveValue("");
+  await expect(instructions).toHaveValue("Kept after a failure");
+  expect(await saved()).toBe("Unfinished draft");
+  await page.evaluate(() => {
+    (window as any).__chatTest.failPreferences = false;
+  });
+  await instructions.focus();
+  await instructions.blur();
+  await expect(page.getByRole("status")).toHaveText("Saved");
+  expect(await saved()).toBe("Kept after a failure");
+  await page.getByRole("button", { name: /Fixture/ }).click();
+  await page.getByRole("switch", { name: "Enable Fixture" }).uncheck();
+  await expect(instructions).toHaveValue("Kept after a failure");
 });
 
 test("provider settings fit dark, light, narrow and zoomed windows", async ({
@@ -692,7 +707,6 @@ test("model discovery errors and empty catalogs block saving and allow retry", a
 test("custom selects save conversation defaults and disable models without a connection", async ({
   page,
 }, info) => {
-  await page.locator(".chat-defaults-section > summary").click();
   const connection = page.getByRole("combobox", {
     name: "Connection",
     exact: true,
@@ -720,16 +734,14 @@ test("custom selects save conversation defaults and disable models without a con
     })
     .click();
   await expect(sendMode).toHaveAccessibleDescription("Enter adds a new line.");
-  const advanced = page.locator(".chat-defaults-advanced > summary");
   const tokens = page.getByRole("spinbutton", {
     name: "Maximum output tokens",
   });
-  await expect(tokens).toBeHidden();
-  await advanced.click();
   await tokens.fill("8192");
   await page
     .getByLabel("System instructions", { exact: true })
     .fill("Answer in Polish and keep replies concise.");
+  await tokens.focus();
   for (const colorScheme of ["dark", "light"] as const) {
     await page.emulateMedia({ colorScheme });
     await page.setViewportSize({ width: 1280, height: 1000 });
@@ -737,7 +749,8 @@ test("custom selects save conversation defaults and disable models without a con
       path: info.outputPath(`chat-preferences-${colorScheme}.png`),
     });
   }
-  await advanced.click();
+  await tokens.blur();
+  await expect(page.getByRole("status")).toHaveText("Saved");
   for (const [width, height, zoom] of [
     [640, 700, 1],
     [800, 600, 2],
@@ -746,36 +759,28 @@ test("custom selects save conversation defaults and disable models without a con
     await page.evaluate((zoom) => {
       document.documentElement.style.zoom = String(zoom);
     }, zoom);
-    await page
-      .getByRole("button", { name: "Save defaults" })
-      .scrollIntoViewIfNeeded();
+    await tokens.scrollIntoViewIfNeeded();
     expect(
       await page
         .locator(".chat-settings")
         .evaluate((element) => element.scrollWidth <= element.clientWidth),
     ).toBe(true);
-    await expect(
-      page.getByRole("button", { name: "Save defaults" }),
-    ).toBeInViewport();
+    await expect(tokens).toBeInViewport();
     await page.screenshot({
       path: info.outputPath(`chat-preferences-${width}-${zoom}.png`),
     });
   }
-  await page.getByRole("button", { name: "Save defaults" }).click();
-  await expect(page.getByRole("status")).toHaveText("Saved");
   await page.reload();
-  await page.locator(".chat-defaults-section > summary").click();
   await expect(model).toHaveText("GPT-4.1 · Apr 2025");
   await expect(sendMode).toHaveText("Ctrl+Enter");
   await expect(
     page.getByLabel("System instructions", { exact: true }),
   ).toHaveValue("Answer in Polish and keep replies concise.");
-  await advanced.click();
   await expect(tokens).toHaveValue("8192");
-  await tokens.fill("1024");
-  await advanced.click();
-  await page.getByRole("button", { name: "Discard changes" }).click();
-  await advanced.click();
+  await tokens.fill("0");
+  await tokens.blur();
+  await expect(tokens).toHaveAccessibleDescription("Enter 1 to 32,768.");
+  await page.reload();
   await expect(tokens).toHaveValue("8192");
   expect(
     await page.evaluate(() => (window as any).__chatTest.connectionActions),
