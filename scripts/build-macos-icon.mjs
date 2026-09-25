@@ -67,31 +67,43 @@ try {
     { stdio: "inherit" },
   );
 
-  const catalog = JSON.parse(
-    execFileSync(
-      "xcrun",
-      ["assetutil", "--info", path.join(stagingDirectory, "Assets.car")],
-      {
-        encoding: "utf8",
-      },
-    ),
+  const macosMajorVersion = Number(
+    execFileSync("sw_vers", ["-productVersion"], { encoding: "utf8" })
+      .trim()
+      .split(".")[0],
   );
-  for (const appearance of [
-    "NSAppearanceNameAqua",
-    "NSAppearanceNameDarkAqua",
-    "ISAppearanceTintable",
-  ]) {
-    if (
-      !catalog.some(
-        (asset) =>
-          asset.Name === "Lomi" &&
-          asset.AssetType === "IconImageStack" &&
-          asset.Appearance === appearance,
-      )
-    ) {
-      throw new Error(
-        `Compiled Lomi icon is missing its layered ${appearance} appearance.`,
-      );
+  if (!Number.isInteger(macosMajorVersion)) {
+    throw new Error(
+      "Could not determine the macOS version for icon validation.",
+    );
+  }
+  // macOS 15 assetutil cannot inspect the icon stacks compiled by Xcode 26.
+  const canInspectLayers = macosMajorVersion >= 26;
+  if (canInspectLayers) {
+    const catalog = JSON.parse(
+      execFileSync(
+        "xcrun",
+        ["assetutil", "--info", path.join(stagingDirectory, "Assets.car")],
+        { encoding: "utf8" },
+      ),
+    );
+    for (const appearance of [
+      "NSAppearanceNameAqua",
+      "NSAppearanceNameDarkAqua",
+      "ISAppearanceTintable",
+    ]) {
+      if (
+        !catalog.some(
+          (asset) =>
+            asset.Name === "Lomi" &&
+            asset.AssetType === "IconImageStack" &&
+            asset.Appearance === appearance,
+        )
+      ) {
+        throw new Error(
+          `Compiled Lomi icon is missing its layered ${appearance} appearance.`,
+        );
+      }
     }
   }
   for (const name of ["Assets.car", "Lomi.icns", "icon-info.plist"]) {
@@ -104,7 +116,11 @@ try {
     fallbackIcon,
     readFileSync(path.join(stagingDirectory, "Lomi.icns")),
   );
-  console.log("macOS icon: default, dark, and clear/tinted layers compiled.");
+  console.log(
+    canInspectLayers
+      ? "macOS icon: default, dark, and clear/tinted layers compiled."
+      : "macOS icon: Assets.car and Lomi.icns compiled; layer inspection unavailable on this macOS version.",
+  );
 } finally {
   rmSync(stagingDirectory, { recursive: true, force: true });
 }

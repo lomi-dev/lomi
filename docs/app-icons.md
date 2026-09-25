@@ -26,7 +26,9 @@ the installed macOS icon follows the user's chosen system tint.
 ## macOS packaging
 
 `pnpm icon:macos` compiles the original `.icon` with `actool` and validates that
-`Assets.car` contains the default, dark, and tintable icon stacks. macOS renders
+`Assets.car` contains the default, dark, and tintable icon stacks on macOS 26 or
+later. macOS 15's `assetutil` cannot inspect these Xcode 26 icon stacks, so the
+build checks that `actool` produced both `Assets.car` and `Lomi.icns`. macOS renders
 the clear and tinted light/dark treatments from those layers. The generated
 `icon.icns` is the fallback for older macOS versions.
 
