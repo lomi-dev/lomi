@@ -69,21 +69,30 @@ console.log('test result: ok. ' + count + ' passed; 0 failed; 0 ignored');
       }
       const success = run("success");
       assert.equal(success.status, 0, success.stderr);
-      assert.equal(readFileSync(log, "utf8").trim().split("\n").length, 5);
+      assert.equal(
+        readFileSync(log, "utf8").trim().split("\n").length,
+        securitySuites(process.platform).length,
+      );
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
   },
 );
 
-test("Windows gates JSON persistence and crypto without selecting Unix-only control suites", () => {
+test("all platforms gate Remote and authentication without selecting Unix-only control suites on Windows", () => {
   assert.deepEqual(securitySuites("win32"), [
     ["lomi", "files::tests::json_"],
+    ["lomi", "auth::"],
+    ["lomi", "remote::"],
+    ["lomi", "terminal::tests::remote_"],
     ["lomi-remote-crypto", ""],
   ]);
   for (const platform of ["darwin", "linux"]) {
     assert.deepEqual(securitySuites(platform), [
       ["lomi", "files::tests::json_"],
+      ["lomi", "auth::"],
+      ["lomi", "remote::"],
+      ["lomi", "terminal::tests::remote_"],
       ["lomi-control-core", "authentication::tests::"],
       ["lomi-control-core", "project_files::tests::"],
       ["lomi-control-core", "broker::revoke_tests::"],
@@ -93,15 +102,19 @@ test("Windows gates JSON persistence and crypto without selecting Unix-only cont
 });
 
 test("Windows rejects a failed or empty security suite and never advances past it", async () => {
+  const suites = securitySuites("win32");
   for (const failure of ["failed", "empty"]) {
-    for (const failureIndex of [0, 1]) {
-      const crates: string[] = [];
+    for (let failureIndex = 0; failureIndex < suites.length; failureIndex++) {
+      const selected: string[][] = [];
       await assert.rejects(
         () =>
           runSecurityRegressions("win32", (command: string, args: string[]) => {
             assert.equal(command, "cargo");
-            crates.push(args[args.indexOf("-p") + 1]);
-            const failing = crates.length - 1 === failureIndex;
+            selected.push([
+              args[args.indexOf("-p") + 1],
+              args.at(-1) === "--tests" ? "" : args.at(-1)!,
+            ]);
+            const failing = selected.length - 1 === failureIndex;
             return {
               status: failing && failure === "failed" ? 1 : 0,
               stdout: `test result: ok. ${failing && failure === "empty" ? 0 : 1} passed; 0 failed; 0 ignored\n`,
@@ -110,22 +123,22 @@ test("Windows rejects a failed or empty security suite and never advances past i
           }),
         /Security suite failed or selected no tests/,
       );
-      assert.deepEqual(
-        crates,
-        ["lomi", "lomi-remote-crypto"].slice(0, failureIndex + 1),
-      );
+      assert.deepEqual(selected, suites.slice(0, failureIndex + 1));
     }
   }
-  const crates: string[] = [];
+  const selected: string[][] = [];
   await runSecurityRegressions("win32", (_command: string, args: string[]) => {
-    crates.push(args[args.indexOf("-p") + 1]);
+    selected.push([
+      args[args.indexOf("-p") + 1],
+      args.at(-1) === "--tests" ? "" : args.at(-1)!,
+    ]);
     return {
       status: 0,
       stdout: "test result: ok. 2 passed; 0 failed\n",
       stderr: "",
     };
   });
-  assert.deepEqual(crates, ["lomi", "lomi-remote-crypto"]);
+  assert.deepEqual(selected, suites);
 });
 
 test("failed native builds retain terminal diagnostics even with a large compiler log", async () => {

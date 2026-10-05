@@ -18,12 +18,16 @@ The workflow first runs the required `security-regressions` matrix on macOS
 Apple Silicon, macOS Intel, Linux x64 and Windows x64 against the tag's exact
 commit. It has read-only repository permissions and no signing secrets. Every
 platform installs frozen dependencies, verifies SDK archive/helper digests and
-runs native JSON persistence and crypto tests. macOS and Linux additionally run
+runs native JSON persistence, account authentication, Remote workspace, terminal
+observer and crypto tests, plus the JavaScript Remote terminal helper suite.
+macOS and Linux additionally run
 Unix-only IPC authentication, project containment and broker revocation suites;
 those implementations are not compiled on Windows. Unix JSON persistence tests
 include permissions and symlink checks; Windows runs the failure-preservation
 and concurrent atomic-write tests. Ubuntu also runs installed-archive build safety
-tests and frontend checks/tests. All four security jobs must pass before the
+tests, frontend checks/tests and Remote UI account/workspace lifecycle tests.
+Both manual and tag-triggered runs validate the four app version entries and
+license. All four security jobs must pass before the
 `publish-tauri` matrix starts. Empty Rust test selections fail
 the gate. Run its native suites locally with
 `node scripts/security-regressions.mjs`, and SDK checks with
@@ -222,6 +226,32 @@ Lomi uses Apache-2.0, with the license text in [`LICENSE`](../LICENSE)
 and its SPDX identifier in `package.json` and `src-tauri/Cargo.toml`. The workflow
 requires matching license identifiers and the license file before publication.
 Both AUR recipes declare the same license.
+
+Remote services and the browser client have separate deployments. A desktop tag
+does not update them. Before tagging a release that changes Remote behavior:
+
+- Deploy compatible identity exchange and Remote API versions together. Apply
+  `auth-app/ops/remote-database-permissions.sql` after migrations, including the
+  five column UPDATE permissions needed for authenticated session renewal.
+  Run `auth-app/ops/remote-db-inspect.ts` using the owner inspection connection;
+  its read-only receipt checks both schema and required renewal permissions.
+- Build and test the canonical sibling `remote-web` repository. Run
+  `bun test tests`, `bun run build` and `bun run test:browser` with
+  `LOMI_CRYPTO_CRATE` pointing to this release's `lomi-remote-crypto` crate.
+  The browser test covers reload and concurrent tabs against real native crypto.
+  Deploy this tested client separately, then verify the deployed assets.
+- Run `pnpm test:remote:native` on macOS Apple Silicon with the isolated
+  `auth-app/test/integration/remote-live-services.ts` fixture. Give the disposable
+  API and exchange roles the same permissions as production. This exercises
+  local PTYs, observe/control, recovery, renewal, pause/resume and stopping an
+  unavailable Remote terminal without affecting the user's app data.
+- Check an authenticated production connection after deployment: workspace
+  discovery, refresh, control, renewal and Stop. Public health endpoints alone
+  do not prove these flows.
+
+Remote hosting is currently qualified only on macOS Apple Silicon. The helper's
+32-terminal limit counts all active desktop terminals, including unshared ones.
+Window Close hides Lomi and preserves Remote; explicit Quit ends its sessions.
 
 1. Update the four app version entries together and prepare optional user-facing
    notes in `releases/vX.Y.Z.md`.

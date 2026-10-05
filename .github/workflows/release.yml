@@ -35,6 +35,16 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
       - name: install pinned frontend dependencies
         run: pnpm install --frozen-lockfile
+      - name: verify the release version and license
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: |
+          release_tag="$RELEASE_TAG"
+          if [[ -z "$release_tag" ]]; then
+            release_tag="v$(node -p 'require("./package.json").version')"
+          fi
+          node scripts/check-release.mjs "$release_tag"
       - name: verify SDK archive integrity
         run: pnpm sdk:verify
       - name: verify installed SDK build safety
@@ -43,6 +53,14 @@ jobs:
       - name: check frontend and run tests
         if: runner.os == 'Linux'
         run: pnpm check && pnpm test
+      - name: test the Remote terminal helper
+        run: pnpm --filter @lomi-dev/remote-terminal-runtime test
+      - name: install the Remote UI test browser
+        if: runner.os == 'Linux'
+        run: pnpm exec playwright install --with-deps chromium
+      - name: test Remote workspace lifecycle and account guards
+        if: runner.os == 'Linux'
+        run: pnpm exec playwright test tests/ui/remote-auth.spec.ts tests/ui/remote-settings.spec.ts tests/ui/remote-workspace-status.spec.ts --workers=2
       - name: run native security regressions
         run: node scripts/security-regressions.mjs
 

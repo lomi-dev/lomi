@@ -12,6 +12,9 @@ const unixSuites = [
 export function securitySuites(platform = process.platform) {
   return [
     ["lomi", "files::tests::json_"],
+    ["lomi", "auth::"],
+    ["lomi", "remote::"],
+    ["lomi", "terminal::tests::remote_"],
     ...(platform === "win32" ? [] : unixSuites),
     ["lomi-remote-crypto", ""],
   ];
