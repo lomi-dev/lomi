@@ -375,6 +375,8 @@ async fn qualify_send(
             id: "native-fixture".into(),
             name: "Native fixture".into(),
             provider: "openai".into(),
+            base_url: None,
+            api_format: None,
             enabled: true,
             credential_revision: 0,
             secret_mode: "session".into(),

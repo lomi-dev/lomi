@@ -29,6 +29,8 @@ export function suggestedModel(
   connection?: Pick<Connection, "provider" | "models" | "testedModel">,
 ) {
   if (!connection) return "";
+  if (connection.provider === "custom")
+    return connection.models[0] || connection.testedModel || "";
   return connection.testedModel || modelOptions(connection)[0] || "";
 }
 

@@ -85,6 +85,7 @@ pub(super) fn context(
             Ok(json!({"provider":connection.provider,"model":loaded.config.model,"assistantId":input.assistant_id,"messages":result,"system":loaded.config.system,"maxOutputTokens":loaded.config.max_output_tokens}))
         })?;
     let mut payload = payload;
+    connection.configure_payload(&mut payload);
     if let Some(temperature) = loaded.config.temperature {
         if !super::backend::capability(&connection.provider, &loaded.config.model, "temperature") {
             return Err(

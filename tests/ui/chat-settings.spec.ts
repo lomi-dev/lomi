@@ -786,3 +786,210 @@ test("custom selects save conversation defaults and disable models without a con
     await page.evaluate(() => (window as any).__chatTest.connectionActions),
   ).toEqual([]);
 });
+
+for (const [format, label] of [
+  ["chat-completions", "OpenAI Chat Completions"],
+  ["responses", "OpenAI Responses"],
+  ["anthropic-messages", "Anthropic Messages"],
+]) {
+  test(`Custom API saves ${format} without a key or catalog and survives reload`, async ({
+    page,
+  }, testInfo) => {
+    await page
+      .getByRole("button", { name: "Add provider", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog");
+    await dialog
+      .getByRole("button", { name: "Custom API", exact: true })
+      .click();
+    await dialog.getByLabel("Base URL").fill("http://localhost:11434/v1");
+    await dialog.getByRole("combobox", { name: "API format" }).click();
+    await expect(page.getByRole("option")).toHaveText([
+      "OpenAI Chat Completions",
+      "OpenAI Responses",
+      "Anthropic Messages",
+    ]);
+    await page.getByRole("option", { name: label, exact: true }).click();
+    await dialog.getByLabel("Model ID", { exact: true }).fill("local/model");
+    await dialog.getByLabel("Use for new conversations").check();
+    await expect(dialog.getByLabel("API key (optional)")).not.toHaveAttribute(
+      "required",
+    );
+    await expect(
+      dialog.getByRole("button", { name: "Add provider", exact: true }),
+    ).toBeEnabled();
+    if (format === "chat-completions")
+      await page.screenshot({
+        path: testInfo.outputPath("custom-api-form.png"),
+      });
+    await dialog
+      .getByRole("button", { name: "Add provider", exact: true })
+      .click();
+    await expect(dialog).toHaveCount(0);
+    expect(
+      await page.evaluate(() => (window as any).__chatTest.modelPreviews),
+    ).toEqual([]);
+    const saved = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem("chat-preferences")!),
+    );
+    const connection = saved.connections.find(
+      (c: any) => c.provider === "custom",
+    );
+    expect(connection).toMatchObject({
+      baseUrl: "http://localhost:11434/v1",
+      apiFormat: format,
+      secretId: null,
+      models: ["local/model"],
+    });
+    expect(saved.defaults).toMatchObject({
+      connectionId: connection.id,
+      model: "local/model",
+    });
+    await page.reload();
+    await page
+      .getByRole("list", { name: "Your providers" })
+      .getByRole("button", { name: /Custom API/ })
+      .click();
+    await page.getByText("Connection tools", { exact: true }).click();
+    const detail = page.getByRole("region", {
+      name: "Custom API configuration",
+    });
+    await expect(detail).toContainText("http://localhost:11434/v1");
+    await expect(detail).toContainText(label);
+    await expect(
+      detail.getByRole("button", { name: "Test connection", exact: true }),
+    ).toBeEnabled();
+    await page.locator(".chat-models-section > summary").click();
+    await detail.getByRole("button", { name: "Refresh models" }).click();
+    await expect(
+      detail
+        .getByRole("list", { name: "Provider models" })
+        .getByText("local/model", { exact: true }),
+    ).toBeVisible();
+    await detail.getByRole("button", { name: "Edit connection" }).click();
+    await expect(dialog.getByLabel("Base URL")).toHaveValue(
+      "http://localhost:11434/v1",
+    );
+    await expect(dialog.getByLabel("Model ID", { exact: true })).toHaveValue(
+      "local/model",
+    );
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await page.goto("/");
+    await page.getByRole("button", { name: /^New tab/ }).click();
+    await page.getByRole("menuitem", { name: "Chat AI", exact: true }).click();
+    const message = page.getByRole("textbox", { name: "Message", exact: true });
+    await message.fill("Custom API without a key");
+    await expect(
+      page.getByRole("button", { name: "Send", exact: true }),
+    ).toBeEnabled();
+    await message.press("Enter");
+    await expect(page.locator(".chat-message-assistant")).toContainText(
+      "Zażółć 日本語",
+    );
+    expect(await page.evaluate(() => (window as any).__chatTest.starts)).toBe(
+      1,
+    );
+  });
+}
+
+for (const tested of [false, true]) {
+  test(`Custom API edited model becomes the suggestion${tested ? " after a successful test" : ""}`, async ({
+    page,
+  }) => {
+    await page
+      .getByRole("button", { name: "Add provider", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog");
+    await dialog
+      .getByRole("button", { name: "Custom API", exact: true })
+      .click();
+    await dialog.getByLabel("Base URL").fill("http://localhost:11434/v1");
+    await dialog.getByLabel("Model ID", { exact: true }).fill("model-a");
+    await dialog.getByLabel("Use for new conversations").uncheck();
+    await dialog
+      .getByRole("button", { name: "Add provider", exact: true })
+      .click();
+    await expect(dialog).toHaveCount(0);
+    await page.getByText("Connection tools", { exact: true }).click();
+    const detail = page.getByRole("region", {
+      name: "Custom API configuration",
+    });
+    if (tested) {
+      await detail
+        .getByRole("button", { name: "Test connection", exact: true })
+        .click();
+      await expect(detail).toContainText("Last test: completed · model-a");
+    }
+    await detail.getByRole("button", { name: "Edit connection" }).click();
+    await expect(dialog.getByLabel("Model ID", { exact: true })).toHaveValue(
+      "model-a",
+    );
+    await dialog.getByLabel("Model ID", { exact: true }).fill("model-b");
+    await dialog
+      .getByRole("button", { name: "Save changes", exact: true })
+      .click();
+    await expect(dialog).toHaveCount(0);
+    await page.reload();
+    await page
+      .getByRole("list", { name: "Your providers" })
+      .getByRole("button", { name: /Custom API/ })
+      .click();
+    await page.getByText("Connection tools", { exact: true }).click();
+    if (tested)
+      await expect(detail).toContainText("Last test: completed · model-a");
+    await detail.getByRole("button", { name: "Edit connection" }).click();
+    await expect(dialog.getByLabel("Model ID", { exact: true })).toHaveValue(
+      "model-b",
+    );
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    const saved = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem("chat-preferences")!),
+    );
+    const custom = saved.connections.find((c: any) => c.provider === "custom");
+    expect(custom.models).toEqual(["model-b", "model-a"]);
+    expect(custom.testedModel).toBe(tested ? "model-a" : null);
+    expect(custom.testStatus).toBe(tested ? "completed" : null);
+    expect(saved.defaults.connectionId).not.toBe(custom.id);
+    await page
+      .getByRole("combobox", { name: "Connection", exact: true })
+      .click();
+    await page.getByRole("option", { name: "Custom API", exact: true }).click();
+    await expect(
+      page.getByRole("combobox", { name: "Model", exact: true }).first(),
+    ).toHaveText("model-b");
+  });
+}
+
+test("Custom API validates its URL and asks to re-enter a saved key when changing destination", async ({
+  page,
+}) => {
+  await page.getByRole("button", { name: "Add provider", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Custom API", exact: true }).click();
+  await dialog
+    .getByLabel("Base URL")
+    .fill("https://user:secret@example.com/v1");
+  await dialog.getByLabel("Model ID", { exact: true }).fill("custom-model");
+  const add = dialog.getByRole("button", { name: "Add provider", exact: true });
+  await expect(add).toBeDisabled();
+  await dialog.getByLabel("Base URL").fill("https://api.example.com/v1");
+  await dialog.getByLabel("API key (optional)").fill("private-custom-key");
+  await expect(add).toBeEnabled();
+  await add.click();
+  expect(
+    await page.evaluate(() => localStorage.getItem("chat-preferences")),
+  ).not.toContain("private-custom-key");
+  await page.getByRole("button", { name: "Edit connection" }).click();
+  await expect(dialog.getByLabel("Replacement API key")).toHaveValue("");
+  await dialog.getByLabel("Base URL").fill("https://other.example.com/v1");
+  await expect(dialog.getByLabel("API key", { exact: true })).toHaveAttribute(
+    "required",
+  );
+  await dialog.getByRole("button", { name: "Save changes" }).click();
+  await expect(dialog).toBeVisible();
+  await dialog
+    .getByLabel("API key", { exact: true })
+    .fill("replacement-custom-key");
+  await dialog.getByRole("button", { name: "Save changes" }).click();
+  await expect(dialog).toHaveCount(0);
+});

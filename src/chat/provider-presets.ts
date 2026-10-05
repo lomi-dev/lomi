@@ -48,7 +48,44 @@ export const providerPresets = {
     keyURL: "https://platform.claude.com/settings/keys",
     models: ["claude-opus-5"],
   },
+  custom: {
+    name: "Custom API",
+    baseURL: "",
+    format: "Choose an API format",
+    keyURL: "",
+    models: [],
+  },
 } as const;
+
+export const customApiFormats = {
+  "chat-completions": "OpenAI Chat Completions",
+  responses: "OpenAI Responses",
+  "anthropic-messages": "Anthropic Messages",
+} as const;
+export type CustomApiFormat = keyof typeof customApiFormats;
+
+export function validCustomBaseUrl(value: string): boolean {
+  if (
+    !value ||
+    value.length > 2048 ||
+    /[\s\u0000-\u001f\u007f-\u009f\\?#]/.test(value)
+  )
+    return false;
+  try {
+    const url = new URL(value);
+    return (
+      !url.username &&
+      !url.password &&
+      (url.protocol === "https:" ||
+        (url.protocol === "http:" &&
+          (url.hostname === "localhost" ||
+            url.hostname === "[::1]" ||
+            /^127\.\d+\.\d+\.\d+$/.test(url.hostname))))
+    );
+  } catch {
+    return false;
+  }
+}
 
 export type Provider = keyof typeof providerPresets;
 export const providerIds = Object.keys(providerPresets) as Provider[];

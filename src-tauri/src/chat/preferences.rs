@@ -13,6 +13,10 @@ pub struct Connection {
     pub id: String,
     pub name: String,
     pub provider: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_format: Option<String>,
     pub enabled: bool,
     pub credential_revision: u64,
     pub secret_mode: String,
@@ -20,6 +24,45 @@ pub struct Connection {
     pub models: Vec<String>,
     pub tested_model: Option<String>,
     pub test_status: Option<String>,
+}
+impl Connection {
+    pub fn same_destination(&self, other: &Self) -> bool {
+        self.provider == other.provider
+            && self.base_url == other.base_url
+            && self.api_format == other.api_format
+    }
+
+    pub fn configure_payload(&self, payload: &mut serde_json::Value) {
+        if self.provider == "custom" {
+            payload["baseUrl"] = serde_json::json!(self.base_url);
+            payload["apiFormat"] = serde_json::json!(self.api_format);
+        }
+    }
+}
+
+fn valid_custom_base_url(value: &str) -> bool {
+    if value.is_empty()
+        || value.len() > 2048
+        || value
+            .chars()
+            .any(|c| c.is_whitespace() || c.is_control() || matches!(c, '\\' | '?' | '#'))
+    {
+        return false;
+    }
+    let Ok(url) = tauri::Url::parse(value) else {
+        return false;
+    };
+    let loopback = url.host_str().is_some_and(|host| {
+        host == "localhost"
+            || host == "[::1]"
+            || host
+                .parse::<std::net::Ipv4Addr>()
+                .is_ok_and(|ip| ip.is_loopback())
+    });
+    url.has_host()
+        && url.username().is_empty()
+        && url.password().is_none()
+        && (url.scheme() == "https" || (url.scheme() == "http" && loopback))
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -67,6 +110,7 @@ impl Preferences {
                         | "openrouter"
                         | "deepseek"
                         | "nvidia"
+                        | "custom"
                 )
                 || !matches!(connection.secret_mode.as_str(), "system" | "session")
                 || connection
@@ -82,6 +126,21 @@ impl Preferences {
                 return Err(
                     "Invalid Chat AI connection metadata. The original file was preserved.".into(),
                 );
+            }
+            if connection.provider == "custom" {
+                if !connection
+                    .base_url
+                    .as_deref()
+                    .is_some_and(valid_custom_base_url)
+                    || !matches!(
+                        connection.api_format.as_deref(),
+                        Some("chat-completions" | "responses" | "anthropic-messages")
+                    )
+                {
+                    return Err("Custom API requires a valid HTTPS base URL (HTTP is allowed on localhost) and API format.".into());
+                }
+            } else if connection.base_url.is_some() || connection.api_format.is_some() {
+                return Err("Preset providers use their fixed API endpoint.".into());
             }
         }
         if self
@@ -208,6 +267,9 @@ impl<S: Secrets> Settings<S> {
             .iter()
             .find(|c| c.id == id && c.enabled)
             .ok_or("Choose an enabled AI connection in Settings.")?;
+        if connection.provider == "custom" && connection.secret_id.is_none() {
+            return Ok(String::new());
+        }
         let secret_id = connection
             .secret_id
             .as_deref()
@@ -306,9 +368,14 @@ impl<S: Secrets> Settings<S> {
                 connection.tested_model = None;
                 connection.test_status = None;
             } else if previous.is_some_and(|c| {
-                c.secret_mode != connection.secret_mode || c.provider != connection.provider
+                c.secret_mode != connection.secret_mode || !c.same_destination(connection)
             }) {
-                return Err("Enter a new key when changing its provider or storage mode.".into());
+                if connection.secret_id.is_some() {
+                    return Err("Re-enter the API key when changing its destination, API format or storage mode.".into());
+                }
+                connection.credential_revision += 1;
+                connection.tested_model = None;
+                connection.test_status = None;
             }
         }
         for old in &self.data.connections {
@@ -413,6 +480,8 @@ mod tests {
             id: "connection".into(),
             name: "Test".into(),
             provider: "openai".into(),
+            base_url: None,
+            api_format: None,
             enabled: true,
             credential_revision: 0,
             secret_mode: "system".into(),
@@ -422,6 +491,138 @@ mod tests {
             test_status: None,
         }
     }
+    #[test]
+    fn custom_connections_round_trip_without_keys_and_reject_stale_results() {
+        for format in ["chat-completions", "responses", "anthropic-messages"] {
+            let root = tempfile::tempdir().unwrap();
+            let path = root.path().join("preferences.json");
+            let secrets = Memory::default();
+            let mut settings = Settings::open(path.clone(), root.path(), secrets.clone()).unwrap();
+            let mut desired = settings.data.clone();
+            let mut item = connection();
+            item.provider = "custom".into();
+            item.base_url = Some("http://localhost:11434/v1".into());
+            item.api_format = Some(format.into());
+            desired.connections.push(item);
+            settings.save(desired, 0, None).unwrap();
+            assert_eq!(settings.key("connection").unwrap(), "");
+            settings
+                .record_result(
+                    "connection",
+                    0,
+                    "local-model",
+                    "test-connection",
+                    &serde_json::json!({"status":"completed"}),
+                )
+                .unwrap();
+            let mut desired = settings.data.clone();
+            desired.connections[0].base_url = Some("https://inference.example/v1".into());
+            settings
+                .save(desired, settings.data.revision, None)
+                .unwrap();
+            assert_eq!(settings.data.connections[0].credential_revision, 1);
+            settings
+                .record_result(
+                    "connection",
+                    0,
+                    "stale-model",
+                    "test-connection",
+                    &serde_json::json!({"status":"completed"}),
+                )
+                .unwrap();
+            let restored = Settings::open(path, root.path(), secrets.clone()).unwrap();
+            let item = &restored.data.connections[0];
+            assert_eq!(item.api_format.as_deref(), Some(format));
+            assert_eq!(
+                item.base_url.as_deref(),
+                Some("https://inference.example/v1")
+            );
+            assert!(item.tested_model.is_none());
+            assert!(secrets.0.borrow().is_empty());
+            assert_eq!(restored.key("connection").unwrap(), "");
+            let mut payload = serde_json::json!({"provider":"custom"});
+            item.configure_payload(&mut payload);
+            assert_eq!(payload["apiFormat"], format);
+            assert_eq!(payload["baseUrl"], "https://inference.example/v1");
+        }
+    }
+
+    #[test]
+    fn custom_destination_changes_require_reentering_saved_key() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("preferences.json");
+        let secrets = Memory::default();
+        let mut settings = Settings::open(path.clone(), root.path(), secrets).unwrap();
+        let mut desired = settings.data.clone();
+        let mut item = connection();
+        item.provider = "custom".into();
+        item.base_url = Some("https://first.example/v1".into());
+        item.api_format = Some("chat-completions".into());
+        desired.connections.push(item);
+        settings
+            .save(desired, 0, Some(("connection", "private-key")))
+            .unwrap();
+        let before = fs::read(&path).unwrap();
+        for change_format in [false, true] {
+            let mut desired = settings.data.clone();
+            if change_format {
+                desired.connections[0].api_format = Some("responses".into());
+            } else {
+                desired.connections[0].base_url = Some("https://second.example/v1".into());
+            }
+            assert!(settings
+                .save(desired.clone(), settings.data.revision, None)
+                .err()
+                .unwrap()
+                .contains("Re-enter"));
+            assert_eq!(fs::read(&path).unwrap(), before);
+        }
+        let mut desired = settings.data.clone();
+        desired.connections[0].base_url = Some("https://second.example/v1".into());
+        settings
+            .save(desired, 1, Some(("connection", "replacement-key")))
+            .unwrap();
+        assert_eq!(settings.key("connection").unwrap(), "replacement-key");
+        assert_eq!(settings.data.connections[0].credential_revision, 2);
+        settings.clear_key("connection", 2).unwrap();
+        assert_eq!(settings.key("connection").unwrap(), "");
+        assert!(!fs::read_to_string(path).unwrap().contains("private-key"));
+    }
+
+    #[test]
+    fn custom_url_validation_and_preset_isolation() {
+        for url in [
+            "https://api.example/proxy/v1",
+            "http://localhost:11434/v1",
+            "http://127.0.0.1/v1",
+            "http://[::1]:1234/v1",
+        ] {
+            assert!(valid_custom_base_url(url), "{url}");
+        }
+        for url in [
+            "",
+            "http://remote.example/v1",
+            "file:///tmp/api",
+            "https://key:secret@example.com",
+            "https://example.com/?key=secret",
+            "https://example.com/#hash",
+            "https://example.com/\npath",
+        ] {
+            assert!(!valid_custom_base_url(url), "{url}");
+        }
+        let mut preferences = Preferences::default();
+        let mut item = connection();
+        item.base_url = Some("https://override.example".into());
+        preferences.connections.push(item);
+        assert!(preferences.validate().is_err());
+        preferences.connections[0].provider = "custom".into();
+        assert!(preferences.validate().is_err());
+        preferences.connections[0].api_format = Some("messages".into());
+        assert!(preferences.validate().is_err());
+        preferences.connections[0].api_format = Some("anthropic-messages".into());
+        assert!(preferences.validate().is_ok());
+    }
+
     #[test]
     fn supported_providers_round_trip_and_refresh_preserves_custom_models() {
         for provider in [

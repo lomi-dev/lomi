@@ -19,19 +19,29 @@ export async function catalog(
     });
   const timer = setTimeout(() => controller.abort(), 30_000);
   try {
+    const anthropic =
+      input.provider === "anthropic" ||
+      (input.provider === "custom" && input.apiFormat === "anthropic-messages");
     const suffix =
       input.provider === "google"
         ? "?pageSize=1000"
-        : input.provider === "anthropic"
+        : anthropic
           ? "?limit=1000"
           : "";
-    const url = `${providerPresets[input.provider].baseURL}/models${suffix}`;
-    const headers: Record<string, string> =
-      input.provider === "anthropic"
-        ? { "x-api-key": input.apiKey, "anthropic-version": "2023-06-01" }
-        : input.provider === "google"
-          ? { "x-goog-api-key": input.apiKey }
-          : { Authorization: `Bearer ${input.apiKey}` };
+    const baseUrl =
+      input.provider === "custom"
+        ? input.baseUrl!
+        : providerPresets[input.provider].baseURL;
+    const url = `${baseUrl.replace(/\/+$/, "")}/models${suffix}`;
+    const headers: Record<string, string> = anthropic
+      ? { "x-api-key": input.apiKey, "anthropic-version": "2023-06-01" }
+      : input.provider === "google"
+        ? { "x-goog-api-key": input.apiKey }
+        : { Authorization: `Bearer ${input.apiKey}` };
+    if (input.provider === "custom" && !input.apiKey) {
+      delete headers.Authorization;
+      delete headers["x-api-key"];
+    }
     const response = await fetch(url, {
       headers,
       signal: controller.signal,
@@ -71,7 +81,11 @@ export async function catalog(
           !item.architecture.output_modalities.includes("text")
         )
           return [];
-        const id = (item.id ?? item.name ?? "").replace(/^models\//, "");
+        const modelId = item.id ?? item.name ?? "";
+        const id =
+          input.provider === "google"
+            ? modelId.replace(/^models\//, "")
+            : modelId;
         return /^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,199}$/.test(id) ? [id] : [];
       })
       .slice(0, 1000)

@@ -362,7 +362,7 @@ pub async fn chat_preferences_save(
                         || !data.connections.iter().any(|next| {
                             next.id == old.id
                                 && next.enabled == old.enabled
-                                && next.provider == old.provider
+                                && next.same_destination(old)
                                 && next.secret_mode == old.secret_mode
                         })
                 })

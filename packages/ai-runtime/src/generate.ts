@@ -108,7 +108,10 @@ export async function generate(
         ? {}
         : { temperature: input.temperature }),
       providerOptions:
-        input.provider === "openai" ? { openai: { store: false } } : undefined,
+        input.provider === "openai" ||
+        (input.provider === "custom" && input.apiFormat === "responses")
+          ? { openai: { store: false } }
+          : undefined,
       maxRetries: 0,
       abortSignal: controller.signal,
       timeout: { firstChunkMs: 120_000, chunkMs: 120_000, totalMs: timeout },

@@ -208,7 +208,9 @@ export default function ChatPane({
     return () => observer.disconnect();
   }, [state.text, !!loaded]);
   const ready =
-    !!connection?.enabled && !!connection.secretId && !!config?.model;
+    !!connection?.enabled &&
+    (!!connection.secretId || connection.provider === "custom") &&
+    !!config?.model;
   const canSend =
     ready &&
     !state.storageFailed &&
@@ -640,7 +642,8 @@ export default function ChatPane({
                   onClick={() => {
                     if (
                       state.preferences?.connections.some(
-                        (c) => c.enabled && c.secretId,
+                        (c) =>
+                          c.enabled && (c.secretId || c.provider === "custom"),
                       )
                     )
                       setOptions(true);
@@ -1096,7 +1099,8 @@ function ConfigDialog({
           <p role="status">
             On the next Send or Retry, the active conversation history and its
             attachments will be sent to{" "}
-            {selected?.name ?? "the selected connection"}.
+            {selected?.name ?? "the selected connection"}
+            {selected?.baseUrl ? ` (${selected.baseUrl})` : ""}.
           </p>
         )}
         {error && <p role="alert">{error}</p>}

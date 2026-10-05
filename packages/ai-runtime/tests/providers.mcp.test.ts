@@ -298,3 +298,79 @@ for (const provider of ["openai", "anthropic", "google", "deepseek"] as const) {
     }
   });
 }
+
+for (const [apiFormat, adapter, endpoint] of [
+  ["chat-completions", "deepseek", "chat/completions"],
+  ["responses", "openai", "responses"],
+  ["anthropic-messages", "anthropic", "messages"],
+] as const) {
+  for (const apiKey of ["fixture-custom-key", ""]) {
+    test(`custom ${apiFormat} streams with ${apiKey ? "a key" : "no key"}`, async (t) => {
+      const input = generation.parse({
+        ...inputFor(adapter),
+        provider: "custom",
+        baseUrl: "http://127.0.0.1:11434/proxy/v1/",
+        apiFormat,
+        apiKey,
+      });
+      let requests = 0;
+      t.mock.method(
+        globalThis,
+        "fetch",
+        async (url: string, init: RequestInit) => {
+          requests++;
+          assert.equal(
+            String(url),
+            `http://127.0.0.1:11434/proxy/v1/${endpoint}`,
+          );
+          assert.equal(init.redirect, "error");
+          const headers = new Headers(init.headers);
+          assert.equal(
+            headers.get(
+              apiFormat === "anthropic-messages"
+                ? "x-api-key"
+                : "authorization",
+            ),
+            apiKey
+              ? apiFormat === "anthropic-messages"
+                ? apiKey
+                : `Bearer ${apiKey}`
+              : null,
+          );
+          const body = JSON.parse(String(init.body));
+          assert.equal(body.model, input.model);
+          assert.equal(body.stream, true);
+          assert.ok(body.tools.length > 0);
+          if (apiFormat === "responses") assert.equal(body.store, false);
+          if (apiFormat === "anthropic-messages")
+            assert.equal(headers.get("anthropic-version"), "2023-06-01");
+          return new Response(responseStream(adapter, input.model), {
+            headers: { "content-type": "text/event-stream" },
+          });
+        },
+      );
+      const events: Event[] = [];
+      await generate(
+        input,
+        "custom-request",
+        new AbortController(),
+        async (event) => {
+          events.push(event);
+        },
+        modelFor(input),
+      );
+      assert.equal(requests, 1);
+      assert.equal(
+        events.at(-1)?.type,
+        "completed",
+        JSON.stringify(events.at(-1)),
+      );
+      assert.ok(
+        events.some(
+          (event) =>
+            event.type === "chunk" && (event.payload as any).delta === "Done.",
+        ),
+      );
+    });
+  }
+}

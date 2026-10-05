@@ -27,6 +27,8 @@ import {
 } from "../icons";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
+  customApiFormats,
+  validCustomBaseUrl,
   providerIds,
   providerPresets,
   validModelId,
@@ -82,13 +84,22 @@ export default function ChatSettingsPage() {
     (c) => c.id === editing?.id,
   );
   const catalog = useProviderModels(
-    editing && !originalConnection ? editing.provider : undefined,
+    editing && !originalConnection && editing.provider !== "custom"
+      ? editing.provider
+      : undefined,
     key,
   );
-  const needsKey =
-    !editing?.secretId ||
-    originalConnection?.provider !== editing?.provider ||
-    originalConnection?.secretMode !== editing?.secretMode;
+  const custom = editing?.provider === "custom";
+  const destinationChanged =
+    !!originalConnection &&
+    (originalConnection.provider !== editing?.provider ||
+      originalConnection.baseUrl !== editing?.baseUrl ||
+      originalConnection.apiFormat !== editing?.apiFormat ||
+      originalConnection.secretMode !== editing?.secretMode);
+  const needsKey = custom
+    ? !!originalConnection?.secretId && destinationChanged
+    : !editing?.secretId || destinationChanged;
+  const needsCatalog = !originalConnection && !custom;
   const reload = async () =>
     setData(await api<Preferences>("chat_preferences"));
   useEffect(() => {
@@ -146,13 +157,16 @@ export default function ChatSettingsPage() {
           (connection) =>
             connection.id === data.defaults.connectionId &&
             connection.enabled &&
-            connection.secretId,
+            (connection.secretId || connection.provider === "custom"),
         ),
     );
     setEditing({
       id: newId(),
       name: "",
       provider,
+      ...(provider === "custom"
+        ? { baseUrl: "", apiFormat: "chat-completions" as const }
+        : {}),
       enabled: true,
       credentialRevision: 0,
       secretMode: "system",
@@ -253,24 +267,34 @@ export default function ChatSettingsPage() {
             ? connection.secretMode === "session"
               ? "Session only. Re-enter after restarting."
               : "Saved in the system credential store."
-            : "Add a key to use this provider."
+            : connection.provider === "custom"
+              ? "No API key. Requests are sent without authentication."
+              : "Add a key to use this provider."
         }
       >
-        <button
-          className="text-button"
-          type="button"
-          onClick={() =>
-            void openUrl(preset.keyURL).catch((e) => setError(errorMessage(e)))
-          }
-        >
-          Get API key <ExternalLink size={12} aria-hidden="true" />
-        </button>
+        {preset.keyURL && (
+          <button
+            className="text-button"
+            type="button"
+            onClick={() =>
+              void openUrl(preset.keyURL).catch((e) =>
+                setError(errorMessage(e)),
+              )
+            }
+          >
+            Get API key <ExternalLink size={12} aria-hidden="true" />
+          </button>
+        )}
         <button
           className="button"
           disabled={busy}
           onClick={(event) => openEdit(connection, event.currentTarget)}
         >
-          {connection.secretId ? "Edit key" : "Add key"}
+          {connection.provider === "custom"
+            ? "Edit connection"
+            : connection.secretId
+              ? "Edit key"
+              : "Add key"}
         </button>
       </SettingRow>
       <details className="settings-disclosure chat-models-section">
@@ -285,7 +309,11 @@ export default function ChatSettingsPage() {
             <div>
               <button
                 className="button"
-                disabled={busy || !connection?.enabled || !connection.secretId}
+                disabled={
+                  busy ||
+                  !connection?.enabled ||
+                  (!connection.secretId && connection.provider !== "custom")
+                }
                 onClick={() =>
                   connection &&
                   void run(async () => {
@@ -360,7 +388,8 @@ export default function ChatSettingsPage() {
                       disabled={
                         busy ||
                         !connection?.enabled ||
-                        !connection.secretId ||
+                        (!connection.secretId &&
+                          connection.provider !== "custom") ||
                         isDefault
                       }
                       aria-label={
@@ -410,11 +439,15 @@ export default function ChatSettingsPage() {
             <dl className="chat-provider-endpoint">
               <div>
                 <dt>Base URL</dt>
-                <dd>{preset.baseURL}</dd>
+                <dd>{connection.baseUrl ?? preset.baseURL}</dd>
               </div>
               <div>
                 <dt>API format</dt>
-                <dd>{preset.format}</dd>
+                <dd>
+                  {connection.apiFormat
+                    ? customApiFormats[connection.apiFormat]
+                    : preset.format}
+                </dd>
               </div>
             </dl>
             <ModelSelect
@@ -434,7 +467,7 @@ export default function ChatSettingsPage() {
               disabled={
                 busy ||
                 !connection.enabled ||
-                !connection.secretId ||
+                (!connection.secretId && connection.provider !== "custom") ||
                 !validModelId(
                   testModel[connection.id] ??
                     (data.defaults.connectionId === connection.id
@@ -609,7 +642,9 @@ export default function ChatSettingsPage() {
                           {!item.enabled
                             ? "Disabled"
                             : !item.secretId
-                              ? "Needs API key"
+                              ? item.provider === "custom"
+                                ? "No API key"
+                                : "Needs API key"
                               : item.secretMode === "session"
                                 ? "Session-only key"
                                 : "Key saved"}
@@ -714,9 +749,15 @@ export default function ChatSettingsPage() {
                 onSubmit={(e) => {
                   e.preventDefault();
                   if (
-                    !originalConnection &&
+                    needsCatalog &&
                     (catalog.status !== "ready" ||
                       (makeDefault && !catalog.models.includes(editingModel)))
+                  )
+                    return;
+                  if (
+                    custom &&
+                    (!validCustomBaseUrl(editing.baseUrl ?? "") ||
+                      !validModelId(editingModel.trim()))
                   )
                     return;
                   void run(async () => {
@@ -731,6 +772,18 @@ export default function ChatSettingsPage() {
                           c.id === editing.id
                             ? {
                                 ...editing,
+                                ...(custom
+                                  ? {
+                                      models: [
+                                        ...new Set([
+                                          editingModel.trim(),
+                                          ...(destinationChanged
+                                            ? []
+                                            : editing.models),
+                                        ]),
+                                      ],
+                                    }
+                                  : {}),
                                 name:
                                   editing.name.trim() ||
                                   providers[editing.provider],
@@ -741,7 +794,9 @@ export default function ChatSettingsPage() {
                           ...data.connections,
                           {
                             ...editing,
-                            models: catalog.models,
+                            models: custom
+                              ? [editingModel.trim()]
+                              : catalog.models,
                             name:
                               editing.name.trim() ||
                               providers[editing.provider],
@@ -796,26 +851,99 @@ export default function ChatSettingsPage() {
                     </button>
                   )}
                 </div>
+                {custom && (
+                  <>
+                    <label>
+                      Base URL
+                      <input
+                        autoFocus
+                        required
+                        type="url"
+                        placeholder="http://localhost:11434/v1"
+                        maxLength={2048}
+                        spellCheck={false}
+                        value={editing.baseUrl ?? ""}
+                        onChange={(e) =>
+                          setEditing({
+                            ...editing,
+                            baseUrl: e.target.value.trim(),
+                          })
+                        }
+                        disabled={busy}
+                      />
+                    </label>
+                    <p className="chat-field-help">
+                      Enter the API base URL, including any /v1 prefix. HTTPS is
+                      required except on localhost.
+                    </p>
+                    <div className="chat-select-field">
+                      <label htmlFor="chat-api-format">API format</label>
+                      <Select
+                        id="chat-api-format"
+                        value={editing.apiFormat ?? "chat-completions"}
+                        disabled={busy}
+                        onChange={(value) =>
+                          setEditing({
+                            ...editing,
+                            apiFormat: value as Connection["apiFormat"],
+                          })
+                        }
+                        options={Object.entries(customApiFormats).map(
+                          ([value, label]) => ({ value, label }),
+                        )}
+                      />
+                    </div>
+                    <label>
+                      Model ID
+                      <input
+                        required
+                        maxLength={200}
+                        spellCheck={false}
+                        placeholder="e.g. llama3.2"
+                        value={editingModel}
+                        onChange={(e) => setEditingModel(e.target.value)}
+                        disabled={busy}
+                      />
+                    </label>
+                    <p className="chat-field-help">
+                      Use the exact model ID from your server. Listing models is
+                      optional and available after saving.
+                    </p>
+                    {destinationChanged && (
+                      <p className="chat-field-help">
+                        Future messages and conversation history will go to this
+                        address. Re-enter your saved key when changing the
+                        address or format.
+                      </p>
+                    )}
+                  </>
+                )}
                 <div className="chat-key-heading">
                   <label htmlFor="chat-provider-key">
-                    {needsKey ? "API key" : "Replacement API key"}
+                    {custom && !editing.secretId
+                      ? "API key (optional)"
+                      : needsKey
+                        ? "API key"
+                        : "Replacement API key"}
                   </label>
-                  <button
-                    type="button"
-                    className="chat-text-button"
-                    onClick={() =>
-                      void openUrl(
-                        providerPresets[editing.provider].keyURL,
-                      ).catch((e) => setError(errorMessage(e)))
-                    }
-                  >
-                    Get API key <ExternalLink size={12} />
-                  </button>
+                  {!custom && (
+                    <button
+                      type="button"
+                      className="chat-text-button"
+                      onClick={() =>
+                        void openUrl(
+                          providerPresets[editing.provider].keyURL,
+                        ).catch((e) => setError(errorMessage(e)))
+                      }
+                    >
+                      Get API key <ExternalLink size={12} />
+                    </button>
+                  )}
                 </div>
                 <div className="chat-key-input">
                   <input
                     id="chat-provider-key"
-                    autoFocus
+                    autoFocus={!custom}
                     type={showKey ? "text" : "password"}
                     autoComplete="off"
                     spellCheck={false}
@@ -823,14 +951,16 @@ export default function ChatSettingsPage() {
                     value={key}
                     onChange={(e) => {
                       setKey(e.target.value);
-                      if (!originalConnection) setEditingModel("");
+                      if (needsCatalog) setEditingModel("");
                     }}
                     required={needsKey}
                     disabled={busy}
                     placeholder={
-                      needsKey
-                        ? "Paste your API key"
-                        : "Leave empty to keep your current key"
+                      custom && !editing.secretId && !needsKey
+                        ? "Leave empty if your server needs no key"
+                        : needsKey
+                          ? "Paste your API key"
+                          : "Leave empty to keep your current key"
                     }
                   />
                   <button
@@ -844,9 +974,11 @@ export default function ChatSettingsPage() {
                   </button>
                 </div>
                 <p className="chat-field-help" id="chat-provider-key-help">
-                  {needsKey
-                    ? "API usage is billed separately by your provider."
-                    : "Your saved key is never displayed here."}
+                  {custom && !editing.secretId
+                    ? "Leave empty only if your server accepts unauthenticated requests."
+                    : needsKey
+                      ? "API usage is billed separately by your provider."
+                      : "Your saved key is never displayed here."}
                 </p>
                 <label className="chat-checkbox">
                   <input
@@ -857,7 +989,7 @@ export default function ChatSettingsPage() {
                   />
                   Use for new conversations
                 </label>
-                {makeDefault && (
+                {makeDefault && !custom && (
                   <ModelSelect
                     key={editing.provider}
                     connection={editing}
@@ -868,8 +1000,7 @@ export default function ChatSettingsPage() {
                     }
                     allowCustom={!!originalConnection}
                     disabled={
-                      busy ||
-                      (!originalConnection && catalog.status !== "ready")
+                      busy || (needsCatalog && catalog.status !== "ready")
                     }
                     placeholder={
                       originalConnection || catalog.status === "ready"
@@ -971,8 +1102,10 @@ export default function ChatSettingsPage() {
                     className="button button-primary"
                     disabled={
                       busy ||
-                      (!originalConnection && catalog.status !== "ready") ||
-                      (makeDefault && !validModelId(editingModel.trim()))
+                      (needsCatalog && catalog.status !== "ready") ||
+                      ((makeDefault || custom) &&
+                        !validModelId(editingModel.trim())) ||
+                      (custom && !validCustomBaseUrl(editing.baseUrl ?? ""))
                     }
                   >
                     {busy
@@ -1099,6 +1232,8 @@ export default function ChatSettingsPage() {
             <p>
               Remove the key for “{removingKey.name}”? Its active responses will
               stop. The connection and history remain.
+              {removingKey.provider === "custom" &&
+                " Future requests will be sent without an API key."}
             </p>
             <button
               className="button button-danger"

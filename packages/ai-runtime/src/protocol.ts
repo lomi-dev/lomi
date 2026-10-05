@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { validCustomBaseUrl } from "../../../src/chat/provider-presets.ts";
 
 export const VERSION = 1;
 export const MAX_CONTEXT = 40 * 1024 * 1024;
@@ -125,8 +126,16 @@ export const generation = z
       "openrouter",
       "deepseek",
       "nvidia",
+      "custom",
     ]),
-    apiKey: z.string().min(1).max(8192),
+    apiKey: z
+      .string()
+      .max(8192)
+      .regex(/^[^\r\n\0]*$/),
+    baseUrl: z.string().refine(validCustomBaseUrl).optional(),
+    apiFormat: z
+      .enum(["chat-completions", "responses", "anthropic-messages"])
+      .optional(),
     model: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,199}$/),
     assistantId: id,
     messages: z
@@ -159,6 +168,22 @@ export const generation = z
   })
   .strict()
   .superRefine((value, context) => {
+    if (value.provider === "custom") {
+      if (!value.baseUrl || !value.apiFormat)
+        context.addIssue({
+          code: "custom",
+          message: "Custom API requires a base URL and API format.",
+        });
+    } else if (
+      !value.apiKey ||
+      value.baseUrl !== undefined ||
+      value.apiFormat !== undefined
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Preset providers require a key and their fixed endpoint.",
+      });
+    }
     if (value.operation !== "generate" && value.mcp !== undefined) {
       context.addIssue({
         code: "custom",

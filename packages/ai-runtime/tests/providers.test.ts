@@ -90,7 +90,7 @@ for (const provider of ["xai", "openrouter", "deepseek", "nvidia"] as const) {
   });
 }
 
-for (const provider of providerIds) {
+for (const provider of providerIds.filter((id) => id !== "custom")) {
   test(`${provider} fetches its catalog using the correct authentication`, async (t) => {
     const input = generation.parse({
       provider,
@@ -221,3 +221,106 @@ test("compatible provider failures are sanitized and never retried", async (t) =
     false,
   );
 });
+
+const customInput = {
+  provider: "custom",
+  apiKey: "",
+  baseUrl: "http://localhost:1234/v1",
+  apiFormat: "chat-completions",
+  model: "local/model",
+  assistantId: "assistant",
+  messages: [
+    { id: "user", role: "user", parts: [{ type: "text", text: "Hello" }] },
+  ],
+};
+
+test("custom endpoints are validated without changing preset destinations", () => {
+  for (const baseUrl of [
+    "https://inference.example/api/v1",
+    "http://localhost:1234/v1",
+    "http://127.0.0.1:11434/v1",
+    "http://[::1]:1234/v1",
+  ])
+    assert.ok(
+      generation.safeParse({ ...customInput, baseUrl }).success,
+      baseUrl,
+    );
+  for (const baseUrl of [
+    "",
+    "http://remote.example/v1",
+    "file:///tmp/api",
+    "https://key:secret@example.com",
+    "https://example.com/v1?key=secret",
+    "https://example.com/#hash",
+    "https://example.com/\npath",
+  ])
+    assert.equal(
+      generation.safeParse({ ...customInput, baseUrl }).success,
+      false,
+      baseUrl,
+    );
+  for (const override of [
+    { baseUrl: undefined },
+    { apiFormat: undefined },
+    { apiFormat: "unknown" },
+    { apiKey: "key\nheader" },
+    { provider: "openai", apiKey: "key" },
+  ])
+    assert.equal(
+      generation.safeParse({ ...customInput, ...override }).success,
+      false,
+    );
+});
+
+for (const apiFormat of [
+  "chat-completions",
+  "responses",
+  "anthropic-messages",
+] as const) {
+  test(`custom ${apiFormat} lists models with optional authentication`, async (t) => {
+    for (const apiKey of ["", "fixture-key"]) {
+      const input = generation.parse({
+        ...customInput,
+        operation: "list-models",
+        apiFormat,
+        apiKey,
+      });
+      t.mock.method(
+        globalThis,
+        "fetch",
+        async (url: string, init: RequestInit) => {
+          assert.equal(
+            String(url),
+            `http://localhost:1234/v1/models${apiFormat === "anthropic-messages" ? "?limit=1000" : ""}`,
+          );
+          const headers = new Headers(init.headers);
+          assert.equal(
+            headers.get(
+              apiFormat === "anthropic-messages"
+                ? "x-api-key"
+                : "authorization",
+            ),
+            apiKey
+              ? apiFormat === "anthropic-messages"
+                ? apiKey
+                : `Bearer ${apiKey}`
+              : null,
+          );
+          return Response.json({
+            data: [{ id: "local/model" }, { id: "models/custom-model" }],
+          });
+        },
+      );
+      const events: Event[] = [];
+      await catalog(input, "catalog", new AbortController(), async (event) => {
+        events.push(event);
+      });
+      assert.equal(events.at(-1)?.type, "completed");
+      assert.deepEqual((events[0].payload as any).models, [
+        "local/model",
+        "models/custom-model",
+      ]);
+      t.mock.restoreAll();
+    }
+  });
+}

@@ -277,8 +277,10 @@ fn now() -> i64 {
 }
 
 fn new_id() -> Result<String, String> {
-    lomi_control_core::broker::new_id()
-        .map_err(|_| "Cannot create a secure router identifier.".into())
+    let mut bytes = [0u8; 16];
+    ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), &mut bytes)
+        .map_err(|_| "Cannot create a secure router identifier.")?;
+    Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
 fn profile_writer_busy(state: &CliRouterService, id: &str) -> Result<bool, String> {
