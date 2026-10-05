@@ -114,14 +114,17 @@ or acronym.
   failed saves retain RAM and block close, update and restart until resolved.
 - `packages/ai-runtime/` bundles pinned AI SDK 7 and explicit OpenAI, Anthropic,
   Google and OpenAI-compatible adapters. xAI, OpenRouter, DeepSeek and NVIDIA
-  Build use fixed provider presets, never arbitrary webview-supplied endpoints.
+  Build use fixed provider presets. Custom API supports Chat Completions,
+  Responses and Anthropic Messages at a Settings-saved HTTPS base URL
+  (HTTP is allowed on loopback). Generation resolves endpoints from native
+  preferences; changing a destination requires re-entering any saved key.
   Build preparation stages verified Node 24 archives;
   generation uses only the shipped binary and bundle, no shell or system Node.
   Keys travel only from native storage to this private process. Disable SDK
   retries and raw warnings/errors. Chat tools use the shared `lomi-mcp` catalog
   and native authenticated connection; preserve Agent control pairing, grants,
   cancellation and revocation. Never execute commands in the AI process or
-  accept webview-supplied tool catalogs, endpoints or credentials.
+  accept webview-supplied tool catalogs, endpoints or credentials during generation.
   Settings alone changes connections/keys or runs paid tests. Browser child
   views remain excluded by the global trusted-app caller check.
 - Chat credentials use keyring 3.6.3 or explicitly chosen session-only memory.

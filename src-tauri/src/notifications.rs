@@ -152,10 +152,13 @@ fn read(path: &Path) -> Result<Snapshot, String> {
                 .filter(|revision| *revision <= MAX_INTEGER)
                 .ok_or("Notification revision limit reached.")?;
             let parent = path.parent().ok_or("Invalid notification inbox path.")?;
+            let mut bytes_id = [0u8; 16];
+            ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), &mut bytes_id)
+                .map_err(|_| "Cannot create a notification backup identifier.".to_string())?;
+            let backup_id: String = bytes_id.iter().map(|byte| format!("{byte:02x}")).collect();
             let backup = parent.join(format!(
                 "notifications-before-cli-removal-{}.json",
-                lomi_control_core::broker::new_id()
-                    .map_err(|_| "Cannot create a notification backup identifier.".to_string())?
+                backup_id
             ));
             let mut options = fs::OpenOptions::new();
             options.write(true).create_new(true);
@@ -401,6 +404,16 @@ mod tests {
             })
             .collect();
         assert_eq!(backups.len(), 1);
+        let filename = backups[0].file_name().unwrap().to_str().unwrap();
+        let backup_id = filename
+            .strip_prefix("notifications-before-cli-removal-")
+            .unwrap()
+            .strip_suffix(".json")
+            .unwrap();
+        assert_eq!(backup_id.len(), 32);
+        assert!(backup_id
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)));
         assert_eq!(fs::read_to_string(&backups[0]).unwrap(), source);
         assert_eq!(read(&path).unwrap().revision, 3);
         let saved: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();

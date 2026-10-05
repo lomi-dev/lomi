@@ -1046,6 +1046,8 @@ impl Backend {
         let (id, request) = self.begin_auxiliary(connection_id)?;
         drop(services);
         let payload = json!({"operation":operation,"provider":connection.provider,"apiKey":key,"model":if operation=="list-models"{"catalog"}else{model},"assistantId":"connection-test","messages":[{"id":"test-user","role":"user","parts":[{"type":"text","text":"Reply with OK."}]}],"maxOutputTokens":32});
+        let mut payload = payload;
+        connection.configure_payload(&mut payload);
         let result = self.run_auxiliary(&id, request, payload)?;
         self.services
             .lock()
@@ -1231,6 +1233,8 @@ mod tests {
             id: "fixture".into(),
             name: "Fixture".into(),
             provider: "openai".into(),
+            base_url: None,
+            api_format: None,
             enabled: true,
             credential_revision: 0,
             secret_mode: "session".into(),
@@ -1593,6 +1597,63 @@ mod tests {
         assert!(backend.process.lock().unwrap().is_none());
         assert!(backend.requests.lock().unwrap().is_empty());
     }
+    #[test]
+    fn custom_saved_endpoint_reaches_generation_and_auxiliary_without_a_key() {
+        for format in ["chat-completions", "responses", "anthropic-messages"] {
+            let (_root, backend) = setup();
+            {
+                let mut services = backend.services.lock().unwrap();
+                let settings = services.settings.as_mut().unwrap();
+                settings
+                    .clear_key("fixture", settings.data.revision)
+                    .unwrap();
+                let mut desired = settings.data.clone();
+                let connection = &mut desired.connections[0];
+                connection.provider = "custom".into();
+                connection.base_url = Some("http://localhost:11434/v1".into());
+                connection.api_format = Some(format.into());
+                settings
+                    .save(desired, settings.data.revision, None)
+                    .unwrap();
+            }
+            let mut input = input(&backend, "custom-endpoint");
+            {
+                let mut services = backend.services.lock().unwrap();
+                let store = services.store.as_mut().unwrap();
+                let mut config = store.conversation("custom-endpoint").unwrap().config;
+                config.model = "fixture-short".into();
+                input.expected_revision = store
+                    .configure("custom-endpoint", &config, 0)
+                    .unwrap()
+                    .revision;
+            }
+            backend
+                .start_checked(
+                    input.clone(),
+                    channel(),
+                    |_, _, connection, context| {
+                        assert_eq!(connection.provider, "custom");
+                        assert_eq!(context.payload["baseUrl"], "http://localhost:11434/v1");
+                        assert_eq!(context.payload["apiFormat"], format);
+                        assert!(context.payload.get("apiKey").is_none());
+                        Ok(())
+                    },
+                    || Ok(()),
+                )
+                .unwrap();
+            let request = backend.requests.lock().unwrap()[&input.request_id].clone();
+            finished(&request).unwrap();
+            let catalog = backend.auxiliary("fixture", "", "list-models").unwrap();
+            assert_eq!(catalog["status"], "completed");
+            assert_eq!(catalog["models"], json!(["fixture-catalog-model"]));
+            let test = backend
+                .auxiliary("fixture", "fixture-short", "test-connection")
+                .unwrap();
+            assert_eq!(test["status"], "completed");
+            backend.stop();
+        }
+    }
+
     #[test]
     fn saved_model_refresh_still_records_catalog_results() {
         let (_root, backend) = setup();

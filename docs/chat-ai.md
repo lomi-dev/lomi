@@ -34,6 +34,27 @@ references: [xAI](https://docs.x.ai/developers/rest-api-reference/inference/chat
 [DeepSeek](https://api-docs.deepseek.com/), and
 [NVIDIA](https://docs.api.nvidia.com/nim/re/reference/llm-apis).
 
+**Settings → Chat AI → Add provider → Custom API** connects to your own server.
+Choose **OpenAI Chat Completions**, **OpenAI Responses**, or **Anthropic Messages**,
+then enter the base URL and exact model ID. Include the server's path prefix
+(for example, `http://localhost:11434/v1` for Ollama or
+`http://localhost:1234/v1` for LM Studio); Lomi appends `/chat/completions`,
+`/responses`, or `/messages`. Remote URLs require HTTPS; localhost also supports
+HTTP. URLs must not contain credentials, query parameters or fragments.
+
+The API key is optional for servers that accept unauthenticated requests. Entered
+keys use the same system credential store or session-only storage as presets.
+Saving does not contact the custom server. Model catalogs are optional: enter a
+model manually, or use **Refresh models** after saving to request `/models`.
+**Use for new conversations** saves the connection and model as defaults.
+Use **Edit connection** to change the URL, format, model or key. Changing a saved
+destination or format stops active replies and requires re-entering its saved
+key. Removing the key makes future requests unauthenticated. Existing history
+is sent to the configured destination on the next Send or Retry.
+
+Custom API removes the preset-provider restriction. Server quotas, model
+capabilities, local context limits and Agent control permissions still apply.
+
 Choose the model in the composer to switch models or connections. **Custom model…**
 accepts a provider model ID. Conversation instructions and generation limits are
 under **Advanced options**. The composer grows with its draft and adapts to panel

@@ -13,6 +13,8 @@ src-tauri/resources/remote-terminal/
 .vscode/
 playwright-report/
 test-results/
+installer-results/
+src-tauri/qualification.conf.json
 
 tests/fixtures/*/package/
 tests/fixtures/*/package.lomi-owned.json

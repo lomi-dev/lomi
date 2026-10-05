@@ -1,5 +1,5 @@
 import type { UIMessage } from "ai";
-import type { Provider } from "./provider-presets";
+import type { Provider, CustomApiFormat } from "./provider-presets";
 export interface Origin {
   projectId: string;
   projectName: string;
@@ -66,6 +66,8 @@ export interface Connection {
   id: string;
   name: string;
   provider: Provider;
+  baseUrl?: string;
+  apiFormat?: CustomApiFormat;
   enabled: boolean;
   credentialRevision: number;
   secretMode: "system" | "session";

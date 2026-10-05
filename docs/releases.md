@@ -8,6 +8,45 @@ did not exist when this workflow was prepared on 2026-09-11.
 
 ## Release workflow
 
+### Installer qualification without publishing
+
+`.github/workflows/installers.yml` builds production-feature packages on Linux
+x64, Windows x64, macOS ARM64 and macOS Intel. Its temporary configuration
+disables updater artifacts and uses ad-hoc macOS signing. It does not read
+release signing secrets or publish releases. Test installers and reports are
+retained as Actions artifacts for seven days.
+After a qualification-script correction, manual dispatch can reuse those exact
+packages via `packages_run_id`, preserving the package commit in the new reports.
+
+The qualification installs and removes DEB, NSIS and MSI packages, and copies
+the app from a verified DMG. Each installed app must show a native window.
+RPM is additionally installed, verified, started through its native helper and
+removed in Fedora 44. Its extracted runtime is checked on Ubuntu; libarchive
+reads the payload after RPM digest verification because Ubuntu 22.04's rpm2cpio
+requires a size tag omitted by Tauri's RPM writer. AppImage runs its native
+helper through the extract-and-run launcher and its extracted runtime is checked.
+This does not test the AppImage FUSE launcher or the Fedora GUI. Every payload must
+include the verified AI and remote-terminal bundles, notices and pinned Node.
+AppImage's Node has a packaging-added ELF RUNPATH. Qualification checks its
+unchanged code/data sections against the checksum-verified Node from the RPM,
+and checks the added path, string table and unchanged library dependencies;
+relocated symbol/linking metadata is excluded from byte comparison.
+The packaged Node runs without system PATH and streams all three Custom API
+formats through a loopback fixture, with and without a test key. No paid API is
+used. The scripts never enable native probe features in production builds.
+
+These checks do not qualify Developer ID, notarization, Gatekeeper,
+Authenticode, updater replacement or installation over an existing user profile.
+Run the separate signed-release qualification before publishing.
+
+The 2026-10-05 [qualification run](https://github.com/Szqub/lomi/actions/runs/37247364014)
+passed on all four native runners, including Fedora 44 RPM installation in a
+container. It rechecked the seven package payloads built from `592d3fe` using
+qualification scripts at `006678b`, with 42 successful Custom API streams in
+total. The scope and signing limitations above apply to these test artifacts.
+
+### Publishing
+
 `.github/workflows/release.yml` is the only release workflow. It is
 named **publish** and publishes when a version tag matching `v*` is pushed.
 Branch pushes and pull requests do not start a workflow. A manual dispatch runs
