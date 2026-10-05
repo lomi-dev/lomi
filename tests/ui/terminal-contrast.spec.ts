@@ -132,7 +132,7 @@ for (const renderer of ["WebGL", "DOM"] as const) {
       .poll(() =>
         page.evaluate(() =>
           (window as any).__nativeTest.calls
-            .filter((call: any) => call.command === "write_terminal")
+            .filter((call: any) => call.command === "write_terminal_response")
             .map((call: any) => call.args.data)
             .join(""),
         ),

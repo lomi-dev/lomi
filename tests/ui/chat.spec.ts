@@ -117,7 +117,7 @@ test("chat docks into terminal layout, guards failed flush, supports history and
   });
   await page.getByRole("button", { name: "Close chat panel" }).click();
   await expect(
-    page.getByRole("dialog", { name: "Conversation could not be saved" }),
+    page.getByRole("dialog", { name: "Views could not be closed" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Keep open" }).click();
   await expect(input).toHaveValue("Keep this draft");
@@ -396,7 +396,9 @@ test("declining the editor close guard leaves the chat request and PTYs running"
   await page.getByRole("button", { name: "README.md", exact: true }).dblclick();
   await page.locator(".cm-content").focus();
   await page.keyboard.insertText("Unsaved editor change");
-  await page.getByRole("button", { name: "Close window", exact: true }).click();
+  await page.evaluate(() =>
+    (window as any).__TAURI_INTERNALS__.invoke("request_quit"),
+  );
   await page.getByRole("button", { name: "Quit anyway", exact: true }).click();
   const dialog = page.getByRole("dialog", {
     name: "Save changes before closing?",

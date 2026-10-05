@@ -2,7 +2,12 @@ import { expect, test } from "@playwright/test";
 import { addWorkspace, newSession } from "../../src/model";
 import { mockDesktop } from "./desktop";
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page }, testInfo) => {
+  if (
+    testInfo.title ===
+    "background refresh reads known repositories without repeating discovery"
+  )
+    await page.clock.install();
   let session = addWorkspace(newSession(), "/other", "local:bash", "Other");
   session = addWorkspace(session, "/project", "local:bash", "Project");
   session.sidebar = "workspaces";
@@ -186,25 +191,31 @@ test("scan failures preserve repositories and drafts, show errors, and recover",
 test("background refresh reads known repositories without repeating discovery", async ({
   page,
 }) => {
-  await expect
-    .poll(
+  const discoveries = () =>
+    page.evaluate(
       () =>
-        page.evaluate(() =>
-          (window as any).__sourceState.calls.some(
-            (call: any) =>
-              call.command === "git_repositories" &&
-              call.args.knownRoots?.length === 2,
-          ),
+        (window as any).__sourceState.calls.filter(
+          (call: any) =>
+            call.command === "git_repositories" &&
+            call.args.root === "/project" &&
+            !call.args.knownRoots,
+        ).length,
+    );
+  const initialDiscoveries = await discoveries();
+  expect(initialDiscoveries).toBe(1);
+  await page.clock.fastForward(4000);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (window as any).__sourceState.calls.some(
+          (call: any) =>
+            call.command === "git_repositories" &&
+            call.args.root === "/project" &&
+            JSON.stringify(call.args.knownRoots) ===
+              JSON.stringify(["/project/first", "/project/second"]),
         ),
-      { timeout: 6500 },
+      ),
     )
     .toBe(true);
-  const scans = await page.evaluate(
-    () =>
-      (window as any).__sourceState.calls.filter(
-        (call: any) =>
-          call.command === "git_repositories" && !call.args.knownRoots,
-      ).length,
-  );
-  expect(scans).toBe(1);
+  expect(await discoveries()).toBe(initialDiscoveries);
 });

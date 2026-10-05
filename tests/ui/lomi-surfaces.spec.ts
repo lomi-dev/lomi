@@ -36,7 +36,9 @@ for (const mode of ["dark", "light"] as const) {
     await page.screenshot({
       path: testInfo.outputPath(`terminal-${mode}.png`),
     });
-    await page.getByRole("button", { name: "Close window" }).click();
+    await page.evaluate(() =>
+      (window as any).__TAURI_INTERNALS__.invoke("request_quit"),
+    );
     const dialog = page.getByRole("dialog", { name: "Quit Lomi?" });
     await expect(
       dialog.getByRole("button", { name: "Cancel", exact: true }),

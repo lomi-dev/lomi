@@ -312,10 +312,10 @@ test("an unsupported saved session is preserved until recovery is chosen", async
         () => JSON.parse(localStorage.getItem("test-session")!).version,
       ),
     )
-    .toBe(3);
+    .toBe(4);
 });
 
-test("closing flushes the latest layout and a failed save keeps the window open", async ({
+test("quitting flushes the latest layout and a failed save keeps the window open", async ({
   page,
 }) => {
   await mockDesktop(page);
@@ -326,7 +326,9 @@ test("closing flushes the latest layout and a failed save keeps the window open"
   await page.evaluate(() => {
     (window as any).__nativeTest.failSave = true;
   });
-  await page.getByRole("button", { name: "Close window", exact: true }).click();
+  await page.evaluate(() =>
+    (window as any).__TAURI_INTERNALS__.invoke("request_quit"),
+  );
   // A pending autosave can report the same storage error after the close flush.
   await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toContainText(
     "Disk is full",
@@ -341,7 +343,9 @@ test("closing flushes the latest layout and a failed save keeps the window open"
   await page.evaluate(() => {
     (window as any).__nativeTest.failSave = false;
   });
-  await page.getByRole("button", { name: "Close window", exact: true }).click();
+  await page.evaluate(() =>
+    (window as any).__TAURI_INTERNALS__.invoke("request_quit"),
+  );
   await expect
     .poll(() =>
       page.evaluate(() =>

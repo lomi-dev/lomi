@@ -324,7 +324,7 @@ test("macOS panel shortcuts preserve PTYs and leave Control keys available to th
   await expect(page.locator(".xterm-screen")).toBeVisible();
 });
 
-test("macOS native close requests retain dirty editors on cancellation and save failure", async ({
+test("macOS native Quit requests retain dirty editors on cancellation and save failure", async ({
   page,
 }) => {
   await mockDesktop(page, true, undefined, undefined, {}, "macos");
@@ -333,20 +333,48 @@ test("macOS native close requests retain dirty editors on cancellation and save 
   await page.locator(".cm-content").focus();
   await page.keyboard.press("Meta+a");
   await page.keyboard.insertText("Unsaved on macOS — Zażółć 🦀");
-  const requestClose = () =>
+  await page.evaluate(() => {
+    void (window as any).__nativeTest.emitEvent("tauri://close-requested");
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__nativeTest.calls.filter(
+            (call: any) => call.command === "hide_main_window",
+          ).length,
+      ),
+    )
+    .toBe(1);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.locator(".cm-content")).toContainText(
+    "Unsaved on macOS — Zażółć 🦀",
+  );
+  expect(
+    await page.evaluate(() =>
+      (window as any).__nativeTest.calls.filter((call: any) =>
+        [
+          "save_editor_file",
+          "close_terminal",
+          "plugin:window|destroy",
+        ].includes(call.command),
+      ),
+    ),
+  ).toHaveLength(0);
+  const requestQuit = () =>
     page.evaluate(() => {
-      void (window as any).__nativeTest.emitEvent("tauri://close-requested");
+      void (window as any).__nativeTest.emitEvent("lomi-quit-requested");
     });
   const dialog = page.getByRole("dialog", {
     name: "Save changes before closing?",
   });
-  await requestClose();
+  await requestQuit();
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await page.evaluate(() => {
     (window as any).__nativeTest.failFileSave = true;
   });
-  await requestClose();
+  await requestQuit();
   await dialog
     .getByRole("button", { name: "Save changes", exact: true })
     .click();

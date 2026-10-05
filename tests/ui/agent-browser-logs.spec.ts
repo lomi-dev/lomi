@@ -15,6 +15,17 @@ test("page-world Promise reports retain primitive reasons and disclose engine tr
     }),
   );
   await page.goto("http://127.0.0.1:1421/frames");
+  await page.evaluate(() => {
+    (window as any).__observedRejections = [];
+    addEventListener("unhandledrejection", (event) => {
+      (window as any).__observedRejections.push({
+        message:
+          typeof event.reason === "string" ? event.reason : "[object omitted]",
+        kind: "promise_rejection",
+        eventTrusted: event.isTrusted,
+      });
+    });
+  });
   await page.locator("#rejections").click();
   await page.evaluate(() =>
     dispatchEvent(
@@ -24,39 +35,44 @@ test("page-world Promise reports retain primitive reasons and disclose engine tr
       }),
     ),
   );
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          JSON.parse(
-            (window as any).__lomiAgentPageLogsV1(
-              JSON.stringify({
-                logKind: "promise_rejection",
-                after: 0,
-                limit: 64,
-                origin: location.origin,
-                url: location.href,
-                deadlineEpochMs: Date.now() + 3000,
-              }),
-            ),
-          ).entries,
+  const entries = () =>
+    page.evaluate(
+      () =>
+        JSON.parse(
+          (window as any).__lomiAgentPageLogsV1(
+            JSON.stringify({
+              logKind: "promise_rejection",
+              after: 0,
+              limit: 64,
+              origin: location.origin,
+              url: location.href,
+              deadlineEpochMs: Date.now() + 3000,
+            }),
+          ),
+        ).entries,
+    );
+  await expect.poll(entries).toHaveLength(3);
+  const reports = (await entries())
+    .map(({ message, kind, eventTrusted }: any) => ({
+      message,
+      kind,
+      eventTrusted,
+    }))
+    .sort((a: any, b: any) => a.message.localeCompare(b.message));
+  expect(reports.map((entry: any) => entry.message)).toEqual([
+    "[object omitted]",
+    "native-rejection",
+    "synthetic-rejection",
+  ]);
+  expect(reports).toEqual(
+    await page.evaluate(() =>
+      (window as any).__observedRejections.sort((a: any, b: any) =>
+        a.message.localeCompare(b.message),
       ),
-    )
-    .toMatchObject([
-      {
-        message: "native-rejection",
-        kind: "promise_rejection",
-        eventTrusted: false,
-      },
-      {
-        message: "[object omitted]",
-        kind: "promise_rejection",
-        eventTrusted: false,
-      },
-      {
-        message: "synthetic-rejection",
-        kind: "promise_rejection",
-        eventTrusted: false,
-      },
-    ]);
+    ),
+  );
+  expect(
+    reports.find((entry: any) => entry.message === "synthetic-rejection")
+      .eventTrusted,
+  ).toBe(false);
 });

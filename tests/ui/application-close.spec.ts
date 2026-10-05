@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mockDesktop } from "./desktop";
+import { buffer, mockDesktop } from "./desktop";
 import { mockChats } from "./chat-mock";
 
 async function prepare(page: Page) {
@@ -50,12 +50,18 @@ test("a pending autosave cannot run after the final close save and resumes after
   await page.evaluate(() => {
     const mock = (window as any).__nativeTest;
     mock.calls.length = 0;
+    mock.androidExitHold = true;
     void mock.emitEvent("lomi-quit-requested");
   });
   const progress = page.getByRole("dialog", { name: "Preparing to close" });
   await expect(progress).toBeVisible();
   await expect.poll(() => actions(page)).toContain("finish");
   await page.keyboard.press("Escape");
+  await page.evaluate(() => {
+    const mock = (window as any).__nativeTest;
+    mock.androidExitHold = false;
+    mock.finishAndroidExit();
+  });
   await expect(progress).toHaveCount(0);
   const order = await actions(page);
   const duringShutdown = order.slice(0, order.indexOf("resume"));
@@ -287,10 +293,20 @@ test("a finished AI response does not ask for quit confirmation", async ({
   expect(await page.evaluate(() => (window as any).__chatTest.stops)).toBe(0);
 });
 
-test("closing the workspace hides its window and retains terminal runtimes", async ({
+test("closing the workspace hides its window and retains busy terminal runtimes", async ({
   page,
 }) => {
   await prepare(page);
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__nativeTest.sessions.size))
+    .toBe(1);
+  const paneId = (await page
+    .locator("[data-pane-id]")
+    .getAttribute("data-pane-id"))!;
+  await page.evaluate(() => {
+    const native = (window as any).__nativeTest;
+    native.busyTerminals = [...native.sessions.keys()];
+  });
   await page.getByRole("button", { name: "Close window" }).click();
   await expect
     .poll(() =>
@@ -303,6 +319,20 @@ test("closing the workspace hides its window and retains terminal runtimes", asy
     .toBe(true);
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.locator(".xterm-screen")).toBeVisible();
+  await page.evaluate(() => {
+    const native = (window as any).__nativeTest;
+    native.emit(native.busyTerminals[0], "BACKGROUND WORK CONTINUES\r\n");
+  });
+  await expect
+    .poll(() => buffer(page, paneId))
+    .toContain("BACKGROUND WORK CONTINUES");
+  expect(
+    await page.evaluate(() =>
+      (window as any).__nativeTest.calls.filter((call: any) =>
+        ["busy_terminals", "close_terminal"].includes(call.command),
+      ),
+    ),
+  ).toHaveLength(0);
   const calls = await actions(page);
   expect(calls).not.toContain("plugin:window|destroy");
   expect(calls).not.toContain("agent-control:freeze");

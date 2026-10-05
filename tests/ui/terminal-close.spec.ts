@@ -25,7 +25,7 @@ async function markBusy(page: Page, index = 0) {
   }, index);
 }
 
-for (const target of ["panel", "tab", "window"]) {
+for (const target of ["panel", "tab", "application"]) {
   test(`closing a busy ${target} cancels with Escape and confirms with Enter`, async ({
     page,
   }, testInfo) => {
@@ -43,8 +43,10 @@ for (const target of ["panel", "tab", "window"]) {
     const pane = page.locator(`[data-pane-id="${paneId}"]`);
     const sessionId = await markBusy(page, target === "panel" ? 1 : 0);
     const close = async () => {
-      if (target === "window")
-        await page.getByRole("button", { name: "Close window" }).click();
+      if (target === "application")
+        await page.evaluate(() =>
+          (window as any).__TAURI_INTERNALS__.invoke("request_quit"),
+        );
       else {
         await pane.locator(".xterm-helper-textarea").focus();
         await page.keyboard.press(
@@ -54,12 +56,13 @@ for (const target of ["panel", "tab", "window"]) {
     };
     await close();
     const dialog = page.getByRole("dialog", {
-      name: target === "window" ? "Quit Lomi?" : "Close running processes?",
+      name:
+        target === "application" ? "Quit Lomi?" : "Close running processes?",
     });
     await expect(dialog).toBeVisible();
     await expect(
       dialog.getByRole("button", {
-        name: target === "window" ? "Cancel" : "Close anyway",
+        name: target === "application" ? "Cancel" : "Close anyway",
         exact: true,
       }),
     ).toBeFocused();
@@ -78,11 +81,11 @@ for (const target of ["panel", "tab", "window"]) {
     await expect(pane).toBeVisible();
     expect(await calls(page, "close_terminal")).toHaveLength(0);
     await close();
-    if (target === "window")
+    if (target === "application")
       await dialog.getByRole("button", { name: "Quit anyway" }).focus();
     await page.keyboard.press("Enter");
     expect(await calls(page, "write_terminal")).toHaveLength(0);
-    if (target === "window") {
+    if (target === "application") {
       await expect
         .poll(async () => (await calls(page, "plugin:window|destroy")).length)
         .toBe(1);
@@ -100,7 +103,7 @@ for (const target of ["panel", "tab", "window"]) {
   });
 }
 
-test("idle panes close without asking while a hidden busy terminal protects the window", async ({
+test("idle panes close without asking while a hidden busy terminal guards quitting", async ({
   page,
 }) => {
   await mockDesktop(page);
@@ -118,14 +121,16 @@ test("idle panes close without asking while a hidden busy terminal protects the 
   expect((await calls(page, "close_terminal"))[0].args.id).not.toBe(busy);
   await page.keyboard.press("Control+Shift+t");
   await expect(page.getByRole("tab")).toHaveCount(2);
-  await page.getByRole("button", { name: "Close window" }).click();
+  await page.evaluate(() =>
+    (window as any).__TAURI_INTERNALS__.invoke("request_quit"),
+  );
   const dialog = page.getByRole("dialog", { name: "Quit Lomi?" });
   await expect(dialog).toContainText("This terminal has running processes");
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   expect(await calls(page, "plugin:window|destroy")).toHaveLength(0);
 });
 
-test("process inspection failures and repeated close requests cannot silently close the window", async ({
+test("process inspection failures and repeated Quit requests cannot silently exit", async ({
   page,
 }) => {
   await mockDesktop(page);
@@ -135,8 +140,8 @@ test("process inspection failures and repeated close requests cannot silently cl
     const native = (window as any).__nativeTest;
     native.terminalProcessError = "Process inspection failed";
     native.terminalProcessDelay = 100;
-    void native.emitEvent("tauri://close-requested");
-    void native.emitEvent("tauri://close-requested");
+    void native.emitEvent("lomi-quit-requested");
+    void native.emitEvent("lomi-quit-requested");
   });
   const dialog = page.getByRole("dialog", { name: "Quit Lomi?" });
   await expect(dialog).toContainText("Process inspection failed");
@@ -146,7 +151,9 @@ test("process inspection failures and repeated close requests cannot silently cl
   await page.evaluate(() => {
     (window as any).__nativeTest.terminalProcessError = "";
   });
-  await page.getByRole("button", { name: "Close window" }).click();
+  await page.evaluate(() =>
+    (window as any).__TAURI_INTERNALS__.invoke("request_quit"),
+  );
   await expect
     .poll(async () => (await calls(page, "plugin:window|destroy")).length)
     .toBe(1);
@@ -165,7 +172,9 @@ test("confirming terminal closure still protects dirty editors and failed saves"
   await page.evaluate(() => {
     (window as any).__nativeTest.failFileSave = true;
   });
-  await page.getByRole("button", { name: "Close window" }).click();
+  await page.evaluate(() =>
+    (window as any).__TAURI_INTERNALS__.invoke("request_quit"),
+  );
   await expect(page.getByRole("dialog", { name: "Quit Lomi?" })).toBeVisible();
   await page.getByRole("button", { name: "Quit anyway" }).click();
   const editor = page.getByRole("dialog", {

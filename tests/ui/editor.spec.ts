@@ -674,15 +674,15 @@ for (const resolution of ["Save changes", "Discard changes"]) {
   });
 }
 
-test("closing the native window checks modified files in inactive tabs", async ({
-  page,
-}) => {
+test("quitting checks modified files in inactive tabs", async ({ page }) => {
   await mockDesktop(page);
   await page.goto("/");
   await openReadme(page);
   await replaceText(page, "save on exit");
   await page.getByRole("tab", { name: "Terminal", exact: true }).click();
-  await page.getByRole("button", { name: "Close window", exact: true }).click();
+  await page.evaluate(() =>
+    (window as any).__TAURI_INTERNALS__.invoke("request_quit"),
+  );
   const dialog = page.getByRole("dialog", {
     name: "Save changes before closing?",
   });
@@ -695,7 +695,9 @@ test("closing the native window checks modified files in inactive tabs", async (
       ),
     ),
   ).toBe(false);
-  await page.getByRole("button", { name: "Close window", exact: true }).click();
+  await page.evaluate(() =>
+    (window as any).__TAURI_INTERNALS__.invoke("request_quit"),
+  );
   await dialog
     .getByRole("button", { name: "Save changes", exact: true })
     .click();

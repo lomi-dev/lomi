@@ -207,6 +207,9 @@ export async function mockChats(page: Page) {
               open: part.state === "streaming",
             };
         });
+        request.openTextIds = Object.entries(blocks)
+          .filter(([, block]: any) => block.type === "text" && block.open)
+          .map(([id]) => id);
         args.channel.onmessage({
           type: "snapshot",
           epoch: request.epoch,
@@ -416,7 +419,11 @@ export async function mockChats(page: Page) {
               type: "chunk",
               epoch: request.epoch,
               sequence: ++request.sequence,
-              chunk: { type: "text-delta", id: "text", delta },
+              chunk: {
+                type: "text-delta",
+                id: request.openTextIds?.[0] ?? "text",
+                delta,
+              },
             });
             if (
               ++count === desktop.__chatTest.chunks &&
