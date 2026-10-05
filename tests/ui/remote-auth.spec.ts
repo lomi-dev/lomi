@@ -267,3 +267,53 @@ test("Remote navigation and browser revocation follow login and logout events", 
   ).toBeVisible();
   expect(await remoteMutationCalls(page)).toEqual([]);
 });
+
+test("unqualified hosts block new sharing while retained consent can be stopped", async ({
+  page,
+}, testInfo) => {
+  const { currentId, hiddenId } = await mockWorkspaces(page, true);
+  await mockRemoteAccount(page);
+  await page.addInitScript(() => {
+    const desktop = window as any;
+    Object.assign(desktop.__nativeTest.remoteState, {
+      qualified: false,
+      online: false,
+    });
+    desktop.__remoteInvoke = async (command: string, args: any) => {
+      if (command === "remote_share_workspace")
+        desktop.__nativeTest.remoteState.workspaces.find(
+          (workspace: any) => workspace.id === args.workspaceId,
+        ).shared = args.shared;
+      return structuredClone(desktop.__nativeTest.remoteState);
+    };
+  });
+  await page.goto("/");
+  await page
+    .locator(`[data-workspace-id="${hiddenId}"] .workspace-list-item`)
+    .click({ button: "right" });
+  const share = page.getByRole("menuitem", { name: "Share remotely" });
+  await expect(share).toBeDisabled();
+  await share.click({ force: true });
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+  await expect(page.getByText(/Mac with Apple silicon/)).toBeVisible();
+  expect(await remoteMutationCalls(page)).toEqual([]);
+  await page.getByRole("menuitem", { name: "Rename workspace" }).focus();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await page
+    .locator(`[data-workspace-id="${currentId}"] .workspace-list-item`)
+    .click({ button: "right" });
+  const stop = page.getByRole("menuitem", { name: "Stop sharing remotely" });
+  await expect(stop).toBeEnabled();
+  await stop.click();
+  await expect(stop).toHaveCount(0);
+  expect(await remoteMutationCalls(page)).toEqual([
+    {
+      command: "remote_share_workspace",
+      args: { workspaceId: currentId, shared: false },
+    },
+  ]);
+  await page.screenshot({
+    path: testInfo.outputPath("remote-unqualified-workspaces.png"),
+  });
+});

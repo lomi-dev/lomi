@@ -103,6 +103,12 @@ export function useRemoteWorkspaces(
   }, [session, profiles]);
   const share = async (workspaceId: string, shared: boolean) => {
     if (!canShareRemotely(auth.current.current)) return;
+    if (shared && !state?.qualified) {
+      setError(
+        "Remote hosting currently requires Lomi on a Mac with Apple silicon.",
+      );
+      return;
+    }
     if (acting.current) return;
     const engine = publisher.current;
     if (!engine) {
@@ -128,7 +134,7 @@ export function useRemoteWorkspaces(
           inventory.reduce((sum, w) => sum + w.terminals.length, 0) > 32
         )
           throw new Error(
-            "Remote supports up to 32 shared workspaces and terminals.",
+            "Remote supports up to 32 shared workspaces and 32 active desktop terminals in total, including terminals in unshared workspaces.",
           );
         preparing.current.add(workspaceId);
         engine.desired.add(workspaceId);
@@ -172,7 +178,12 @@ export function useRemoteWorkspaces(
     }
   };
   const resume = async () => {
-    if (!canShareRemotely(auth.current.current) || acting.current) return;
+    if (
+      !canShareRemotely(auth.current.current) ||
+      !state?.qualified ||
+      acting.current
+    )
+      return;
     acting.current = true;
     setBusy("resume");
     setError("");

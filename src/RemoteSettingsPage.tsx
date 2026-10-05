@@ -47,7 +47,7 @@ export default function RemoteSettingsPage({
     }
   };
   const resume = async () => {
-    if (!available || busy) return;
+    if (!available || !state?.qualified || busy) return;
     setBusy(true);
     setError("");
     try {
@@ -81,11 +81,17 @@ export default function RemoteSettingsPage({
       ) : (
         <>
           {state?.message && <SettingsNotice>{state.message}</SettingsNotice>}
+          {state?.qualified === false && (
+            <SettingsNotice>
+              Remote hosting currently requires Lomi on a Mac with Apple
+              silicon. You can still stop sharing and revoke browser access.
+            </SettingsNotice>
+          )}
           {state?.paused && (
             <button
               type="button"
               className="button"
-              disabled={!available || busy}
+              disabled={!available || !state?.qualified || busy}
               onClick={() => void resume()}
             >
               {busy ? "Resuming…" : "Resume remote"}
@@ -107,7 +113,9 @@ export default function RemoteSettingsPage({
               Terminal contents and input are encrypted between your devices.
               Local typing immediately takes control back. Remote pauses after
               an hour without terminal data or activity in Lomi windows. Resume
-              it here or from the workspace.
+              it here or from the workspace. Remote supports up to 32 shared
+              workspaces and 32 active desktop terminals in total, including
+              terminals in unshared workspaces.
             </p>
           </SettingsSection>
           <SettingsSection

@@ -787,6 +787,16 @@ impl Remote {
                 }
                 Ok(json!({"faultDetected":runtime.needs_recovery()}))
             }
+            "terminal-unavailable" => {
+                self.runtime
+                    .lock()
+                    .map_err(|_| "Runtime unavailable.")?
+                    .invalidate(id)
+                    .ok_or("Terminal model was not available.")?;
+                app.state::<Terminals>().remote_revoke(id);
+                self.reconcile_workspaces(app)?;
+                Ok(json!({"remote":self.state()}))
+            }
             "snapshot" => self
                 .runtime
                 .lock()

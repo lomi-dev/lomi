@@ -503,40 +503,35 @@ pub async fn remote_share_workspace(
         }
         core.policy_revision = core.policy_revision.wrapping_add(1);
     }
-    // Unsharing is a durable consent change even while Remote is paused. It
-    // must not enter the active publication/readiness path or resume sharing.
-    let inactive_revocations = {
-        let core = remote.core.lock().map_err(|_| "Remote unavailable.")?;
-        (!shared && !core.enabled).then(|| {
-            core.policy
-                .as_ref()
-                .map(|policy| {
-                    policy
-                        .grants
-                        .iter()
-                        .filter(|grant| {
-                            grant.revoked
-                                && grant.approval.approval.workspace_id
-                                    == uuid_bytes(&workspace_id).ok()
-                        })
-                        .map(|grant| grant.id.clone())
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default()
-        })
-    };
-    if let Some(grants) = inactive_revocations {
-        for id in grants {
-            // Local revocation already succeeded. Cloud retirement is best
-            // effort while paused, and the next activation republishes scope.
-            let _ = window
-                .state::<AuthController>()
-                .remote_request(
+    // Unsharing never depends on terminal readiness. Cloud scope retirement is
+    // best effort after durable local fencing and has one total network budget.
+    if !shared {
+        let (enabled, host_id) = {
+            let core = remote.core.lock().map_err(|_| "Remote unavailable.")?;
+            (
+                core.enabled,
+                core.policy
+                    .as_ref()
+                    .ok_or("Remote identity unavailable.")?
+                    .host_id
+                    .clone(),
+            )
+        };
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        if enabled {
+            publish_unshare(deadline, remote.poll(window.app_handle())).await;
+        } else {
+            // Paused channels are already fenced. Empty cloud scope preserves
+            // local consent and permits enrollment after Resume or re-sharing.
+            publish_unshare(
+                deadline,
+                window.state::<AuthController>().remote_request(
                     reqwest::Method::POST,
-                    &format!("/v1/remote/native/grants/{id}/revoke"),
-                    Some(&json!({})),
-                )
-                .await;
+                    &format!("/v1/remote/native/hosts/{host_id}/heartbeat"),
+                    Some(&json!({"shares":[], "workspaces":[]})),
+                ),
+            )
+            .await;
         }
         return Ok(remote.state());
     }
@@ -560,13 +555,21 @@ pub async fn remote_share_workspace(
                     .is_some_and(|id| runtime.sessions.get(id).is_some_and(|s| s.available))
             })
         };
-        if !shared || ready {
+        if ready {
             remote.poll(window.app_handle()).await?;
             return Ok(remote.state());
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
     Err("Waiting for every workspace terminal to become available.".into())
+}
+
+// Durable local revocation must not wait for each HTTP operation's timeout.
+async fn publish_unshare<Fut>(deadline: tokio::time::Instant, publication: Fut)
+where
+    Fut: std::future::Future,
+{
+    let _ = tokio::time::timeout_at(deadline, publication).await;
 }
 
 #[cfg(test)]
@@ -586,6 +589,31 @@ mod tests {
             first: Box::new(first),
             second: Box::new(second),
         }
+    }
+    #[tokio::test]
+    async fn failed_unshare_publication_has_one_deadline_for_all_requests() {
+        let attempts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let grants: Vec<String> = (0..32).map(|n| n.to_string()).collect();
+        let started = tokio::time::Instant::now();
+        let deadline = started + Duration::from_millis(50);
+        publish_unshare(deadline, async {
+            for _ in grants {
+                attempts.fetch_add(1, Ordering::SeqCst);
+                tokio::time::sleep(Duration::from_millis(30)).await;
+                let _ = Err::<(), _>("Cloud unavailable");
+            }
+            std::future::pending::<()>().await;
+        })
+        .await;
+        assert!(attempts.load(Ordering::SeqCst) < 32);
+        assert!(started.elapsed() < Duration::from_millis(500));
+        // A stalled heartbeat cannot extend the exhausted retirement budget.
+        assert!(
+            tokio::time::timeout_at(deadline, std::future::pending::<()>())
+                .await
+                .is_err()
+        );
+        assert!(started.elapsed() < Duration::from_millis(500));
     }
     #[test]
     fn renewal_is_proactive_and_capped_by_both_current_owners() {

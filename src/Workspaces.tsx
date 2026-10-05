@@ -88,6 +88,10 @@ export default function Workspaces({
   const sharingWorkspace = projects
     .flatMap((project) => project.workspaces)
     .find((workspace) => workspace.id === sharingId);
+  const menuShared = remote?.state?.workspaces.find(
+    (candidate) => candidate.id === workspace?.id,
+  )?.shared;
+  const sharingAvailable = !!remote?.available && !!remote.state?.qualified;
   const sharingActive = remote?.state?.workspaces.find(
     (workspace) => workspace.id === sharingId,
   )?.shared;
@@ -116,6 +120,11 @@ export default function Workspaces({
       {remote?.error && (
         <p className="sidebar-empty" role="alert">
           {remote.error}
+        </p>
+      )}
+      {remote?.state?.qualified === false && (
+        <p className="sidebar-empty">
+          Remote hosting currently requires Lomi on a Mac with Apple silicon.
         </p>
       )}
       <nav className="workspace-list" aria-label="Workspace list">
@@ -385,20 +394,16 @@ export default function Workspaces({
             { label: "Rename workspace", run: () => onRename(workspace) },
             remote
               ? {
-                  label: remote.state?.workspaces.find(
-                    (w) => w.id === workspace.id,
-                  )?.shared
+                  label: menuShared
                     ? "Stop sharing remotely"
                     : "Share remotely",
-                  disabled: !remote.available || !!remote.busy,
+                  disabled:
+                    !(menuShared ? remote.available : sharingAvailable) ||
+                    !!remote.busy,
                   run: () => {
-                    if (!remote.available) return;
-                    if (
-                      remote.state?.workspaces.find(
-                        (w) => w.id === workspace.id,
-                      )?.shared
-                    )
-                      void remote.share(workspace.id, false);
+                    if (!(menuShared ? remote.available : sharingAvailable))
+                      return;
+                    if (menuShared) void remote.share(workspace.id, false);
                     else setSharingId(workspace.id);
                   },
                 }
@@ -431,7 +436,9 @@ export default function Workspaces({
         <StartRemoteSharingDialog
           key={sharingWorkspace.id}
           workspace={sharingWorkspace}
-          available={remote.available}
+          available={sharingAvailable}
+          qualified={!!remote.state?.qualified}
+          signedIn={remote.available}
           busy={!!remote.busy}
           error={remote.error}
           onConfirm={() => remote.share(sharingWorkspace.id, true)}
@@ -445,6 +452,8 @@ export default function Workspaces({
 function StartRemoteSharingDialog({
   workspace,
   available,
+  qualified,
+  signedIn,
   busy,
   error,
   onConfirm,
@@ -452,6 +461,8 @@ function StartRemoteSharingDialog({
 }: {
   workspace: Workspace;
   available: boolean;
+  qualified: boolean;
+  signedIn: boolean;
   busy: boolean;
   error: string;
   onConfirm: () => Promise<void>;
@@ -477,7 +488,9 @@ function StartRemoteSharingDialog({
           Share “{workspace.name}” remotely? Browsers signed in to your account
           will be able to view and control all terminals in this workspace,
           including inactive tabs and new splits.
-          {!available && " Sign in to use remote sharing."}
+          {!signedIn && " Sign in to use remote sharing."}
+          {!qualified &&
+            " Remote hosting currently requires Lomi on a Mac with Apple silicon."}
         </p>
         {attempted && error && <p role="alert">{error}</p>}
         <div className="dialog-actions">

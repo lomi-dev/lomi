@@ -92,3 +92,56 @@ test("Remote uses workspace sharing and keeps browser revocation without manual 
     fullPage: true,
   });
 });
+
+test("unqualified hosts explain hosting requirements and retain browser revocation", async ({
+  page,
+}, testInfo) => {
+  await mockDesktop(page, false);
+  await mockRemoteAccount(page);
+  await page.addInitScript(() => {
+    const desktop = window as any;
+    const state = {
+      qualified: false,
+      enabled: false,
+      paused: true,
+      online: false,
+      message: null,
+      domainEpoch: null,
+      workspaces: [
+        { id: "workspace", shared: true, online: false, message: null },
+      ],
+      grants: [
+        {
+          id: "grant",
+          sessionIds: ["terminal"],
+          permissions: "control",
+          expiresAt: 9999999999,
+          revoked: false,
+        },
+      ],
+    };
+    desktop.__remoteInvoke = async (command: string) => {
+      if (command === "remote_revoke_grant") state.grants[0].revoked = true;
+      return structuredClone(state);
+    };
+  });
+  await page.goto("/?window=settings&page=remote");
+  await expect(page.getByText(/Mac with Apple silicon/)).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Resume remote" }),
+  ).toBeDisabled();
+  await expect(
+    page.getByText(/including terminals in unshared workspaces/),
+  ).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("remote-unqualified-settings.png"),
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "Revoke access" }).click();
+  await expect(page.getByText("No browsers have access.")).toBeVisible();
+  const commands = await page.evaluate(() =>
+    (window as any).__nativeTest.calls.map((call: any) => call.command),
+  );
+  expect(commands).toContain("remote_revoke_grant");
+  expect(commands).not.toContain("remote_resume");
+});

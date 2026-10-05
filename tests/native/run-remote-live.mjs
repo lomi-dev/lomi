@@ -656,6 +656,12 @@ try {
       workspaceId: workspace.id,
       action: "share",
     });
+    await wait(async () => {
+      const current = await command("inspect");
+      return current.remote.workspaces?.some(
+        (w) => w.id === workspace.id && w.shared,
+      );
+    }, 10000);
     await card.click();
     await terminalPanel
       .getByRole("status")
@@ -665,6 +671,38 @@ try {
     assert.equal(await page.locator(".terminal-tabs button").count(), 3);
     checks.push(
       "re-sharing enrolls a fresh scope automatically without refreshing the browser",
+    );
+    const pausedBeforeStop = await command("idle-hour");
+    assert.equal(pausedBeforeStop.remote.paused, true);
+    const pausedStop = await command("share-workspace", {
+      workspaceId: workspace.id,
+      shared: false,
+    });
+    assert.equal(pausedStop.remote.paused, true);
+    assert.equal(pausedStop.remote.enabled, false);
+    assert.equal(
+      pausedStop.remote.workspaces.find((w) => w.id === workspace.id).shared,
+      false,
+    );
+    await command("resume");
+    await command("ui-workspace-action", {
+      workspaceId: workspace.id,
+      action: "share",
+    });
+    await wait(async () => {
+      const current = await command("inspect");
+      return current.remote.workspaces?.some(
+        (w) => w.id === workspace.id && w.shared,
+      );
+    }, 10000);
+    await card.click();
+    await terminalPanel
+      .getByRole("status")
+      .filter({ hasText: /^(Observing|In control)$/ })
+      .waitFor();
+    await activateTerminal("LOMI_RESHARED_AFTER_PAUSED_STOP");
+    checks.push(
+      "paused Stop retains pause, Resume and fresh Share re-enroll the same browser without reload",
     );
     const current = await command("inspect");
     const grant = current.remote.grants.find((g) => !g.revoked);
@@ -685,6 +723,45 @@ try {
     );
     checks.push(
       "explicit browser revoke stays revoked instead of automatically re-enrolling",
+    );
+
+    const unavailable = await command("terminal-unavailable");
+    assert.equal(unavailable.remote.enabled, true);
+    assert.equal(
+      unavailable.remote.sessions.find((s) => s.id === state.sessionId)
+        .available,
+      false,
+    );
+    assert.match(
+      unavailable.remote.workspaces.find((w) => w.id === workspace.id).message,
+      /exact Remote state is unavailable/,
+    );
+    const unavailableStop = await command("share-workspace", {
+      workspaceId: workspace.id,
+      shared: false,
+    });
+    assert.equal(
+      unavailableStop.remote.workspaces.find((w) => w.id === workspace.id)
+        .shared,
+      false,
+    );
+    assert.equal(unavailableStop.remote.enabled, true);
+    assert.equal(unavailableStop.remote.paused, false);
+    await command("local-input", {
+      data: "printf 'LOMI_LOCAL_AFTER_UNAVAILABLE_UNSHARE\\n'\n",
+    });
+    const unavailableInventory = await page.request.get(
+      "http://127.0.0.1:4322/v1/remote/workspaces",
+      { headers: { "X-Lomi-Request": "1" } },
+    );
+    assert.equal(
+      (await unavailableInventory.json()).workspaces.some(
+        (w) => w.id === workspace.id && w.hostId === state.remote.hostId,
+      ),
+      false,
+    );
+    checks.push(
+      "active unshare succeeds with an unavailable terminal model, removes cloud inventory and keeps the local PTY writable",
     );
 
     await command("quit");
