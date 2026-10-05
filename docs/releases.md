@@ -274,8 +274,13 @@ does not update them. Before tagging a release that changes Remote behavior:
   five column UPDATE permissions needed for authenticated session renewal.
   Run `auth-app/ops/remote-db-inspect.ts` using the owner inspection connection;
   its read-only receipt checks both schema and required renewal permissions.
+  Deploy an API that supports `GET /v1/remote/native/hosts` and conditional
+  heartbeats with `expectedLastSeen` before updating the desktop. A delayed
+  heartbeat must return `409 PUBLICATION_CHANGED` after a newer publication,
+  preserving the currently shared workspace and its grants.
 - Build and test the canonical sibling `remote-web` repository. Run
-  `bun test tests`, `bun run build` and `bun run test:browser` with
+  `bun test tests`, `bun run build`, `bun run test:terminal-focus` and
+  `bun run test:browser` with
   `LOMI_CRYPTO_CRATE` pointing to this release's `lomi-remote-crypto` crate.
   The browser test covers reload and concurrent tabs against real native crypto.
   Deploy this tested client separately, then verify the deployed assets.
