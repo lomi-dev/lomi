@@ -181,6 +181,43 @@ jobs:
           updaterJsonPreferNsis: true
           args: ${{ matrix.args }} -- --locked
 
+      - name: notarize and verify macOS disk images before publishing
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          DMG_DIRECTORY: src-tauri/target/${{ matrix.target }}/release/bundle/dmg
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          dmgs=("$DMG_DIRECTORY"/*.dmg)
+          if [ "${#dmgs[@]}" -eq 0 ]; then
+            echo "No macOS disk images found for notarization." >&2
+            exit 1
+          fi
+          for dmg in "${dmgs[@]}"; do
+            receipt=$(mktemp "$RUNNER_TEMP/lomi-dmg-notary.XXXXXX")
+            xcrun notarytool submit "$dmg" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" \
+              --wait --output-format json > "$receipt"
+            if ! jq -e '.status == "Accepted"' "$receipt" > /dev/null; then
+              echo "Apple did not accept the disk image for notarization." >&2
+              exit 1
+            fi
+            xcrun stapler staple "$dmg"
+            xcrun stapler validate "$dmg"
+            codesign --verify --strict --verbose=4 "$dmg"
+            spctl --assess --type open --context context:primary-signature --verbose=4 "$dmg"
+            gh release upload "$RELEASE_TAG" "$dmg" --clobber
+            rm -f "$receipt"
+          done
+
   publish-release:
     needs: publish-tauri
     runs-on: ubuntu-24.04

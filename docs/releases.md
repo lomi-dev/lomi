@@ -233,6 +233,11 @@ Use a **Developer ID Application** certificate for direct distribution. The
 workflow uses the [Tauri macOS signing and notarization flow](https://v2.tauri.app/distribute/sign/macos/):
 the action imports the certificate into a temporary runner keychain, and Tauri
 signs with the Hardened Runtime, submits to Apple, waits, and staples the ticket.
+While the release remains a draft, the workflow separately submits each signed
+DMG to Apple, requires an accepted receipt, and staples and validates its ticket.
+It checks the DMG signature and Gatekeeper assessment before replacing the draft
+download. Both macOS jobs must pass before the release becomes public, so the app
+and its DMG are notarized and stapled before publication.
 No App Store sandbox or microphone entitlements are needed for Lomi.
 
 Configure these repository Actions secrets:
