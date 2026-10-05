@@ -359,12 +359,13 @@ try {
       "automatic account enrollment and encrypted native snapshot without token exchange",
     );
     const input = terminalPanel.locator(".xterm-helper-textarea");
+    let snapshotMarker = "LOMI_NATIVE_REMOTE_READY";
     const activateTerminal = async (marker) => {
       await wait(
         async () =>
           hasOutput(
             await terminalPanel.locator(".xterm-screen").innerText(),
-            "LOMI_NATIVE_REMOTE_READY",
+            snapshotMarker,
           ),
         30000,
       );
@@ -383,6 +384,7 @@ try {
         .getByRole("status")
         .filter({ hasText: /^In control$/ })
         .waitFor();
+      snapshotMarker = marker;
     };
     await input.waitFor({ state: "attached" });
     await input.focus();
@@ -704,8 +706,244 @@ try {
     checks.push(
       "paused Stop retains pause, Resume and fresh Share re-enroll the same browser without reload",
     );
+    const retainedWorkspaceId = project.workspaces[1].id;
+    await command("ui-workspace-action", {
+      workspaceId: retainedWorkspaceId,
+      action: "share",
+    });
+    await wait(async () => {
+      const current = await command("inspect");
+      return current.remote.workspaces?.some(
+        (w) => w.id === retainedWorkspaceId && w.shared,
+      );
+    }, 10000);
+    const barrier = async (mode) => {
+      const response = await fetch(
+        `${fixture.cleanupOrigin}/fixture/empty-heartbeat`,
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${fixture.cleanupToken}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ mode }),
+        },
+      );
+      assert.equal(response.status, 200, "Fixture heartbeat barrier failed");
+      return response.json();
+    };
+    await command("idle-hour");
+    await barrier("hold");
+    try {
+      await command("share-workspace-background", {
+        workspaceId: workspace.id,
+        shared: false,
+      });
+      await wait(async () => (await barrier("status")).holding, 3000);
+      await command("resume-background");
+      await wait(async () => (await command("inspect")).remote.enabled, 3000);
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      assert.equal(await jsonFile("native-overlap-resume.json"), null);
+      const blocked = await barrier("status");
+      assert.equal(blocked.nonemptyAdmittedDuringHold, 0);
+      assert.equal(blocked.timedOut, false);
+    } finally {
+      await barrier("release");
+    }
+    const overlappingStop = await wait(
+      async () => await jsonFile("native-overlap-stop.json"),
+      10000,
+    );
+    const overlappingResume = await wait(
+      async () => await jsonFile("native-overlap-resume.json"),
+      10000,
+    );
+    assert.equal(overlappingStop.ok, true, overlappingStop.error);
+    assert.equal(overlappingResume.ok, true, overlappingResume.error);
+    assert.equal(
+      overlappingResume.remote.workspaces.find(
+        (w) => w.id === retainedWorkspaceId,
+      ).shared,
+      true,
+    );
+    const settledBarrier = await barrier("status");
+    assert.equal(settledBarrier.completed, 1);
+    assert.equal(settledBarrier.nonemptyAdmittedDuringHold, 0);
+    const retainedInventory = await page.request.get(
+      "http://127.0.0.1:4322/v1/remote/workspaces",
+      { headers: { "X-Lomi-Request": "1" } },
+    );
+    assert.equal(
+      (await retainedInventory.json()).workspaces.some(
+        (w) => w.id === retainedWorkspaceId && w.hostId === state.remote.hostId,
+      ),
+      true,
+    );
+    await command("share-workspace", {
+      workspaceId: workspace.id,
+      shared: true,
+    });
+    await wait(async () => {
+      const current = await command("inspect");
+      return current.remote.workspaces?.some(
+        (w) => w.id === workspace.id && w.shared,
+      );
+    }, 10000);
+    await card.click();
+    await terminalPanel
+      .getByRole("status")
+      .filter({ hasText: /^(Observing|In control)$/ })
+      .waitFor();
+    await activateTerminal("LOMI_RESHARED_AFTER_OVERLAPPING_RESUME");
+    checks.push(
+      "held paused Stop heartbeat blocks overlapping Resume publication, preserves another shared workspace and reconnects without reload",
+    );
+    await rm(join(directory, "native-overlap-stop.json"), { force: true });
+    await rm(join(directory, "native-overlap-resume.json"), { force: true });
+    await command("idle-hour");
+    await barrier("hold");
+    try {
+      await command("share-workspace-background", {
+        workspaceId: workspace.id,
+        shared: false,
+      });
+      await wait(async () => (await barrier("status")).holding, 3000);
+      const expiredStop = await wait(
+        async () => await jsonFile("native-overlap-stop.json"),
+        8000,
+      );
+      assert.equal(expiredStop.ok, true, expiredStop.error);
+      assert.equal(expiredStop.remote.paused, true);
+      assert.equal((await barrier("status")).holding, true);
+      await command("resume-background");
+      const resumedBeforeRelease = await wait(
+        async () => await jsonFile("native-overlap-resume.json"),
+        5000,
+      );
+      assert.equal(resumedBeforeRelease.ok, true, resumedBeforeRelease.error);
+      assert.equal(resumedBeforeRelease.remote.enabled, true);
+      assert.equal(
+        (await barrier("status")).nonemptyAdmittedDuringHold > 0,
+        true,
+      );
+    } finally {
+      await barrier("release");
+    }
+    const rejectedLatePublication = await wait(async () => {
+      const status = await barrier("status");
+      return !status.holding && status.completed > 0 ? status : null;
+    }, 3000);
+    assert.equal(rejectedLatePublication.completedStatus, 409);
+    assert.equal(rejectedLatePublication.timedOut, false);
+    const afterLatePublication = await page.request.get(
+      "http://127.0.0.1:4322/v1/remote/workspaces",
+      { headers: { "X-Lomi-Request": "1" } },
+    );
+    assert.equal(
+      (await afterLatePublication.json()).workspaces.some(
+        (w) => w.id === retainedWorkspaceId && w.hostId === state.remote.hostId,
+      ),
+      true,
+    );
+    await command("share-workspace", {
+      workspaceId: workspace.id,
+      shared: true,
+    });
+    await wait(async () => {
+      const current = await command("inspect");
+      return current.remote.workspaces?.some(
+        (w) => w.id === workspace.id && w.shared,
+      );
+    }, 10000);
+    await card.click();
+    await terminalPanel
+      .getByRole("status")
+      .filter({ hasText: /^(Observing|In control)$/ })
+      .waitFor();
+    await activateTerminal("LOMI_RESHARED_AFTER_LATE_PAUSED_HEARTBEAT");
+    checks.push(
+      "paused Stop returns at its deadline and late empty heartbeat is rejected after Resume, retaining another workspace and same-browser access",
+    );
+    await command("share-workspace", {
+      workspaceId: retainedWorkspaceId,
+      shared: false,
+    });
+    const beforeActiveStop = await page.request.get(
+      "http://127.0.0.1:4322/v1/remote/workspaces",
+      { headers: { "X-Lomi-Request": "1" } },
+    );
+    const previousActiveScope = (await beforeActiveStop.json()).workspaces.find(
+      (w) => w.id === workspace.id && w.hostId === state.remote.hostId,
+    );
+    assert.ok(previousActiveScope);
+    await rm(join(directory, "native-overlap-stop.json"), { force: true });
+    await barrier("hold");
+    let freshActiveScope;
+    try {
+      await command("share-workspace-background", {
+        workspaceId: workspace.id,
+        shared: false,
+      });
+      await wait(async () => (await barrier("status")).holding, 3000);
+      const activeStop = await wait(
+        async () => await jsonFile("native-overlap-stop.json"),
+        8000,
+      );
+      assert.equal(activeStop.ok, true, activeStop.error);
+      assert.equal(activeStop.remote.enabled, true);
+      assert.equal((await barrier("status")).holding, true);
+      await command("share-workspace", {
+        workspaceId: workspace.id,
+        shared: true,
+      });
+      freshActiveScope = await wait(async () => {
+        const response = await page.request.get(
+          "http://127.0.0.1:4322/v1/remote/workspaces",
+          { headers: { "X-Lomi-Request": "1" } },
+        );
+        return (await response.json()).workspaces.find(
+          (w) =>
+            w.id === workspace.id &&
+            w.hostId === state.remote.hostId &&
+            w.epoch !== previousActiveScope.epoch,
+        );
+      }, 5000);
+      await card.click();
+      await terminalPanel
+        .getByRole("status")
+        .filter({ hasText: /^(Observing|In control)$/ })
+        .waitFor();
+      await activateTerminal("LOMI_FRESH_SHARE_BEFORE_LATE_ACTIVE_STOP");
+    } finally {
+      await barrier("release");
+    }
+    const rejectedActiveStop = await wait(async () => {
+      const status = await barrier("status");
+      return !status.holding && status.completed > 0 ? status : null;
+    }, 3000);
+    assert.equal(rejectedActiveStop.completedStatus, 409);
+    assert.equal(rejectedActiveStop.timedOut, false);
+    const afterActiveStop = await page.request.get(
+      "http://127.0.0.1:4322/v1/remote/workspaces",
+      { headers: { "X-Lomi-Request": "1" } },
+    );
+    assert.equal(
+      (await afterActiveStop.json()).workspaces.some(
+        (w) =>
+          w.id === workspace.id &&
+          w.hostId === state.remote.hostId &&
+          w.epoch === freshActiveScope.epoch,
+      ),
+      true,
+    );
+    await activateTerminal("LOMI_FRESH_SHARE_AFTER_LATE_ACTIVE_STOP");
+    checks.push(
+      "active Stop returns at its deadline and its late heartbeat is rejected after fresh Share, retaining the new scope and encrypted input grant",
+    );
     const current = await command("inspect");
-    const grant = current.remote.grants.find((g) => !g.revoked);
+    const grant = current.remote.grants.find(
+      (g) => !g.revoked && g.sessionIds.includes(state.sessionId),
+    );
     assert.ok(grant);
     await command("revoke", { grantId: grant.id });
     await wait(

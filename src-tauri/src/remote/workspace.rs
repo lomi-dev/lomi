@@ -506,33 +506,43 @@ pub async fn remote_share_workspace(
     // Unsharing never depends on terminal readiness. Cloud scope retirement is
     // best effort after durable local fencing and has one total network budget.
     if !shared {
-        let (enabled, host_id) = {
-            let core = remote.core.lock().map_err(|_| "Remote unavailable.")?;
-            (
-                core.enabled,
-                core.policy
-                    .as_ref()
-                    .ok_or("Remote identity unavailable.")?
-                    .host_id
-                    .clone(),
-            )
-        };
         let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
-        if enabled {
-            publish_unshare(deadline, remote.poll(window.app_handle())).await;
-        } else {
-            // Paused channels are already fenced. Empty cloud scope preserves
-            // local consent and permits enrollment after Resume or re-sharing.
-            publish_unshare(
-                deadline,
-                window.state::<AuthController>().remote_request(
+        publish_unshare(deadline, async {
+            // Capture publication state only after earlier heartbeat requests
+            // settle, so a paused Stop cannot overwrite a concurrent Resume.
+            let publication = remote.publication.lock().await;
+            let (enabled, host_id) = {
+                let core = remote.core.lock().map_err(|_| "Remote unavailable.")?;
+                (
+                    core.enabled,
+                    core.policy
+                        .as_ref()
+                        .ok_or("Remote identity unavailable.")?
+                        .host_id
+                        .clone(),
+                )
+            };
+            if enabled {
+                remote.poll_locked(window.app_handle(), &publication).await
+            } else {
+                // Paused channels are already fenced. Empty cloud scope preserves
+                // local consent and permits enrollment after Resume or re-sharing.
+                let auth = window.state::<AuthController>();
+                let last_seen = Remote::publication_last_seen(&auth, &host_id).await?;
+                // A request can finish server-side after its local timeout. An
+                // older paused publication must not erase a newer active scope.
+                auth.remote_request(
                     reqwest::Method::POST,
                     &format!("/v1/remote/native/hosts/{host_id}/heartbeat"),
-                    Some(&json!({"shares":[], "workspaces":[]})),
-                ),
-            )
-            .await;
-        }
+                    Some(&json!({
+                        "shares":[], "workspaces":[], "expectedLastSeen":last_seen
+                    })),
+                )
+                .await
+                .map(|_| ())
+            }
+        })
+        .await;
         return Ok(remote.state());
     }
     for _ in 0..50 {

@@ -265,6 +265,24 @@ async fn run(app: &tauri::AppHandle, root: &std::path::Path) -> Result<(), Strin
  },
  Some("begin-domain")=>{let s=remote::workspace::remote_begin_workspace_sync(app.get_window("main").ok_or("Main missing.")?,app.state::<Remote>())?;Ok(s)},
  Some("sync-domain")=>{let workspaces=serde_json::from_value(command.get("workspaces").cloned().ok_or("Missing workspace inventory.")?).map_err(|_|"Invalid workspace inventory.")?;let s=remote::workspace::remote_sync_workspaces(app.get_window("main").ok_or("Main missing.")?,app.state::<Remote>(),text("epoch")?,command.get("revision").and_then(Value::as_u64).ok_or("Missing revision.")?,workspaces)?;Ok(json!({"remote":s}))},
+ Some("share-workspace-background" | "resume-background")=>{
+   let operation=command.get("op").and_then(Value::as_str).ok_or("Missing operation.")?.to_string();
+   let workspace_id=if operation=="share-workspace-background" {Some(text("workspaceId")?)} else {None};
+   let shared=command.get("shared").and_then(Value::as_bool).unwrap_or(false);
+   let owned_app=app.clone();let owned_root=root.to_path_buf();
+   tauri::async_runtime::spawn(async move {
+     let result=match owned_app.get_window("main") {
+       Some(window)=>if let Some(workspace_id)=workspace_id {
+         remote::workspace::remote_share_workspace(window,owned_app.state::<Remote>(),workspace_id,shared).await
+       } else { remote::remote_resume(window,owned_app.state::<Remote>()).await },
+       None=>Err("Main missing.".into()),
+     };
+     let receipt=match result {Ok(state)=>json!({"ok":true,"remote":state}),Err(error)=>json!({"ok":false,"error":error})};
+     let name=if operation=="share-workspace-background" {"native-overlap-stop.json"}else{"native-overlap-resume.json"};
+     let _=write(&owned_root.join(name),&receipt);
+   });
+   Ok(json!({"requested":true}))
+ },
  Some("share-workspace")=>{let s=remote::workspace::remote_share_workspace(app.get_window("main").ok_or("Main missing.")?,app.state::<Remote>(),text("workspaceId")?,command.get("shared").and_then(Value::as_bool).ok_or("Missing shared intent.")?).await?;Ok(json!({"remote":s}))},
  Some("inspect")=>Ok(json!({"remote":app.state::<Remote>().state(),"windowVisible":app.get_window("main").and_then(|w|w.is_visible().ok())})),
  Some("idle-hour" | "helper-fault" | "snapshot" | "terminal-unavailable")=>app.state::<Remote>().probe_lifecycle(app,command.get("op").and_then(Value::as_str).ok_or("Missing operation.")?,&id),

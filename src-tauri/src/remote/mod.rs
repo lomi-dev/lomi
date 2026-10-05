@@ -286,6 +286,7 @@ impl Default for Core {
 #[derive(Clone)]
 pub struct Remote {
     core: Arc<Mutex<Core>>,
+    publication: Arc<tokio::sync::Mutex<()>>,
     runtime: Arc<Mutex<runtime::Runtime>>,
     stopped: Arc<AtomicBool>,
     healthy: Arc<AtomicBool>,
@@ -297,6 +298,7 @@ impl Default for Remote {
         let (events, _) = tokio::sync::broadcast::channel(256);
         Self {
             core: Arc::new(Mutex::new(Core::default())),
+            publication: Arc::new(tokio::sync::Mutex::new(())),
             runtime: Arc::new(Mutex::new(runtime::Runtime::default())),
             stopped: Arc::new(AtomicBool::new(false)),
             healthy: Arc::new(AtomicBool::new(false)),
@@ -922,7 +924,34 @@ impl Remote {
         self.poll(app).await
     }
 
+    async fn publication_last_seen(auth: &AuthController, host_id: &str) -> Result<String, String> {
+        let (_, hosts) = auth
+            .remote_request(reqwest::Method::GET, "/v1/remote/native/hosts", None)
+            .await?;
+        hosts
+            .get("hosts")
+            .and_then(Value::as_array)
+            .and_then(|hosts| {
+                hosts
+                    .iter()
+                    .find(|host| host.get("id").and_then(Value::as_str) == Some(host_id))
+            })
+            .and_then(|host| host.get("lastSeen"))
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+            .ok_or_else(|| "Remote host publication unavailable.".into())
+    }
+
     async fn poll(&self, app: &tauri::AppHandle) -> Result<(), String> {
+        let publication = self.publication.lock().await;
+        self.poll_locked(app, &publication).await
+    }
+
+    async fn poll_locked(
+        &self,
+        app: &tauri::AppHandle,
+        _publication: &tokio::sync::MutexGuard<'_, ()>,
+    ) -> Result<(), String> {
         self.reconcile_workspaces(app)?;
         let auth = app.state::<AuthController>();
         let binding = auth.remote_binding()?;
@@ -946,10 +975,13 @@ impl Remote {
             (core.policy.as_ref().ok_or("Remote identity unavailable.")?.host_id.clone(),
                 core.shares.iter().filter_map(|id| runtime.sessions.get(id)).filter(|s| s.available).map(|s| json!({"id":s.id,"epoch":s.epoch,"label":s.label,"cols":s.cols,"rows":s.rows})).collect::<Vec<_>>(), core.policy.as_ref().ok_or("Remote identity unavailable.")?.workspaces.iter().filter(|w| w.shared && core.domain.revision > 0 && core.domain.workspaces.iter().any(|d| d.id == w.id)).enumerate().map(|(i,w)| json!({"id":w.id,"epoch":w.epoch,"revision":w.revision,"label":format!("Workspace {}",i+1),"permissions":"control","sessionIds":w.sessions.iter().map(|s| s.0.clone()).collect::<Vec<_>>()})).collect::<Vec<_>>(),core.policy_revision,core.activation_revision)
         };
+        let last_seen = Self::publication_last_seen(&auth, &host_id).await?;
         auth.remote_request(
             reqwest::Method::POST,
             &format!("/v1/remote/native/hosts/{host_id}/heartbeat"),
-            Some(&json!({"shares":shares,"workspaces":workspaces})),
+            Some(&json!({
+                "shares":shares,"workspaces":workspaces,"expectedLastSeen":last_seen
+            })),
         )
         .await?;
         let (_, state) = auth
