@@ -28,7 +28,7 @@ enables automatic line-ending conversion. Keep those attributes with this folder
 
 The desktop executable embeds the APK. End users do not need a JDK, build tools,
 Node, Python or Android Studio to build this component. Android's private JRE is
-used separately for device creation, as documented in [the architecture guide](../../docs/android-architecture.md).
+used separately for device creation.
 
 Maintainers can rebuild with `build.mjs`, passing a JDK home, `android.jar`,
 build-tools directory, isolated output directory, private keystore and key alias

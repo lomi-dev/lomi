@@ -3,8 +3,7 @@
 The production backend and lazy Android UI are included in normal builds. The
 additional commands and drivers in this directory require `android-probe` and
 must never be enabled in distributed builds. Native qualification currently
-covers only the macOS ARM64 host recorded in
-[the architecture guide](../../docs/android-architecture.md#native-qualification).
+covers only the recorded Apple M3/macOS ARM64 host.
 Linux, Windows and other Mac architectures remain unverified.
 
 ## Windows preflight
@@ -41,9 +40,8 @@ Its results do not replace verification of the integrated product.
 
 The integrated v3 product completed 1,800 uninterrupted visible seconds at
 720 × 1280: 28.03 FPS, 0.2993 additional CPU cores including the guest,
-103.32 MB/s IPC and 0.01561 s/s additional GPU active intervals. See
-the summary in the architecture guide; raw historical reports are kept outside
-the source repository.
+103.32 MB/s IPC and 0.01561 s/s additional GPU active intervals. Raw historical
+reports are kept outside the source repository.
 The memory report includes every identified app/webview process and explains
 the higher terminal-view baseline; it does not claim a negative transport cost.
 
@@ -426,8 +424,12 @@ credentials or user data belong in the external trial archive, not source contro
 
 The subsequent five-minute JPEG run includes **physical footprint**, since RSS
 alone hides compressed WebContent memory. It passed its short-run budgets;
-that historical JPEG trial did not complete thirty visible minutes. See the architecture guide for current transport budgets; this historical
-variant is not the production transport.
+that historical JPEG trial did not complete thirty visible minutes. The current
+one-phone budgets are +0.5 CPU cores, +128 MiB application/webview memory,
+111 MB/s IPC and 24–30 FPS under animation. Two views share one phone’s
+transport budget; thirty minutes must not show sustained memory growth, and
+the p95 input-to-image target is 150 ms. This historical JPEG variant is not
+the production transport.
 
 The dangerous behavior of a normal ADB client is reproduced **only against a
 private fake server** by:
@@ -466,8 +468,8 @@ trial, including the actual native host clipboard and guest Paste action.
 Physical keyboard layout switching remains outside the recorded qualification.
 Two independent devices passed focus-isolated input; simultaneous input to two
 phones is intentionally prohibited. Product focus, rotation, minimization and
-the clean Settings installer have native qualification summarized in
-[the architecture guide](../../docs/android-architecture.md#native-qualification).
+the clean Settings installer passed native qualification on the recorded macOS
+ARM64 host.
 Rust foundations separately test interprocess locking, immutable used images,
 interrupted package publication, corrupt metadata preservation and cancellation
 of actual child processes. Explicitly ignored tests run the real provider

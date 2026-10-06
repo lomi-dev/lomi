@@ -77,35 +77,36 @@ or acronym.
 - Session v3 adds ChatTab to standalone tabs and mixed layouts; read v1/v2/v3
   and atomically preserve the exact legacy session before upgrading. Chat tabs
   never own PTYs. Missing conversation records remain chat placeholders.
-- Session v4 adds CLI Agent tabs/panes referencing native router run IDs. Read
-  v1/v2/v3/v4 and preserve exact legacy sessions before upgrading. Missing runs
-  stay placeholders; restoration never dispatches input or restores credentials.
+- Session v5 adds `agent-task` tabs/panes referencing stable task IDs. Read
+  v1–v5 and preserve exact legacy sessions before upgrading. Legacy `cli-agent`
+  run references become archived task descriptors; missing records remain
+  placeholders. Restoration never dispatches input or restores credentials.
 - `src/chat/` owns the lazy Chat AI interface, retained SDK Chat instances,
   native transport, Settings and history. One instance per conversation lives
   outside React; domain references govern close, never transient Dockview mounts.
   Native terminal events govern completion; SDK UI-only EOF requires resubscribe
   with epoch/watermark and active block IDs, without aborting or sending again.
-- `src/router/` and `src-tauri/src/cli_router/` own CLI profile/pool management,
-  new-terminal account selection and retained logical text turns. Native
-  `cli_router/adapters.rs` and `cli_router/gateway_profiles.rs` define capability
-  and exact-version gates; `scripts/router-cli-installations.json` pins prepared
-  runtimes. Source support does not qualify real accounts, full coding-task
-  failover or cross-account native continuity. Codex text failover requires typed terminal exhaustion, empty
-  output and confirmed process drain. Final-view closing fences survive all
-  Chat/Android guards until domain removal or explicit cancellation. A catalog
-  entry never implies managed execution support; restoration never starts inference.
-  Saved-run access changes require explicit consent bound to the reviewed run
-  and account revisions. Adding pool members never shares old history by itself;
-  changing grants never dispatches a turn. Nested modal cancellation stops at
-  the topmost dialog so a review cannot discard its parent conversation draft.
-  Native Gateway mode uses exact-version CLI profiles, fresh private HOME/config,
-  an authenticated loopback server and explicit HTTPS API destinations. Upstream
-  keys stay in the native owner. Preserve the client's wire protocol and model;
-  switch only on authoritative HTTP 429 before downstream response bytes.
-  Saved gateway runs never auto-start or invent a resume thread. Mediated Codex
-  Coding has a separate persistent checkpoint/effect journal and four bounded
-  file tools. One-use Main approval holds the actual editor freeze through
-  durable completion; overlapping Lomi/MCP project writes require native leases.
+- `src/agent-runtime/` and `src-tauri/src/agent_runtime/` implement native CLI
+  accounts and durable tasks under one owner. Account credential bindings retain
+  private physical homes and immutable auth revisions per attempt. Send and
+  Continue explicitly choose an account; quota is advisory. A task retains
+  history/provenance across attempts and account changes. Native tools and
+  permissions remain CLI-owned. Task grants do not follow account membership.
+  Every mutation has an idempotent operation ID and durable receipt; dispatch
+  intent is committed before contacting a native process. Uncertain delivery or
+  effects require explicit recovery and never automatic replay. Cross-account
+  native resume requires exact artifact/version/model/platform qualification;
+  otherwise an eligible continuation opens a new native session with context.
+  Reviewed Pi transfer preserves its exact 1.0.1 format/digest restrictions.
+  Shared `project_write_guard.rs` protects editor, Explorer, Git, MCP, Chat,
+  downloads, Android and theme writes; native task protection uses the same
+  admission state. Domain references, rather than React mounts, govern final
+  view close; close fences survive the other guards. Legacy migration is a
+  bounded data reader with private archives, WAL-aware backups and explicit
+  publication/rollback. It never invokes legacy execution or credential cleanup.
+  See `docs/cli-account-capabilities.json` for capability contracts and evidence.
+  The old Text/Coding/Gateway execution modes are retired; independent Chat AI
+  API connections remain available.
 - `src-tauri/src/chat/` owns SQLite WAL/FULL history, branches, draft revisions,
   attachment copies, credentials, a shared owner lock and the bounded AI process.
   Send commits the exact draft and idempotent request before provider dispatch.
@@ -169,8 +170,9 @@ or acronym.
   clicks authorize native process-scoped configuration; each suggestion has its own
   dismissal scoped to the CLI and feature for the native app process. Settings lists the CLI catalog and installs MCP per supported client or in bulk.
   `cli_catalog.rs` owns identities; `cli_mcp.rs` and its YAML adapter handle
-  verified formats. Preserve capability gating and manual-only clients; see
-  `docs/cli-agents.md` for paths and qualification.
+  verified formats. Preserve capability gating and manual-only clients;
+  `src-tauri/src/cli_catalog.rs` and `src-tauri/src/cli_mcp.rs` define supported
+  clients, configuration paths and qualification checks.
   `cli_titles.rs` resolves the process configuration; `cli_config.rs` preserves
   other settings, revisions, and backups. `cli_mcp.rs` registers the app's headless
   `--mcp` entry point with a pinned signing key for authenticated broker discovery.
@@ -200,7 +202,9 @@ or acronym.
   native `/usage` report without an agent turn. Every percentage and progress
   fill shows remaining quota: 100% available, 0% exhausted. Normalize provider
   reports in native readers. Unsupported agents remain visible
-  with an explicit availability status; see `docs/cli-agents.md`.
+  with an explicit availability status. `src-tauri/src/cli_usage.rs` owns
+  availability and qualification checks; `tests/native/run-agent-usage-smoke.mjs`
+  exercises the native readers.
 - `src-tauri/src/shell.rs` discovers shell environments and quotes dropped paths;
   `src-tauri/shell/` contains integration hooks. Do not edit user shell profiles.
 - `src-tauri/src/files.rs` handles file access and session saving;
@@ -301,16 +305,21 @@ or acronym.
   Errors or cancellation release preparation after operations settle, preserving
   the directory lock and descriptors. Native Exit cleanup is only an emergency
   fallback. Closing Settings does not cancel consciously started installation.
-- `docs/android-architecture.md` records tools, protobuf provenance, authentication,
-  native evidence and resource budgets. Stage 0 and the integrated product passed
+- Android Stage 0 and the integrated product passed
   on the recorded Apple M3/macOS ARM64 host, including a thirty-minute shared-view
   trial after framebuffer optimization. Qualification uses 720x1280, Host GPU and
   cold boot; local packaging has only an ad hoc signature, not notarization.
   The modern-profile/zoom extension passed on Android 17 (API 37.2), Google
-  Play and Pixel 10 Pro XL at 1344x2992, with a scaled preview. The guide
-  summarizes its input/resource qualification and separates the
-  thirty-minute trial from the two-minute regression after viewport cleanup
-  was fixed. Do not generalize these results to every catalog image.
+  Play and Pixel 10 Pro XL at 1344x2992, with a scaled preview. The
+  thirty-minute trial preceded the viewport cleanup correction; the later
+  executable passed a two-minute regression. Do not generalize these results
+  to every catalog image. One-phone budgets are +0.5 CPU cores, +128 MiB
+  application/webview memory, 111 MB/s IPC and 24–30 FPS under animation.
+  The recorded Mac GPU budget is +0.10 active seconds per second per independent
+  phone; another host needs a comparable metric. Two views share one phone’s
+  transport budget. Thirty minutes must not show sustained memory growth;
+  the p95 input-to-image target is 150 ms. Record source, framebuffer, CSS and
+  DPR separately and stop builds during measurements.
   Other platforms remain unverified and native commands gate installation, device creation/wipe,
   open intents and Start on the toolchain qualification flag. Read, Stop and
   recovery remain available. In particular, Windows' launcher spawns a separate

@@ -15,7 +15,9 @@ The repository's root `LICENSE` contains the license text.
 
 The application and opt-in native fixture use this client. Generation uses
 vendored protoc at build time without downloading protocol definitions. Native
-qualification currently covers only the macOS ARM64 configuration in [the architecture guide](../../docs/android-architecture.md).
+qualification currently covers only the recorded Apple M3/macOS ARM64 host.
+Other platforms remain unverified; see [native verification](../../tests/native/ANDROID.md)
+for isolated fixture setup and qualification limits.
 
 The RTC availability probe sends an empty request to
 `/android.emulation.control.Rtc/requestRtcStream`, the first RPC in the

@@ -171,8 +171,6 @@ VSIX with one fixed appearance or separate dark/light entries. Imported data is
 retained under the optional `vscode` field; common/light/dark overrides apply
 above its mapping. Extension code is never evaluated.
 
-See [the compatibility analysis](../docs/vscode-theme-compatibility.md) for the
-VS Code loading pipeline, supported mappings, import/export behavior and limits.
 CodeMirror syntax is an approximation of TextMate; semantic rules are retained
 for export. Lomi CSS, layouts and assets have no standard VS Code
 color-theme equivalent. This is not full visual or semantic parity.
@@ -182,5 +180,11 @@ A version 2 wrapper references a standard VS Code icon document with
 `"iconTheme": { "kind": "file", "path": "icons.json" }` (or `"product"`).
 Create or duplicate an icon theme, then open its folder to edit its document and
 scoped assets. Export includes all referenced SVG/raster images and glyph fonts.
-See the [compatibility analysis](../docs/vscode-theme-compatibility.md#file-and-product-icon-themes)
-for matching rules, resource bounds and language-extension limitations.
+File matching uses filename and parent-folder associations, multipart extensions,
+language IDs, root and expanded folders, appearance qualifiers and rule order.
+Icon documents are bounded to 2 MiB, resources to 20 MiB each, and packages to
+64 MiB; fonts are limited to 32 with at most 8 alternative sources each.
+Language associations use Lomi’s filename detection or an explicit language ID.
+VS Code language extensions and their separately registered language-mode icons
+are unavailable. High Contrast follows the imported color theme; there is no
+separate high-contrast preference or automatic VS Code settings import.

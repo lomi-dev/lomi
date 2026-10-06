@@ -3,7 +3,6 @@
 These fixtures exercise the production MCP helper, broker and native adapters.
 The catalog contains 74 tools. Native fixture qualification is limited to the
 recorded macOS ARM64 host; Windows, Linux and macOS Intel remain unqualified.
-See [usage](../../docs/mcp/USAGE.md) for pairing and client setup.
 
 - `pnpm test:rust` runs the complete Cargo workspace, including protocol, helper and control-core tests. Native installation/GUI probes remain opt-in.
 - `pnpm test:mcp` builds and runs the real stdio SDK example through an independent Node JSON-RPC client. Its `probe_image` and `probe_error` tools only return fixture data.

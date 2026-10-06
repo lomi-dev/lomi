@@ -370,8 +370,7 @@ macOS signs the nested Node executable with the hardened runtime and the
 memory or disable library validation. Developer ID signing, notarization,
 Gatekeeper and updater replacement must be tested on real release artifacts;
 an ad-hoc signature is only a local packaging test. Never ship `chat-probe` or
-`fixture.cjs` in a release. See the [Chat AI guide](chat-ai.md) for the current
-native validation scope.
+`fixture.cjs` in a release.
 
 Linux system-key storage requires an unlocked Secret Service implementation,
 such as GNOME Keyring or KWallet's Secret Service support. Session-only storage
