@@ -14,7 +14,7 @@ import {
   Terminal,
 } from "./icons";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { api, errorMessage } from "./api";
+import { api, errorMessage, windows } from "./api";
 import type { FileEntry, GitCommitSummary, GitStatus } from "./api";
 import { basename } from "./model";
 import { beginFileDrag } from "./file-drag";
@@ -23,7 +23,8 @@ import { IconButton } from "./ui";
 import ProjectSearch from "./ProjectSearch";
 import type { SearchMatch } from "./ProjectSearch";
 import type { FileOperation } from "./explorer-model";
-import { explorerGitStatuses, gitFilePath } from "./explorer-model";
+import { useExplorerDrop } from "./explorer-drop";
+import { explorerGitStatuses, gitFilePath, parentPath } from "./explorer-model";
 import { useExplorerActions, type ExplorerClipboard } from "./ExplorerActions";
 
 const isCutItem = (
@@ -218,6 +219,14 @@ export default function Explorer(props: Props) {
   };
   const [showHidden, setShowHidden] = useState(true);
   const [expanded, setExpanded] = useState(new Set<string>());
+  const drop = useExplorerDrop({
+    ...props,
+    hidden: searchOpen,
+    busy: actions.busy,
+    onExpand: (relative) =>
+      setExpanded((previous) => new Set(previous).add(relative)),
+    onRefresh: refresh,
+  });
   const toggle = (path: string) =>
     setExpanded((previous) => {
       const next = new Set(previous);
@@ -240,7 +249,9 @@ export default function Explorer(props: Props) {
       {!searchOpen && (
         <div
           className="sidebar-panel explorer-panel"
-          aria-busy={actions.busy}
+          ref={drop.panel}
+          data-explorer-root={props.root}
+          aria-busy={actions.busy || drop.importing}
           onPointerDown={cancelPendingActivation}
           onKeyDownCapture={cancelPendingActivation}
         >
@@ -274,6 +285,7 @@ export default function Explorer(props: Props) {
           ) : (
             <div
               className="project-tree-heading"
+              data-explorer-directory=""
               data-git-status={gitStatuses.get(gitFilePath(props.root))}
               data-selected={selectedPath === "" ? "true" : undefined}
               onContextMenu={(event) => {
@@ -329,6 +341,7 @@ export default function Explorer(props: Props) {
           )}
           <div
             className="file-tree"
+            data-explorer-directory=""
             aria-label="Project files"
             onContextMenu={(event) => onContext(event, rootEntry, true)}
           >
@@ -481,6 +494,7 @@ function Directory(props: DirectoryProps) {
       {message && (
         <div
           className={`tree-message${error ? " text-error" : ""}`}
+          data-explorer-directory={relative}
           title={error || undefined}
           style={{
             paddingLeft: `calc(${depth} * var(--tree-indent) + var(--space-16))`,
@@ -504,6 +518,16 @@ function Directory(props: DirectoryProps) {
             ) : (
               <div
                 className="tree-row"
+                data-explorer-directory={
+                  entry.isDirectory
+                    ? entry.relativePath
+                    : windows
+                      ? parentPath(entry.relativePath)
+                      : entry.relativePath.split("/").slice(0, -1).join("/")
+                }
+                data-explorer-folder={
+                  entry.isDirectory ? entry.relativePath : undefined
+                }
                 data-cut={
                   isCutItem(props.clipboard, root, entry.relativePath)
                     ? "true"

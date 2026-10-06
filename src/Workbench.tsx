@@ -124,7 +124,7 @@ import {
   terminalFor,
 } from "./terminal-runtime";
 import type { TerminalContext } from "./terminal-runtime";
-import { dropPaths, terminalAtNativePosition } from "./file-drag";
+import { dropPaths, nativePositionToClient, terminalAt } from "./file-drag";
 import { IconButton, Modal, WindowControls } from "./ui";
 import { Notice } from "./Notice";
 import { useAgentUsage } from "./AgentUsage";
@@ -1016,14 +1016,43 @@ export default function Workbench() {
     if (!info) return;
     let current = true;
     let target: HTMLElement | null = null;
+    let explorer: HTMLElement | null = null;
+    const leaveExplorer = () => {
+      explorer?.dispatchEvent(
+        new CustomEvent("explorer-file-drag", { detail: { type: "leave" } }),
+      );
+      explorer = null;
+    };
     const unlisten = getCurrentWebviewWindow().onDragDropEvent(
       ({ payload }) => {
+        if (!current) return;
         target?.classList.remove("drop-target");
         if (payload.type === "leave") {
+          leaveExplorer();
           target = null;
           return;
         }
-        target = terminalAtNativePosition(payload.position, info.platform);
+        const position = nativePositionToClient(
+          payload.position,
+          info.platform,
+        );
+        const nextExplorer =
+          document
+            .elementFromPoint(position.x, position.y)
+            ?.closest<HTMLElement>("[data-explorer-root]") ?? null;
+        if (explorer !== nextExplorer) leaveExplorer();
+        explorer = nextExplorer;
+        if (explorer) {
+          target = null;
+          explorer.dispatchEvent(
+            new CustomEvent("explorer-file-drag", {
+              detail: { ...payload, position },
+            }),
+          );
+          if (payload.type === "drop") explorer = null;
+          return;
+        }
+        target = terminalAt(position.x, position.y);
         if (payload.type === "drop") {
           void dropPaths(target, payload.paths, setError);
           target = null;
@@ -1038,6 +1067,7 @@ export default function Workbench() {
     return () => {
       current = false;
       target?.classList.remove("drop-target");
+      leaveExplorer();
       void unlisten.then((stop) => stop()).catch(() => {});
     };
   }, [info]);

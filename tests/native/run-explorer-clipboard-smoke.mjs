@@ -20,6 +20,13 @@ const directory = await mkdtemp(join(tmpdir(), "lomi-explorer-clipboard-"));
 const identifier = `dev.lomi.explorer-clipboard-smoke-${Date.now()}`;
 const appData = join(homedir(), "Library/Application Support", identifier);
 const projectFolder = join(directory, "project with spaces");
+const externalFolder = join(directory, "external source with spaces");
+const externalFiles = {
+  "folder źródło.txt": "External folder drop contents\n",
+  "sibling source.txt": "External sibling drop contents\n",
+  "root source.txt": "External root drop contents\n",
+  "conflict.txt": "External conflict contents must survive\n",
+};
 const helper = join(directory, "clipboard");
 const config = join(directory, "config.json");
 let child;
@@ -76,6 +83,14 @@ try {
   await mkdir(projectFolder, { recursive: true });
   await mkdir(join(projectFolder, "copy-dest"));
   await mkdir(join(projectFolder, "move-dest"));
+  await mkdir(join(projectFolder, "drop-dest"));
+  await mkdir(externalFolder);
+  for (const [filename, contents] of Object.entries(externalFiles))
+    await writeFile(join(externalFolder, filename), contents);
+  await writeFile(
+    join(projectFolder, "drop-dest/conflict.txt"),
+    "Keep existing conflict bytes\n",
+  );
   await mkdir(appData, { recursive: true });
   await writeFile(
     join(projectFolder, "alpha.txt"),
@@ -140,7 +155,7 @@ try {
     });
 
   let appPid;
-  for (let i = 0; i < 120 && child.exitCode === null; i++) {
+  for (let i = 0; i < 600 && child.exitCode === null; i++) {
     appPid = isolatedAppPid(child.pid);
     if (appPid) break;
     await new Promise((resolve) => setTimeout(resolve, 500));
@@ -178,6 +193,22 @@ try {
   console.log(JSON.stringify(result, null, 2));
   restoreChangeCount = result.data?.clipboardChangeCount;
   if (result.stage !== "passed") process.exitCode = 1;
+  else {
+    for (const [filename, contents] of Object.entries(externalFiles)) {
+      if ((await readFile(join(externalFolder, filename), "utf8")) !== contents)
+        throw Error(`External drop modified its source: ${filename}`);
+    }
+    for (const [relative, expected] of [
+      ["drop-dest/folder źródło.txt", externalFiles["folder źródło.txt"]],
+      ["drop-dest/sibling source.txt", externalFiles["sibling source.txt"]],
+      ["root source.txt", externalFiles["root source.txt"]],
+      ["drop-dest/conflict.txt", "Keep existing conflict bytes\n"],
+    ]) {
+      if ((await readFile(join(projectFolder, relative), "utf8")) !== expected)
+        throw Error(`External drop destination contents differ: ${relative}`);
+    }
+    console.log("External drop source and destination bytes verified on disk.");
+  }
 } finally {
   if (child?.pid) {
     try {

@@ -474,6 +474,68 @@ mod tests {
     use super::*;
 
     #[test]
+    fn copies_external_files_with_a_trailing_source_separator_without_overwriting() {
+        let root = tempfile::tempdir().unwrap();
+        let external = tempfile::tempdir().unwrap();
+        let filename = "external źródło with spaces.txt";
+        let contents = b"external contents\0\xff";
+        fs::create_dir(root.path().join("destination")).unwrap();
+        fs::write(external.path().join(filename), contents).unwrap();
+        let source_root = format!(
+            "{}{}",
+            external.path().to_str().unwrap(),
+            std::path::MAIN_SEPARATOR
+        );
+        let operation = || Operation::Copy {
+            source_root: source_root.clone(),
+            source: filename.into(),
+        };
+        let copied = perform(root.path().to_str().unwrap(), "destination", operation()).unwrap();
+        let destination = root.path().join("destination").join(filename);
+        assert_eq!(
+            Path::new(copied.new_path.as_ref().unwrap()),
+            fs::canonicalize(&destination).unwrap()
+        );
+        assert_eq!(fs::read(&destination).unwrap(), contents);
+        assert_eq!(fs::read(external.path().join(filename)).unwrap(), contents);
+
+        fs::write(&destination, b"existing destination bytes").unwrap();
+        assert!(perform(root.path().to_str().unwrap(), "destination", operation()).is_err());
+        assert_eq!(
+            fs::read(&destination).unwrap(),
+            b"existing destination bytes"
+        );
+        assert_eq!(fs::read(external.path().join(filename)).unwrap(), contents);
+    }
+
+    #[test]
+    fn failed_external_copy_leaves_the_destination_absent() {
+        let root = tempfile::tempdir().unwrap();
+        let external = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join("destination")).unwrap();
+        assert!(perform(
+            root.path().to_str().unwrap(),
+            "destination",
+            Operation::Copy {
+                source_root: format!(
+                    "{}{}",
+                    external.path().to_str().unwrap(),
+                    std::path::MAIN_SEPARATOR
+                ),
+                source: "missing file.txt".into(),
+            },
+        )
+        .is_err());
+        assert!(!root.path().join("destination/missing file.txt").exists());
+        assert_eq!(
+            fs::read_dir(root.path().join("destination"))
+                .unwrap()
+                .count(),
+            0
+        );
+    }
+
+    #[test]
     fn root_rename_and_cut_move_preserve_contents() {
         let parent = tempfile::tempdir().unwrap();
         let root = parent.path().join("project");

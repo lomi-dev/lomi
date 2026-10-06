@@ -8,6 +8,13 @@
   let checkpoint = "startup";
   let clipboardChangeCount = null;
   const startupModalDiagnostics = { before: null, after: null };
+  const externalDrop = {
+    transport: "tauri-event-plugin",
+    limitation:
+      "Simulated native events in WKWebView; no operating-system drag gesture",
+    fallbackReason: null,
+    events: [],
+  };
   const inspectStartupModal = () => {
     const dialog = document.querySelector(
       "dialog.agent-control-startup-dialog",
@@ -112,6 +119,77 @@
     (await invoke("list_directory", { root: projectRoot, relative })).map(
       (entry) => entry.name,
     );
+  const readContents = async (relative) =>
+    (await invoke("read_editor_file", { root: projectRoot, relative })).content;
+  const drag = async (type, position, paths = []) => {
+    const panel = document.querySelector("[data-explorer-root]");
+    const zoom =
+      Number.parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue(
+          "--app-zoom",
+        ),
+      ) || 1;
+    const payload = {
+      paths,
+      position: { x: position.x * zoom, y: position.y * zoom },
+    };
+    if (externalDrop.transport === "tauri-event-plugin") {
+      try {
+        await invoke("plugin:event|emit", {
+          event: `tauri://drag-${type}`,
+          payload,
+        });
+      } catch (error) {
+        if (!/reserved|not allowed|denied|forbidden/i.test(String(error)))
+          throw error;
+        externalDrop.transport = "explorer-custom-event-fallback";
+        externalDrop.fallbackReason = String(error);
+        externalDrop.limitation +=
+          "; native event routing bypassed because emitting the event was forbidden";
+      }
+    }
+    if (externalDrop.transport === "explorer-custom-event-fallback") {
+      panel.dispatchEvent(
+        new CustomEvent("explorer-file-drag", {
+          detail: { type, position, paths },
+        }),
+      );
+    }
+    externalDrop.events.push({ type, position, paths, zoom });
+    await pause(50);
+  };
+  const center = (element) => {
+    element.scrollIntoView({ block: "nearest" });
+    const bounds = element.getBoundingClientRect();
+    return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+  };
+  const dropOn = async (entryPath, filename) => {
+    const entry = await wait(
+      () => findEntry(entryPath),
+      `drop row ${entryPath}`,
+    );
+    const target = entry.closest("[data-explorer-directory]");
+    const position = center(entry);
+    const paths = [`${directory}/external source with spaces/${filename}`];
+    await drag("enter", position, paths);
+    await drag("over", position, paths);
+    await wait(
+      () => target.getAttribute("data-explorer-drop-target") === "true",
+      `drop highlight ${entryPath}`,
+    );
+    await drag("drop", position, paths);
+    await wait(
+      () =>
+        document
+          .querySelector("[data-explorer-root]")
+          .getAttribute("aria-busy") !== "true",
+      "external import finished",
+    );
+    await wait(
+      () => !document.querySelector('[data-explorer-drop-target="true"]'),
+      "drop highlight cleared",
+    );
+  };
   const inspectClipboard = async () => {
     const status = await invoke("plugin_smoke_result", {
       stage: "clipboard-status",
@@ -249,11 +327,126 @@
     if (moveTarget.getAttribute("aria-expanded") !== "true")
       throw Error("The move target folder did not expand");
 
+    checkpoint =
+      "stationary external drag hover expands its folder after one second";
+    const dropFolder = await wait(() => findEntry(`${projectRoot}/drop-dest`));
+    if (dropFolder.getAttribute("aria-expanded") !== "false")
+      throw Error("External drop fixture folder is already expanded");
+    const folderRow = dropFolder.closest("[data-explorer-directory]");
+    const folderPosition = center(dropFolder);
+    const folderPaths = [
+      `${directory}/external source with spaces/folder źródło.txt`,
+    ];
+    await drag("enter", folderPosition, folderPaths);
+    await drag("over", folderPosition, folderPaths);
+    await wait(
+      () => folderRow.getAttribute("data-explorer-drop-target") === "true",
+    );
+    await pause(500);
+    if (dropFolder.getAttribute("aria-expanded") !== "false")
+      throw Error("Folder expanded before its one-second stationary hover");
+    await wait(
+      () => dropFolder.getAttribute("aria-expanded") === "true",
+      "stationary folder hover expansion",
+    );
+    await drag("leave", folderPosition);
+    await wait(
+      () => !document.querySelector('[data-explorer-drop-target="true"]'),
+      "leave clears highlight",
+    );
+
+    checkpoint = "external copy into the folder row";
+    await dropOn(`${projectRoot}/drop-dest`, "folder źródło.txt");
+    await wait(async () =>
+      (await listNames("drop-dest")).includes("folder źródło.txt"),
+    );
+    await wait(
+      () => findEntry(`${projectRoot}/drop-dest/folder źródło.txt`),
+      "imported folder file row",
+    );
+    if (
+      (await readContents("drop-dest/folder źródło.txt")) !==
+      "External folder drop contents\n"
+    )
+      throw Error("Folder drop changed external file contents");
+
+    checkpoint = "external file-row drop copies into the containing folder";
+    await dropOn(
+      `${projectRoot}/drop-dest/folder źródło.txt`,
+      "sibling source.txt",
+    );
+    await wait(async () =>
+      (await listNames("drop-dest")).includes("sibling source.txt"),
+    );
+    if (
+      (await readContents("drop-dest/sibling source.txt")) !==
+      "External sibling drop contents\n"
+    )
+      throw Error("File-row drop changed external file contents");
+    if ((await listNames("")).includes("sibling source.txt"))
+      throw Error(
+        "File-row drop copied into the project root instead of its containing folder",
+      );
+
+    checkpoint = "external root-background drop";
+    const tree = document.querySelector("[data-explorer-root] .file-tree");
+    const bounds = tree.getBoundingClientRect();
+    const rootPosition = {
+      x: bounds.x + bounds.width / 2,
+      y: bounds.bottom - 8,
+    };
+    if (document.elementFromPoint(rootPosition.x, rootPosition.y) !== tree)
+      throw Error(
+        "Root drop coordinates do not hit the empty Explorer background",
+      );
+    const rootPaths = [
+      `${directory}/external source with spaces/root source.txt`,
+    ];
+    await drag("enter", rootPosition, rootPaths);
+    await drag("over", rootPosition, rootPaths);
+    await wait(() => tree.getAttribute("data-explorer-drop-target") === "true");
+    await drag("drop", rootPosition, rootPaths);
+    await wait(async () => (await listNames("")).includes("root source.txt"));
+    await wait(
+      () => findEntry(`${projectRoot}/root source.txt`),
+      "root imported file row",
+    );
+    await wait(
+      () =>
+        document
+          .querySelector("[data-explorer-root]")
+          .getAttribute("aria-busy") !== "true",
+      "root import finished",
+    );
+    if (
+      (await readContents("root source.txt")) !==
+      "External root drop contents\n"
+    )
+      throw Error("Root drop changed external file contents");
+
+    checkpoint = "external drop conflict preserves existing destination bytes";
+    await dropOn(`${projectRoot}/drop-dest`, "conflict.txt");
+    await wait(
+      () => document.querySelector('button[title="Dismiss message"]'),
+      "copy conflict error message",
+    );
+    if (
+      (await readContents("drop-dest/conflict.txt")) !==
+      "Keep existing conflict bytes\n"
+    )
+      throw Error("External drop overwrote an existing file");
+    externalDrop.folderHoverExpanded = true;
+    externalDrop.folderCopy = true;
+    externalDrop.fileRowSiblingCopy = true;
+    externalDrop.rootBackgroundCopy = true;
+    externalDrop.conflictPreserved = true;
+
     await inspectClipboard();
     await invoke("plugin_smoke_result", {
       stage: "passed",
       data: {
         clipboardEvents: events,
+        externalDrop,
         startupModal: startupModalDiagnostics,
         sourceExistsAfterCopy: true,
         copiedFileExists: true,
@@ -286,6 +479,7 @@
           checkpoint,
           error: String(error),
           clipboardEvents: events,
+          externalDrop,
           clipboardStatus: status,
           clipboardChangeCount,
           pageTitle: document.title,

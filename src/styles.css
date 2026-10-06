@@ -1677,6 +1677,17 @@ svg {
 .tree-row[data-selected="true"] {
   background: var(--color-primary-container);
 }
+[data-explorer-drop-target="true"],
+[data-explorer-drop-destination="true"] {
+  outline: var(--focus-width) solid var(--color-primary);
+  outline-offset: calc(-1 * var(--focus-width));
+}
+.tree-row[data-explorer-drop-target="true"],
+.tree-row[data-explorer-drop-destination="true"],
+.project-tree-heading[data-explorer-drop-destination="true"],
+.tree-message[data-explorer-drop-target="true"] {
+  background: var(--color-primary-container);
+}
 .tree-row[data-cut="true"] .tree-entry > :not(.tree-cut-mark) {
   color: var(--color-muted-text);
   filter: grayscale(1);

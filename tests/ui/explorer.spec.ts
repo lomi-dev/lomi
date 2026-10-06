@@ -50,6 +50,8 @@ async function setup(
   await page.addInitScript((initialEntries) => {
     const native = (window as any).__nativeTest;
     native.operationError = "";
+    native.externalEntries = [];
+    native.operationDelay = 0;
     native.searchDelays = {};
     native.directoryDelay = 0;
     native.directoryReads = 0;
@@ -100,14 +102,20 @@ async function setup(
         );
         const result = entries
           .filter((entry) => {
-            const relative = entry.relative.replaceAll("\\", "/");
+            const relative = navigator.platform.startsWith("Win")
+              ? entry.relative.replaceAll("\\", "/")
+              : entry.relative;
             return (
               relative.split("/").slice(0, -1).join("/") ===
-              args.relative.replaceAll("\\", "/")
+              (navigator.platform.startsWith("Win")
+                ? args.relative.replaceAll("\\", "/")
+                : args.relative)
             );
           })
           .map((entry) => {
-            const relative = entry.relative.replaceAll("\\", "/");
+            const relative = navigator.platform.startsWith("Win")
+              ? entry.relative.replaceAll("\\", "/")
+              : entry.relative;
             return {
               name: relative.split("/").at(-1),
               relativePath: entry.relative,
@@ -159,13 +167,18 @@ async function setup(
         return result;
       }
       if (command !== "file_operation") return;
+      if (native.operationDelay)
+        await new Promise((resolve) =>
+          setTimeout(resolve, native.operationDelay),
+        );
       if (native.operationError) throw new Error(native.operationError);
       const { operation, relative, root } = args;
       const source = operation.source ?? relative;
-      const oldPath = `${operation.sourceRoot ?? root}/${source}`.replace(
-        /\/$/,
-        "",
-      );
+      const oldPath =
+        `${(operation.sourceRoot ?? root).replace(/\/$/, "")}/${source}`.replace(
+          /\/$/,
+          "",
+        );
       if (operation.kind === "rename" && !relative) {
         const newPath = `${root.slice(0, root.lastIndexOf("/"))}/${operation.name}`;
         for (const [path, content] of Object.entries(native.editorFiles))
@@ -203,7 +216,17 @@ async function setup(
           directory: operation.kind === "newFolder",
         });
       else {
-        const copied = entries
+        const sourceEntries =
+          operation.sourceRoot &&
+          operation.sourceRoot.replace(/\/$/, "") !== root &&
+          native.externalEntries.some(
+            (entry: { relative: string }) =>
+              entry.relative === source ||
+              entry.relative.startsWith(source + "/"),
+          )
+            ? native.externalEntries
+            : entries;
+        const copied = sourceEntries
           .filter(
             (entry) =>
               entry.relative === source ||
@@ -1951,4 +1974,412 @@ test("nested repositories supply file decorations, history and ignore targets", 
       }),
     )
     .toEqual({ root: "/project/first", path: "file.txt" });
+});
+
+async function nativeExplorerDrag(
+  page: Page,
+  type: "enter" | "over" | "drop" | "leave",
+  target?: import("@playwright/test").Locator,
+  paths: string[] = [],
+  offset = { x: 0, y: 0 },
+) {
+  const box = target ? await target.boundingBox() : null;
+  await page.evaluate(
+    async ({ type, box, paths, offset }) => {
+      const position = box
+        ? {
+            x: (box.x + box.width / 2 + offset.x) * devicePixelRatio,
+            y: (box.y + box.height / 2 + offset.y) * devicePixelRatio,
+          }
+        : undefined;
+      await (window as any).__nativeTest.emitEvent(`tauri://drag-${type}`, {
+        paths,
+        position,
+      });
+    },
+    { type, box, paths, offset },
+  );
+}
+
+async function importCalls(page: Page) {
+  return page.evaluate(() =>
+    (window as any).__nativeTest.calls.filter(
+      (call: any) =>
+        call.command === "file_operation" &&
+        call.args.operation.kind === "copy",
+    ),
+  );
+}
+
+async function seedImports(page: Page) {
+  await page.evaluate(() => {
+    const native = (window as any).__nativeTest;
+    native.externalEntries = [
+      { relative: "notes with spaces.txt", directory: false },
+      { relative: "second.txt", directory: false },
+      { relative: "README.md", directory: false },
+    ];
+    native.editorFiles["/outside folder/notes with spaces.txt"] = {
+      content: "external source stays intact",
+    };
+  });
+}
+
+test("native Explorer drops copy multiple paths into folders and retain sources", async ({
+  page,
+}, testInfo) => {
+  await setup(page);
+  await seedImports(page);
+  const folder = page.locator('[data-explorer-folder="src"]');
+  await nativeExplorerDrag(page, "enter", folder);
+  await expect(folder).toHaveAttribute("data-explorer-drop-target", "true");
+  await page.screenshot({
+    path: testInfo.outputPath("explorer-drop-folder.png"),
+  });
+  await nativeExplorerDrag(page, "drop", folder, [
+    "/outside folder/notes with spaces.txt",
+    "/outside folder/second.txt",
+  ]);
+  await expect(
+    page.getByRole("button", { name: "notes with spaces.txt", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "second.txt", exact: true }),
+  ).toBeVisible();
+  const calls = await importCalls(page);
+  expect(calls.map((call: any) => call.args)).toEqual([
+    {
+      root: "/project",
+      relative: "src",
+      operation: {
+        kind: "copy",
+        sourceRoot: "/outside folder/",
+        source: "notes with spaces.txt",
+      },
+    },
+    {
+      root: "/project",
+      relative: "src",
+      operation: {
+        kind: "copy",
+        sourceRoot: "/outside folder/",
+        source: "second.txt",
+      },
+    },
+  ]);
+  expect(
+    await page.evaluate(
+      () =>
+        (window as any).__nativeTest.editorFiles[
+          "/outside folder/notes with spaces.txt"
+        ].content,
+    ),
+  ).toBe("external source stays intact");
+  await expect(folder).not.toHaveAttribute("data-explorer-drop-target");
+});
+
+test("native Explorer drops resolve files, empty children, root whitespace and heading", async ({
+  page,
+}) => {
+  await setup(page, false, [
+    { relative: "src", directory: true },
+    { relative: "src/main.ts", directory: false },
+    { relative: "empty", directory: true },
+  ]);
+  await page.getByRole("button", { name: "Expand src", exact: true }).click();
+  const file = page.getByRole("button", { name: "main.ts", exact: true });
+  await nativeExplorerDrag(page, "drop", file, ["/first.txt"]);
+  await expect.poll(async () => (await importCalls(page)).length).toBe(1);
+  await page.getByRole("button", { name: "Expand empty", exact: true }).click();
+  const empty = page.locator('.tree-message[data-explorer-directory="empty"]');
+  await expect(empty).toHaveText("Empty folder");
+  await nativeExplorerDrag(page, "drop", empty, ["/second.txt"]);
+  await expect.poll(async () => (await importCalls(page)).length).toBe(2);
+  const tree = page.locator(".file-tree");
+  await nativeExplorerDrag(page, "drop", tree, ["/third.txt"]);
+  await expect.poll(async () => (await importCalls(page)).length).toBe(3);
+  await nativeExplorerDrag(
+    page,
+    "drop",
+    page.getByRole("button", { name: "Project folder project", exact: true }),
+    ["/fourth.txt"],
+  );
+  await expect.poll(async () => (await importCalls(page)).length).toBe(4);
+  expect(
+    (await importCalls(page)).map((call: any) => call.args.relative),
+  ).toEqual(["src", "empty", "", ""]);
+  expect((await importCalls(page))[0].args.operation.sourceRoot).toBe("/");
+});
+
+test("native Explorer spring expansion requires a stationary second and cancels outside", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
+  await page.clock.pauseAt(new Date("2026-01-01T00:00:01Z"));
+  const folder = page.locator('[data-explorer-folder="src"]');
+  await nativeExplorerDrag(page, "enter", folder);
+  await page.clock.runFor(600);
+  await nativeExplorerDrag(page, "over", folder, [], { x: 1, y: 0 });
+  await page.clock.runFor(600);
+  await expect(
+    page.getByRole("button", { name: "Expand src", exact: true }),
+  ).toBeVisible();
+  await nativeExplorerDrag(page, "over", folder, [], { x: 1, y: 0 });
+  await page.clock.runFor(400);
+  await expect(
+    page.getByRole("button", { name: "Collapse src", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Collapse src", exact: true }).click();
+  for (const target of [
+    page.getByRole("button", { name: "Refresh explorer", exact: true }),
+    page.locator(".terminal-pane").first(),
+  ]) {
+    await nativeExplorerDrag(page, "enter", folder);
+    await page.clock.runFor(600);
+    await nativeExplorerDrag(page, "over", target);
+    await page.clock.runFor(1000);
+    await expect(
+      page.getByRole("button", { name: "Expand src", exact: true }),
+    ).toBeVisible();
+    await expect(folder).not.toHaveAttribute("data-explorer-drop-target");
+  }
+  await nativeExplorerDrag(page, "enter", folder);
+  await nativeExplorerDrag(page, "leave");
+  await page.clock.runFor(1000);
+  await expect(
+    page.getByRole("button", { name: "Expand src", exact: true }),
+  ).toBeVisible();
+});
+
+test("native Explorer imports keep partial success and reject overlapping drops", async ({
+  page,
+}) => {
+  await setup(page);
+  await seedImports(page);
+  await page.evaluate(() => {
+    (window as any).__nativeTest.operationDelay = 100;
+  });
+  const project = page.getByRole("button", {
+    name: "Project folder project",
+    exact: true,
+  });
+  await nativeExplorerDrag(page, "drop", project, [
+    "/outside folder/README.md",
+    "/outside folder/second.txt",
+  ]);
+  await expect(page.locator("[data-explorer-root]")).toHaveAttribute(
+    "aria-busy",
+    "true",
+  );
+  await nativeExplorerDrag(page, "drop", project, [
+    "/outside folder/notes with spaces.txt",
+  ]);
+  await expect.poll(async () => (await importCalls(page)).length).toBe(2);
+  await expect(
+    page.getByRole("button", { name: "second.txt", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("A file or folder with that name already exists.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(page.locator("[data-explorer-root]")).toHaveAttribute(
+    "aria-busy",
+    "false",
+  );
+  expect(
+    (await importCalls(page)).map((call: any) => call.args.operation.source),
+  ).toEqual(["README.md", "second.txt"]);
+});
+
+test("native Explorer Windows imports preserve a drive root", async ({
+  page,
+}) => {
+  await setup(page, false, undefined, false, "windows");
+  await nativeExplorerDrag(
+    page,
+    "drop",
+    page.getByRole("button", { name: "Project folder project", exact: true }),
+    ["C:\\notes with spaces.txt"],
+  );
+  await expect.poll(async () => (await importCalls(page)).length).toBe(1);
+  expect((await importCalls(page))[0].args.operation).toEqual({
+    kind: "copy",
+    sourceRoot: "C:/",
+    source: "notes with spaces.txt",
+  });
+});
+
+test("native Explorer search hides the tree and cancels pending expansion", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
+  await page.clock.pauseAt(new Date("2026-01-01T00:00:01Z"));
+  await nativeExplorerDrag(
+    page,
+    "enter",
+    page.locator('[data-explorer-folder="src"]'),
+  );
+  await page.clock.runFor(500);
+  await page
+    .getByRole("button", { name: "Search in project", exact: true })
+    .click();
+  await page.clock.runFor(1000);
+  await page
+    .getByRole("button", { name: "Back to Explorer", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Expand src", exact: true }),
+  ).toBeVisible();
+});
+
+for (const platform of ["linux", "macos", "windows"] as const) {
+  test(`native Explorer routes ${platform} scaled and zoomed positions`, async ({
+    page,
+  }) => {
+    await page.addInitScript((platform) => {
+      localStorage.setItem("lomi.zoom.main", "150");
+      Object.defineProperty(window, "devicePixelRatio", {
+        value: platform === "windows" ? 3 : 2,
+      });
+    }, platform);
+    await setup(page, false, undefined, false, platform);
+    await expect
+      .poll(() => page.evaluate(() => (window as any).__nativeTest.zoom))
+      .toBe(1.5);
+    const folder = page.locator('[data-explorer-folder="src"]');
+    const box = (await folder.boundingBox())!;
+    const factor = platform === "windows" ? 3 : 1.5;
+    await page.evaluate(
+      async ({ box, factor }) => {
+        await (window as any).__nativeTest.emitEvent("tauri://drag-drop", {
+          paths: ["/external/scaled.txt"],
+          position: {
+            x: (box.x + box.width / 2) * factor,
+            y: (box.y + box.height / 2) * factor,
+          },
+        });
+      },
+      { box, factor },
+    );
+    await expect.poll(async () => (await importCalls(page)).length).toBe(1);
+    expect((await importCalls(page))[0].args.relative).toBe("src");
+  });
+}
+
+test("native Explorer POSIX imports preserve backslashes in filenames", async ({
+  page,
+}) => {
+  await setup(page, false, [
+    { relative: "src", directory: true },
+    { relative: "src/notes\\draft.txt", directory: false },
+  ]);
+  await nativeExplorerDrag(
+    page,
+    "drop",
+    page.getByRole("button", { name: "Project folder project", exact: true }),
+    ["/outside folder/notes\\draft.txt"],
+  );
+  await expect.poll(async () => (await importCalls(page)).length).toBe(1);
+  expect((await importCalls(page))[0].args.operation).toEqual({
+    kind: "copy",
+    sourceRoot: "/outside folder/",
+    source: "notes\\draft.txt",
+  });
+  await page.getByRole("button", { name: "Expand src", exact: true }).click();
+  await nativeExplorerDrag(
+    page,
+    "drop",
+    page.getByRole("button", { name: "notes\\draft.txt", exact: true }),
+    ["/outside/next.txt"],
+  );
+  await expect.poll(async () => (await importCalls(page)).length).toBe(2);
+  expect((await importCalls(page))[1].args.relative).toBe("src");
+});
+
+test("native Explorer navigation cancels hover and retains accepted import destination", async ({
+  page,
+}) => {
+  const project = newProject("/project", "local:bash");
+  const other = newProject("/other", "local:bash");
+  await setup(page, false, undefined, false, "linux", {
+    ...newSession(),
+    projects: [project, other],
+    activeProjectId: project.id,
+  });
+  await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
+  await page.clock.pauseAt(new Date("2026-01-01T00:00:01Z"));
+  await nativeExplorerDrag(
+    page,
+    "enter",
+    page.locator('[data-explorer-folder="src"]'),
+  );
+  await page.clock.runFor(500);
+  await page.locator(".project-switcher").click();
+  await page.getByRole("menuitem", { name: "other", exact: true }).click();
+  await page.clock.runFor(1000);
+  await expect(
+    page.getByRole("button", { name: "Expand src", exact: true }),
+  ).toBeVisible();
+  await seedImports(page);
+  await page.evaluate(() => {
+    (window as any).__nativeTest.operationDelay = 2000;
+  });
+  await nativeExplorerDrag(
+    page,
+    "drop",
+    page.locator('[data-explorer-folder="src"]'),
+    ["/outside folder/second.txt", "/outside folder/notes with spaces.txt"],
+  );
+  await expect.poll(async () => (await importCalls(page)).length).toBe(1);
+  await page.locator(".project-switcher").click();
+  await page.getByRole("menuitem", { name: "project", exact: true }).click();
+  await page.clock.runFor(4000);
+  await expect(page.locator('[data-explorer-root="/project"]')).toHaveAttribute(
+    "aria-busy",
+    "false",
+  );
+  await expect(
+    page.getByRole("button", { name: "Expand src", exact: true }),
+  ).toBeVisible();
+  expect(
+    (await importCalls(page)).map((call: any) => ({
+      root: call.args.root,
+      relative: call.args.relative,
+    })),
+  ).toEqual([
+    { root: "/other", relative: "src" },
+    { root: "/other", relative: "src" },
+  ]);
+});
+
+test("native Explorer spring expansion cancels after layout moves or unmount", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
+  await page.clock.pauseAt(new Date("2026-01-01T00:00:01Z"));
+  const folder = page.locator('[data-explorer-folder="src"]');
+  await nativeExplorerDrag(page, "enter", folder);
+  await folder.evaluate((element) => {
+    (element as HTMLElement).style.transform = "translateY(120px)";
+  });
+  await page.clock.runFor(1000);
+  await expect(
+    page.getByRole("button", { name: "Expand src", exact: true }),
+  ).toBeVisible();
+  await folder.evaluate((element) => {
+    (element as HTMLElement).style.transform = "";
+  });
+  await nativeExplorerDrag(page, "leave");
+  await nativeExplorerDrag(page, "enter", folder);
+  await page.clock.runFor(500);
+  await page.getByRole("button", { name: /^Toggle file explorer/ }).click();
+  await page.clock.runFor(1000);
+  await page.getByRole("button", { name: /^Toggle file explorer/ }).click();
+  await expect(
+    page.getByRole("button", { name: "Expand src", exact: true }),
+  ).toBeVisible();
 });
