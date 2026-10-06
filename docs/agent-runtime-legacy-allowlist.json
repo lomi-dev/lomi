@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "entries": [
+    {
+      "scope": "src-tauri/src/agent_runtime/migration/legacy_router",
+      "reason": "Frozen bounded schema 1–5 data decoder; no process launch, credential mutation or inference"
+    },
+    {
+      "value": "dev.lomi.desktop.cli-router",
+      "reason": "Preserve original opaque credential service and journal bindings without exporting or enumerating keyring secrets"
+    },
+    {
+      "value": "cli-router/router.sqlite and router.owner.lock",
+      "reason": "Native migration identifies and locks legacy storage; original data is retained"
+    },
+    {
+      "value": "~/.local/share/lomi-router-clis",
+      "reason": "Existing immutable user installation paths and receipts remain compatible"
+    },
+    {
+      "value": "lomi-router-kimi, lomi-router-kilo, lomi-router-pi",
+      "reason": "Exact admitted artifact metadata; renaming internal package bytes would invalidate reviewed hashes"
+    },
+    {
+      "scope": "tests negative legacy IPC and schema fixtures",
+      "reason": "Verify old command refusal and exact archival decoding; never register an executable legacy command"
+    },
+    {
+      "scope": "../router-plan/01–22 and source-manifest-2026-10-05.json",
+      "reason": "Dated audit and requirements retain historical names as evidence"
+    }
+  ]
+}

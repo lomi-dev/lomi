@@ -30,21 +30,32 @@ use std::{
 
 const HIGH_WATER: usize = 128 * 1024;
 
+pub(crate) type FinalNativeAdmission = Box<dyn FnOnce() -> Result<(), String> + Send>;
+pub(crate) struct NativeTerminalLaunch {
+    pub command: (portable_pty::CommandBuilder, String),
+    pub admission: FinalNativeAdmission,
+    #[cfg(target_os = "macos")]
+    pub owned_boundary: Option<crate::agent_runtime::native_launch::PtyFactory>,
+}
 struct PreparedTerminal {
     command: (portable_pty::CommandBuilder, String),
     completion: Arc<AtomicBool>,
     drain_healthy: Option<Arc<AtomicBool>>,
+    admission: Option<FinalNativeAdmission>,
+    #[cfg(target_os = "macos")]
+    owned_boundary: Option<crate::agent_runtime::native_launch::PtyFactory>,
 }
 
 #[cfg(unix)]
-struct GatewayTerminal {
+#[cfg(all(test, unix))]
+struct OwnedAccountTerminal {
     command: (portable_pty::CommandBuilder, String),
     completion: Arc<AtomicBool>,
     drain_healthy: Arc<AtomicBool>,
 }
 
 #[cfg(target_os = "macos")]
-fn gateway_group_contains_only_zombies(group: u32) -> bool {
+fn account_group_contains_only_zombies(group: u32) -> bool {
     // Darwin killpg returns EPERM if a retained group has no signalable live
     // member. Admit that case only with two complete, stable native snapshots
     // and an exact zombie status for every member, never for an unknown PID.
@@ -114,10 +125,13 @@ struct Flow {
 }
 
 struct Session {
-    owned_gateway: bool,
-    gateway_reap_started: Mutex<bool>,
-    gateway_kill_sent: AtomicBool,
-    gateway_signal_failed: AtomicBool,
+    owned_account: bool,
+    owned_boundary: bool,
+    completion: Option<Arc<AtomicBool>>,
+    transport_finished: AtomicBool,
+    account_reap_started: Mutex<bool>,
+    account_kill_sent: AtomicBool,
+    account_signal_failed: AtomicBool,
     master: Mutex<Box<dyn MasterPty + Send>>,
     writer: Mutex<Option<Box<dyn Write + Send>>>,
     killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
@@ -318,16 +332,34 @@ impl Session {
     }
 
     #[cfg(unix)]
-    fn kill_gateway_group(&self, reap_started: bool) {
+    fn kill_account_group(&self, reap_started: bool) {
+        if self.owned_boundary {
+            if self.account_kill_sent.load(Ordering::SeqCst) {
+                return;
+            }
+            match self
+                .killer
+                .lock()
+                .map_err(|_| ())
+                .and_then(|mut killer| killer.kill().map_err(|_| ()))
+            {
+                Ok(()) => {
+                    self.account_signal_failed.store(false, Ordering::SeqCst);
+                    self.account_kill_sent.store(true, Ordering::SeqCst);
+                }
+                Err(()) => self.account_signal_failed.store(true, Ordering::SeqCst),
+            }
+            return;
+        }
         // Once a group-wide SIGKILL succeeds, its members cannot create new
         // descendants. Do not signal again after reaping begins or after a
         // successful kill: Darwin can retain an exiting child until the PTY
         // descriptors close, and PID ownership ends when wait reaps it.
-        if reap_started || self.gateway_kill_sent.load(Ordering::SeqCst) {
+        if reap_started || self.account_kill_sent.load(Ordering::SeqCst) {
             return;
         }
         let Some(pid) = self.pid else {
-            self.gateway_signal_failed.store(true, Ordering::SeqCst);
+            self.account_signal_failed.store(true, Ordering::SeqCst);
             return;
         };
         let killed = unsafe { libc::kill(-(pid as i32), libc::SIGKILL) };
@@ -337,23 +369,23 @@ impl Session {
             None
         };
         #[cfg(target_os = "macos")]
-        let only_zombies = error == Some(libc::EPERM) && gateway_group_contains_only_zombies(pid);
+        let only_zombies = error == Some(libc::EPERM) && account_group_contains_only_zombies(pid);
         #[cfg(not(target_os = "macos"))]
         let only_zombies = false;
         if killed == 0 || error == Some(libc::ESRCH) || only_zombies {
-            self.gateway_kill_sent.store(true, Ordering::SeqCst);
+            self.account_kill_sent.store(true, Ordering::SeqCst);
         } else {
-            self.gateway_signal_failed.store(true, Ordering::SeqCst);
+            self.account_signal_failed.store(true, Ordering::SeqCst);
         }
     }
 
     fn stop(&self) {
         #[cfg(unix)]
-        if self.owned_gateway {
+        if self.owned_account {
             // portable-pty creates an owned session/process group. Fence its
             // descendants before the leader can be reaped and its PID reused.
-            if let Ok(reap_started) = self.gateway_reap_started.lock() {
-                self.kill_gateway_group(*reap_started);
+            if let Ok(reap_started) = self.account_reap_started.lock() {
+                self.kill_account_group(*reap_started);
             }
         }
         #[cfg(unix)]
@@ -366,7 +398,7 @@ impl Session {
             flow.closed = true;
         }
         self.ready.notify_all();
-        if !self.owned_gateway {
+        if !self.owned_account {
             if let Ok(mut killer) = self.killer.lock() {
                 let _ = killer.kill();
             }
@@ -563,7 +595,7 @@ pub struct Shells {
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StartRequest {
     id: String,
     profile_id: String,
@@ -575,22 +607,7 @@ pub struct StartRequest {
     #[serde(default)]
     cli_launch: Option<crate::cli_catalog::TitleCli>,
     #[serde(default)]
-    router_profile_id: Option<String>,
-    #[serde(default)]
-    router_id: Option<String>,
-    #[serde(default)]
-    gateway_run_id: Option<String>,
-    #[serde(default)]
-    gateway_run_revision: Option<u64>,
-    #[serde(default)]
-    native_recovery: Option<NativeRecovery>,
-}
-
-#[derive(Clone, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct NativeRecovery {
-    run_id: String,
-    revision: u64,
+    account_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -601,30 +618,13 @@ struct AgentTicket {
 }
 
 fn validate_start_request(request: &StartRequest) -> Result<(), String> {
-    if request.native_recovery.is_some()
-        && (request.router_profile_id.is_none()
-            || request.cli_launch.is_none()
-            || request.gateway_run_id.is_some()
-            || request.agent_ticket.is_some()
-            || request.router_id.is_some())
-    {
-        return Err("Native recovery requires its exact original account and a separate explicit CLI launch.".into());
-    }
-    if request.gateway_run_id.is_some() != request.gateway_run_revision.is_some()
-        || request.gateway_run_id.is_some()
-            && (request.cli_launch.is_none()
-                || request.agent_ticket.is_some()
-                || request.router_id.is_some()
-                || request.router_profile_id.is_some())
+    if request.account_id.is_some()
+        && (request.agent_ticket.is_some() || request.cli_launch.is_some())
     {
         return Err(
-            "A gateway run requires its reviewed revision and a separate native CLI launch.".into(),
+            "A native account terminal resolves its own CLI and cannot combine another launch."
+                .into(),
         );
-    }
-    if (request.router_id.is_some() || request.router_profile_id.is_some())
-        && (request.cli_launch.is_none() || request.agent_ticket.is_some())
-    {
-        return Err("A CLI account or router requires its own explicit CLI launch.".into());
     }
     if request.agent_ticket.is_some() && request.cli_launch.is_some() {
         return Err("Agent control terminals cannot launch a separate CLI.".into());
@@ -638,9 +638,9 @@ pub struct Started {
     cwd: String,
     profile_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    router_profile_id: Option<String>,
+    account_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    router_profile_label: Option<String>,
+    account_label: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -973,15 +973,84 @@ impl Terminals {
         }
     }
 
-    pub fn close(&self, id: &str) {
+    pub(crate) fn stop_owned_and_wait(&self) -> Result<(), String> {
+        let sessions: Vec<_> = self
+            .sessions
+            .lock()
+            .map_err(|_| "Owned terminal state is unavailable.")?
+            .values()
+            .filter(|session| session.owned_boundary)
+            .cloned()
+            .collect();
+        Self::stop_owned_sessions(&sessions)
+    }
+
+    fn stop_owned_sessions(sessions: &[Arc<Session>]) -> Result<(), String> {
+        // Keep the registered views until each owned killer proves retirement.
+        // Never hold the terminal registry or runtime owner lock across Stop.
+        for session in sessions {
+            #[cfg(unix)]
+            {
+                let reap_started = session
+                    .account_reap_started
+                    .lock()
+                    .map_err(|_| "Owned terminal retirement state is unavailable.")?;
+                session.kill_account_group(*reap_started);
+            }
+            if !session.account_kill_sent.load(Ordering::SeqCst)
+                || session.account_signal_failed.load(Ordering::SeqCst)
+            {
+                return Err("An owned login terminal has not proved retirement.".into());
+            }
+            session.stop();
+        }
+        let deadline = Instant::now() + Duration::from_secs(8);
+        while sessions
+            .iter()
+            .any(|session| !session.transport_finished.load(Ordering::SeqCst))
+        {
+            if Instant::now() >= deadline {
+                return Err("Owned login terminal transport has not finished draining.".into());
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+        for session in sessions {
+            session
+                .completion
+                .as_ref()
+                .ok_or("Owned login completion state is unavailable.")?
+                .store(true, Ordering::SeqCst);
+        }
+        // Keep owned views until durable helper finalization also succeeds.
+        // Explicit close or the successful application's Exit removes them.
+        Ok(())
+    }
+
+    pub fn close(&self, id: &str) -> Result<(), String> {
         let session = self
             .sessions
             .lock()
-            .ok()
-            .and_then(|mut sessions| sessions.remove(id));
+            .map_err(|_| "Terminal state is unavailable.")?
+            .get(id)
+            .cloned();
         if let Some(session) = session {
-            session.stop();
+            if session.owned_boundary {
+                Self::stop_owned_sessions(std::slice::from_ref(&session))?;
+            } else {
+                session.stop();
+            }
+            let mut sessions = self
+                .sessions
+                .lock()
+                .map_err(|_| "Terminal state is unavailable.")?;
+            if sessions
+                .get(id)
+                .is_some_and(|current| Arc::ptr_eq(current, &session))
+            {
+                sessions.remove(id);
+            }
         }
+        Ok(())
     }
 
     pub fn acknowledge(&self, id: &str, bytes: usize) {
@@ -1034,13 +1103,13 @@ impl Terminals {
         )
     }
 
-    fn start_router(
+    fn start_account(
         &self,
         shells: &Shells,
         request: StartRequest,
         output: Channel<Response>,
         exited: Channel<Exit>,
-        command: (portable_pty::CommandBuilder, String),
+        launch: NativeTerminalLaunch,
         completion: Arc<AtomicBool>,
     ) -> Result<Started, String> {
         self.start_prepared(
@@ -1051,21 +1120,60 @@ impl Terminals {
             #[cfg(unix)]
             None,
             Some(PreparedTerminal {
-                command,
+                command: launch.command,
                 completion,
                 drain_healthy: None,
+                admission: Some(launch.admission),
+                #[cfg(target_os = "macos")]
+                owned_boundary: launch.owned_boundary,
             }),
         )
     }
 
-    #[cfg(unix)]
-    fn start_gateway(
+    #[cfg(feature = "native-smoke")]
+    pub(crate) fn start_owned_smoke(
+        &self,
+        app: &tauri::AppHandle,
+        launch: NativeTerminalLaunch,
+        completion: Arc<AtomicBool>,
+    ) -> Result<String, String> {
+        let shells = app.state::<Shells>();
+        let profile_id = shells
+            .profiles
+            .first()
+            .ok_or("No smoke shell profile is available.")?
+            .id
+            .clone();
+        let id = format!("owned-smoke-{}", crate::agent_runtime::new_id()?);
+        let cwd = launch.command.1.clone();
+        self.start_account(
+            &shells,
+            StartRequest {
+                id: id.clone(),
+                profile_id,
+                cwd,
+                cols: 80,
+                rows: 24,
+                agent_ticket: None,
+                account_id: Some("offline-owned-smoke".into()),
+                cli_launch: None,
+            },
+            Channel::new(|_| Ok(())),
+            Channel::new(|_| Ok(())),
+            launch,
+            completion,
+        )?;
+        Ok(id)
+    }
+
+    #[cfg(all(test, unix))]
+    fn start_owned_account(
         &self,
         shells: &Shells,
         request: StartRequest,
         output: Channel<Response>,
         exited: Channel<Exit>,
-        launch: GatewayTerminal,
+        launch: OwnedAccountTerminal,
     ) -> Result<Started, String> {
         self.start_prepared(
             shells,
@@ -1077,6 +1185,9 @@ impl Terminals {
                 command: launch.command,
                 completion: launch.completion,
                 drain_healthy: Some(launch.drain_healthy),
+                admission: None,
+                #[cfg(target_os = "macos")]
+                owned_boundary: None,
             }),
         )
     }
@@ -1090,13 +1201,24 @@ impl Terminals {
         #[cfg(unix)] control: Option<Arc<Mutex<TerminalControl>>>,
         prepared: Option<PreparedTerminal>,
     ) -> Result<Started, String> {
-        let (prepared, completion, drain_healthy) = match prepared {
+        #[cfg(target_os = "macos")]
+        let mut owned_boundary = None;
+        let (prepared, completion, drain_healthy, admission) = match prepared {
             Some(PreparedTerminal {
                 command,
                 completion,
                 drain_healthy,
-            }) => (Some(command), Some(completion), drain_healthy),
-            None => (None, None, None),
+                admission,
+                #[cfg(target_os = "macos")]
+                    owned_boundary: factory,
+            }) => {
+                #[cfg(target_os = "macos")]
+                {
+                    owned_boundary = factory;
+                }
+                (Some(command), Some(completion), drain_healthy, admission)
+            }
+            None => (None, None, None, None),
         };
         validate_start_request(&request)?;
         if request.id.is_empty() || request.id.len() > 128 {
@@ -1123,27 +1245,13 @@ impl Terminals {
         } else {
             shell::build(&profile, &request.cwd, &shells.integration)?
         };
-        let pair = native_pty_system()
-            .openpty(size(request.cols, request.rows)?)
-            .map_err(|error| error.to_string())?;
-        #[cfg(unix)]
-        if control.is_some() || request.gateway_run_id.is_some() {
-            let fd = pair
-                .master
-                .as_raw_fd()
-                .ok_or("This PTY cannot be controlled.")?;
-            // The master remains owned by Session until its reader has exited.
-            terminal_io::make_nonblocking(unsafe { BorrowedFd::borrow_raw(fd) })
-                .map_err(|e| e.to_string())?;
+        #[cfg(target_os = "macos")]
+        let is_owned_boundary = owned_boundary.is_some();
+        #[cfg(not(target_os = "macos"))]
+        let is_owned_boundary = false;
+        if let Some(admission) = admission {
+            admission()?;
         }
-        let mut reader = pair
-            .master
-            .try_clone_reader()
-            .map_err(|error| error.to_string())?;
-        let writer = pair
-            .master
-            .take_writer()
-            .map_err(|error| error.to_string())?;
         #[cfg(unix)]
         if let Some(control) = &control {
             if !control
@@ -1154,24 +1262,59 @@ impl Terminals {
                 return Err("Control revoked before terminal start".into());
             }
         }
-        let mut child = pair
-            .slave
-            .spawn_command(command)
-            .map_err(|error| format!("Cannot start {}: {error}", profile.name))?;
-        drop(pair.slave);
+        #[cfg(target_os = "macos")]
+        let owned = owned_boundary
+            .map(|factory| factory(size(request.cols, request.rows)?))
+            .transpose()?;
+        #[cfg(not(target_os = "macos"))]
+        let owned: Option<(
+            Box<dyn MasterPty + Send>,
+            Box<dyn portable_pty::Child + Send + Sync>,
+        )> = None;
+        #[cfg(target_os = "macos")]
+        let owned_read_fd = owned.as_ref().map(|owned| owned.read_fd);
+        #[cfg(not(target_os = "macos"))]
+        let owned_read_fd: Option<i32> = None;
+        #[cfg(target_os = "macos")]
+        let owned = owned.map(|owned| (owned.master, owned.child));
+        let (master, mut child) = if let Some(owned) = owned {
+            owned
+        } else {
+            let pair = native_pty_system()
+                .openpty(size(request.cols, request.rows)?)
+                .map_err(|error| error.to_string())?;
+            let child = pair
+                .slave
+                .spawn_command(command)
+                .map_err(|error| format!("Cannot start {}: {error}", profile.name))?;
+            (pair.master, child)
+        };
+        #[cfg(unix)]
+        if control.is_some() || request.account_id.is_some() {
+            let fd = master.as_raw_fd().ok_or("This PTY cannot be controlled.")?;
+            terminal_io::make_nonblocking(unsafe { BorrowedFd::borrow_raw(fd) })
+                .map_err(|e| e.to_string())?;
+        }
+        let mut reader = master
+            .try_clone_reader()
+            .map_err(|error| error.to_string())?;
+        let writer = master.take_writer().map_err(|error| error.to_string())?;
         let session = Arc::new(Session {
-            owned_gateway: request.gateway_run_id.is_some(),
-            gateway_reap_started: Mutex::new(false),
-            gateway_kill_sent: AtomicBool::new(false),
-            gateway_signal_failed: AtomicBool::new(false),
+            owned_account: request.account_id.is_some(),
+            owned_boundary: is_owned_boundary,
+            completion: completion.clone(),
+            transport_finished: AtomicBool::new(false),
+            account_reap_started: Mutex::new(false),
+            account_kill_sent: AtomicBool::new(false),
+            account_signal_failed: AtomicBool::new(false),
             pid: child.process_id(),
             profile: profile.clone(),
-            master: Mutex::new(pair.master),
+            master: Mutex::new(master),
             writer: Mutex::new(Some(writer)),
             killer: Mutex::new(child.clone_killer()),
             flow: Mutex::new(Flow {
                 #[cfg(unix)]
-                nonblocking: control.is_some() || request.gateway_run_id.is_some(),
+                nonblocking: control.is_some() || request.account_id.is_some(),
                 #[cfg(unix)]
                 control,
                 ..Flow::default()
@@ -1191,9 +1334,9 @@ impl Terminals {
             if sessions.contains_key(&request.id) {
                 drop(sessions);
                 session.stop();
-                if session.owned_gateway {
+                if session.owned_account {
                     *session
-                        .gateway_reap_started
+                        .account_reap_started
                         .lock()
                         .unwrap_or_else(|error| error.into_inner()) = true;
                 }
@@ -1214,14 +1357,15 @@ impl Terminals {
         }
         drop(remote_order);
         let sessions = Arc::downgrade(&self.sessions);
+        let session_retirement = Arc::downgrade(&session);
         thread::spawn(move || {
             let mut buffer = [0_u8; 16 * 1024];
             let mut clean_drain = true;
             #[cfg(unix)]
-            let mut gateway_tail: Option<(Instant, usize)> = None;
+            let mut account_tail: Option<(Instant, usize)> = None;
             'read: loop {
                 #[cfg(unix)]
-                if session.owned_gateway {
+                if session.owned_account && !session.owned_boundary {
                     if let Some(pid) = session.pid {
                         let mut info = std::mem::MaybeUninit::<libc::siginfo_t>::zeroed();
                         let observed = unsafe {
@@ -1236,17 +1380,17 @@ impl Terminals {
                             clean_drain = false;
                         }
                         if (observed != 0 || unsafe { info.assume_init().si_pid() } != 0)
-                            && gateway_tail.is_none()
+                            && account_tail.is_none()
                         {
                             let reap_started = session
-                                .gateway_reap_started
+                                .account_reap_started
                                 .lock()
                                 .unwrap_or_else(|error| error.into_inner());
-                            session.kill_gateway_group(*reap_started);
-                            gateway_tail = Some((Instant::now() + Duration::from_secs(5), 0));
+                            session.kill_account_group(*reap_started);
+                            account_tail = Some((Instant::now() + Duration::from_secs(5), 0));
                         }
                     }
-                    if gateway_tail.is_some_and(|(deadline, bytes)| {
+                    if account_tail.is_some_and(|(deadline, bytes)| {
                         Instant::now() >= deadline || bytes > 1024 * 1024
                     }) {
                         clean_drain = false;
@@ -1258,12 +1402,12 @@ impl Terminals {
                     .lock()
                     .unwrap_or_else(|error| error.into_inner());
                 #[cfg(unix)]
-                let draining_tail = gateway_tail.is_some();
+                let draining_tail = account_tail.is_some();
                 #[cfg(not(unix))]
                 let draining_tail = false;
                 while !flow.closed && flow.pending >= HIGH_WATER && !draining_tail {
                     #[cfg(unix)]
-                    if session.owned_gateway {
+                    if session.owned_account {
                         let (next, timeout) = session
                             .ready
                             .wait_timeout(flow, Duration::from_millis(50))
@@ -1279,12 +1423,12 @@ impl Terminals {
                         .wait(flow)
                         .unwrap_or_else(|error| error.into_inner());
                 }
-                if flow.closed && !session.owned_gateway {
+                if flow.closed && !session.owned_account {
                     break;
                 }
                 #[cfg(unix)]
-                if flow.closed && session.owned_gateway && gateway_tail.is_none() {
-                    gateway_tail = Some((Instant::now() + Duration::from_secs(5), 0));
+                if flow.closed && session.owned_account && account_tail.is_none() {
+                    account_tail = Some((Instant::now() + Duration::from_secs(5), 0));
                 }
                 drop(flow);
                 let length = match reader.read(&mut buffer) {
@@ -1293,6 +1437,14 @@ impl Terminals {
                         if error.kind() == std::io::ErrorKind::WouldBlock
                             && session.nonblocking() =>
                     {
+                        if let Some(read_fd) = owned_read_fd {
+                            let fd = unsafe { BorrowedFd::borrow_raw(read_fd) };
+                            if terminal_io::wait_readable(fd).is_err() {
+                                clean_drain = false;
+                                break;
+                            }
+                            continue;
+                        }
                         let Ok(fd) = session.control_fd() else {
                             clean_drain = false;
                             break;
@@ -1307,7 +1459,7 @@ impl Terminals {
                     Ok(0) => break,
                     #[cfg(unix)]
                     Err(error)
-                        if session.owned_gateway && error.raw_os_error() == Some(libc::EIO) =>
+                        if session.owned_account && error.raw_os_error() == Some(libc::EIO) =>
                     {
                         break
                     }
@@ -1318,7 +1470,7 @@ impl Terminals {
                     Ok(length) => length,
                 };
                 #[cfg(unix)]
-                if let Some((_, bytes)) = &mut gateway_tail {
+                if let Some((_, bytes)) = &mut account_tail {
                     *bytes = bytes.saturating_add(length);
                 }
                 let remote_order = remote_events
@@ -1359,24 +1511,38 @@ impl Terminals {
             drop(reader);
             #[cfg(unix)]
             let exit_control = session.control();
-            let owned_gateway = session.owned_gateway;
+            let owned_account = session.owned_account;
+            let owned_boundary = session.owned_boundary;
+            if owned_boundary {
+                let deadline = Instant::now() + Duration::from_millis(500);
+                while Instant::now() < deadline {
+                    match child.try_wait() {
+                        Ok(Some(_)) | Err(_) => break,
+                        Ok(None) => std::thread::sleep(Duration::from_millis(10)),
+                    }
+                }
+            }
+            let mut retired_owned_boundary = false;
             let mut retained_session = Some(session);
-            if owned_gateway {
+            if owned_account {
                 let session = retained_session.as_ref().unwrap();
                 {
                     let mut reap_started = session
-                        .gateway_reap_started
+                        .account_reap_started
                         .lock()
                         .unwrap_or_else(|error| error.into_inner());
                     #[cfg(unix)]
-                    session.kill_gateway_group(*reap_started);
+                    session.kill_account_group(*reap_started);
                     // Disarm stale Session holders before wait can reuse PID.
                     // Never hold this mutex across a blocking process wait.
                     *reap_started = true;
                 }
-                clean_drain &= !session.gateway_signal_failed.load(Ordering::SeqCst);
+                clean_drain &= !session.account_signal_failed.load(Ordering::SeqCst);
+                retired_owned_boundary = owned_boundary
+                    && session.account_kill_sent.load(Ordering::SeqCst)
+                    && !session.account_signal_failed.load(Ordering::SeqCst);
                 session.stop();
-                if let Some(sessions) = sessions.upgrade() {
+                if let Some(sessions) = sessions.upgrade().filter(|_| !owned_boundary) {
                     if let Ok(mut sessions) = sessions.lock() {
                         if sessions
                             .get(&request.id)
@@ -1391,10 +1557,13 @@ impl Terminals {
                 drop(retained_session.take());
             }
             let code = child.wait().ok().map(|status| status.exit_code());
+            if let Some(session) = session_retirement.upgrade() {
+                session.transport_finished.store(true, Ordering::SeqCst);
+            }
             if let Some(healthy) = drain_healthy {
                 healthy.store(clean_drain && code.is_some(), Ordering::SeqCst);
             }
-            if code.is_some() {
+            if retired_owned_boundary || (!owned_boundary && code.is_some()) {
                 if let Some(completion) = completion {
                     completion.store(true, Ordering::SeqCst);
                 }
@@ -1435,8 +1604,8 @@ impl Terminals {
         Ok(Started {
             cwd,
             profile_id: profile.id,
-            router_profile_id: None,
-            router_profile_label: None,
+            account_id: None,
+            account_label: None,
         })
     }
 
@@ -1880,92 +2049,28 @@ pub async fn start_terminal(
     validate_start_request(&request)?;
     let state = state.inner().clone();
     let shells = shells.inner().clone();
-    let router = app
-        .state::<crate::cli_router::CliRouterService>()
+    let runtime = app
+        .state::<crate::agent_runtime::AgentRuntime>()
         .inner()
         .clone();
     #[cfg(unix)]
     let broker = app.state::<crate::agent_control::Control>().current()?;
     tauri::async_runtime::spawn_blocking(move || {
-        if let Some(run_id) = request.gateway_run_id.clone() {
-            #[cfg(not(unix))]
-            return Err("Native gateway terminals are unavailable on this platform.".into());
-            #[cfg(unix)]
-            {
-                let cli = request.cli_launch.ok_or("Choose the saved gateway CLI.")?;
-                let shell = shells
-                    .profiles
-                    .iter()
-                    .find(|profile| profile.id == request.profile_id)
-                    .ok_or("Choose the saved installed gateway shell.")?
-                    .clone();
-                let cwd = request.cwd.clone();
-                let terminal_id = request.id.clone();
-                let terminals = state.clone();
-                return crate::cli_router::gateway_terminal_command(
-                    &router,
-                    &app,
-                    crate::cli_router::GatewayTerminalRequest {
-                        run_id: &run_id,
-                        expected_revision: request
-                            .gateway_run_revision
-                            .ok_or("Review the gateway run revision.")?,
-                        terminal_id: &terminal_id,
-                        shells: &shells,
-                        shell: &shell,
-                        cwd: &cwd,
-                        cli,
-                    },
-                    |command, completion, healthy| {
-                        state.start_gateway(
-                            &shells,
-                            request,
-                            output,
-                            exited,
-                            GatewayTerminal {
-                                command,
-                                completion,
-                                drain_healthy: healthy,
-                            },
-                        )
-                    },
-                    move |id| terminals.close(id),
-                );
-            }
-        }
-        if request.router_profile_id.is_some() || request.router_id.is_some() {
-            let cli = request
-                .cli_launch
-                .ok_or("A CLI account requires its own CLI launch.")?;
-            let shell = shells
-                .profiles
-                .iter()
-                .find(|p| p.id == request.profile_id)
-                .ok_or("Choose an installed shell for this account.")?;
-            let shell = shell.clone();
+        if let Some(account_id) = request.account_id.clone() {
+            let shell_id = request.profile_id.clone();
             let cwd = request.cwd.clone();
-            let profile_id = request.router_profile_id.clone();
-            let router_id = request.router_id.clone();
-            let native_recovery = request.native_recovery.clone();
-            return crate::cli_router::terminal_command(
-                &router,
+            return crate::agent_runtime::account_terminal(
+                &runtime,
                 &app,
-                crate::cli_router::TerminalProfile {
-                    shells: &shells,
-                    shell: &shell,
-                    cwd: &cwd,
-                    id: profile_id.as_deref(),
-                    cli,
-                    router_id: router_id.as_deref(),
-                    recovery: native_recovery
-                        .as_ref()
-                        .map(|recovery| (recovery.run_id.as_str(), recovery.revision)),
-                },
+                &shells,
+                &shell_id,
+                &cwd,
+                &account_id,
                 |command, completion, (chosen_id, chosen_label)| {
                     let mut started = state
-                        .start_router(&shells, request, output, exited, command, completion)?;
-                    started.router_profile_id = Some(chosen_id);
-                    started.router_profile_label = Some(chosen_label);
+                        .start_account(&shells, request, output, exited, command, completion)?;
+                    started.account_id = Some(chosen_id);
+                    started.account_label = Some(chosen_label);
                     Ok(started)
                 },
             );
@@ -2074,16 +2179,20 @@ pub async fn close_terminal(
     let state = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || state.close(&id))
         .await
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
 pub async fn reset_terminals(window: Window, state: State<'_, Terminals>) -> Result<(), String> {
     main_window(&window)?;
     let state = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || state.stop_all())
-        .await
-        .map_err(|error| error.to_string())
+    tauri::async_runtime::spawn_blocking(move || {
+        state.stop_owned_and_wait()?;
+        state.stop_all();
+        Ok::<(), String>(())
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -2195,10 +2304,10 @@ pub fn terminal_contexts(
 mod tests {
     use super::*;
     #[cfg(unix)]
-    fn gateway_shell_fixture(directory: &std::path::Path) -> Shells {
+    fn account_shell_fixture(directory: &std::path::Path) -> Shells {
         Shells {
             profiles: vec![Profile {
-                id: "gateway-fixture-shell".into(),
+                id: "account-fixture-shell".into(),
                 name: "Fixture sh".into(),
                 kind: "sh".into(),
                 program: "/bin/sh".into(),
@@ -2209,24 +2318,21 @@ mod tests {
         }
     }
     #[cfg(unix)]
-    fn gateway_request(directory: &std::path::Path, id: &str) -> StartRequest {
+    fn account_request(directory: &std::path::Path, id: &str) -> StartRequest {
         StartRequest {
             id: id.into(),
-            profile_id: "gateway-fixture-shell".into(),
+            profile_id: "account-fixture-shell".into(),
             cwd: directory.to_string_lossy().into_owned(),
             cols: 80,
             rows: 24,
             agent_ticket: None,
-            router_profile_id: None,
-            router_id: None,
-            gateway_run_id: Some("gateway-fixture-run".into()),
-            gateway_run_revision: Some(1),
-            native_recovery: None,
-            cli_launch: Some(crate::cli_catalog::TitleCli::Claude),
+            account_id: Some("account-fixture".into()),
+
+            cli_launch: None,
         }
     }
     #[cfg(unix)]
-    fn gateway_command(
+    fn account_command(
         directory: &std::path::Path,
         script: &str,
     ) -> (portable_pty::CommandBuilder, String) {
@@ -2247,9 +2353,117 @@ mod tests {
     }
     #[cfg(unix)]
     #[test]
-    fn owned_gateway_fast_exit_delivers_final_tail_before_healthy_completion() {
+    #[cfg(target_os = "macos")]
+    #[ignore = "Owned PTY explicit close retains a failed effect-drain retry"]
+    fn owned_close_failure_retains_the_session_until_a_positive_retry() {
+        use crate::agent_runtime::native_launch::{self, LaunchContext};
+        use std::os::unix::fs::PermissionsExt;
         let directory = tempfile::tempdir().unwrap();
-        let shells = gateway_shell_fixture(directory.path());
+        let root = directory.path().canonicalize().unwrap();
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
+        for name in ["project", "account", "storage"] {
+            let path = root.join(name);
+            std::fs::create_dir(&path).unwrap();
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        let context = LaunchContext {
+            parent_operation_id: "owned-pty-close-retry".into(),
+            account_id: "account-fixture".into(),
+            auth_revision: 1,
+            task_id: None,
+            attempt_id: None,
+            generation: None,
+            project_root: root.join("project"),
+            physical_account_root: root.join("account"),
+            storage_root: root.join("storage"),
+        };
+        let shells = account_shell_fixture(&context.project_root);
+        let manager = Terminals::default();
+        let done = Arc::new(AtomicBool::new(false));
+        let effect = Arc::new(Mutex::new(None));
+        let held = effect.clone();
+        let launch_context = context.clone();
+        let mut portable = portable_pty::CommandBuilder::new("/bin/cat");
+        portable.cwd(&context.project_root);
+        let launch = NativeTerminalLaunch {
+            command: (
+                portable,
+                context.project_root.to_string_lossy().into_owned(),
+            ),
+            admission: Box::new(|| Ok(())),
+            owned_boundary: Some(Box::new(move |size| {
+                let mut command = std::process::Command::new("/bin/cat");
+                command
+                    .env_clear()
+                    .env("HOME", &launch_context.physical_account_root)
+                    .current_dir(&launch_context.project_root);
+                let owned = native_launch::spawn_pty(
+                    command,
+                    &launch_context,
+                    crate::cli_catalog::TitleCli::Pi,
+                    None,
+                    &[],
+                    &[],
+                    &AtomicBool::new(false),
+                    size,
+                    || Ok(()),
+                )?;
+                *held.lock().unwrap() = Some(owned.effects.enter()?);
+                Ok(owned)
+            })),
+        };
+        manager
+            .start_account(
+                &shells,
+                account_request(&context.project_root, "owned-close-retry"),
+                Channel::new(|_| Ok(())),
+                Channel::new(|_| Ok(())),
+                launch,
+                done.clone(),
+            )
+            .unwrap();
+        assert!(manager.close("owned-close-retry").is_err());
+        assert!(manager.get("owned-close-retry").is_ok());
+        assert!(!done.load(Ordering::SeqCst));
+        drop(effect.lock().unwrap().take());
+        manager.close("owned-close-retry").unwrap();
+        assert!(done.load(Ordering::SeqCst));
+        assert!(manager.get("owned-close-retry").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn quit_owned_drain_preserves_ordinary_terminal_sessions() {
+        let directory = tempfile::tempdir().unwrap();
+        let shells = account_shell_fixture(directory.path());
+        let manager = Terminals::default();
+        let _cleanup = FixtureTerminalCleanup(manager.clone());
+        let done = Arc::new(AtomicBool::new(false));
+        manager
+            .start_owned_account(
+                &shells,
+                account_request(directory.path(), "ordinary-quit-fixture"),
+                Channel::new(|_| Ok(())),
+                Channel::new(|_| Ok(())),
+                OwnedAccountTerminal {
+                    command: account_command(directory.path(), "sleep 60"),
+                    completion: done.clone(),
+                    drain_healthy: Arc::new(AtomicBool::new(false)),
+                },
+            )
+            .unwrap();
+        manager.stop_owned_and_wait().unwrap();
+        let session = manager.get("ordinary-quit-fixture").unwrap();
+        assert!(!session.owned_boundary);
+        assert_eq!(unsafe { libc::kill(session.pid.unwrap() as i32, 0) }, 0);
+        assert!(!done.load(Ordering::SeqCst));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn owned_account_fast_exit_delivers_final_tail_before_healthy_completion() {
+        let directory = tempfile::tempdir().unwrap();
+        let shells = account_shell_fixture(directory.path());
         let manager = Terminals::default();
         let _cleanup = FixtureTerminalCleanup(manager.clone());
         let done = Arc::new(AtomicBool::new(false));
@@ -2258,21 +2472,21 @@ mod tests {
         let ack = manager.clone();
         let output = Channel::new(move |body| {
             if let tauri::ipc::InvokeResponseBody::Raw(bytes) = body {
-                ack.acknowledge("gateway-tail-fixture", bytes.len());
+                ack.acknowledge("account-tail-fixture", bytes.len());
                 let _ = send.send(bytes);
             }
             Ok(())
         });
         manager
-            .start_gateway(
+            .start_owned_account(
                 &shells,
-                gateway_request(directory.path(), "gateway-tail-fixture"),
+                account_request(directory.path(), "account-tail-fixture"),
                 output,
                 Channel::new(|_| Ok(())),
-                GatewayTerminal {
-                    command: gateway_command(
+                OwnedAccountTerminal {
+                    command: account_command(
                         directory.path(),
-                        "printf '__owned_gateway_final_tail__\\n'",
+                        "printf '__owned_account_final_tail__\\n'",
                     ),
                     completion: done.clone(),
                     drain_healthy: healthy.clone(),
@@ -2289,24 +2503,24 @@ mod tests {
             }
         }
         assert!(eof, "Owned PTY did not deliver its ordered EOF marker");
-        assert!(String::from_utf8_lossy(&bytes).contains("__owned_gateway_final_tail__"));
+        assert!(String::from_utf8_lossy(&bytes).contains("__owned_account_final_tail__"));
         assert!(done.load(Ordering::SeqCst));
         assert!(healthy.load(Ordering::SeqCst));
     }
     #[cfg(unix)]
     #[test]
-    fn owned_gateway_cancel_drains_group_and_output_failure_is_unhealthy() {
+    fn owned_account_cancel_drains_group_and_output_failure_is_unhealthy() {
         let directory = tempfile::tempdir().unwrap();
-        let shells = gateway_shell_fixture(directory.path());
+        let shells = account_shell_fixture(directory.path());
         for failed_channel in [false, true] {
             let manager = Terminals::default();
             let _cleanup = FixtureTerminalCleanup(manager.clone());
             let done = Arc::new(AtomicBool::new(false));
             let healthy = Arc::new(AtomicBool::new(false));
             let id = if failed_channel {
-                "gateway-output-failure"
+                "account-output-failure"
             } else {
-                "gateway-cancel-fixture"
+                "account-cancel-fixture"
             };
             let (send, receive) = mpsc::channel();
             let ack = manager.clone();
@@ -2324,15 +2538,15 @@ mod tests {
                 Ok(())
             });
             manager
-                .start_gateway(
+                .start_owned_account(
                     &shells,
-                    gateway_request(directory.path(), id),
+                    account_request(directory.path(), id),
                     output,
                     Channel::new(|_| Ok(())),
-                    GatewayTerminal {
-                        command: gateway_command(
+                    OwnedAccountTerminal {
+                        command: account_command(
                             directory.path(),
-                            "printf '__owned_gateway_ready__\\n'; exec /bin/sleep 30",
+                            "printf '__owned_account_ready__\\n'; exec /bin/sleep 30",
                         ),
                         completion: done.clone(),
                         drain_healthy: healthy.clone(),
@@ -2344,17 +2558,17 @@ mod tests {
                 let ready_deadline = Instant::now() + Duration::from_secs(5);
                 let mut ready = Vec::new();
                 while Instant::now() < ready_deadline
-                    && !String::from_utf8_lossy(&ready).contains("__owned_gateway_ready__")
+                    && !String::from_utf8_lossy(&ready).contains("__owned_account_ready__")
                 {
                     if let Ok(chunk) = receive.recv_timeout(Duration::from_millis(100)) {
                         ready.extend(chunk);
                     }
                 }
-                assert!(String::from_utf8_lossy(&ready).contains("__owned_gateway_ready__"));
+                assert!(String::from_utf8_lossy(&ready).contains("__owned_account_ready__"));
                 pid = manager.get(id).unwrap().pid;
                 #[cfg(target_os = "macos")]
-                assert!(!gateway_group_contains_only_zombies(pid.unwrap()));
-                manager.close(id);
+                assert!(!account_group_contains_only_zombies(pid.unwrap()));
+                manager.close(id).unwrap();
             }
             let deadline = Instant::now() + Duration::from_secs(8);
             while !done.load(Ordering::SeqCst) && Instant::now() < deadline {
@@ -2392,11 +2606,8 @@ mod tests {
                 operation_id: "operation".into(),
                 nonce: "nonce".into(),
             }),
-            router_profile_id: None,
-            router_id: None,
-            gateway_run_id: None,
-            gateway_run_revision: None,
-            native_recovery: None,
+            account_id: None,
+
             cli_launch: Some(crate::cli_catalog::TitleCli::Codex),
         };
         assert!(validate_start_request(&request).is_err());
@@ -2419,17 +2630,22 @@ mod tests {
         assert!(request.agent_ticket.is_none());
     }
     #[test]
-    fn routed_terminal_request_defers_account_choice_but_still_rejects_agent_tickets() {
-        let mut request: StartRequest = serde_json::from_value(serde_json::json!({
-            "id":"routed", "profileId":"local:bash", "cwd":"/tmp", "cols":80, "rows":24,
+    fn account_terminal_request_requires_its_own_launch_and_rejects_legacy_routing() {
+        assert!(serde_json::from_value::<StartRequest>(serde_json::json!({
+            "id":"retired", "profileId":"local:bash", "cwd":"/tmp", "cols":80, "rows":24,
             "cliLaunch":"codex", "routerId":"pool"
         }))
+        .is_err());
+        let mut request: StartRequest = serde_json::from_value(serde_json::json!({
+            "id":"account-terminal", "profileId":"local:bash", "cwd":"/tmp", "cols":80, "rows":24,
+            "accountId":"account-fixture"
+        }))
         .unwrap();
-        assert!(request.router_profile_id.is_none());
+        assert_eq!(request.account_id.as_deref(), Some("account-fixture"));
         assert!(validate_start_request(&request).is_ok());
-        request.cli_launch = None;
-        assert!(validate_start_request(&request).is_err());
         request.cli_launch = Some(crate::cli_catalog::TitleCli::Codex);
+        assert!(validate_start_request(&request).is_err());
+        request.cli_launch = None;
         request.agent_ticket = Some(AgentTicket {
             operation_id: "operation".into(),
             nonce: "nonce".into(),
@@ -2520,11 +2736,8 @@ mod tests {
                     cols: 80,
                     rows: 24,
                     agent_ticket: None,
-                    router_profile_id: None,
-                    router_id: None,
-                    gateway_run_id: None,
-                    gateway_run_revision: None,
-                    native_recovery: None,
+                    account_id: None,
+
                     cli_launch: Some(crate::cli_catalog::TitleCli::Codex),
                 },
                 output,
@@ -2764,11 +2977,8 @@ mod tests {
                     cols: 80,
                     rows: 24,
                     agent_ticket: None,
-                    router_profile_id: None,
-                    router_id: None,
-                    gateway_run_id: None,
-                    gateway_run_revision: None,
-                    native_recovery: None,
+                    account_id: None,
+
                     cli_launch: None,
                 },
                 Channel::new(move |body| {
@@ -2798,7 +3008,7 @@ mod tests {
         let deadline = Instant::now() + Duration::from_secs(3);
         while session.remote_events.try_lock().is_ok() {
             if Instant::now() >= deadline {
-                manager.close("remote-backpressure-test");
+                manager.close("remote-backpressure-test").unwrap();
                 panic!("The PTY producer did not encounter Remote backpressure");
             }
             thread::sleep(Duration::from_millis(10));
@@ -2825,7 +3035,7 @@ mod tests {
         let closer = manager.clone();
         let (done_tx, done_rx) = mpsc::channel();
         let close = thread::spawn(move || {
-            closer.close("remote-backpressure-test");
+            closer.close("remote-backpressure-test").unwrap();
             done_tx.send(()).unwrap();
         });
         let closed = done_rx.recv_timeout(Duration::from_secs(2));
@@ -2871,11 +3081,8 @@ mod tests {
                     cols: 80,
                     rows: 24,
                     agent_ticket: None,
-                    router_profile_id: None,
-                    router_id: None,
-                    gateway_run_id: None,
-                    gateway_run_revision: None,
-                    native_recovery: None,
+                    account_id: None,
+
                     cli_launch: None,
                 },
                 output,
@@ -3133,11 +3340,8 @@ mod tests {
                     cols: 80,
                     rows: 24,
                     agent_ticket: None,
-                    router_profile_id: None,
-                    router_id: None,
-                    gateway_run_id: None,
-                    gateway_run_revision: None,
-                    native_recovery: None,
+                    account_id: None,
+
                     cli_launch: None,
                 },
                 output,
@@ -3345,11 +3549,8 @@ mod tests {
                     cols: 80,
                     rows: 24,
                     agent_ticket: None,
-                    router_profile_id: None,
-                    router_id: None,
-                    gateway_run_id: None,
-                    gateway_run_revision: None,
-                    native_recovery: None,
+                    account_id: None,
+
                     cli_launch: None,
                 },
                 output,
@@ -3431,5 +3632,70 @@ mod tests {
             thread::sleep(Duration::from_millis(10));
         }
         manager.stop_all();
+    }
+}
+#[cfg(all(test, unix))]
+mod native_final_admission_tests {
+    use super::*;
+    #[test]
+    fn changed_artifact_after_builder_is_refused_before_actual_pty_spawn() {
+        let root = tempfile::tempdir().unwrap();
+        let executable = root.path().join("artifact");
+        std::fs::write(&executable, b"original pinned bytes").unwrap();
+        let shells = Shells {
+            profiles: vec![Profile {
+                id: "fixture".into(),
+                name: "Fixture".into(),
+                kind: "sh".into(),
+                program: "/bin/sh".into(),
+                distro: None,
+                home: root.path().to_string_lossy().into_owned(),
+            }],
+            integration: root.path().into(),
+        };
+        let marker = root.path().join("must-not-execute");
+        let mut command = portable_pty::CommandBuilder::new("/bin/sh");
+        command.env_clear();
+        command.arg("-c");
+        command.arg("touch must-not-execute");
+        command.cwd(root.path());
+        let admission_path = executable.clone();
+        let checked = Arc::new(AtomicBool::new(false));
+        let observed = checked.clone();
+        let launch = NativeTerminalLaunch {
+            command: (command, root.path().to_string_lossy().into_owned()),
+            #[cfg(target_os = "macos")]
+            owned_boundary: None,
+            admission: Box::new(move || {
+                observed.store(true, Ordering::SeqCst);
+                if std::fs::read(admission_path).unwrap() != b"original pinned bytes" {
+                    Err("Reviewed executable changed before spawn".into())
+                } else {
+                    Ok(())
+                }
+            }),
+        };
+        std::fs::write(executable, b"replacement wrapper").unwrap();
+        let manager = Terminals::default();
+        let result = manager.start_account(
+            &shells,
+            StartRequest {
+                id: "final-admission-fixture".into(),
+                profile_id: "fixture".into(),
+                cwd: root.path().to_string_lossy().into_owned(),
+                cols: 80,
+                rows: 24,
+                agent_ticket: None,
+                account_id: Some("fixture".into()),
+                cli_launch: None,
+            },
+            Channel::new(|_| Ok(())),
+            Channel::new(|_| Ok(())),
+            launch,
+            Arc::new(AtomicBool::new(false)),
+        );
+        assert!(result.is_err());
+        assert!(checked.load(Ordering::SeqCst));
+        assert!(!marker.exists());
     }
 }

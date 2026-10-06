@@ -233,7 +233,7 @@ impl Broker {
                 if !work.claimed
                     || work.native_committed
                     || work.command.domain_revision != state.projection.revision
-                    || work.native_permit.check().is_err()
+                    || work.native_permit.check_local().is_err()
                     || Self::validate_android_layout(state, work).is_err()
                     || Self::validate_panel_move(state, &work.pairing, command).is_err()
                 {

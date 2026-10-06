@@ -138,6 +138,9 @@ impl Broker {
         cwd: &str,
         start: impl FnOnce(Arc<Mutex<TerminalControl>>) -> Result<T, String>,
     ) -> Result<T, String> {
+        let _request_permit = self
+            .check_work_request(operation)
+            .map_err(|_| "Request authorization expired or changed.".to_string())?;
         let denied = || "Terminal authorization expired or changed.".to_string();
         let mut state = self.lock_state().map_err(|_| denied())?;
         let work = state.work.get(operation).ok_or_else(denied)?;

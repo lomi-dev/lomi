@@ -368,24 +368,33 @@ export async function mockDesktop(
             desktop.__nativeTest.agentControlStateReads++;
             return desktop.__nativeTest.agentControlState;
           }
-          if (command === "cli_router_closing") {
-            desktop.__nativeTest.routerClosing = args.closing;
+          if (
+            command === "agent_runtime_prepare_close" ||
+            command === "agent_runtime_cancel_close"
+          ) {
+            desktop.__nativeTest.runtimeClosing =
+              command === "agent_runtime_prepare_close";
             return;
           }
-          if (command === "cli_router_drain") {
-            desktop.__nativeTest.routerDrainCount =
-              (desktop.__nativeTest.routerDrainCount ?? 0) + 1;
+          if (command === "agent_tasks_drain") {
+            desktop.__nativeTest.runtimeDrainCount =
+              (desktop.__nativeTest.runtimeDrainCount ?? 0) + 1;
             return;
           }
-          if (command === "cli_router_snapshot")
-            return {
-              revision: 0,
-              profiles: [],
-              routers: [],
-              quota: [],
-              runs: [],
-              capabilities: [],
-            };
+          if (command.startsWith("agent_") && desktop.__agentInvoke)
+            return desktop.__agentInvoke(command, args);
+          if (command === "agent_accounts_snapshot")
+            return { schema: 1, revision: 0, accounts: [], capabilities: [] };
+          if (command === "agent_tasks_snapshot")
+            return { schema: 1, revision: 0, tasks: [] };
+          if (command === "agent_permission_snapshot") return [];
+          if (
+            command === "agent_task_prepare_close" ||
+            command === "agent_task_close_release"
+          )
+            return;
+          if (/^(cli_router_|cli_run_|cli_profile_|cli_native_)/.test(command))
+            throw new Error("Legacy CLI runtime commands are unavailable.");
           if (command === "agent_control_closing") {
             desktop.__nativeTest.agentControlClosing = args.closing;
             return;
@@ -1464,6 +1473,12 @@ export async function mockDesktop(
             events.delete(args.eventId);
             return;
           }
+          if (command === "plugin:event|emit_to") {
+            if (args.target?.kind !== "Webview" || args.target.label !== "main")
+              throw new Error("Expected the main webview event target");
+            await emitEvent(args.event, args.payload);
+            return;
+          }
           if (command === "plugin:window|close") {
             for (const [id, listener] of events) {
               if (listener.event === "tauri://close-requested")
@@ -1475,6 +1490,11 @@ export async function mockDesktop(
             }
             return;
           }
+          if (
+            command === "close_terminal" &&
+            desktop.__nativeTest.closeTerminalError
+          )
+            throw new Error(desktop.__nativeTest.closeTerminalError);
           if (
             [
               "chat_close",

@@ -334,7 +334,7 @@ pub async fn android_export_diagnostics(
         .map_err(|_| "Select a local destination")?;
     let text = super::diagnostics::collect(manager).await?;
     tauri::async_runtime::spawn_blocking(move || {
-        let _admission = crate::cli_router::project_lease::admit(&[&destination])?;
+        let _admission = crate::project_write_guard::admit(&[&destination])?;
         super::storage::write_bytes(&destination, text.as_bytes())
     })
     .await
@@ -657,7 +657,7 @@ pub async fn android_save_screenshot(
     }
     tauri::async_runtime::spawn_blocking(move || {
         use std::io::Write;
-        let _admission = crate::cli_router::project_lease::admit(&[&path])?;
+        let _admission = crate::project_write_guard::admit(&[&path])?;
         let parent = path.parent().ok_or("Invalid screenshot destination")?;
         let mut temporary = tempfile::NamedTempFile::new_in(parent).map_err(|e| e.to_string())?;
         temporary

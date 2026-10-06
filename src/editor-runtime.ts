@@ -18,7 +18,7 @@ import {
   editorFileSaved,
   editorPreferences,
   editorFileOperationsPaused,
-  retainCodingFileFence,
+  retainProjectFileFence,
 } from "./editor-service";
 import {
   editorLanguage,
@@ -78,46 +78,22 @@ const buffers = new Map<string, EditorDocument>();
 const aliases = new Map<string, EditorDocument>();
 const opening = new Map<string, Promise<EditorDocument>>();
 const preparedReads = new Map<string, DiskFile>();
-const codingEffects = new Map<
-  string,
-  { count: number; beforeHash: string | null }
->();
-let codingOpenFences = 0;
-export interface CodingEffectFence {
-  proof: {
-    path: string;
-    documents: {
-      documentId: string;
-      bufferRevision: string;
-      diskRevision: string;
-    }[];
-  };
-  release: () => void;
-}
-
-export async function freezeCodingEffect(
-  targetCanonicalPath: string,
-  expectedBeforeHash: string | null,
-): Promise<CodingEffectFence> {
+let nativeOpenFences = 0;
+export async function freezeNativeProject(
+  projectRoot: string,
+): Promise<{ release: () => void }> {
   if (
-    !targetCanonicalPath.startsWith("/") ||
-    targetCanonicalPath.length > 4096 ||
-    targetCanonicalPath.includes("\0") ||
-    targetCanonicalPath
-      .slice(1)
+    !projectRoot.startsWith("/") ||
+    projectRoot.length > 4096 ||
+    projectRoot.includes("\0") ||
+    projectRoot
       .split("/")
-      .some((part) => !part || part === "." || part === "..") ||
-    (expectedBeforeHash !== null && !/^[a-f0-9]{64}$/.test(expectedBeforeHash))
+      .slice(1)
+      .some((part) => !part || part === "." || part === "..")
   )
-    throw new Error("SCOPE_DENIED");
-  const existing = codingEffects.get(targetCanonicalPath);
-  if (existing && existing.beforeHash !== expectedBeforeHash)
-    throw new Error("REVISION_CONFLICT");
-  const gate = existing ?? { count: 0, beforeHash: expectedBeforeHash };
-  const releaseFileFence = retainCodingFileFence();
-  ++gate.count;
-  codingEffects.set(targetCanonicalPath, gate);
-  ++codingOpenFences;
+    throw new Error("Invalid native task project scope.");
+  const releaseFileFence = retainProjectFileFence();
+  ++nativeOpenFences;
   const releases: (() => void)[] = [];
   let released = false;
   const release = () => {
@@ -127,55 +103,40 @@ export async function freezeCodingEffect(
     for (const unfreeze of releases.reverse()) {
       try {
         unfreeze();
-      } catch (error) {
-        failure ??= error;
+      } catch (cause) {
+        failure ??= cause;
       }
     }
-    --codingOpenFences;
-    if (--gate.count === 0) codingEffects.delete(targetCanonicalPath);
+    --nativeOpenFences;
     releaseFileFence();
     if (failure) throw failure;
   };
   try {
-    // Opening requests started before the gate may discover canonical aliases.
-    // New requests cannot enter while this snapshot is being drained.
     await Promise.allSettled([...opening.values()]);
-    // Save As started before the gate can discover the target canonical path.
-    // New untitled saves are barred until every coding fence releases.
     await Promise.all(
       [...buffers.values()].map((document) =>
         document.settlePendingUntitledSave(),
       ),
     );
-    const documents = [...buffers.values()].filter((document) =>
-      document.matchesCodingEffectPath(targetCanonicalPath),
+    const documents = [...new Set(buffers.values())].filter((document) =>
+      document.matchesNativeProject(projectRoot),
     );
     for (const document of documents)
-      releases.push(document.retainCodingEffect());
-    const captured = documents.map((document) =>
-      document.codingEffectProof(targetCanonicalPath, expectedBeforeHash),
-    );
-    for (let index = 0; index < documents.length; ++index) {
-      const now = documents[index].codingEffectProof(
-        targetCanonicalPath,
-        expectedBeforeHash,
-      );
-      if (
-        now.documentId !== captured[index].documentId ||
-        now.bufferRevision !== captured[index].bufferRevision ||
-        now.diskRevision !== captured[index].diskRevision
-      )
-        throw new Error("REVISION_CONFLICT");
+      releases.push(document.retainNativeOperationFreeze());
+    for (const document of documents) {
+      const state = document.getSnapshot();
+      if (document.dirty || state.conflict || state.saving)
+        throw new Error(
+          "Save or close unsaved project editors before approving this native operation.",
+        );
     }
-    return {
-      proof: { path: targetCanonicalPath, documents: captured },
-      release,
-    };
-  } catch (error) {
+    return { release };
+  } catch (cause) {
     release();
-    throw error;
+    throw cause;
   }
 }
+
 function changesEditorText(transaction: Transaction) {
   return (
     transaction.docChanged ||
@@ -184,7 +145,7 @@ function changesEditorText(transaction: Transaction) {
   );
 }
 export function stageDocumentRead(tab: FileTab, data: DiskFile) {
-  if (codingOpenFences > 0 || editorFileOperationsPaused())
+  if (nativeOpenFences > 0 || editorFileOperationsPaused())
     throw new Error("TARGET_BUSY");
   const key = editorFileKey(tab);
   if (preparedReads.has(key) || preparedReads.size >= 16)
@@ -294,7 +255,7 @@ export function relocateDocuments(
       ? [{ tab, old }]
       : [];
   });
-  if (changes.some(({ old }) => old.document?.codingEffectFrozen))
+  if (changes.some(({ old }) => old.document?.nativeOperationFrozen))
     throw new Error("TARGET_BUSY");
   for (const { old } of changes) aliases.delete(editorFileKey(old.tab));
   for (const { tab, old } of changes) {
@@ -341,17 +302,12 @@ export function openDocument(tab: FileTab): Promise<EditorDocument> {
   const key = editorFileKey(tab);
   const existing = aliases.get(key);
   if (existing) {
-    if (
-      existing.codingEffectFrozen ||
-      [...codingEffects.keys()].some((path) =>
-        existing.matchesCodingEffectPath(path),
-      )
-    )
+    if (existing.nativeOperationFrozen || nativeOpenFences > 0)
       return Promise.reject(new Error("TARGET_BUSY"));
     existing.scheduleRefresh();
     return Promise.resolve(existing);
   }
-  if (codingOpenFences > 0) return Promise.reject(new Error("TARGET_BUSY"));
+  if (nativeOpenFences > 0) return Promise.reject(new Error("TARGET_BUSY"));
   let pending = opening.get(key);
   if (!pending) {
     const prepared = preparedReads.get(key);
@@ -401,7 +357,7 @@ export class EditorDocument {
   location: { root: string; relative: string };
   path: string;
   private fileOperationsPaused = false;
-  private codingEffectFreezes = 0;
+  private nativeOperationFreezes = 0;
   private pendingMatch?: { line: number; column: number; length: number };
   state: EditorState;
   private view?: EditorView;
@@ -559,11 +515,11 @@ export class EditorDocument {
         this.language.of(large ? [] : this.languageExtension),
         this.wrapping.of([]),
         this.editable.of([
-          EditorState.readOnly.of(readOnly || this.codingEffectFrozen),
-          EditorView.editable.of(!readOnly && !this.codingEffectFrozen),
+          EditorState.readOnly.of(readOnly || this.nativeOperationFrozen),
+          EditorView.editable.of(!readOnly && !this.nativeOperationFrozen),
         ]),
         EditorState.transactionFilter.of((transaction) =>
-          this.codingEffectFrozen && changesEditorText(transaction)
+          this.nativeOperationFrozen && changesEditorText(transaction)
             ? []
             : transaction,
         ),
@@ -578,55 +534,40 @@ export class EditorDocument {
     });
   }
 
-  get codingEffectFrozen() {
-    return this.codingEffectFreezes > 0;
+  get nativeOperationFrozen() {
+    return this.nativeOperationFreezes > 0;
   }
-  matchesCodingEffectPath(path: string) {
-    return this.path === path || this.sourcePath === path;
+  matchesNativeProject(root: string) {
+    return [this.path, this.sourcePath].some(
+      (path) => path === root || path.startsWith(`${root}/`),
+    );
   }
-  retainCodingEffect() {
+  retainNativeOperationFreeze() {
     if (this.disposed) throw new Error("TARGET_BUSY");
-    ++this.codingEffectFreezes;
+    ++this.nativeOperationFreezes;
     ++this.reloadVersion;
     clearTimeout(this.refreshTimer);
     this.recheck = true;
     try {
       this.reconfigureEditable();
     } catch (error) {
-      --this.codingEffectFreezes;
-      if (!this.codingEffectFrozen) this.scheduleRefresh();
+      --this.nativeOperationFreezes;
+      if (!this.nativeOperationFrozen) this.scheduleRefresh();
       throw error;
     }
     let released = false;
     return () => {
       if (released) return;
       released = true;
-      --this.codingEffectFreezes;
-      if (!this.disposed && !this.codingEffectFrozen) {
+      --this.nativeOperationFreezes;
+      if (!this.disposed && !this.nativeOperationFrozen) {
         this.reconfigureEditable();
         this.scheduleRefresh();
       }
     };
   }
-  codingEffectProof(path: string, beforeHash: string | null) {
-    if (!this.codingEffectFrozen || !this.matchesCodingEffectPath(path))
-      throw new Error("TARGET_BUSY");
-    this.assertCleanDiskChange(new Set([path]));
-    const revision = this.trashRevision();
-    if (
-      revision.path !== path ||
-      beforeHash === null ||
-      revision.diskRevision !== beforeHash
-    )
-      throw new Error("REVISION_CONFLICT");
-    return {
-      documentId: revision.documentId,
-      bufferRevision: revision.bufferRevision,
-      diskRevision: revision.diskRevision,
-    };
-  }
   private reconfigureEditable() {
-    const readOnly = this.snapshot.readOnly || this.codingEffectFrozen;
+    const readOnly = this.snapshot.readOnly || this.nativeOperationFrozen;
     this.dispatch({
       effects: this.editable.reconfigure([
         EditorState.readOnly.of(readOnly),
@@ -710,7 +651,7 @@ export class EditorDocument {
     if (this.disposed || this.untitled) throw new Error("TARGET_NOT_FOUND");
     if (
       this.fileOperationsPaused ||
-      this.codingEffectFrozen ||
+      this.nativeOperationFrozen ||
       this.savePromise
     )
       throw new Error("TARGET_BUSY");
@@ -752,7 +693,7 @@ export class EditorDocument {
     if (this.disposed || this.untitled) throw new Error("TARGET_NOT_FOUND");
     if (
       this.fileOperationsPaused ||
-      this.codingEffectFrozen ||
+      this.nativeOperationFrozen ||
       this.savePromise
     )
       throw new Error("TARGET_BUSY");
@@ -838,7 +779,7 @@ export class EditorDocument {
   }
   readAgentBuffer(input: EditorReadInput) {
     if (this.disposed || this.untitled) throw new Error("TARGET_NOT_FOUND");
-    if (this.fileOperationsPaused || this.codingEffectFrozen)
+    if (this.fileOperationsPaused || this.nativeOperationFrozen)
       throw new Error("TARGET_BUSY");
     if (input.documentId && input.documentId !== this.documentId)
       throw new Error("STALE_GENERATION");
@@ -929,7 +870,7 @@ export class EditorDocument {
         : undefined,
       dispatchTransactions: (transactions, view) => {
         // Transactions with filter:false still cannot change a retained buffer.
-        if (this.codingEffectFrozen && transactions.some(changesEditorText))
+        if (this.nativeOperationFrozen && transactions.some(changesEditorText))
           return;
         view.update(transactions);
         this.state = view.state;
@@ -1002,7 +943,7 @@ export class EditorDocument {
     if (this.view) this.view.dispatch(spec);
     else {
       const transaction = this.state.update(spec);
-      if (this.codingEffectFrozen && changesEditorText(transaction)) return;
+      if (this.nativeOperationFrozen && changesEditorText(transaction)) return;
       this.state = transaction.state;
       this.afterTransactions([transaction]);
     }
@@ -1045,9 +986,9 @@ export class EditorDocument {
   }
 
   save(overwrite = false): Promise<boolean> {
-    if (editorFileOperationsPaused() || (this.untitled && codingOpenFences > 0))
+    if (editorFileOperationsPaused() || (this.untitled && nativeOpenFences > 0))
       return Promise.reject(new Error("TARGET_BUSY"));
-    if (this.fileOperationsPaused || this.codingEffectFrozen)
+    if (this.fileOperationsPaused || this.nativeOperationFrozen)
       return Promise.reject(
         new Error("A file operation is in progress. Please try saving again."),
       );
@@ -1116,7 +1057,7 @@ export class EditorDocument {
   }
 
   private async saveNewFile(content: string): Promise<DiskFile | null> {
-    if (codingOpenFences > 0 || editorFileOperationsPaused())
+    if (nativeOpenFences > 0 || editorFileOperationsPaused())
       throw new Error("TARGET_BUSY");
     const result = await api<{
       location: { root: string; relative: string };
@@ -1152,7 +1093,7 @@ export class EditorDocument {
     if (
       this.disposed ||
       this.fileOperationsPaused ||
-      this.codingEffectFrozen ||
+      this.nativeOperationFrozen ||
       this.untitled
     )
       return;
@@ -1226,7 +1167,7 @@ export class EditorDocument {
     if (
       this.disposed ||
       this.fileOperationsPaused ||
-      this.codingEffectFrozen ||
+      this.nativeOperationFrozen ||
       this.untitled
     )
       return;
@@ -1272,7 +1213,7 @@ export class EditorDocument {
   }
   private setReadOnly(value: boolean) {
     if (this.snapshot.readOnly === value) return;
-    const readOnly = value || this.codingEffectFrozen;
+    const readOnly = value || this.nativeOperationFrozen;
     this.dispatch({
       effects: this.editable.reconfigure([
         EditorState.readOnly.of(readOnly),
@@ -1282,7 +1223,7 @@ export class EditorDocument {
     this.publish({ readOnly: value });
   }
   private replaceFromDisk(data: DiskFile) {
-    if (this.codingEffectFrozen) {
+    if (this.nativeOperationFrozen) {
       this.recheck = true;
       return;
     }
@@ -1322,10 +1263,10 @@ export class EditorDocument {
     this.updateCursor();
   }
   async reload() {
-    if (this.codingEffectFrozen) throw new Error("TARGET_BUSY");
+    if (this.nativeOperationFrozen) throw new Error("TARGET_BUSY");
     if (this.fileOperationsPaused || this.untitled) return;
     if (this.savePromise) await this.savePromise;
-    if (this.codingEffectFrozen) throw new Error("TARGET_BUSY");
+    if (this.nativeOperationFrozen) throw new Error("TARGET_BUSY");
     const version = ++this.reloadVersion;
     const data = await api<DiskFile>("read_editor_file", this.location);
     if (!this.disposed && version === this.reloadVersion) {

@@ -705,7 +705,7 @@ pub(crate) fn checked_repository(root: &Path, args: &[&str]) -> Result<Vec<u8>, 
 static MUTATIONS: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
 pub(crate) struct MutationGuard {
     path: PathBuf,
-    _admission: crate::cli_router::project_lease::WriteAdmission,
+    _admission: crate::project_write_guard::WriteAdmission,
 }
 impl Drop for MutationGuard {
     fn drop(&mut self) {
@@ -716,7 +716,7 @@ impl Drop for MutationGuard {
 }
 pub(crate) fn mutation_guard(root: &str) -> Result<MutationGuard, String> {
     let path = directory(root)?;
-    let admission = crate::cli_router::project_lease::admit(&[&path])?;
+    let admission = crate::project_write_guard::admit(&[&path])?;
     if !MUTATIONS
         .get_or_init(Mutex::default)
         .lock()

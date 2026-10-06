@@ -867,7 +867,9 @@ mod tests {
             )
             .unwrap();
         let text: String = cells
-            .chunks_exact(12)
+            .as_chunks::<12>()
+            .0
+            .iter()
             .take(8)
             .map(|cell| {
                 char::from_u32(u32::from_le_bytes(cell[..4].try_into().unwrap()) & 0x1fffff)

@@ -20,7 +20,7 @@ pub mod servers;
 // The engine may outlive a view callback. A missing Finished event keeps its
 // admission retained, so a coding lease cannot race a still-running download.
 static DOWNLOAD_WRITES: std::sync::OnceLock<
-    Mutex<HashMap<std::path::PathBuf, crate::cli_router::project_lease::WriteAdmission>>,
+    Mutex<HashMap<std::path::PathBuf, crate::project_write_guard::WriteAdmission>>,
 > = std::sync::OnceLock::new();
 
 #[derive(Default)]
@@ -252,7 +252,7 @@ async fn create(window: &Window, slot: &Slot) -> Result<Webview, String> {
         return Err("Browser automation is not qualified on this host.".into());
     }
     #[cfg(unix)]
-    let control = if let Some(automation) = &slot.automation {
+    let (control, effect_permit) = if let Some(automation) = &slot.automation {
         let ticket = slot
             .agent_ticket
             .as_ref()
@@ -267,8 +267,11 @@ async fn create(window: &Window, slot: &Slot) -> Result<Webview, String> {
             slot.url.clone(),
         );
         let visible = !slot.hidden;
-        Some(
-            tauri::async_runtime::spawn_blocking(move || {
+        let (control, permit) = tauri::async_runtime::spawn_blocking(move || {
+            let permit = broker
+                .operation_effect_permit(&operation)
+                .map_err(|_| "Browser authorization expired or changed.".to_string())?;
+            let control =
                 broker.authorize_browser_start(lomi_control_core::broker::BrowserStart {
                     operation: &operation,
                     visible,
@@ -277,17 +280,24 @@ async fn create(window: &Window, slot: &Slot) -> Result<Webview, String> {
                     generation: &generation,
                     profile: &profile,
                     url: &url,
-                })
-            })
-            .await
-            .map_err(|e| e.to_string())??,
-        )
+                })?;
+            Ok::<_, String>((control, permit))
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+        (Some(control), Some(permit))
     } else {
         if slot.agent_ticket.is_some() {
             return Err("Browser ticket requires its isolated descriptor.".into());
         }
-        None
+        (None, None)
     };
+    #[cfg(unix)]
+    if let Some(permit) = &effect_permit {
+        permit
+            .check()
+            .map_err(|_| "Browser authorization expired or changed.")?;
+    }
     let page = Page {
         id: slot.id.clone(),
         revision: next_page_revision(),
@@ -418,7 +428,7 @@ async fn create(window: &Window, slot: &Slot) -> Result<Webview, String> {
                         return false;
                     };
                     let raw_target = folder.join(&name);
-                    let admission = match crate::cli_router::project_lease::admit(&[&raw_target]) {
+                    let admission = match crate::project_write_guard::admit(&[&raw_target]) {
                         Ok(guard) => guard,
                         Err(message) => {
                             update(webview.app_handle(), &download_id, |page| {
@@ -429,7 +439,7 @@ async fn create(window: &Window, slot: &Slot) -> Result<Webview, String> {
                     };
                     if !folder.is_dir() {
                         let Ok(_directory_admission) =
-                            crate::cli_router::project_lease::admit(&[&folder])
+                            crate::project_write_guard::admit(&[&folder])
                         else {
                             return false;
                         };
@@ -487,6 +497,12 @@ async fn create(window: &Window, slot: &Slot) -> Result<Webview, String> {
             .data_directory(data_directory.join("automation").join(&control.profile_id))
             .data_store_identifier(control.profile_identifier());
     }
+    #[cfg(unix)]
+    if let Some(permit) = &effect_permit {
+        permit
+            .check()
+            .map_err(|_| "Browser authorization expired or changed.")?;
+    }
     // Creation must stay off the event thread on WebView2.
     let created = window
         .add_child(
@@ -532,6 +548,13 @@ async fn create(window: &Window, slot: &Slot) -> Result<Webview, String> {
             control.revoke();
             let _ = webview.close();
             return Err(error);
+        }
+        if let Some(permit) = &effect_permit {
+            if permit.check().is_err() {
+                control.revoke();
+                let _ = webview.close();
+                return Err("Browser authorization expired before initial navigation.".into());
+            }
         }
         control.mark_started();
         if !control.permits(url.as_str()) || webview.navigate(url.clone()).is_err() {

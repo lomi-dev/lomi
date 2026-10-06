@@ -11,6 +11,12 @@
 compile_error!("Qualification probes must not enter release builds");
 mod agent_control;
 mod agent_notifications;
+mod agent_runtime;
+
+#[cfg(target_os = "macos")]
+pub fn agent_runtime_host_worker_entry() -> Option<i32> {
+    agent_runtime::host_worker_entry()
+}
 mod android;
 #[cfg(feature = "android-probe")]
 #[path = "../../tests/native/android-support.rs"]
@@ -31,7 +37,6 @@ mod cli_integrations;
 mod cli_launch;
 mod cli_mcp;
 mod cli_notifications;
-mod cli_router;
 mod cli_titles;
 mod cli_usage;
 mod credential_store;
@@ -57,6 +62,7 @@ mod macos;
 #[path = "../../tests/native/support.rs"]
 mod native_smoke;
 mod plugins;
+mod project_write_guard;
 #[cfg(unix)]
 mod settings_control;
 mod settings_window;
@@ -179,7 +185,7 @@ pub fn run() {
         .manage(terminal::Terminals::default())
         .manage(cli_titles::CliTitleConfig::default())
         .manage(cli_usage::CliUsage::default())
-        .manage(cli_router::CliRouterService::default())
+        .manage(agent_runtime::AgentRuntime::default())
         .manage(cli_integrations::CliIntegrations::default())
         .manage(notifications::Notifications::default())
         .manage(files::SessionFile::default())
@@ -211,6 +217,9 @@ pub fn run() {
         .register_asynchronous_uri_scheme_protocol("theme", themes::protocol)
         .register_asynchronous_uri_scheme_protocol("plugin", plugins::protocol)
         .setup(|app| {
+            app.state::<agent_runtime::AgentRuntime>()
+                .with(app.handle(), |_| Ok(()))?;
+
             let integration = app.path().app_data_dir()?.join("shell-integration");
             shell::prepare(&integration).map_err(std::io::Error::other)?;
             app.state::<remote::Remote>()
@@ -295,33 +304,37 @@ pub fn run() {
                 cli_integrations::inspect_mcp_clients,
                 cli_integrations::install_mcp_client,
                 cli_launch::installed_agent_clis,
-                cli_router::cli_router_snapshot,
-                cli_router::cli_router_mutate,
-                cli_router::cli_profile_open_terminal,
-                cli_router::cli_router_open_terminal,
-                cli_router::cli_profile_verify,
-                cli_router::cli_profile_refresh_native,
-                cli_router::cli_profile_native_report,
-                cli_router::cli_native_permissions,
-                cli_router::cli_native_permission_reply,
-                cli_router::cli_native_handoff_preview,
-                cli_router::cli_native_handoff_apply,
-                cli_router::cli_profile_set_api_key,
-                cli_router::cli_router_refresh_quota,
-                cli_router::cli_router_closing,
-                cli_router::cli_router_drain,
-                cli_router::cli_run_start,
-                cli_router::cli_run_acknowledge_coding_completion,
-                cli_router::cli_run_open_native_recovery,
-                cli_router::cli_run_send,
-                cli_router::cli_run_stop,
-                cli_router::cli_run_drain,
-                cli_router::cli_run_close_release,
-                cli_router::cli_run_pin,
-                cli_router::cli_run_update_data_grant,
-                cli_router::cli_run_effect_approvals,
-                cli_router::cli_run_decide_effect,
-                cli_router::cli_run_remove,
+                agent_runtime::agent_legacy_migration_rollback,
+                agent_runtime::agent_legacy_migration_export_open,
+                agent_runtime::agent_legacy_migration_preview,
+                agent_runtime::agent_legacy_migration_apply,
+                agent_runtime::agent_accounts_snapshot,
+                agent_runtime::agent_tasks_snapshot,
+                agent_runtime::agent_task_snapshot,
+                agent_runtime::agent_account_create,
+                agent_runtime::agent_account_update,
+                agent_runtime::agent_account_remove,
+                agent_runtime::agent_account_verify,
+                agent_runtime::agent_account_recover,
+                agent_runtime::agent_task_create,
+                agent_runtime::agent_task_send,
+                agent_runtime::agent_task_transfer_preview,
+                agent_runtime::agent_task_transfer_apply,
+                agent_runtime::agent_task_update_history_grant,
+                agent_runtime::agent_task_prepare_switch,
+                agent_runtime::agent_task_commit_switch,
+                agent_runtime::agent_task_stop,
+                agent_runtime::agent_task_recover,
+                agent_runtime::agent_task_prepare_close,
+                agent_runtime::agent_task_close_release,
+                agent_runtime::agent_runtime_prepare_close,
+                agent_runtime::agent_runtime_cancel_close,
+                agent_runtime::agent_tasks_drain,
+                agent_runtime::agent_runtime_shutdown,
+                agent_runtime::agent_permission_snapshot,
+                agent_runtime::agent_permission_reply,
+                agent_runtime::agent_permission_freeze,
+                agent_runtime::agent_permission_freeze_complete,
                 agent_control::agent_control_state,
                 agent_control::agent_control_startup_state,
                 agent_control::agent_control_startup_decide,
@@ -562,8 +575,8 @@ pub fn run() {
             }
         }
         if matches!(event, tauri::RunEvent::Exit) {
-            if let Err(error) = app.state::<cli_router::CliRouterService>().drain(app) {
-                eprintln!("CLI router exit cleanup could not confirm completion: {error}");
+            if let Err(error) = app.state::<agent_runtime::AgentRuntime>().drain_all(app) {
+                eprintln!("Agent runtime exit cleanup could not confirm completion: {error}");
             }
             app.state::<remote::Remote>().shutdown();
             tauri::async_runtime::block_on(agent_control::shutdown(app));
@@ -585,7 +598,7 @@ pub fn run() {
         } = event
         {
             if label == "main" {
-                app.state::<cli_router::CliRouterService>().stop_all();
+                app.state::<agent_runtime::AgentRuntime>().stop_all();
                 app.state::<chat::commands::Chats>().stop();
                 app.state::<terminal::Terminals>().stop_all();
                 app.exit(0);

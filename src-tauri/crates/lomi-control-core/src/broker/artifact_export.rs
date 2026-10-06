@@ -167,6 +167,7 @@ impl Broker {
         operation: &str,
         nonce: &str,
     ) -> Result<ArtifactExported, ErrorCode> {
+        let _request_permit = self.check_work_request(operation)?;
         let _project_write = self.project_write_admission()?;
         let (input, owner, path, directory, permit, policy, mut leased) = {
             let mut state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
@@ -178,7 +179,7 @@ impl Broker {
             {
                 return Err(ErrorCode::ControlRevoked);
             }
-            work.native_permit.check()?;
+            work.native_permit.check_local()?;
             let UiAction::ExportArtifact(command) = &work.command.action else {
                 return Err(ErrorCode::ScopeDenied);
             };
@@ -218,7 +219,7 @@ impl Broker {
         };
         let artifact = leased.artifact.clone();
         let check = || {
-            permit.check()?;
+            permit.revalidate()?;
             let state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
             if state.policy_revision != policy {
                 return Err(ErrorCode::ControlRevoked);

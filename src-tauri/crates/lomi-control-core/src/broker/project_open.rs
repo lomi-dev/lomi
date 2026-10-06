@@ -204,7 +204,7 @@ impl Broker {
                     || !work.claimed
                     || work.native_committed
                     || approval.approved
-                    || work.native_permit.check().is_err()
+                    || work.native_permit.check_local().is_err()
                 {
                     return None;
                 }
@@ -240,7 +240,7 @@ impl Broker {
         {
             return Err(ErrorCode::ControlRevoked);
         }
-        work.native_permit.check()?;
+        work.native_permit.check_local()?;
         let UiAction::OpenProject(command) = &work.command.action else {
             return Err(ErrorCode::ScopeDenied);
         };
@@ -254,6 +254,11 @@ impl Broker {
     }
     /// Called only by the trusted Settings adapter, never by the MCP client.
     pub fn decide_project_open(&self, operation: &str, approved: bool) -> Result<(), ErrorCode> {
+        let _request_permit = if approved {
+            Some(self.check_work_request(operation)?)
+        } else {
+            None
+        };
         let mut state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
         self.check_policy(&state)
             .map_err(|_| ErrorCode::ControlRevoked)?;
@@ -314,6 +319,7 @@ impl Broker {
         nonce: &str,
         epoch: &str,
     ) -> Result<bool, ErrorCode> {
+        let _request_permit = self.check_work_request(operation)?;
         let state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
         self.check_policy(&state)
             .map_err(|_| ErrorCode::ControlRevoked)?;
@@ -326,6 +332,7 @@ impl Broker {
         nonce: &str,
         epoch: &str,
     ) -> Result<(), ErrorCode> {
+        let _request_permit = self.check_work_request(operation)?;
         let mut state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
         self.check_policy(&state)
             .map_err(|_| ErrorCode::ControlRevoked)?;
@@ -360,7 +367,7 @@ impl Broker {
             return Err(ErrorCode::ScopeDenied);
         };
         let approval = work.project_open.as_ref().ok_or(ErrorCode::ScopeDenied)?;
-        work.native_permit.check()?;
+        work.native_permit.check_local()?;
         if !work.claimed
             || !work.native_committed
             || !approval.approved

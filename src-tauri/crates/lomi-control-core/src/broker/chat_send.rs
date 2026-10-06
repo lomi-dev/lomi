@@ -70,7 +70,7 @@ impl Broker {
         let UiAction::SendChat(command) = &work.command.action else {
             return Err(ErrorCode::ScopeDenied);
         };
-        work.native_permit.check()?;
+        work.native_permit.check_local()?;
         if Self::send_access(state, &work.pairing, &command.input)? != work.project {
             return Err(ErrorCode::ControlRevoked);
         }
@@ -188,6 +188,7 @@ impl Broker {
         operation: &str,
         nonce: &str,
     ) -> Result<ChatSendPlan, ErrorCode> {
+        let _request_permit = self.check_work_request(operation)?;
         let _producer = self
             .file_reads
             .clone()
@@ -213,6 +214,7 @@ impl Broker {
             result
         };
         let check = || {
+            let _request_permit = self.check_work_request(operation)?;
             let state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
             self.send_work(&state, operation, nonce).map(|_| ())
         };
@@ -262,6 +264,9 @@ impl Broker {
         Ok(plan)
     }
     pub fn chat_send_pending(&self, operation: &str, nonce: &str, hash: &str) -> bool {
+        if self.check_work_request(operation).is_err() {
+            return false;
+        }
         let Ok(state) = self.lock_state() else {
             return false;
         };
@@ -274,6 +279,11 @@ impl Broker {
         hash: &str,
         approved: bool,
     ) -> Result<(), ErrorCode> {
+        let _request_permit = if approved {
+            Some(self.check_work_request(operation)?)
+        } else {
+            None
+        };
         let mut state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
         let work = self.send_work(&state, operation, nonce)?;
         if work.native_committed
@@ -327,6 +337,7 @@ impl Broker {
         nonce: &str,
         hash: &str,
     ) -> Result<ChatSendAuthorization, ErrorCode> {
+        let _request_permit = self.check_work_request(operation)?;
         let mut state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
         let work = self.send_work(&state, operation, nonce)?;
         let Some(Approval::Ready {
@@ -367,6 +378,7 @@ impl Broker {
         nonce: &str,
         hash: &str,
     ) -> Result<(), ErrorCode> {
+        let _request_permit = self.check_work_request(operation)?;
         let state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
         let work = self.send_work(&state, operation, nonce)?;
         if !work.native_committed

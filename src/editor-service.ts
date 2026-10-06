@@ -1,10 +1,6 @@
 import { fileTabs, updateFilePosition } from "./model";
 import type { FileTab, Session } from "./model";
-import type {
-  CodingEffectFence,
-  DiskFile,
-  EditorDocument,
-} from "./editor-runtime";
+import type { DiskFile, EditorDocument } from "./editor-runtime";
 import { defaultEditorPreferences } from "./editor-preferences";
 import type { EditorPreferences } from "./editor-preferences";
 import { retainAgentPreviews } from "./agent-preview";
@@ -25,17 +21,17 @@ let runtime: typeof import("./editor-runtime") | undefined;
 let loading: Promise<typeof import("./editor-runtime")> | undefined;
 let tabs: FileTab[] = [];
 let revision = 0;
-let codingFileFences = 0;
+let projectFileFences = 0;
 let fileOperationFence = false;
 export const editorFileOperationsPaused = () => fileOperationFence;
-export function retainCodingFileFence() {
+export function retainProjectFileFence() {
   if (fileOperationFence) throw new Error("TARGET_BUSY");
-  ++codingFileFences;
+  ++projectFileFences;
   let released = false;
   return () => {
     if (released) return;
     released = true;
-    --codingFileFences;
+    --projectFileFences;
   };
 }
 const listeners = new Set<() => void>();
@@ -101,14 +97,8 @@ export async function stageEditorRead(tab: FileTab, file: DiskFile) {
   return (await editorRuntime()).stageDocumentRead(tab, file);
 }
 
-export async function freezeCodingEffect(
-  targetCanonicalPath: string,
-  expectedBeforeHash: string | null,
-): Promise<CodingEffectFence> {
-  return (await editorRuntime()).freezeCodingEffect(
-    targetCanonicalPath,
-    expectedBeforeHash,
-  );
+export async function freezeNativeProject(projectRoot: string) {
+  return (await editorRuntime()).freezeNativeProject(projectRoot);
 }
 
 export function loadedEditor(tab: FileTab): EditorDocument | undefined {
@@ -121,7 +111,7 @@ export function assertCleanEditorPaths(paths: ReadonlySet<string>) {
 }
 
 export async function pauseEditorFileOperations() {
-  if (codingFileFences > 0 || fileOperationFence)
+  if (projectFileFences > 0 || fileOperationFence)
     throw new Error("TARGET_BUSY");
   // The lease exists even when the lazy runtime has no loaded documents.
   // Keep it until the caller finishes its native file/Git operation.

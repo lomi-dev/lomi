@@ -3,20 +3,23 @@ import {
   useEditorCloseGuard,
   type EditorCloseDecision,
 } from "./EditorCloseGuard";
-import { terminalsWithProcesses } from "./terminal-runtime";
+import {
+  prepareOwnedTerminalClose,
+  terminalsWithProcesses,
+} from "./terminal-runtime";
 import { errorMessage } from "./api";
 import { closeChatViews, hasActiveChatRequests } from "./chat/chat-service";
 import {
-  closeCliAgentViews,
-  hasActiveCliRuns,
-  type CliCloseLease,
-} from "./router/run-runtime";
+  closeAgentTaskViews,
+  hasActiveAgentTasks,
+  type TaskCloseLease,
+} from "./agent-runtime/task-runtime";
 import { Modal } from "./ui";
 
 export function useCloseGuard() {
   const editor = useEditorCloseGuard();
   const checking = useRef(false);
-  const cliCloses = useRef(new WeakMap<ReadonlySet<string>, CliCloseLease>());
+  const cliCloses = useRef(new WeakMap<ReadonlySet<string>, TaskCloseLease>());
   const release = useCallback(async (fileIds: ReadonlySet<string>) => {
     const lease = cliCloses.current.get(fileIds);
     if (!lease) return;
@@ -45,7 +48,7 @@ export function useCloseGuard() {
     ) => {
       if (checking.current) return false;
       checking.current = true;
-      let cliClose: CliCloseLease | undefined;
+      let cliClose: TaskCloseLease | undefined;
       try {
         const application = fileIds === undefined && terminalIds === undefined;
         let message = "";
@@ -58,7 +61,7 @@ export function useCloseGuard() {
         }
         if (application && hasActiveChatRequests())
           message += `${message ? " " : ""}Chat AI is still generating a response.`;
-        if (hasActiveCliRuns(fileIds))
+        if (hasActiveAgentTasks(fileIds))
           message += `${message ? " " : ""}CLI Agent work is still running.`;
         if (message) {
           message += application
@@ -72,7 +75,9 @@ export function useCloseGuard() {
         }
         if (!(await editor.confirm(fileIds, decision))) return false;
         if (!application && fileIds)
-          cliClose = await closeCliAgentViews(fileIds);
+          cliClose = await closeAgentTaskViews(fileIds);
+        if (!application)
+          await prepareOwnedTerminalClose(terminalIds ?? [...(fileIds ?? [])]);
         if (!deferChats) await closeChatViews(fileIds);
         if (fileIds && cliClose) cliCloses.current.set(fileIds, cliClose);
         return true;

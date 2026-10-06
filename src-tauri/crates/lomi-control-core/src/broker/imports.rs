@@ -113,6 +113,7 @@ impl Broker {
         nonce: &str,
         validate: impl FnOnce(&fs::File, &dyn Fn() -> Result<(), ErrorCode>) -> Result<(), ErrorCode>,
     ) -> io::Result<()> {
+        let _request_permit = self.check_work_request(operation).map_err(|_| failure())?;
         let (input, owner, project, directory, permit, connected, revision) = {
             let mut state = self.lock_state().map_err(|_| failure())?;
             let work = state.work.get(operation).ok_or_else(failure)?;
@@ -123,7 +124,7 @@ impl Broker {
             {
                 return Err(failure());
             }
-            work.native_permit.check().map_err(|_| failure())?;
+            work.native_permit.check_local().map_err(|_| failure())?;
             let UiAction::ImportArtifact(input) = &work.command.action else {
                 return Err(failure());
             };
@@ -146,7 +147,7 @@ impl Broker {
             tuple
         };
         let check = || {
-            permit.check()?;
+            permit.revalidate()?;
             if !connected.load(Ordering::SeqCst)
                 || self.authorization.load(Ordering::SeqCst) != revision
             {
@@ -207,7 +208,7 @@ impl Broker {
                 if !Arc::ptr_eq(&directory, &current) {
                     return Err(ErrorCode::ControlRevoked);
                 }
-                check()?;
+                permit.check_local()?;
                 self.store
                     .lock()
                     .map_err(|_| ErrorCode::StorageUnavailable)?
@@ -228,7 +229,7 @@ impl Broker {
             return Err(failure());
         }
         let (mut next, effect, output) = match result {
-            Ok(artifact) if check().is_ok() => (
+            Ok(artifact) if permit.check_local().is_ok() => (
                 OperationState::Succeeded,
                 Effect::Complete,
                 OperationResult::ArtifactImported {

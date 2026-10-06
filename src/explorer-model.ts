@@ -141,7 +141,7 @@ export function applyFileChange(
       item.type === "plugin" ||
       item.type === "chat" ||
       item.type === "android" ||
-      item.type === "cli-agent"
+      item.type === "agent-task"
     )
       return item;
     if (item.type === "terminal")
@@ -169,7 +169,7 @@ export function applyFileChange(
           tab.type === "plugin" ||
           tab.type === "chat" ||
           tab.type === "android" ||
-          tab.type === "cli-agent"
+          tab.type === "agent-task"
         )
           return [tab];
         if (tab.type === "diff") {

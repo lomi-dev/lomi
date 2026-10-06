@@ -179,7 +179,8 @@ impl Broker {
             Ok(p) => p,
             Err(_) => return error(ErrorCode::ResourceExhausted),
         };
-        let check = || {
+        let captured = request_admission::current_request();
+        let check_local = || {
             if !connected.load(Ordering::SeqCst)
                 || self.authorization.load(Ordering::SeqCst) != policy
             {
@@ -187,6 +188,12 @@ impl Broker {
             } else {
                 Ok(())
             }
+        };
+        let check = || {
+            if let Some(request) = &captured {
+                request.check()?;
+            }
+            check_local()
         };
         let observed = (|| {
             let version = git_read::read(
@@ -234,7 +241,7 @@ impl Broker {
             Ok(d) => d,
             Err(code) => return error(code),
         };
-        if !Arc::ptr_eq(&directory, &current) || check().is_err() {
+        if !Arc::ptr_eq(&directory, &current) || check_local().is_err() {
             return error(ErrorCode::ControlRevoked);
         }
         let id = match new_id() {

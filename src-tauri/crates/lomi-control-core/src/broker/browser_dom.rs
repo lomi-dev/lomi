@@ -232,6 +232,7 @@ impl Broker {
         operation: &str,
         nonce: &str,
     ) -> Result<(Arc<BrowserControl>, BrowserDomCommand, NativePermit), ErrorCode> {
+        let _request_permit = self.check_work_request(operation)?;
         let mut state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
         let work = state.work.get(operation).ok_or(ErrorCode::ControlRevoked)?;
         let UiAction::InteractBrowser(command) = &work.command.action else {
@@ -258,7 +259,7 @@ impl Broker {
         control.check_snapshot(&command.snapshot_id, &command.navigation_id)?;
         control.require_renderable()?;
         let permit = work.native_permit.clone();
-        permit.check()?;
+        permit.check_local()?;
         let command = command.clone();
         state.work.get_mut(operation).unwrap().native_committed = true;
         Ok((control, command, permit))

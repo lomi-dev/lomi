@@ -56,6 +56,7 @@ tauri-plugin-notification = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-clipboard-manager = "2"
 portable-pty = "0.9"
+anyhow = "=1.0.104"
 dunce = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }

@@ -50,7 +50,7 @@
     "createUpdaterArtifacts": true,
     "externalBin": ["binaries/lomi-node"],
     "resources": {
-      "resources/grok/": "router-grok/",
+      "resources/grok/": "agent-grok/",
       "resources/ai-runtime/index.cjs": "ai-runtime/index.cjs",
       "resources/ai-runtime/NODE-LICENSE": "ai-runtime/NODE-LICENSE",
       "resources/ai-runtime/node.json": "ai-runtime/node.json",

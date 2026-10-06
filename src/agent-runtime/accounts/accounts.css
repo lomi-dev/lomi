@@ -1,0 +1,10 @@
+.dialog-form .agent-account-recovery-confirmation {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--space-8);
+}
+.dialog-form .agent-account-recovery-confirmation input {
+  flex: none;
+  width: auto;
+  margin-top: 3px;
+}

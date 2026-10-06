@@ -127,10 +127,7 @@ function LiveTerminal({
   };
   const title =
     snapshot.status === "running"
-      ? [
-          snapshot.title || snapshot.foregroundProgram,
-          snapshot.routerProfileLabel,
-        ]
+      ? [snapshot.title || snapshot.foregroundProgram, snapshot.accountLabel]
           .filter(Boolean)
           .join(" · ")
       : "";

@@ -129,6 +129,7 @@ impl Broker {
         operation: &str,
         nonce: &str,
     ) -> Result<(UiCommand, SettingsOpenPermit), ErrorCode> {
+        let _request_permit = self.check_work_request(operation)?;
         let mut state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
         let work = state.work.get(operation).ok_or(ErrorCode::TargetNotFound)?;
         if !matches!(work.command.action, UiAction::OpenSettings(_))
@@ -139,7 +140,7 @@ impl Broker {
         {
             return Err(ErrorCode::ControlRevoked);
         }
-        work.native_permit.check()?;
+        work.native_permit.check_local()?;
         Self::settings_access(&state, &work.pairing, &work.workspace)?;
         if work.command.domain_revision != state.projection.revision {
             return Err(ErrorCode::RevisionConflict);
@@ -168,7 +169,7 @@ impl Broker {
             if !work.native_committed || work.command.nonce != nonce {
                 return Err(failure());
             }
-            work.native_permit.check().map_err(|_| failure())?;
+            work.native_permit.check_local().map_err(|_| failure())?;
             Self::settings_access(&state, &work.pairing, &work.workspace).map_err(|_| failure())?;
             let result = OperationResult::SettingsOpened(SettingsOpened {
                 workspace_id: command.workspace_id.clone(),

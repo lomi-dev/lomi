@@ -1,0 +1,703 @@
+{
+  "schema": 1,
+  "date": "2026-10-06",
+  "state": "restricted_host_locally_verified_account_qualification_pending",
+  "ownershipEnvironment": "LOMI_AGENT_ATTEMPT_OWNER",
+  "scope": "Production macOS host worker and fresh native runner are included in normal builds. Durable parent-indexed intents precede every version/collector/turn/account PTY; no managed direct-spawn fallback. Previously proved, sealed kernel coalition ESRCH plus drained host effects retires local ownership in the same boot. EOF, PID scans and timeouts never substitute for that receipt. Exact admission: Darwin 27.0.0/build 26A434/ARM64. Unrestricted remote effects are unqualified.",
+  "testPolicy": "Inspect only owned fixture processes/cohorts, private fixture directories and public pinned artifacts. No broad user environment scan, credentials, login or inference.",
+  "localFixtureEvidence": [
+    "process_supervision exact-entry parser",
+    "setsid descendant with closed pipes after leader exit",
+    "process exit during each inspection seam",
+    "Store reopen/account lease/project recovery fences",
+    "same-group child/grandchild + stdout/stderr drain",
+    "failed observation projection and remaining event batch retained/retried before finalization",
+    "whole-finalization retry preserves fences and releases only after durable commit",
+    "completed-only external tool remains unqualified",
+    "Helper-capable non-Codex/Claude families retain generic effect uncertainty after pure-text completion",
+    "isolated official Pi dependency closure/direct Node proof, SDK wrapper refusal and post-prepare dependency mutation rejection",
+    "fresh macOS audit-token inspection brackets and exact kernel audit-token signalling; forged PID version refuses signalling",
+    "own held launchd coalition survives setsid/double-fork/env-clear and leader exit; bootout alone leaves coalition live; exact signal followed by kernel ESRCH retires it",
+    "own external launchd delegation counterexample escapes the original coalition; tested inherited deny-Mach profile blocks that specific bootstrap"
+  ],
+  "realAccounts": "not_run_no_accounts_authorized",
+  "records": [
+    {
+      "cli": "codex",
+      "versions": ["0.160.0"],
+      "sourceClassification": "config_conditional",
+      "reason": "Policy inherit=None/Core, exclusions and include_only can omit the marker. Spawn and PTY clear the inherited environment before applying policy.",
+      "unrestrictedStopAndSwitch": "unqualified",
+      "sources": [
+        {
+          "location": "https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/protocol/src/shell_environment.rs",
+          "sha256": "e16f61ea96db99307e3d8d2eb2fbb1b6fc703ce0ca7651fa97170dd6e0557da0"
+        },
+        {
+          "location": "https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/core/src/spawn.rs",
+          "sha256": "10dbd8814c111c4bd29f3b49408faefbfca056ea358c57a860e6d812babf775b"
+        },
+        {
+          "location": "https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/utils/pty/src/pty.rs",
+          "sha256": "840f07e5875466ae2da0182c36f7041cebd6f11ce7b73e265b48d738c6ebac80"
+        }
+      ],
+      "managedLaunchRestriction": "Codex/Claude passive configuration allowlists reject hooks, foreign MCP, provider routes, execution helpers and managed-policy overrides. Fixed file credential storage for Codex and correlated effective config/read precede session/prompt. Claude restricted tools, disabled ordinary hooks/plugins/skills/connectors/Chrome and strict owned-or-empty MCP. Configuration files remain protected; Claude login-only state bookkeeping is writable. HTTPS CONNECT proxy allows exact provider authorities, authenticates before DNS, rejects nonpublic addresses and drains sockets on Stop. Public CA file is readonly; no securityd/trustd delegation."
+    },
+    {
+      "cli": "claude",
+      "versions": ["2.1.287"],
+      "sourceClassification": "unproven",
+      "reason": "Official distribution contains native executable wrapper; tool, hook, sandbox and async launch implementations are opaque.",
+      "unrestrictedStopAndSwitch": "unqualified",
+      "sources": [
+        {
+          "location": "https://registry.npmjs.org/@anthropic-ai/claude-code/-/claude-code-2.1.287.tgz",
+          "sha256": "b829179017c73acbc4084b764ca3a8cd9d0f3554ec2107519a272c8ded975efb"
+        }
+      ],
+      "managedLaunchRestriction": "Codex/Claude passive configuration allowlists reject hooks, foreign MCP, provider routes, execution helpers and managed-policy overrides. Fixed file credential storage for Codex and correlated effective config/read precede session/prompt. Claude restricted tools, disabled ordinary hooks/plugins/skills/connectors/Chrome and strict owned-or-empty MCP. Configuration files remain protected; Claude login-only state bookkeeping is writable. HTTPS CONNECT proxy allows exact provider authorities, authenticates before DNS, rejects nonpublic addresses and drains sockets on Stop. Public CA file is readonly; no securityd/trustd delegation."
+    },
+    {
+      "cli": "pi",
+      "versions": ["1.0.1"],
+      "sourceClassification": "config_conditional",
+      "reason": "Normal built-in shell inherits process.env and detaches on Unix. spawnHook can replace all env; MCP inheritEnv:false explicitly omits inherited ownership. Disabling extensions does not disable dynamic !command credentials/OAuth headers or configured package installation helpers; exact artifact identity cannot qualify lifecycle settlement.",
+      "unrestrictedStopAndSwitch": "unqualified",
+      "sources": [
+        {
+          "location": "installed:pi-1.0.1/node_modules/@earendil-works/pi-coding-agent/dist/bundle/chunks/chunk-5OEJBNHG.js",
+          "sha256": "a760f30e4768230e7ed248fbbe97840a9039123aac093178476341fafa60d741"
+        },
+        {
+          "location": "installed:pi-1.0.1/node_modules/@earendil-works/pi-coding-agent/dist/bundle/chunks/chunk-PDFMCAOZ.js",
+          "sha256": "1e72c9921160d1f2f920cd0db08f7942e63aac0c7d74825db5cb5b2aa11e6eb7"
+        },
+        {
+          "location": "https://github.com/earendil-works/pi/blob/v1.0.1/packages/coding-agent/src/cli/args.ts#L317",
+          "evidence": "exact flag semantics verified in adopted source"
+        },
+        {
+          "location": "https://github.com/earendil-works/pi/blob/v1.0.1/packages/coding-agent/src/core/resource-loader.ts#L569",
+          "evidence": "no-extension discovery selection; explicit paths and SDK factories require separate admission"
+        },
+        {
+          "location": "https://github.com/earendil-works/pi/blob/v1.0.1/packages/coding-agent/src/core/resolve-config-value.ts#L185",
+          "evidence": "dynamic command-valued credentials and headers execute synchronously outside tool events"
+        },
+        {
+          "location": "https://github.com/earendil-works/pi/blob/v1.0.1/packages/coding-agent/src/core/resource-loader.ts#L521",
+          "evidence": "package resolution precedes extension filtering"
+        },
+        {
+          "location": "https://github.com/earendil-works/pi/blob/v1.0.1/packages/coding-agent/src/core/package-manager.ts#L1302",
+          "evidence": "configured missing npm/git packages can install during resource loading"
+        }
+      ],
+      "managedLaunchRestriction": "Forced --no-extensions; no explicit -e/--extension; admitted standard main(argv) RPC executable only"
+    },
+    {
+      "cli": "kimi",
+      "versions": ["2.1.1"],
+      "sourceClassification": "config_conditional",
+      "reason": "Host process/PT Y and MCP preserve normal inherited env; config overrides and alternate backends are conditional. Helpers can detach/unref.",
+      "unrestrictedStopAndSwitch": "unqualified",
+      "sources": [
+        {
+          "location": "installed:kimi-2.1.1/node_modules/@moonshot-ai/kimi-code/dist/main.mjs",
+          "sha256": "2563a338c94868a34e1bfd2e5579067d5a472acf4cb0bf350a3bfe1092bbe59d"
+        }
+      ]
+    },
+    {
+      "cli": "kilo",
+      "versions": ["7.8.3"],
+      "sourceClassification": "config_conditional",
+      "reason": "Normal model shell and PTY inherit environment. Plugin/input.env overrides and sandbox/helper launch coverage are not completely qualified.",
+      "unrestrictedStopAndSwitch": "unqualified",
+      "sources": [
+        {
+          "location": "https://github.com/Kilo-Org/kilocode/blob/v7.8.3/packages/opencode/src/kilocode/process/env.ts",
+          "sha256": "45ef336909560fe0880477634311a19cb7055b07f4e4547e0d7045d0774d13cb"
+        },
+        {
+          "location": "https://github.com/Kilo-Org/kilocode/blob/v7.8.3/packages/opencode/src/tool/shell.ts",
+          "sha256": "aab91d8ec5798acf2a52bc469e4350c14408672ea79e2ca401907605b79a4d43"
+        }
+      ]
+    },
+    {
+      "cli": "opencode",
+      "versions": ["1.18.33", "1.18.34"],
+      "sourceClassification": "config_conditional",
+      "reason": "Normal shell and PTY inherit env and detach on Unix. Plugin/input overrides and MCP/helper behavior need separate qualification.",
+      "unrestrictedStopAndSwitch": "unqualified",
+      "sources": [
+        {
+          "location": "https://github.com/anomalyco/opencode/blob/v1.18.34/packages/opencode/src/tool/shell.ts",
+          "sha256": "342d742ae324782d222465c202dcdfcb7cc35a4cecf04e87f9881f1794d921ac"
+        },
+        {
+          "location": "https://github.com/anomalyco/opencode/blob/v1.18.34/packages/core/src/pty.ts",
+          "sha256": "aabd2577b86cfd0e620bf2693e8ca2620d33e457ade597e4135357a6fd8707f5"
+        }
+      ]
+    },
+    {
+      "cli": "grok",
+      "versions": ["1.0.45"],
+      "sourceClassification": "config_conditional",
+      "reason": "Default admitted sandbox exclusion policy preserves marker. Config exclusions and restored shell variables can replace it; detached/helper/transitive coverage remains conditional.",
+      "unrestrictedStopAndSwitch": "unqualified",
+      "sources": [
+        {
+          "location": "https://github.com/xai-org/grok-build/blob/2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8/crates/codegen/xai-grok-tools/src/sandbox_launch.rs",
+          "sha256": "d9aa00a1e8c26e6e99dfc77fd4f23ed55557e6fd41f9a1939ea8c96af03a80a5"
+        },
+        {
+          "location": "https://github.com/xai-org/grok-build/blob/2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8/crates/codegen/xai-grok-sandbox/src/command/policy.rs",
+          "sha256": "34c22418c88be0981870390b4a0a77d4a0f92c81928094d3e6ff1ffd8f75dfc3"
+        }
+      ]
+    }
+  ],
+  "lifecycleSettlement": {
+    "all_managed_drivers": "Production macOS host worker and fresh native runner are included in normal builds. Durable parent-indexed intents precede every version/collector/turn/account PTY; no managed direct-spawn fallback. Previously proved, sealed kernel coalition ESRCH plus drained host effects retires local ownership in the same boot. EOF, PID scans and timeouts never substitute for that receipt. Exact admission: Darwin 27.0.0/build 26A434/ARM64. Codex/Claude helper-free configuration admission is separate from native remote tool qualification. Other families retain generic effects uncertainty.",
+    "pi_artifact_admission": "Exact standard RPC entry and independently reproduced full dependency closure; direct official Node 22.22.3 on macOS ARM64. Forced --no-extensions and no explicit -e/--extension. This proves executable identity, not absence of helper effects.",
+    "pi_remaining_helpers": "Dynamic !command auth/provider/model/OAuth headers execute outside NativeTool events. Configured npm/git packages resolve and may install before extension filtering. No exhaustive helper-free configuration contract is qualified.",
+    "completeJournal": "A terminal with no unsafe observed tool does not prove the absence of lifecycle/helper effects."
+  },
+  "hostProductionPreparation": {
+    "state": "restricted_host_locally_verified_account_qualification_pending",
+    "selectedArchitecture": "Host-native clients, with explicit configuration restrictions; VM not selected.",
+    "actualOs": "macOS 27.0.1 build 26A434 / xnu-13432.1.9",
+    "publishedXnuSource": "f6217f891ac0bb64f3d375211650a4c1ff8ca1ea (xnu-12377.1.9), not the actual running kernel revision",
+    "retirementPredicate": "Only kernel ESRCH for a previously proved owned resource coalition in the same boot, after job sealing; neither task counters nor bootout success qualifies absence.",
+    "supportLimit": "Custom SBPL and coalition ABI are undocumented/private for third-party production; exact OS/build admission and fixture evidence are required.",
+    "unqualifiedSurfaces": [
+      "Loopback reservation survival across supervisor crash or forced termination",
+      "Arbitrary remote/asynchronous tools and preexisting external services",
+      "Helper-capable uninspected configurations outside restricted Codex/Claude",
+      "Authenticated OAuth/file-store/provider/TLS compatibility",
+      "Other OS/build/architecture combinations"
+    ],
+    "evidence": [
+      "/tmp/lomi-production-coalition-held-result.json",
+      "/tmp/lomi-production-coalition-delegation-result.json",
+      "/tmp/lomi-host-network-policy-result.json",
+      "/private/tmp/lomi-public-cli-help-c2hyiv50/manifest.json"
+    ],
+    "qualifiesProduction": false,
+    "helperDurability": "Internal schema2 owned intents capture immutable account roots. Positive local retirement is finalized or retained in the owner retry queue without replay. Changed boot proves local process absence before old journals are inspected; interrupted delivery/effects still require explicit recovery. Legacy empty journals are never retirement proof.",
+    "mcpPolicyIntegration": "Fresh audit-token/cohort attribution captures immutable account/auth/task/attempt/generation and durable physical project identity. The owned Lomi MCP registration permits only project observations through server-resolved opaque workspace aliases. Unmatched peers retain Status/Connect ceiling during native ownership. Existing sessions, labels and YOLO cannot widen either ceiling; effect guards span actual completion and Stop.",
+    "nativePolicyEvidence": "/var/folders/q6/xvq1c0vj24n0cnh7hrysr4k40000gn/T/lomi-native-policy-modes-3dsaodbx/result.json",
+    "remainingAcceptance": "Authorized real-account authentication/provider TLS/model/native PTY, native tools/effects/Stop/crash/history grants/same-account resume/A-B-C handoff and restricted G02 qualification. All independent implementation and local checks are complete.",
+    "preferenceCompatibility": {
+      "result": "Owned Codex config/read includeLayers succeeds after exact readonly cfprefs shared-memory admission; earlier four failures retained as historical logs.",
+      "evidence": "/private/tmp/lomi-owned-codex-preferences-qqkcl_hb/shm-mcp.json",
+      "qualifiesProduction": false
+    },
+    "mcpPolicyEvidence": {
+      "runtime": "/tmp/lomi-host-mcp-runtime-tests-final.log",
+      "sendAndSwitchAdmission": "/tmp/lomi-host-mcp-admission-serial.log",
+      "actualBrokerAndYoloReconnect": "/tmp/lomi-host-mcp-native-broker-serial.log",
+      "productionAdmissionWired": true,
+      "immutableOperationMembershipQualified": "local_owned_cohort_only",
+      "privateManagedConfigurationQualified": "local_restricted_configuration_only",
+      "actualOwnedCohorts": "/private/tmp/lomi-owned-cohort-broker.log"
+    },
+    "historicalPrototype": {
+      "relocatedBinary": "/private/tmp/lomi-held-narrow-system-fixtures-jyggrsgq/lomi-lib-fixture",
+      "result": "10 serial native fixtures passed, 0 failed, 423.79 seconds; narrowed /System/Library profile and anonymous native pipes. Production qualification remains false.",
+      "log": "/private/tmp/lomi-held-narrow-system-fixtures-jyggrsgq/all-native-serial.log",
+      "qualifiesProduction": false,
+      "rootReadRepair": {
+        "result": "Five owned native fixtures passed after admitting file-read-data only for literal root directory; no Mach/network exception added.",
+        "log": "/private/tmp/lomi-host-root-read-fixtures-so4eysyn/all-ignored.log",
+        "diagnosis": "/private/tmp/lomi-host-exec-diagnosis-8g66lzz8/process-log.txt",
+        "platform": "Darwin 27.0.0 build 26A434",
+        "qualifiesProduction": false
+      },
+      "anonymousPipeRepair": {
+        "reason": "Pinned Claude returned only 8192 of 21901 help bytes through named FIFOs even outside sandbox. The held worker now supplies anonymous native pipes with bounded relays, unchanged denied-Mach/network profile and pre-exec self-coalition assertion.",
+        "firstClaudeCompleteHelpResult": "Passed version, complete help, native exit and sealed kernel retirement on the revised relay.",
+        "log": "/private/tmp/lomi-held-anonymous-pipe-first-noatdznl/claude.log",
+        "qualifiesProduction": false,
+        "completeSuiteLog": "/private/tmp/lomi-held-narrow-system-fixtures-jyggrsgq/all-native-serial.log"
+      },
+      "historicalRelocation": {
+        "relocatedBinary": "/private/tmp/lomi-host-worker-relocation-9jfcd4h3/lomi-lib-fixture",
+        "result": "1 passed, 4 failed; held launch barrier passes outside Documents, released native programs did not write expected markers",
+        "log": "/private/tmp/lomi-host-worker-relocation-9jfcd4h3/all-ignored.log"
+      },
+      "historicalExecutableMapping": {
+        "binary": "/private/tmp/lomi-host-executable-map-1waugc5a/lomi-lib-fixture",
+        "result": "1 held fixture passed, 4 released native-execution fixtures failed; narrow executable mapping did not repair launch",
+        "log": "/private/tmp/lomi-host-executable-map-1waugc5a/all-ignored.log",
+        "profileCompile": "sandbox_init returned success under exact profile; owned /usr/bin/true subsequently aborted; no Mach/network exceptions broadened",
+        "profileEvidence": "/private/tmp/lomi-host-sandbox-compiler-cdx5g71j/sandbox-init-result.json",
+        "qualifiesProduction": false
+      },
+      "sha256": "03c7e900fa19aa55290505e3afe647927c2838122f16861f1545eb0db30e9e51",
+      "coverage": [
+        "held-before-exec durability and retirement",
+        "native version and stdio",
+        "env_clear, setsid, double fork, leader exit and restore",
+        "fork during Stop",
+        "control-record writes denied",
+        "exact Codex version and complete help",
+        "exact Claude version and complete help",
+        "owned launchctl bootstrap denied while unrelated owned sentinel survives",
+        "32 KiB stdin EOF, 64 KiB output and native error exit 7",
+        "outside/control record reads denied through canonical and /System/Volumes/Data aliases"
+      ],
+      "systemReadNarrowing": {
+        "change": "Replaced broad /System read subtree with /System/Library; literal root read remains bootstrap-only.",
+        "ownedProbeResult": "Both old and narrowed profiles denied owned outside/control reads through canonical and Data-volume aliases. No bypass was demonstrated.",
+        "probe": "/private/tmp/lomi-owned-data-alias-probe-zostkq78/results.json",
+        "heldNegativeFixture": "Passed in final ten-fixture suite."
+      },
+      "parallelStartupHistory": {
+        "result": "7 passed, 2 failed before held publication in a concurrent run; exact cause unproven. Serial final run passed without relaxing the 30-second held deadline.",
+        "log": "/private/tmp/lomi-held-relay-complete-fixtures-acri3vm5/all-native.log",
+        "diagnostics": "Owned test-only hash instrumentation measured 19.8\u201323 seconds in serial runs; no causal assertion for the earlier failures."
+      },
+      "sentinelAuditCleanup": {
+        "change": "Fresh audited member signal and unreaped Child.wait for the owned unrelated sentinel. Previous direct-child cleanup was PID-reuse safe; this is consistency cleanup.",
+        "result": "Cleanup-only delegation fixture passed again in 30.88 seconds; sandbox policy and relays unchanged.",
+        "binary": "/private/tmp/lomi-held-audit-sentinel-fixture-jfm03809/lomi-lib-fixture",
+        "sha256": "eb3d5232539955c7e8447363b5404088d27405bfb715d2b34f733fd2cf848eaf",
+        "log": "/private/tmp/lomi-held-audit-sentinel-fixture-jfm03809/delegation.log"
+      }
+    },
+    "productionIntegration": "Production macOS host worker and fresh native runner are included in normal builds. Durable parent-indexed intents precede every version/collector/turn/account PTY; no managed direct-spawn fallback. Previously proved, sealed kernel coalition ESRCH plus drained host effects retires local ownership in the same boot. EOF, PID scans and timeouts never substitute for that receipt. Exact admission: Darwin 27.0.0/build 26A434/ARM64.",
+    "localFinalChecks": {
+      "state": "passed",
+      "checks": [
+        {
+          "name": "rustWorkspace",
+          "passed": 917,
+          "failed": 0,
+          "ignored": 56,
+          "suites": 24,
+          "workspaceLocked": true,
+          "doctestsIncluded": true,
+          "finalSource": true,
+          "log": "/tmp/lomi-production-complete-rust-workspace.log"
+        },
+        {
+          "name": "rustCheck",
+          "passed": true,
+          "workspaceAllTargetsLocked": true,
+          "log": "/tmp/lomi-production-complete-rust-check.log"
+        },
+        {
+          "name": "clippy",
+          "passed": true,
+          "allTargets": true,
+          "warningsDenied": true,
+          "log": "/tmp/lomi-production-complete-clippy.log"
+        },
+        {
+          "name": "mcpProtocol",
+          "passed": 8,
+          "failed": 0,
+          "log": "/tmp/lomi-production-complete-mcp.log"
+        },
+        {
+          "name": "frontendTests",
+          "domain": 246,
+          "ai": 45,
+          "passed": true,
+          "log": "/tmp/lomi-production-final-frontend-tests.log"
+        },
+        {
+          "name": "frontendCheck",
+          "passed": true,
+          "log": "/tmp/lomi-production-final-frontend-check.log"
+        },
+        {
+          "name": "frontendBuild",
+          "passed": true,
+          "log": "/tmp/lomi-production-final-frontend-build.log"
+        },
+        {
+          "name": "uiTests",
+          "changedChromium": 55,
+          "changedWebKit": 55,
+          "qualificationNoticeChromium": 2,
+          "qualificationNoticeWebKit": 2,
+          "failed": 0,
+          "logs": [
+            "/tmp/lomi-production-final-ui-chromium.log",
+            "/tmp/lomi-production-final-ui-webkit.log",
+            "/tmp/lomi-production-final-notice-chromium.log",
+            "/tmp/lomi-production-final-notice-webkit.log"
+          ]
+        },
+        {
+          "name": "hostBoundary",
+          "normalBuildIncluded": true,
+          "restrictedOs": "Darwin 27.0.0/build26A434/ARM64",
+          "nativeFixtures": {
+            "passed": 24,
+            "failed": 0,
+            "log": "/private/tmp/lomi-host-boundary-final-validation.log"
+          },
+          "qualification": false
+        },
+        {
+          "name": "nativeDesktop",
+          "passed": true,
+          "root": "/private/var/folders/q6/xvq1c0vj24n0cnh7hrysr4k40000gn/T/lomi-agent-runtime-desktop-VgrCZT",
+          "result": "/private/var/folders/q6/xvq1c0vj24n0cnh7hrysr4k40000gn/T/lomi-agent-runtime-desktop-VgrCZT/result.json",
+          "log": "/private/tmp/lomi-production-short-alias-final-desktop.log",
+          "buildLog": "/private/tmp/lomi-production-short-alias-final-build.log",
+          "checks": [
+            "normal production worker and runner execute",
+            "shared native launch has a durable intent before release",
+            "sealed kernel retirement finalizes while Child retains its lock",
+            "owned helper and process fences settle",
+            "completed checkpoint survives store reopening"
+          ],
+          "ownedPtyChecks": [
+            "owned interactive PTY stopped by application drain",
+            "transport completion precedes delayed durable helper finalization",
+            "application drain waits finalization token and positive helper ledger"
+          ],
+          "claudeNativeFileStatus": [
+            {
+              "syntheticFile": false,
+              "loggedIn": false,
+              "exit": 1
+            },
+            {
+              "syntheticFile": true,
+              "loggedIn": true,
+              "exit": 0
+            },
+            {
+              "syntheticFile": false,
+              "loggedIn": false,
+              "exit": 1
+            }
+          ],
+          "outcomes": [
+            "normal-quit-exited-zero",
+            "close-and-quit-refused-view-retained"
+          ],
+          "realAccounts": false,
+          "inference": false
+        },
+        {
+          "name": "correlatedConfiguration",
+          "passed": 3,
+          "failed": 0,
+          "log": "/private/tmp/lomi-native-configuration-query-tests.log"
+        },
+        {
+          "name": "managedConfiguration",
+          "passed": 6,
+          "failed": 0,
+          "log": "/private/tmp/lomi-managed-config-final-six.log"
+        },
+        {
+          "name": "storeBoundary",
+          "passed": 7,
+          "failed": 0,
+          "log": "/private/tmp/lomi-store-boundary-final-seven.log"
+        },
+        {
+          "name": "networkProxy",
+          "passed": 6,
+          "failed": 0,
+          "log": "/private/tmp/lomi-dual-network-final-tests.log",
+          "coverage": [
+            "IPv4 and IPv6 authenticated opaque TLS bidirectional tunnelling",
+            "Both families deny unauthenticated or ambiguous authority before DNS",
+            "Cancellation preserves both exact listening sockets until owner release",
+            "Occupied IPv6 endpoint refuses transport admission",
+            "Nonpublic IP rejection",
+            "Outbound failure drains accepted connections"
+          ]
+        },
+        {
+          "name": "proxyRetirementRetention",
+          "passed": 1,
+          "failed": 0,
+          "seconds": 35.19,
+          "log": "/private/tmp/lomi-proxy-retirement-resource-test.log",
+          "scope": "Real held command trusted exit; live effect makes Child Drop fail retirement. Both reserved ports remain occupied; restore recovers same effect scope; only effect drain plus physical/durable receipt releases reservations."
+        },
+        {
+          "name": "actualOwnedCohortBroker",
+          "passed": 1,
+          "failed": 0,
+          "threeCohorts": true,
+          "log": "/private/tmp/lomi-owned-cohort-broker.log"
+        },
+        {
+          "name": "previousBootRecovery",
+          "passed": 1,
+          "failed": 0,
+          "log": "/private/tmp/lomi-owned-old-boot-recovery-final.log"
+        },
+        {
+          "name": "claudeOAuthSourceFixture",
+          "passed": 10,
+          "failed": 0,
+          "fullCliAccountQualification": false,
+          "result": "/private/tmp/lomi-claude-oauth-owned-fixture/result.json",
+          "script": "/Users/woro/Documents/Lomi/lomi/tests/native/claude-oauth-file-store.cjs"
+        },
+        {
+          "name": "claudeTempSourceFixture",
+          "passed": 5,
+          "failed": 0,
+          "result": "/private/tmp/lomi-claude-temp-directory-source-result.json",
+          "script": "tests/native/claude-temp-directory.cjs",
+          "fullCliQualification": false,
+          "scope": "Original pinned hl/nEe/UYo functions, actual private data writer and alias, plus denied adapter for known long-path shared-directory fallback."
+        },
+        {
+          "name": "claudeShortAliasHeld",
+          "passed": 1,
+          "failed": 0,
+          "checks": 8,
+          "seconds": 16.77,
+          "log": "/private/tmp/lomi-claude-short-alias-held-final-test.log",
+          "scope": "Original pinned Claude S/nEe/UYo under actual Held production Seatbelt: private physical write, no shared fallback, wrapper unlink/rename denied, shared/unrelated /tmp denied, escape symlink read/write denied."
+        },
+        {
+          "name": "claudeShortAliasUnit",
+          "passed": 1,
+          "failed": 0,
+          "log": "/private/tmp/lomi-claude-short-alias-unit-tests.log"
+        },
+        {
+          "name": "desktopArtifact",
+          "binary": "/Users/woro/Documents/Lomi/lomi/src-tauri/target/debug/lomi",
+          "bytes": 223348120,
+          "sha256": "14b6c08ec800f1c451d14e6324e7909658d295333f14a6a7d0c6dfb989d941e6",
+          "nativeSmokeFixtureExcluded": true,
+          "ownedFixtureRoot": "/private/tmp/lomi-normal-artifact-ayx0pe08",
+          "passed": 7,
+          "failed": 0,
+          "checks": [
+            {
+              "check": "find-generic-password",
+              "passed": true,
+              "exit": 44
+            },
+            {
+              "check": "delete-generic-password",
+              "passed": true,
+              "exit": 44
+            },
+            {
+              "check": "add-generic-password",
+              "passed": true,
+              "exit": 1
+            },
+            {
+              "check": "open-stdin",
+              "passed": true,
+              "seconds": 2.041,
+              "exit": 1
+            },
+            {
+              "check": "open-partial-stdin",
+              "passed": true,
+              "seconds": 2.065,
+              "exit": 1
+            },
+            {
+              "check": "--agent-runtime-host-worker:missing-root",
+              "passed": true,
+              "exit": 2
+            },
+            {
+              "check": "--agent-runtime-host-native-child:missing-root",
+              "passed": true,
+              "exit": 2
+            }
+          ],
+          "buildLog": "/tmp/lomi-production-complete-debug-build.log",
+          "entryLog": "/tmp/lomi-production-complete-debug-entry.log",
+          "importsLog": "/tmp/lomi-production-complete-debug-imports.txt",
+          "noStrongOptionalAuditSignalOrCoalitionImport": true,
+          "embeddedFrontend": true,
+          "nativeSmokeFeature": false
+        },
+        {
+          "name": "releaseArtifact",
+          "binary": "/Users/woro/Documents/Lomi/lomi/src-tauri/target/release/lomi",
+          "bytes": 75642800,
+          "sha256": "feaa0e83bbf9acb956be88bb76fd1e8b42187c1404f92f4fd71cae42c5e913e3",
+          "nativeSmokeFixtureExcluded": true,
+          "ownedFixtureRoot": "/private/tmp/lomi-normal-artifact-mk5fcc3k",
+          "passed": 7,
+          "failed": 0,
+          "checks": [
+            {
+              "check": "find-generic-password",
+              "passed": true,
+              "exit": 44
+            },
+            {
+              "check": "delete-generic-password",
+              "passed": true,
+              "exit": 44
+            },
+            {
+              "check": "add-generic-password",
+              "passed": true,
+              "exit": 1
+            },
+            {
+              "check": "open-stdin",
+              "passed": true,
+              "seconds": 2.04,
+              "exit": 1
+            },
+            {
+              "check": "open-partial-stdin",
+              "passed": true,
+              "seconds": 2.05,
+              "exit": 1
+            },
+            {
+              "check": "--agent-runtime-host-worker:missing-root",
+              "passed": true,
+              "exit": 2
+            },
+            {
+              "check": "--agent-runtime-host-native-child:missing-root",
+              "passed": true,
+              "exit": 2
+            }
+          ],
+          "buildLog": "/tmp/lomi-production-complete-release-build.log",
+          "entryLog": "/tmp/lomi-production-complete-release-entry.log",
+          "importsLog": "/tmp/lomi-production-complete-release-imports.txt",
+          "noStrongOptionalAuditSignalOrCoalitionImport": true,
+          "embeddedFrontend": true,
+          "nativeSmokeFeature": false
+        },
+        {
+          "name": "finalChecks",
+          "state": "passed",
+          "cutover": {
+            "passed": true,
+            "log": "/tmp/lomi-production-complete-cutover.log"
+          },
+          "diffCheck": {
+            "passed": true,
+            "log": "/tmp/lomi-production-complete-diff-check.log"
+          },
+          "rustfmtBeforeShortTempAlias": {
+            "passed": true,
+            "log": "/tmp/lomi-production-frozen-rustfmt.log"
+          },
+          "scopedPrettier": {
+            "passed": true,
+            "files": 59,
+            "log": "/tmp/lomi-production-complete-scoped-format.log"
+          },
+          "rustfmt": {
+            "passed": true,
+            "log": "/tmp/lomi-production-complete-rustfmt.log"
+          },
+          "sourceFilesUnchanged": true,
+          "releaseEntry": {
+            "passed": 7,
+            "failed": 0,
+            "log": "/tmp/lomi-production-complete-release-entry.log"
+          }
+        }
+      ],
+      "sourceManifest": {
+        "file": "/tmp/lomi-production-frozen-source.json",
+        "sha256": "545272d4f25584e48224e078c72dc0ebcb54c4e976e5dd632f0dac0ae4bd20f0"
+      },
+      "finalEvidenceManifest": "/tmp/lomi-agent-final-evidence.json"
+    },
+    "supervisorRequirement": "Normal unsandboxed host supervisor; macOS launchd refuses bootstrap from an externally sandboxed caller. Managed native children retain the exact production SBPL.",
+    "claudeCredentialSelection": {
+      "version": "2.1.287",
+      "implementation": "Trusted exact staged security selector on fixed managed PATH; original OAuth private-file fallback. No Keychain calls or secret echo. Interactive input bounded to 256 KiB and 2 s monotonic deadline.",
+      "storageFlows": "OAuth only; console/device/API-key-only credential storage unsupported",
+      "sourceDerivedFixture": {
+        "passed": 10,
+        "fullCliAccountQualification": false,
+        "script": "tests/native/claude-oauth-file-store.cjs",
+        "result": "/private/tmp/lomi-claude-oauth-owned-fixture/result.json"
+      }
+    },
+    "loopbackReservation": {
+      "admission": "Both exact 127.0.0.1 and ::1 TCP sockets are bound at the selected numeric port before native release. IPv6 occupation refuses admission; both listeners share authentication before DNS, provider authority checks and effect accounting.",
+      "stop": "Cancel closes accepted/tunnel sockets and stops acceptance while original listening sockets remain reserved. The immutable boundary retains the Proxy through failed Stop and Child Drop; same-process restore recovers the scope.",
+      "release": "Only job seal, fresh kernel ESRCH, drained effects and durable Retired release retained resources. Resource destructors run outside the retirement-hold mutex.",
+      "qualificationLimit": "Reservation survival across a supervisor process crash or forced termination is unqualified. Interrupted delivery and unobserved external effects retain recovery fences; no automatic replay or G02 claim."
+    },
+    "claudeTemporaryDirectory": {
+      "implementation": "Stable private short wrapper with exact symlink to the existing canonical account/.native-tmp. Real/effective UID equality, byte budget, private owner/mode, link target, no extra entries and inode identities are verified before Held release.",
+      "authority": "Existing physical account temporary write grant; readonly wrapper runtime grant. No writable shared /tmp grant.",
+      "versionProbe": "Exact --version retains its transient private probe cwd and creates no permanent account alias.",
+      "sourceFixture": {
+        "passed": 5,
+        "script": "tests/native/claude-temp-directory.cjs",
+        "result": "/private/tmp/lomi-claude-temp-directory-source-result.json",
+        "fullCliQualification": false
+      },
+      "heldIntegration": {
+        "passed": 1,
+        "checks": 8,
+        "log": "/private/tmp/lomi-claude-short-alias-held-final-test.log"
+      },
+      "nativeDesktop": {
+        "passed": true,
+        "root": "/private/var/folders/q6/xvq1c0vj24n0cnh7hrysr4k40000gn/T/lomi-agent-runtime-desktop-VgrCZT",
+        "result": "/private/var/folders/q6/xvq1c0vj24n0cnh7hrysr4k40000gn/T/lomi-agent-runtime-desktop-VgrCZT/result.json",
+        "log": "/private/tmp/lomi-production-short-alias-final-desktop.log",
+        "buildLog": "/private/tmp/lomi-production-short-alias-final-build.log",
+        "checks": [
+          "normal production worker and runner execute",
+          "shared native launch has a durable intent before release",
+          "sealed kernel retirement finalizes while Child retains its lock",
+          "owned helper and process fences settle",
+          "completed checkpoint survives store reopening"
+        ],
+        "ownedPtyChecks": [
+          "owned interactive PTY stopped by application drain",
+          "transport completion precedes delayed durable helper finalization",
+          "application drain waits finalization token and positive helper ledger"
+        ],
+        "claudeNativeFileStatus": [
+          {
+            "syntheticFile": false,
+            "loggedIn": false,
+            "exit": 1
+          },
+          {
+            "syntheticFile": true,
+            "loggedIn": true,
+            "exit": 0
+          },
+          {
+            "syntheticFile": false,
+            "loggedIn": false,
+            "exit": 1
+          }
+        ],
+        "outcomes": [
+          "normal-quit-exited-zero",
+          "close-and-quit-refused-view-retained"
+        ],
+        "realAccounts": false,
+        "inference": false
+      }
+    },
+    "sourceReview": "Closed: no remaining material findings in reviewed production changes or final test-only lint corrections."
+  }
+}

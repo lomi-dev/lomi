@@ -5,12 +5,12 @@ export type ReleaseClosePreparation = () => Promise<void>;
 let pendingPreparation: string | undefined;
 let preparing = false;
 let agentControlPrepared = false;
-let routerPrepared = false;
+let runtimePrepared = false;
 
 async function releasePreparation() {
-  if (routerPrepared) {
-    await api("cli_router_closing", { closing: false });
-    routerPrepared = false;
+  if (runtimePrepared) {
+    await api("agent_runtime_cancel_close");
+    runtimePrepared = false;
   }
   if (pendingPreparation) {
     await api("android_exit", {
@@ -43,8 +43,8 @@ export async function prepareApplicationClose(
       // A failed release stays available for an explicit retry; it cannot silently
       // strand the native start/mutation gate while the application remains open.
       await releasePreparation();
-      await api("cli_router_closing", { closing: true });
-      routerPrepared = true;
+      await api("agent_runtime_prepare_close");
+      runtimePrepared = true;
       await api("agent_control_closing", { closing: true });
       agentControlPrepared = true;
       const token = await api<string>("android_exit", {
@@ -65,7 +65,7 @@ export async function prepareApplicationClose(
     // session snapshot when a device stop fails or the user cancels closing.
     await saveCurrentSession();
     if (native && !protection?.cancelled()) {
-      await api("cli_router_drain");
+      await api("agent_tasks_drain");
     }
     if (native && !protection?.cancelled()) {
       await api("android_exit", {

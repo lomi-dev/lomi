@@ -28,20 +28,41 @@ pub(super) struct Work {
 }
 #[derive(Clone)]
 pub struct NativePermit {
+    request: Option<request_admission::CapturedRequest>,
     active: Arc<AtomicBool>,
     deadline: Instant,
 }
 impl NativePermit {
     pub(super) fn until(deadline: Instant) -> Self {
         Self {
+            request: request_admission::current_request(),
             active: Arc::new(AtomicBool::new(true)),
             deadline,
         }
+    }
+    pub(super) fn renew(&self, deadline: Instant) -> Self {
+        Self {
+            request: self.request.clone(),
+            active: Arc::new(AtomicBool::new(true)),
+            deadline,
+        }
+    }
+    /// Revalidate host provenance outside broker state and receipt locks.
+    /// The captured effect permit closes the check-to-effect ownership race.
+    pub fn revalidate(&self) -> Result<(), ErrorCode> {
+        self.check_local()?;
+        if let Some(request) = &self.request {
+            request.check()?;
+        }
+        self.check_local()
     }
     pub(super) fn revoke(&self) {
         self.active.store(false, Ordering::SeqCst);
     }
     pub fn check(&self) -> Result<(), ErrorCode> {
+        self.revalidate()
+    }
+    pub(super) fn check_local(&self) -> Result<(), ErrorCode> {
         if !self.active.load(Ordering::SeqCst) {
             return Err(ErrorCode::ControlRevoked);
         }
@@ -619,10 +640,7 @@ impl Broker {
                 git_view_revision: None,
                 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
                 git_mutation: None,
-                native_permit: NativePermit {
-                    active: Arc::new(AtomicBool::new(true)),
-                    deadline: Instant::now() + duration,
-                },
+                native_permit: NativePermit::until(Instant::now() + duration),
             },
         );
         let receipt = match store.get(id, &input.project, &op) {
@@ -656,6 +674,7 @@ impl Broker {
         Self::operation_reply(receipt)
     }
     pub fn claim_ui(&self, epoch: &str, operation: &str, nonce: &str) -> io::Result<()> {
+        let _request_permit = self.check_work_request(operation).map_err(|_| failure())?;
         let mut state = self.lock_state().map_err(|_| failure())?;
         let work = state.work.get(operation).ok_or_else(failure)?;
         if work.claimed

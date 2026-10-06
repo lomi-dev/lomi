@@ -10,6 +10,7 @@ pub type TerminalAttachDispatch = Arc<
 >;
 #[derive(Clone)]
 pub(super) struct Claim {
+    request: Option<request_admission::CapturedRequest>,
     pairing: String,
     project: String,
     workspace: String,
@@ -145,6 +146,7 @@ impl Broker {
             return error(ErrorCode::ResourceExhausted);
         }
         let claim = Claim {
+            request: request_admission::current_request(),
             pairing: id.into(),
             project: project.clone(),
             workspace: input.workspace_id.clone(),
@@ -256,6 +258,20 @@ impl Broker {
         }
     }
     pub fn decide_control(&self, operation: &str, approve: bool) -> io::Result<()> {
+        if approve {
+            let request = {
+                let state = self.lock_state()?;
+                state
+                    .claims
+                    .get(operation)
+                    .ok_or_else(failure)?
+                    .request
+                    .clone()
+            };
+            if let Some(request) = request {
+                request.check().map_err(|_| failure())?;
+            }
+        }
         let mut state = self.lock_state()?;
         let claim = state.claims.get(operation).cloned().ok_or_else(failure)?;
         let session = state

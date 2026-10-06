@@ -566,8 +566,8 @@ test("file changes open full read-only tabs, preserve dirty editors and restore 
     .poll(() =>
       page.evaluate(() =>
         JSON.parse(
-          localStorage.getItem("test-session")!,
-        ).projects[0].workspaces[0].tabs.map((tab: any) => tab.type),
+          localStorage.getItem("test-session") ?? "null",
+        )?.projects[0].workspaces[0].tabs.map((tab: any) => tab.type),
       ),
     )
     .toEqual(["terminal", "diff", "diff"]);
@@ -1138,6 +1138,19 @@ test("source control keeps its commit form visible while a long list scrolls at 
     "Changes (52)",
   );
   await page.setViewportSize({ width: 800, height: 420 });
+  // ResizeObserver publishes the rendered width after viewport layout. Read
+  // that width before deriving the next keyboard resize from aria-valuenow.
+  await expect
+    .poll(async () => {
+      const sidebar = await page
+        .locator('.sidebar[data-side="left"]')
+        .boundingBox();
+      return (
+        Number(await divider.getAttribute("aria-valuenow")) -
+        Math.round(sidebar!.width)
+      );
+    })
+    .toBe(0);
   await divider.focus();
   for (let count = 0; count < 8; count++) await resize("ArrowLeft");
   await expect(divider).toHaveAttribute("aria-valuenow", "180");

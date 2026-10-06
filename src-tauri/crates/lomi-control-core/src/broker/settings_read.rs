@@ -114,7 +114,8 @@ impl Broker {
             );
         }
         let deadline = Instant::now() + Duration::from_secs(2);
-        let check = || {
+        let captured = request_admission::current_request();
+        let check_local = || {
             if !connected.load(Ordering::SeqCst)
                 || self.authorization.load(Ordering::SeqCst) != policy
             {
@@ -124,6 +125,12 @@ impl Broker {
                 return Err(ErrorCode::UiNotReady);
             }
             Ok(())
+        };
+        let check = || {
+            if let Some(request) = &captured {
+                request.check()?;
+            }
+            check_local()
         };
         let read = || -> Result<SettingsReadReply, ErrorCode> {
             check()?;
@@ -213,7 +220,7 @@ impl Broker {
             Ok(_) => return error(ErrorCode::ControlRevoked),
             Err(e) => return error(e),
         }
-        if let Err(e) = check() {
+        if let Err(e) = check_local() {
             return error(e);
         }
         Reply::ok(Data::SettingsSnapshot(Box::new(snapshot)))

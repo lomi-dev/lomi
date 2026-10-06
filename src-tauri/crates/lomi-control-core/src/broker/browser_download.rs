@@ -129,6 +129,7 @@ impl Broker {
             NativePermit,
         ) -> Result<Vec<u8>, BrowserDownloadFailure>,
     ) -> io::Result<()> {
+        let _request_permit = self.check_work_request(operation).map_err(|_| failure())?;
         let (input, owner, project, permit) = {
             let mut state = self.lock_state().map_err(|_| failure())?;
             let work = state.work.get(operation).ok_or_else(failure)?;
@@ -154,7 +155,7 @@ impl Broker {
         let mut may_have_started = false;
         let mut reservation = None;
         let result = (|| -> Result<Artifact, ErrorCode> {
-            permit.check()?;
+            permit.revalidate()?;
             let (control, source) = {
                 let state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
                 let control = Self::download_access(&state, &owner, &input)?;
@@ -184,7 +185,7 @@ impl Broker {
                         }
                     })?,
             );
-            permit.check()?;
+            permit.revalidate()?;
             may_have_started = true;
             let bytes = download(control.clone(), input.clone(), permit.clone()).map_err(|e| {
                 may_have_started = !e.no_effect;
@@ -193,7 +194,7 @@ impl Broker {
             if bytes.len() > input.max_bytes as usize {
                 return Err(ErrorCode::ArtifactTooLarge);
             }
-            permit.check()?;
+            permit.revalidate()?;
             let state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
             let current = Self::download_access(&state, &owner, &input)?;
             if !Arc::ptr_eq(&control, &current) {
@@ -205,7 +206,9 @@ impl Broker {
                 .map_err(|_| ErrorCode::StorageUnavailable)?
                 .commit_browser_download(reservation.as_ref().unwrap(), &bytes, now())
                 .map_err(|_| ErrorCode::StorageUnavailable)?;
-            permit.check()?;
+            drop(state);
+            permit.revalidate()?;
+            let state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
             Self::artifact_source_access(&state, &owner, &artifact)?;
             Ok(artifact)
         })();
@@ -223,7 +226,7 @@ impl Broker {
             .get(operation)
             .filter(|w| w.command.nonce == nonce)
             .ok_or_else(failure)?;
-        let result = if permit.check().is_err() {
+        let result = if permit.check_local().is_err() {
             Err(ErrorCode::ControlRevoked)
         } else {
             result

@@ -1,6 +1,12 @@
-import { retainCliAgents } from "./router/run-runtime";
-import { newCliAgentTab, cliAgentTabs, type CliAgentTab } from "./model";
-import type { CliRun } from "./router/types";
+import { configureSessionPublication } from "./agent-runtime/migration-runtime";
+import PermissionReview from "./agent-runtime/PermissionReview";
+import {
+  getTaskView,
+  retainAgentTasks,
+  setTaskPublicationPaused,
+} from "./agent-runtime/task-runtime";
+import { newAgentTaskTab, agentTaskTabs, type AgentTaskTab } from "./model";
+import type { Task, AccountsSnapshot } from "./agent-runtime/types";
 import { useRemoteWorkspaces } from "./remote-workspaces";
 import RemoteWorkspaceStatus from "./RemoteWorkspaceStatus";
 import { useAgentControlBridge } from "./agent-control";
@@ -176,9 +182,8 @@ import {
 import { useCliIntegrations } from "./CliIntegrations";
 import { useAgentNotifications } from "./AgentNotifications";
 import AgentsDialog from "./AgentsDialog";
-import type { CliRouterSnapshot } from "./router/types";
 
-const RouterRunDialog = lazy(() => import("./router/RouterRunDialog"));
+const TaskCreateDialog = lazy(() => import("./agent-runtime/TaskCreateDialog"));
 import { measureAgentLayoutSize } from "./useAgentLayoutSize";
 import { loadInstalledAgentClis } from "./installed-agent-clis";
 import { cliNames } from "./cli-agents";
@@ -223,7 +228,8 @@ function initialize() {
         saved.version !== 1 &&
         saved.version !== 2 &&
         saved.version !== 3 &&
-        saved.version !== 4
+        saved.version !== 4 &&
+        saved.version !== 5
       ) {
         throw new Error(
           "This session was saved in an unsupported format. The saved file has been left intact.",
@@ -265,6 +271,7 @@ export default function Workbench() {
     : "";
   const [session, renderSession] = useState<Session>();
   const currentSession = useRef<Session>(undefined);
+  const sessionPublication = useRef(false);
   const remoteWorkspaces = useRemoteWorkspaces(
     session,
     currentSession,
@@ -295,6 +302,7 @@ export default function Workbench() {
       update: Session | ((state: Session | undefined) => Session | undefined),
       animate = false,
     ) => {
+      if (sessionPublication.current) return;
       const previous = currentSession.current;
       const next = typeof update === "function" ? update(previous) : update;
       // Queued shortcuts must see the updated layout before React renders it.
@@ -302,7 +310,7 @@ export default function Workbench() {
       retainEditorTabs(next);
       retainBrowsers(next);
       retainChats(next);
-      retainCliAgents(next);
+      retainAgentTasks(next);
       retainAndroid(next);
       pluginHost.retainPanels(
         new Set(next ? pluginPanels(next).map((panel) => panel.id) : []),
@@ -676,7 +684,7 @@ export default function Workbench() {
     cwd: string;
   } | null>(null);
   const [terminalOverview, setTerminalOverview] = useState(false);
-  const [routerTarget, setRouterTarget] = useState<{
+  const [taskTarget, setTaskTarget] = useState<{
     cwd: string;
     shellProfileId: string;
   } | null>(null);
@@ -688,6 +696,46 @@ export default function Workbench() {
   const [autosavePaused, setAutosavePaused] = useState(false);
   const autosaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const closing = useRef(false);
+  useEffect(
+    () =>
+      configureSessionPublication(async () => {
+        if (
+          sessionPublication.current ||
+          closing.current ||
+          updater.busy.current ||
+          fileOperationBusy.current
+        )
+          throw new Error(
+            "Finish the current workspace operation before importing CLI history.",
+          );
+        sessionPublication.current = true;
+        clearTimeout(autosaveTimer.current);
+        setAutosavePaused(true);
+        setTaskPublicationPaused(true);
+        let nativePrepared = false;
+        const release = async () => {
+          if (nativePrepared) {
+            await api("agent_runtime_cancel_close");
+            nativePrepared = false;
+          }
+          sessionPublication.current = false;
+          setTaskPublicationPaused(false);
+          setAutosavePaused(false);
+        };
+        try {
+          await api("agent_runtime_prepare_close");
+          nativePrepared = true;
+          if (currentSession.current && savingEnabled.current)
+            await saveSession(captureEditorPositions(currentSession.current));
+          return release;
+        } catch (cause) {
+          await release();
+          throw cause;
+        }
+      }),
+    [],
+  );
+
   const [stoppingForClose, setStoppingForClose] = useState<
     "stopping" | "cancelling" | null
   >(null);
@@ -751,6 +799,12 @@ export default function Workbench() {
     };
   }, []);
   const prepareClose = async (showProgress = true) => {
+    if (sessionPublication.current) {
+      setError(
+        "Finish or cancel the CLI history import before closing or updating Lomi.",
+      );
+      return null;
+    }
     try {
       const release = await prepareApplicationClose(
         closeGuard.confirm,
@@ -1154,136 +1208,100 @@ export default function Workbench() {
   };
   useEffect(() => {
     if (!native || !info) return;
-    const stop = listen<{
-      profileId?: string;
-      routerId?: string;
-      cli?: CliAgent;
-      routerLabel?: string;
-      cwd?: string;
-      shellProfileId?: string;
-      nativeRunId?: string;
-      nativeRunRevision?: number;
-    }>("cli-router-open-profile", ({ payload }) => {
-      void (async () => {
-        const state = currentSession.current;
-        const selection = state && active(state);
-        if (!selection)
-          throw new Error(
-            "Open a project workspace before connecting a CLI account.",
-          );
-        const snapshot = await api<CliRouterSnapshot>("cli_router_snapshot");
-        const currentState = currentSession.current;
-        const currentSelection = currentState && active(currentState);
-        if (
-          !currentSelection ||
-          currentSelection.project.id !== selection.project.id ||
-          currentSelection.project.path !== selection.project.path ||
-          currentSelection.workspace.id !== selection.workspace.id ||
-          closing.current ||
-          updater.busy.current
-        )
-          throw new Error(
-            "The workspace changed before the router terminal opened. Open it again from its project.",
-          );
-        let cli: CliAgent;
-        let label: string;
-        let routerProfileId: string | undefined;
-        if (payload.routerId) {
-          const router = snapshot.routers.find(
-            (router) => router.id === payload.routerId && router.enabled,
-          );
-          if (!router)
-            throw new Error("The router is disabled or no longer exists.");
-          if (payload.cli && payload.cli !== router.cli)
+    const stop = listen<{ accountId: string }>(
+      "agent-account-open-terminal",
+      ({ payload }) => {
+        void (async () => {
+          const state = currentSession.current;
+          const selection = state && active(state);
+          if (!selection)
             throw new Error(
-              "The router CLI changed before its terminal opened. Open it again.",
+              "Open a project workspace before connecting a CLI account.",
             );
-          cli = router.cli as CliAgent;
-          label = router.label;
-        } else {
-          const account = snapshot.profiles.find(
-            (profile) => profile.id === payload.profileId && profile.enabled,
+          const snapshot = await api<AccountsSnapshot>(
+            "agent_accounts_snapshot",
+          );
+          const currentState = currentSession.current;
+          const currentSelection = currentState && active(currentState);
+          if (
+            !currentSelection ||
+            currentSelection.project.id !== selection.project.id ||
+            currentSelection.project.path !== selection.project.path ||
+            currentSelection.workspace.id !== selection.workspace.id ||
+            closing.current ||
+            updater.busy.current
+          )
+            throw new Error(
+              "The workspace changed before the account terminal opened. Open it again from its project.",
+            );
+          const account = snapshot.accounts.find(
+            (account) =>
+              account.accountId === payload.accountId && account.enabled,
           );
           if (!account)
             throw new Error("The CLI account is disabled or no longer exists.");
-          cli = account.cli as CliAgent;
-          label = account.label;
-          routerProfileId = account.id;
-        }
-        if (payload.cwd && payload.cwd !== currentSelection.project.path)
-          throw new Error(
-            "The workspace changed before the router terminal opened. Open it again from its project.",
+          const shellId =
+            currentSelection.tab.type === "terminal"
+              ? currentSelection.tab.profileId
+              : defaultProfileId;
+          const shell = info.profiles.find((profile) => profile.id === shellId);
+          if (!shell)
+            throw new Error(
+              "Choose an installed shell for the account terminal.",
+            );
+          const added = newTab(
+            currentSelection.project.path,
+            shell.id,
+            `${cliNames[account.cli]} · ${account.label}`,
           );
-        const shellId =
-          payload.shellProfileId ??
-          (currentSelection.tab.type === "terminal"
-            ? currentSelection.tab.profileId
-            : defaultProfileId);
-        const shell = info.profiles.find((profile) => profile.id === shellId);
-        if (!shell)
-          throw new Error(
-            "Choose an installed shell for the account terminal.",
+          const pane = panes(added.layout)[0];
+          if (!pane) throw new Error("Could not create the account terminal.");
+          change((state) =>
+            updateWorkspace(
+              state,
+              currentSelection.workspace.id,
+              (workspace) => ({
+                ...workspace,
+                tabs: [...workspace.tabs, added],
+                activeTabId: added.id,
+              }),
+            ),
           );
-        const added = newTab(
-          currentSelection.project.path,
-          shell.id,
-          `${cliNames[cli]} · ${label}`,
-        );
-        const pane = panes(added.layout)[0];
-        if (!pane) throw new Error("Could not create the account terminal.");
-        change((state) =>
-          updateWorkspace(
-            state,
-            currentSelection.workspace.id,
-            (workspace) => ({
-              ...workspace,
-              tabs: [...workspace.tabs, added],
-              activeTabId: added.id,
-            }),
-          ),
-        );
-        const committed = currentSession.current?.projects
-          .find((project) => project.id === currentSelection.project.id)
-          ?.workspaces.find(
-            (workspace) => workspace.id === currentSelection.workspace.id,
-          )
-          ?.tabs.some((tab) => tab.id === added.id);
-        if (!committed) return;
-        const runtime = terminalFor(
-          pane,
-          shell,
-          cli,
-          routerProfileId,
-          payload.routerId,
-          undefined,
-          payload.nativeRunId && payload.nativeRunRevision !== undefined
-            ? {
-                runId: payload.nativeRunId,
-                revision: payload.nativeRunRevision,
-              }
-            : undefined,
-        );
-        await runtime.startInBackground();
-      })().catch((error) => setError(errorMessage(error)));
-    });
+          const committed = currentSession.current?.projects
+            .find((project) => project.id === currentSelection.project.id)
+            ?.workspaces.find(
+              (workspace) => workspace.id === currentSelection.workspace.id,
+            )
+            ?.tabs.some((tab) => tab.id === added.id);
+          if (!committed) return;
+          await terminalFor(
+            pane,
+            shell,
+            undefined,
+            account.accountId,
+          ).startInBackground();
+        })().catch((error) => setError(errorMessage(error)));
+      },
+    );
     return () => {
       void stop.then((unlisten) => unlisten()).catch(() => {});
     };
   }, [info, defaultProfileId]);
 
-  const openCliRun = (run: CliRun) => {
+  const openAgentTask = (task: Task) => {
+    getTaskView(task.taskId).accept(task);
     const state = currentSession.current;
     const selection = state && active(state);
-    if (!selection || selection.project.path !== run.cwd) return;
+    if (!selection || selection.project.path !== task.cwd) return;
     const match = selection.workspace.tabs.flatMap((tab) =>
       (tab.type === "terminal" ? layoutPanes(tab.layout) : [tab])
         .filter(
-          (pane): pane is CliAgentTab =>
-            pane.type === "cli-agent" && pane.runId === run.id,
+          (pane): pane is AgentTaskTab =>
+            pane.type === "agent-task" && pane.taskId === task.taskId,
         )
         .map((pane) => ({ tabId: tab.id, paneId: pane.id })),
     )[0];
-    const added = match ? undefined : newCliAgentTab(run.id, run.title);
+    const added = match ? undefined : newAgentTaskTab(task.taskId, task.title);
     change((state) =>
       updateWorkspace(state, selection.workspace.id, (workspace) => ({
         ...workspace,
@@ -1297,7 +1315,7 @@ export default function Workbench() {
         activeTabId: added?.id ?? match!.tabId,
       })),
     );
-    setRouterTarget(null);
+    setTaskTarget(null);
   };
   const addChat = async () => {
     const state = currentSession.current;
@@ -2057,6 +2075,7 @@ export default function Workbench() {
               />
             )}
             {updater.dialog}
+            <PermissionReview />
             {closeGuard.dialog}
             {gitApproval.dialog}
             {chatApproval.dialog}
@@ -2263,20 +2282,26 @@ export default function Workbench() {
       await closeGuard.release(closeIds);
     }
   };
-  const restartPane = (id: string, useProjectDirectory = false) => {
-    closeTerminals([id]);
-    modifyTab((tab) => {
-      let activePaneId = tab.activePaneId;
-      const layout = mapLayout(tab.layout, (pane) => {
-        if (pane.id !== id) return pane;
-        const added = newPane(useProjectDirectory ? project.path : pane.cwd);
-        if (pane.type === "terminal" && pane.profileId !== undefined)
-          added.profileId = pane.profileId;
-        if (activePaneId === id) activePaneId = added.id;
-        return added;
+  const restartPane = async (id: string, useProjectDirectory = false) => {
+    const closeIds = new Set([id]);
+    if (!(await closeGuard.confirm(closeIds, [id]))) return;
+    try {
+      closeTerminals([id]);
+      modifyTab((tab) => {
+        let activePaneId = tab.activePaneId;
+        const layout = mapLayout(tab.layout, (pane) => {
+          if (pane.id !== id) return pane;
+          const added = newPane(useProjectDirectory ? project.path : pane.cwd);
+          if (pane.type === "terminal" && pane.profileId !== undefined)
+            added.profileId = pane.profileId;
+          if (activePaneId === id) activePaneId = added.id;
+          return added;
+        });
+        return { ...tab, layout, activePaneId };
       });
-      return { ...tab, layout, activePaneId };
-    });
+    } finally {
+      await closeGuard.release(closeIds);
+    }
   };
   const changeEnvironment = () => {
     if (tab.type !== "terminal") return;
@@ -2285,15 +2310,23 @@ export default function Workbench() {
       title: "Change terminal environment",
       profiles: info.profiles,
       selected: tab.profileId,
-      submit: (profileId) => {
-        closeTerminals(panes(tab.layout).map((pane) => pane.id));
-        const layout = mapLayout(tab.layout, () => newPane(project.path));
-        modifyTab((tab) => ({
-          ...tab,
-          profileId,
-          layout,
-          activePaneId: panel?.type === "file" ? panel.id : panes(layout)[0].id,
-        }));
+      submit: async (profileId) => {
+        const ids = panes(tab.layout).map((pane) => pane.id);
+        const closeIds = new Set(ids);
+        if (!(await closeGuard.confirm(closeIds, ids))) return;
+        try {
+          closeTerminals(ids);
+          const layout = mapLayout(tab.layout, () => newPane(project.path));
+          modifyTab((tab) => ({
+            ...tab,
+            profileId,
+            layout,
+            activePaneId:
+              panel?.type === "file" ? panel.id : panes(layout)[0].id,
+          }));
+        } finally {
+          await closeGuard.release(closeIds);
+        }
       },
     });
   };
@@ -2415,7 +2448,7 @@ export default function Workbench() {
         );
         for (const panel of [
           ...chatTabs(currentSession.current),
-          ...cliAgentTabs(currentSession.current),
+          ...agentTaskTabs(currentSession.current),
         ].filter((panel) =>
           currentSession.current!.projects.some(
             (project) =>
@@ -2732,11 +2765,11 @@ export default function Workbench() {
                     onClose={() => void closeTab(tab.id)}
                   />
                 </Suspense>
-              ) : tab.type === "cli-agent" ? (
+              ) : tab.type === "agent-task" ? (
                 <Suspense
                   fallback={<div role="status">Loading CLI Agent…</div>}
                 >
-                  <builtinViews.cliAgent
+                  <builtinViews.agentTask
                     tab={tab}
                     onFocus={() => {}}
                     onClose={() => void closeTab(tab.id)}
@@ -3138,8 +3171,8 @@ export default function Workbench() {
               stage={terminalStage}
               onClose={() => setAgentsTarget(null)}
               onLaunch={launchAgents}
-              onRouter={() => {
-                setRouterTarget({
+              onTask={() => {
+                setTaskTarget({
                   cwd: agentsTarget.cwd,
                   shellProfileId: agentsTarget.profile.id,
                 });
@@ -3147,16 +3180,19 @@ export default function Workbench() {
               }}
             />
           )}
-          {routerTarget && (
-            <Suspense fallback={<div role="status">Loading router…</div>}>
-              <RouterRunDialog
-                {...routerTarget}
-                onOpenRun={openCliRun}
-                onClose={() => setRouterTarget(null)}
+          {taskTarget && (
+            <Suspense fallback={<div role="status">Loading task…</div>}>
+              <TaskCreateDialog
+                {...taskTarget}
+                onOpenTask={openAgentTask}
+                onClose={() => {
+                  if (!sessionPublication.current) setTaskTarget(null);
+                }}
               />
             </Suspense>
           )}
           {updater.dialog}
+          <PermissionReview />
           {closeGuard.dialog}
           {gitApproval.dialog}
           {chatApproval.dialog}

@@ -86,7 +86,7 @@ impl Broker {
         {
             return Err(ErrorCode::ControlRevoked);
         }
-        work.native_permit.check()?;
+        work.native_permit.check_local()?;
         Self::settings_update_access(state, &work.pairing, &work.workspace)?;
         Ok(work)
     }
@@ -167,6 +167,7 @@ impl Broker {
         revision: &str,
         current: SettingsUpdateValues,
     ) -> Result<super::settings::SettingsOpenPermit, ErrorCode> {
+        let _request_permit = self.check_work_request(operation)?;
         let (patch, permit, yolo) = {
             let state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
             let work = self.settings_update_work(&state, operation, Some(nonce))?;
@@ -226,6 +227,7 @@ impl Broker {
         nonce: &str,
         revision: &str,
     ) -> Result<super::settings::SettingsOpenPermit, ErrorCode> {
+        let _request_permit = self.check_work_request(operation)?;
         let state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
         let work = self.settings_update_work(&state, operation, Some(nonce))?;
         let UiAction::UpdateSettings(command) = &work.command.action else {
@@ -252,7 +254,7 @@ impl Broker {
                     || !w.claimed
                     || w.native_committed
                     || w.deadline <= Instant::now()
-                    || w.native_permit.check().is_err()
+                    || w.native_permit.check_local().is_err()
                     || Self::settings_update_access(state, &w.pairing, &w.workspace).is_err()
                 {
                     return None;
@@ -278,6 +280,11 @@ impl Broker {
             .collect()
     }
     pub fn decide_settings_update(&self, operation: &str, approve: bool) -> Result<(), ErrorCode> {
+        let _request_permit = if approve {
+            Some(self.check_work_request(operation)?)
+        } else {
+            None
+        };
         let _project_write = if approve {
             self.project_write_admission()?
         } else {

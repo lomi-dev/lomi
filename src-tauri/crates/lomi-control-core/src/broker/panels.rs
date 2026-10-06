@@ -452,6 +452,7 @@ impl Broker {
         nonce: &str,
         epoch: &str,
     ) -> Result<(), ErrorCode> {
+        let _request_permit = self.check_work_request(operation)?;
         let ancestor_close = {
             let state = self.lock_state().map_err(|_| ErrorCode::AppUnavailable)?;
             state

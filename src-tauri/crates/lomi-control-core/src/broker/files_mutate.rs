@@ -30,7 +30,7 @@ impl Broker {
         {
             return Err(ErrorCode::ControlRevoked);
         }
-        work.native_permit.check()?;
+        work.native_permit.check_local()?;
         self.check_policy(state)
             .map_err(|_| ErrorCode::ControlRevoked)?;
         let UiAction::FilesMutate(command) = &work.command.action else {
@@ -48,6 +48,7 @@ impl Broker {
         nonce: &str,
         buffers: Vec<FileTrashBuffer>,
     ) -> Result<FileTrashPlan, ErrorCode> {
+        let _request_permit = self.check_work_request(operation)?;
         use sha2::{Digest, Sha256};
         let mut state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
         let work = self.trash_work(&state, operation, nonce)?;
@@ -108,6 +109,9 @@ impl Broker {
     }
     /// Main dismisses a guard when its native plan is cancelled or expires.
     pub fn file_trash_pending(&self, operation: &str, nonce: &str, plan_hash: &str) -> bool {
+        if self.check_work_request(operation).is_err() {
+            return false;
+        }
         let Ok(state) = self.lock_state() else {
             return false;
         };
@@ -129,6 +133,11 @@ impl Broker {
         plan_hash: &str,
         approved: bool,
     ) -> Result<(), ErrorCode> {
+        let _request_permit = if approved {
+            Some(self.check_work_request(operation)?)
+        } else {
+            None
+        };
         let mut state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
         let work = self.trash_work(&state, operation, nonce)?;
         if approved && work.command.domain_revision != state.projection.revision {
@@ -341,6 +350,7 @@ impl Broker {
         operation: &str,
         nonce: &str,
     ) -> Result<FilesMutated, ErrorCode> {
+        let _request_permit = self.check_work_request(operation)?;
         let _project_write = self.project_write_admission()?;
         let (command, owner, directory, permit, connected, policy) = {
             let mut state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
@@ -352,7 +362,7 @@ impl Broker {
             {
                 return Err(ErrorCode::ControlRevoked);
             }
-            work.native_permit.check()?;
+            work.native_permit.check_local()?;
             let UiAction::FilesMutate(command) = &work.command.action else {
                 return Err(ErrorCode::ScopeDenied);
             };
@@ -385,7 +395,7 @@ impl Broker {
             result
         };
         let check = || {
-            permit.check()?;
+            permit.revalidate()?;
             if !connected.load(Ordering::SeqCst)
                 || self.authorization.load(Ordering::SeqCst) != policy
             {

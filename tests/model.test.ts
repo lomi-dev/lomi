@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   active,
-  newCliAgentTab,
-  cliAgentTabs,
+  newAgentTaskTab,
+  agentTaskTabs,
   layoutPanes,
   addWorkspace,
   newBrowserTab,
@@ -620,9 +620,9 @@ test("removing a workspace preserves other selections and permits an empty resto
 test("CLI Agent descriptors restore as saved views in standalone and mixed tabs", () => {
   const session = projectSession();
   const workspace = active(session)!.workspace;
-  const standalone = newCliAgentTab("saved-run", "Saved task");
+  const standalone = newAgentTaskTab("saved-run", "Saved task");
   const embedded = {
-    ...newCliAgentTab("saved-run", "Other view"),
+    ...newAgentTaskTab("saved-run", "Other view"),
     customTitle: "Retained task",
   };
   const mixed = newTab("/project", "local:bash");
@@ -638,22 +638,90 @@ test("CLI Agent descriptors restore as saved views in standalone and mixed tabs"
   workspace.tabs.push(standalone, mixed);
   workspace.activeTabId = mixed.id;
   const restored = restoreSession(JSON.parse(JSON.stringify(session)), info);
-  assert.equal(restored.version, 4);
-  assert.deepEqual(cliAgentTabs(restored), [standalone, embedded]);
+  assert.equal(restored.version, 5);
+  assert.deepEqual(agentTaskTabs(restored), [standalone, embedded]);
   const selected = active(restored)!.tab;
   assert.equal(selected.type, "terminal");
   if (selected.type === "terminal") {
     assert.equal(selected.activePaneId, embedded.id);
     assert.equal(
       layoutPanes(selected.layout).find((p) => p.id === embedded.id)?.type,
-      "cli-agent",
+      "agent-task",
     );
   }
-  for (const version of [1, 2, 3, 4])
-    assert.equal(restoreSession({ ...session, version }, info).version, 4);
-  standalone.runId = "../../invalid";
+  for (const version of [1, 2, 3, 4, 5])
+    assert.equal(restoreSession({ ...session, version }, info).version, 5);
+  standalone.taskId = "../../invalid";
   assert.throws(
     () => restoreSession(session, info),
     /Invalid saved CLI Agent descriptor/,
   );
+});
+
+test("legacy v1-v4 CLI views migrate to task placeholders without losing mixed layout", () => {
+  for (const version of [1, 2, 3, 4]) {
+    const session = projectSession();
+    const workspace = active(session)!.workspace;
+    const mixed = newTab("/project", "local:bash");
+    const legacy = {
+      type: "cli-agent",
+      id: "legacy-view",
+      title: "Old task",
+      customTitle: "My saved title",
+      runId: "old-run",
+    };
+    const saved = {
+      ...session,
+      version,
+      projects: session.projects.map((project) => ({
+        ...project,
+        workspaces: project.workspaces.map((w) =>
+          w.id === workspace.id
+            ? {
+                ...w,
+                tabs: [
+                  {
+                    ...mixed,
+                    layout: {
+                      type: "split",
+                      id: "legacy-split",
+                      axis: "horizontal",
+                      ratio: 0.3,
+                      first: mixed.layout,
+                      second: legacy,
+                    },
+                    activePaneId: legacy.id,
+                  },
+                ],
+                activeTabId: mixed.id,
+              }
+            : w,
+        ),
+      })),
+    };
+    const restored = restoreSession(saved, info);
+    assert.equal(restored.version, 5);
+    assert.deepEqual(agentTaskTabs(restored), [
+      {
+        type: "agent-task",
+        id: "legacy-view",
+        title: "Old task",
+        customTitle: "My saved title",
+        taskId: "legacy:old-run",
+      },
+    ]);
+    const selected = active(restored)!.tab;
+    assert.equal(selected.type, "terminal");
+    if (selected.type === "terminal") {
+      assert.equal(selected.activePaneId, "legacy-view");
+      assert.equal(selected.layout.type, "split");
+      if (selected.layout.type === "split")
+        assert.equal(selected.layout.ratio, 0.3);
+    }
+    legacy.runId = "../../invalid";
+    assert.throws(
+      () => restoreSession(saved, info),
+      /Invalid saved CLI Agent descriptor/,
+    );
+  }
 });

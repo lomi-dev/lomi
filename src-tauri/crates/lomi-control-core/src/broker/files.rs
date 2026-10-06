@@ -60,7 +60,8 @@ impl Broker {
             return error(ErrorCode::UnsupportedCapability);
         };
         let deadline = Instant::now() + Duration::from_secs(5);
-        let check = || {
+        let captured = request_admission::current_request();
+        let check_local = || {
             if !connected.load(Ordering::SeqCst)
                 || self.authorization.load(Ordering::SeqCst) != policy_revision
             {
@@ -70,6 +71,12 @@ impl Broker {
                 return Err(ErrorCode::DeadlineExceeded);
             }
             Ok(())
+        };
+        let check = || {
+            if let Some(request) = &captured {
+                request.check()?;
+            }
+            check_local()
         };
         let read = || -> Result<FileText, ErrorCode> {
             check()?;
@@ -139,7 +146,7 @@ impl Broker {
         if !Arc::ptr_eq(&current, &directory) {
             return error(ErrorCode::ControlRevoked);
         }
-        if let Err(e) = check() {
+        if let Err(e) = check_local() {
             return error(e);
         }
         Reply::ok(Data::FileText(Box::new(output)))
@@ -187,7 +194,8 @@ impl Broker {
             Err(_) => return error(ErrorCode::ResourceExhausted),
         };
         let deadline = Instant::now() + Duration::from_secs(5);
-        let check = || {
+        let captured = request_admission::current_request();
+        let check_local = || {
             if !connected.load(Ordering::SeqCst)
                 || self.authorization.load(Ordering::SeqCst) != policy
             {
@@ -197,6 +205,12 @@ impl Broker {
                 return Err(ErrorCode::DeadlineExceeded);
             }
             Ok(())
+        };
+        let check = || {
+            if let Some(request) = &captured {
+                request.check()?;
+            }
+            check_local()
         };
         let snapshot = match directory.list(&input.relative_directory, check) {
             Ok(s) => s,
@@ -246,7 +260,7 @@ impl Broker {
         if !Arc::ptr_eq(&current, &directory) {
             return error(ErrorCode::ControlRevoked);
         }
-        if let Err(e) = check() {
+        if let Err(e) = check_local() {
             return error(e);
         }
         if next < snapshot.entries.len() {

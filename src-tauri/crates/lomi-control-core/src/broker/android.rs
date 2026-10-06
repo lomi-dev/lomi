@@ -412,6 +412,7 @@ impl Broker {
         operation: &str,
         nonce: &str,
     ) -> Result<AndroidRuntimeDispatch, ErrorCode> {
+        let _request_permit = self.check_work_request(operation)?;
         let mut state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
         let work = state.work.get(operation).ok_or(ErrorCode::TargetNotFound)?;
         if !work.claimed
@@ -421,7 +422,7 @@ impl Broker {
         {
             return Err(ErrorCode::ControlRevoked);
         }
-        work.native_permit.check()?;
+        work.native_permit.check_local()?;
         let UiAction::AndroidRuntime {
             workspace_id,
             panel_id,
@@ -515,7 +516,7 @@ impl Broker {
             return Err(failure());
         };
         let mut result = result;
-        if work.native_permit.check().is_err() {
+        if work.native_permit.check_local().is_err() {
             result = Err(ErrorCode::OutcomeUnknown);
         }
         if let Ok(output) = &result {

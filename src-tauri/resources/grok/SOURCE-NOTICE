@@ -24,10 +24,10 @@ THIRD-PARTY-NOTICES, TOOLS-NOTICES, VENDORED-NOTICE and MERMAID-NOTICES
 preserve upstream license notices. Third-party source retains its original
 licenses. See the upstream pinned source for all source and notices.
 
-scripts/build-router-grok.mjs records the build procedure in a fresh private
+scripts/build-agent-grok.mjs records the build procedure in a fresh private
 HOME with no API credentials. The script never launches the resulting CLI.
 It stages unrecognized hashes as .candidate files. Only the compile-owned
-scripts/router-grok-artifacts.json authorizes an executable hash. Rebuilding
+scripts/agent-grok-artifacts.json authorizes an executable hash. Rebuilding
 may change bytes through build paths or upstream obfuscation; the procedure
 is repeatable but bit-for-bit reproducibility is not claimed. Each new hash
 requires review and an explicit native manifest update.

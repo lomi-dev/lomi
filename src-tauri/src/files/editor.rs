@@ -265,7 +265,7 @@ fn read(root: &str, relative: &str, known: Option<&str>) -> Result<EditorFile, E
 
 fn write(request: &SaveFile) -> Result<String, EditorError> {
     let (path, _) = resolve(&request.root, &request.relative)?;
-    let _admission = crate::cli_router::project_lease::admit(&[&path])
+    let _admission = crate::project_write_guard::admit(&[&path])
         .map_err(|message| EditorError::new("codingRunActive", message))?;
     let (original, metadata) = read_bytes(&path)?;
     if revision(&original) != request.revision {
@@ -374,7 +374,7 @@ fn write_new(
             .ok_or_else(unicode)?
             .to_owned(),
     };
-    let _admission = crate::cli_router::project_lease::admit(&[&path])
+    let _admission = crate::project_write_guard::admit(&[&path])
         .map_err(|message| EditorError::new("codingRunActive", message))?;
     let (hash, encoding) = if path.try_exists().map_err(EditorError::io)? {
         let original = read(&location.root, &location.relative, None)?;

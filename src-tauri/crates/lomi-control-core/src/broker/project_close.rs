@@ -230,6 +230,7 @@ impl Broker {
         nonce: &str,
         epoch: &str,
     ) -> Result<(), ErrorCode> {
+        let _request_permit = self.check_work_request(operation)?;
         let mut state = self.lock_state().map_err(|_| ErrorCode::AppUnavailable)?;
         let work = state.work.get(operation).ok_or(ErrorCode::TargetNotFound)?;
         if !work.claimed
@@ -241,7 +242,7 @@ impl Broker {
         {
             return Err(ErrorCode::ControlRevoked);
         }
-        work.native_permit.check()?;
+        work.native_permit.check_local()?;
         Self::validate_android_layout(&state, work)?;
         self.check_policy(&state)
             .map_err(|_| ErrorCode::ControlRevoked)?;

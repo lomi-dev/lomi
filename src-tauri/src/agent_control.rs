@@ -582,16 +582,28 @@ async fn set_enabled_locked(
                     .app_data_dir()
                     .map_err(|_| unavailable())?
                     .join("agent-control");
-                let broker = Broker::start_with_project_write_admission(
+                let resolver_app = app.clone();
+                let workspace_resolver = Arc::new(move |alias: &str| {
+                    resolver_app
+                        .state::<Control>()
+                        .required()
+                        .map_err(|_| lomi_control_protocol::ErrorCode::AppUnavailable)?
+                        .request_workspace_root(alias)
+                });
+                let native_admission = app
+                    .state::<crate::agent_runtime::AgentRuntime>()
+                    .mcp_request_admission_with_resolver(&app, Some(workspace_resolver))?;
+                let broker = Broker::start_with_admission(
                     &root,
-                    Arc::new(|| {
-                        crate::cli_router::project_lease::admit_unscoped()
+                    Some(Arc::new(|| {
+                        crate::project_write_guard::admit_unscoped()
                             .map(|guard| {
                                 Box::new(guard)
                                     as Box<dyn lomi_control_core::broker::ProjectWritePermit>
                             })
                             .map_err(|_| lomi_control_protocol::ErrorCode::TargetBusy)
-                    }),
+                    })),
+                    Some(native_admission),
                 )
                 .map_err(|_| unavailable())?;
                 let yolo_mode = state.startup.lock().map_err(|_| unavailable())?.yolo_mode();

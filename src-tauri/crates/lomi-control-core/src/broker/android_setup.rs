@@ -157,7 +157,11 @@ impl Broker {
             .and_then(|d| d.clone())
             .ok_or(ErrorCode::UnsupportedCapability)?;
         let deadline = Instant::now() + Duration::from_secs(45);
+        let request = request_admission::current_request();
         let check = || {
+            if let Some(request) = &request {
+                request.check()?;
+            }
             if !connected.load(Ordering::SeqCst)
                 || self.authorization.load(Ordering::SeqCst) != authorization
             {
@@ -468,7 +472,7 @@ impl Broker {
         state
             .android_management
             .iter()
-            .filter(|(_, j)| authorized && !j.running && j.permit.check().is_ok())
+            .filter(|(_, j)| authorized && !j.running && j.permit.check_local().is_ok())
             .map(|(id, j)| PendingAndroidManagement {
                 operation_id: id.clone(),
                 client_label: state
@@ -587,6 +591,18 @@ impl Broker {
         accepted: Vec<String>,
         confirmation: Option<String>,
     ) -> io::Result<()> {
+        let captured_permit = {
+            let state = self.lock_state().map_err(|_| failure())?;
+            state
+                .android_management
+                .get(operation)
+                .ok_or_else(failure)?
+                .permit
+                .clone()
+        };
+        if approve {
+            captured_permit.revalidate().map_err(|_| failure())?;
+        }
         let mut state = self.lock_state().map_err(|_| failure())?;
         let job = state
             .android_management
@@ -596,7 +612,7 @@ impl Broker {
             return Err(failure());
         }
         if !approve
-            || job.permit.check().is_err()
+            || job.permit.check_local().is_err()
             || Self::android_management_access(
                 &state,
                 &job.owner,
@@ -660,7 +676,7 @@ impl Broker {
             .map_err(|_| failure())?;
         let job = state.android_management.get_mut(operation).unwrap();
         job.deadline = Instant::now() + Duration::from_secs(7200);
-        job.permit = NativePermit::until(job.deadline);
+        job.permit = job.permit.renew(job.deadline);
         job.running = true;
         let request = AndroidManagementRequest {
             workspace_id: job.workspace.clone(),
@@ -675,7 +691,7 @@ impl Broker {
         let op = operation.to_string();
         self.expire_android_management(op.clone(), Duration::from_secs(7200));
         drop(self.spawn_worker(move || {
-            let result = apply(request);
+            let result = request.permit.check().and_then(|()| apply(request));
             let _ = broker.finish_android_management(&op, result);
         }));
         Ok(())
@@ -691,7 +707,7 @@ impl Broker {
             .get(operation)
             .filter(|j| j.running)
             .ok_or_else(failure)?;
-        let authorized = job.permit.check().is_ok()
+        let authorized = job.permit.check_local().is_ok()
             && Self::android_management_access(
                 &state,
                 &job.owner,

@@ -312,7 +312,7 @@ test("an unsupported saved session is preserved until recovery is chosen", async
         () => JSON.parse(localStorage.getItem("test-session")!).version,
       ),
     )
-    .toBe(4);
+    .toBe(5);
 });
 
 test("quitting flushes the latest layout and a failed save keeps the window open", async ({

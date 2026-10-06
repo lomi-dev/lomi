@@ -21,8 +21,9 @@ async function actions(page: Page) {
           [
             "android_exit",
             "agent_control_closing",
-            "cli_router_closing",
-            "cli_router_drain",
+            "agent_runtime_prepare_close",
+            "agent_runtime_cancel_close",
+            "agent_tasks_drain",
             "save_session",
             "restart_plugins",
             "plugin:window|destroy",
@@ -33,9 +34,11 @@ async function actions(page: Page) {
             ? call.args.action.type
             : call.command === "agent_control_closing"
               ? `agent-control:${call.args.closing ? "freeze" : "resume"}`
-              : call.command === "cli_router_closing"
-                ? `router:${call.args.closing ? "freeze" : "resume"}`
-                : call.command,
+              : call.command === "agent_runtime_prepare_close"
+                ? "runtime:freeze"
+                : call.command === "agent_runtime_cancel_close"
+                  ? "runtime:resume"
+                  : call.command,
         ) as string[],
   );
 }
@@ -108,7 +111,7 @@ for (const event of ["lomi-quit-requested", "plugin-restart-request"]) {
       progress.getByRole("button", { name: "Cancelling…" }),
     ).toBeDisabled();
     await expect(progress).toContainText("Stopped phones will stay stopped");
-    expect(await actions(page)).not.toContain("router:resume");
+    expect(await actions(page)).not.toContain("runtime:resume");
     await page.evaluate(() => {
       const mock = (window as any).__nativeTest;
       mock.androidExitHold = false;
@@ -116,17 +119,17 @@ for (const event of ["lomi-quit-requested", "plugin-restart-request"]) {
     });
     await expect(progress).toHaveCount(0);
     const order = await actions(page);
-    expect(order.indexOf("router:freeze")).toBeLessThan(
+    expect(order.indexOf("runtime:freeze")).toBeLessThan(
       order.indexOf("agent-control:freeze"),
     );
     expect(order.lastIndexOf("save_session")).toBeLessThan(
-      order.indexOf("cli_router_drain"),
+      order.indexOf("agent_tasks_drain"),
     );
-    expect(order.indexOf("cli_router_drain")).toBeLessThan(
+    expect(order.indexOf("agent_tasks_drain")).toBeLessThan(
       order.indexOf("finish"),
     );
     expect(order.indexOf("finish")).toBeLessThan(
-      order.indexOf("router:resume"),
+      order.indexOf("runtime:resume"),
     );
     expect(order.indexOf("agent-control:freeze")).toBeLessThan(
       order.indexOf("begin"),
@@ -232,8 +235,8 @@ for (const trigger of ["Quit command", "native Quit request"]) {
       dialog.getByRole("button", { name: "Cancel", exact: true }),
     ).toBeFocused();
     expect(await page.evaluate(() => (window as any).__chatTest.stops)).toBe(0);
-    expect(await actions(page)).toContain("router:freeze");
-    expect(await actions(page)).not.toContain("cli_router_drain");
+    expect(await actions(page)).toContain("runtime:freeze");
+    expect(await actions(page)).not.toContain("agent_tasks_drain");
     expect(await actions(page)).not.toContain("plugin:window|destroy");
     await page.keyboard.press("Enter");
     await expect(dialog).toHaveCount(0);
@@ -243,8 +246,8 @@ for (const trigger of ["Quit command", "native Quit request"]) {
       )
       .toBeNull();
     expect(await page.evaluate(() => (window as any).__chatTest.stops)).toBe(0);
-    expect(await actions(page)).toContain("router:resume");
-    expect(await actions(page)).not.toContain("cli_router_drain");
+    expect(await actions(page)).toContain("runtime:resume");
+    expect(await actions(page)).not.toContain("agent_tasks_drain");
     await close();
     await expect(dialog).toBeVisible();
     await page.evaluate(() => {
@@ -339,7 +342,7 @@ test("closing the workspace hides its window and retains busy terminal runtimes"
   expect(calls).not.toContain("finish");
 });
 
-test("a failed final session save releases router admission without draining runs", async ({
+test("a failed final session save releases runtime admission without draining runs", async ({
   page,
 }) => {
   await prepare(page);
@@ -352,9 +355,9 @@ test("a failed final session save releases router admission without draining run
     page.getByText("Could not close the window: Disk is full", { exact: true }),
   ).toBeVisible();
   const failed = await actions(page);
-  expect(failed).toContain("router:freeze");
-  expect(failed).toContain("router:resume");
-  expect(failed).not.toContain("cli_router_drain");
+  expect(failed).toContain("runtime:freeze");
+  expect(failed).toContain("runtime:resume");
+  expect(failed).not.toContain("agent_tasks_drain");
   expect(failed).not.toContain("finish");
   expect(failed).not.toContain("plugin:window|destroy");
   await page.evaluate(() => {

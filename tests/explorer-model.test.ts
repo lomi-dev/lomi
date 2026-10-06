@@ -10,7 +10,7 @@ import {
   fileTabs,
   filesInTab,
   layoutPanes,
-  newCliAgentTab,
+  newAgentTaskTab,
   newProject,
   newSession,
   newWorkspace,
@@ -185,8 +185,8 @@ test("file changes preserve routed CLI tabs and split panes", () => {
   const current = state.projects[0].workspaces[0];
   const terminal = current.tabs[0];
   if (terminal.type !== "terminal") throw new Error("Expected a terminal tab");
-  const standalone = newCliAgentTab("standalone-run", "Standalone agent");
-  const split = newCliAgentTab("split-run", "Split agent");
+  const standalone = newAgentTaskTab("standalone-run", "Standalone agent");
+  const split = newAgentTaskTab("split-run", "Split agent");
   terminal.layout = splitPane(
     terminal.layout,
     panes(terminal.layout)[0].id,

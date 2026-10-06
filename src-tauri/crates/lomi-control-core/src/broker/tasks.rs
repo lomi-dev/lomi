@@ -79,10 +79,12 @@ impl Broker {
         work: impl FnOnce() -> T + Send + 'static,
     ) -> oneshot::Receiver<T> {
         let (sender, receiver) = oneshot::channel();
+        let request = request_admission::current_request();
         let mut tasks = self.workers.lock().unwrap_or_else(|e| e.into_inner());
         if !tasks.closed {
             tasks.blocking.retain(|task| !task.is_finished());
             tasks.blocking.push(tokio::task::spawn_blocking(move || {
+                let _scope = request_admission::RequestScope::enter(request);
                 let _ = sender.send(work());
             }));
         }

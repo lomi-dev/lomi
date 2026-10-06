@@ -39,11 +39,11 @@ test("session v3 retains chat identity across splits and legacy upgrades without
     projects: [project],
     activeProjectId: project.id,
   };
-  for (const version of [1, 2, 3, 4]) {
+  for (const version of [1, 2, 3, 4, 5]) {
     const saved = JSON.parse(JSON.stringify({ ...session, version }));
     delete saved.projects[0].workspaces[0].tabs[0].type;
     const restored = restoreSession(saved, info);
-    assert.equal(restored.version, 4);
+    assert.equal(restored.version, 5);
     assert.deepEqual(chatTabs(restored), [chat, second]);
     const tab = restored.projects[0].workspaces[0].tabs[0];
     assert.equal(tab.type, "terminal");
@@ -63,7 +63,7 @@ test("session v3 retains chat identity across splits and legacy upgrades without
 });
 test("unknown or corrupt sessions and malformed conversation descriptors fail without becoming terminals", () => {
   for (const value of [
-    { version: 5, projects: [] },
+    { version: 6, projects: [] },
     { version: 3, projects: null },
     {},
   ])
@@ -75,5 +75,5 @@ test("unknown or corrupt sessions and malformed conversation descriptors fail wi
   assert.throws(() =>
     restoreSession({ ...newSession(), projects: [project] }, info),
   );
-  assert.equal(restoreSession(null, info).version, 4);
+  assert.equal(restoreSession(null, info).version, 5);
 });

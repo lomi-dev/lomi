@@ -93,7 +93,8 @@ impl Broker {
             Err(_) => return error(ErrorCode::ResourceExhausted),
         };
         let deadline = Instant::now() + Duration::from_secs(10);
-        let check = || {
+        let captured = request_admission::current_request();
+        let check_local = || {
             if !alive.load(Ordering::SeqCst) || self.authorization.load(Ordering::SeqCst) != policy
             {
                 return Err(ErrorCode::ControlRevoked);
@@ -102,6 +103,12 @@ impl Broker {
                 return Err(ErrorCode::DeadlineExceeded);
             }
             Ok(())
+        };
+        let check = || {
+            if let Some(request) = &captured {
+                request.check()?;
+            }
+            check_local()
         };
         let output = match observe(&directory, &check) {
             Ok(data) => data,
@@ -117,7 +124,10 @@ impl Broker {
             Ok(d) => d,
             Err(code) => return error(code),
         };
-        if !Arc::ptr_eq(&directory, &current) || directory.check().is_err() || check().is_err() {
+        if !Arc::ptr_eq(&directory, &current)
+            || directory.check().is_err()
+            || check_local().is_err()
+        {
             return error(ErrorCode::ControlRevoked);
         }
         Reply::ok(output)

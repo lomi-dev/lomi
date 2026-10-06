@@ -139,6 +139,9 @@ impl Broker {
         request: BrowserStart<'_>,
     ) -> Result<Arc<BrowserControl>, String> {
         let denied = || "Browser authorization expired or changed.".to_owned();
+        let _request_permit = self
+            .check_work_request(request.operation)
+            .map_err(|_| denied())?;
         let mut state = self.lock_state().map_err(|_| denied())?;
         let work = state.work.get(request.operation).ok_or_else(denied)?;
         let UiAction::CreateBrowser {
@@ -355,6 +358,7 @@ impl Broker {
         operation: &str,
         nonce: &str,
     ) -> Result<BrowserNavigationDispatch, ErrorCode> {
+        let _request_permit = self.check_work_request(operation)?;
         let mut state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
         let work = state.work.get(operation).ok_or(ErrorCode::ControlRevoked)?;
         let UiAction::NavigateBrowser {
@@ -388,7 +392,7 @@ impl Broker {
         if !control.permits(url) {
             return Err(ErrorCode::ControlRevoked);
         }
-        work.native_permit.check()?;
+        work.native_permit.check_local()?;
         control.prepare_navigation(operation, url)?;
         let result = BrowserNavigationDispatch {
             control,

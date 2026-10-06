@@ -107,6 +107,7 @@ impl Broker {
         nonce: &str,
         decode: impl FnOnce(&str, &[u8]) -> Result<PreparedEditorBody, ErrorCode>,
     ) -> Result<PreparedEditorFile, ErrorCode> {
+        let _request_permit = self.check_work_request(operation)?;
         let (command, owner, directory, permit, connected, policy) = {
             let mut state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
             let work = state.work.get(operation).ok_or(ErrorCode::ControlRevoked)?;
@@ -117,7 +118,7 @@ impl Broker {
             {
                 return Err(ErrorCode::ControlRevoked);
             }
-            work.native_permit.check()?;
+            work.native_permit.check_local()?;
             let UiAction::EditorOpen(command) = &work.command.action else {
                 return Err(ErrorCode::ScopeDenied);
             };
@@ -142,7 +143,7 @@ impl Broker {
             result
         };
         let check = || {
-            permit.check()?;
+            permit.revalidate()?;
             if !connected.load(Ordering::SeqCst)
                 || self.authorization.load(Ordering::SeqCst) != policy
             {
@@ -188,6 +189,7 @@ impl Broker {
                 return Err(ErrorCode::ResourceExhausted);
             }
             directory.check()?;
+            check()?;
             let mut state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
             let current = Self::project_file_access(&state, &owner, &command.workspace_id)?;
             if !Arc::ptr_eq(&directory, &current)
@@ -198,7 +200,7 @@ impl Broker {
             {
                 return Err(ErrorCode::ControlRevoked);
             }
-            check()?;
+            permit.check_local()?;
             if let PreparedEditorBody::Image(image) = &result.body {
                 state
                     .work

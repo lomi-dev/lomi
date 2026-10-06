@@ -102,7 +102,8 @@ impl Broker {
             Err(reply) => return *reply,
         };
         let deadline = Instant::now() + Duration::from_secs(6);
-        let check = || {
+        let captured = request_admission::current_request();
+        let check_local = || {
             if Instant::now() >= deadline {
                 return Err(ErrorCode::DeadlineExceeded);
             }
@@ -113,6 +114,12 @@ impl Broker {
                 return Err(ErrorCode::ControlRevoked);
             }
             Ok(())
+        };
+        let check = || {
+            if let Some(request) = &captured {
+                request.check()?;
+            }
+            check_local()
         };
         let result = check()
             .and_then(|()| dispatch(&project, &input, &check))

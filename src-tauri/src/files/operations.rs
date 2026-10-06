@@ -118,7 +118,7 @@ fn copy_tree(source: &Path, target: &Path) -> Result<(), String> {
 }
 
 fn copy(source: &Path, target: &Path) -> Result<(), String> {
-    let _admission = crate::cli_router::project_lease::admit(&[
+    let _admission = crate::project_write_guard::admit(&[
         target,
         target.parent().ok_or("Invalid destination.")?,
     ])?;
@@ -136,7 +136,7 @@ fn copy(source: &Path, target: &Path) -> Result<(), String> {
 }
 
 fn move_entry(source: &Path, target: &Path) -> Result<(), String> {
-    let _admission = crate::cli_router::project_lease::admit(&[source, target])?;
+    let _admission = crate::project_write_guard::admit(&[source, target])?;
     unused(target)?;
     if target.starts_with(source) {
         return Err("A folder cannot be moved into itself.".into());
@@ -154,7 +154,7 @@ fn perform(root: &str, relative: &str, operation: Operation) -> Result<FileChang
         Operation::NewFile { ref name } | Operation::NewFolder { ref name } => {
             self::name(name)?;
             let target = inside(root, relative)?.join(name);
-            let _admission = crate::cli_router::project_lease::admit(&[&target])?;
+            let _admission = crate::project_write_guard::admit(&[&target])?;
             if matches!(operation, Operation::NewFolder { .. }) {
                 fs::create_dir(&target).map_err(|error| error.to_string())?;
             } else {
@@ -241,7 +241,7 @@ fn perform(root: &str, relative: &str, operation: Operation) -> Result<FileChang
             target
         }
         Operation::Trash | Operation::Delete => {
-            let _admission = crate::cli_router::project_lease::admit(&[&source])?;
+            let _admission = crate::project_write_guard::admit(&[&source])?;
             if source.parent().is_none() {
                 return Err("The filesystem root cannot be deleted.".into());
             }
@@ -428,7 +428,7 @@ fn ignore_item(root: &str, relative: &str, local: bool) -> Result<(), String> {
     } else {
         repository.join(".gitignore")
     };
-    let _admission = crate::cli_router::project_lease::admit(&[&target])?;
+    let _admission = crate::project_write_guard::admit(&[&target])?;
     if fs::symlink_metadata(&target).is_ok_and(|metadata| metadata.is_symlink()) {
         return Err("The ignore file must not be a symbolic link.".into());
     }

@@ -25,9 +25,11 @@ import type { ControlState } from "./agent-control";
 import type { ControlStartupState } from "./agent-control-startup";
 import { formatShortcut } from "./keybindings";
 
-const RouterSettings = lazy(() => import("./router/RouterSettings"));
+const AccountsSettings = lazy(
+  () => import("./agent-runtime/accounts/AccountsSettings"),
+);
 
-type AgentControlTab = "connect" | "sessions" | "preferences" | "router";
+type AgentControlTab = "connect" | "sessions" | "preferences" | "accounts";
 
 function pendingRequestCount(
   broker: ControlState["broker"] | null | undefined,
@@ -747,7 +749,7 @@ export default function AgentControlSettingsPage() {
     "connect",
     "sessions",
     "preferences",
-    "router",
+    "accounts",
   ];
   const tabButtons = (tab: AgentControlTab) => ({
     id: `agent-control-tab-${tab}`,
@@ -775,14 +777,14 @@ export default function AgentControlSettingsPage() {
     <SettingsPage
       title="Agent control"
       description={
-        activeTab === "router"
+        activeTab === "accounts"
           ? undefined
           : "Let coding agents work with Lomi over MCP."
       }
       className="agent-control-page"
       status={status}
       actions={
-        activeTab !== "router" && (
+        activeTab !== "accounts" && (
           <>
             <span
               className="agent-control-badge"
@@ -824,7 +826,7 @@ export default function AgentControlSettingsPage() {
         </SettingsNotice>
       )}
       {error && <SettingsNotice tone="error">{error}</SettingsNotice>}
-      {activeTab !== "router" && state && !state.supported && (
+      {activeTab !== "accounts" && state && !state.supported && (
         <SettingsNotice tone="warning">
           Agent control isn’t available on this computer yet.
         </SettingsNotice>
@@ -867,9 +869,9 @@ export default function AgentControlSettingsPage() {
         <button
           type="button"
           className="agent-control-tab"
-          {...tabButtons("router")}
+          {...tabButtons("accounts")}
         >
-          Router
+          CLI Accounts
         </button>
       </div>
 
@@ -942,15 +944,15 @@ export default function AgentControlSettingsPage() {
 
       <section
         className="agent-control-panel"
-        id="agent-control-panel-router"
+        id="agent-control-panel-accounts"
         role="tabpanel"
-        aria-labelledby="agent-control-tab-router"
+        aria-labelledby="agent-control-tab-accounts"
         tabIndex={0}
-        hidden={activeTab !== "router"}
+        hidden={activeTab !== "accounts"}
       >
-        {activeTab === "router" && (
-          <Suspense fallback={<p role="status">Loading routers…</p>}>
-            <RouterSettings />
+        {activeTab === "accounts" && (
+          <Suspense fallback={<p role="status">Loading accounts…</p>}>
+            <AccountsSettings />
           </Suspense>
         )}
       </section>

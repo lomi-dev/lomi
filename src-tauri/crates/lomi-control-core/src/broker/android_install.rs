@@ -346,13 +346,25 @@ impl Broker {
     /// Only native Settings may decide this one-use approval. Its identity binds
     /// owner/project, target generation, immutable artifact hash and deadline.
     pub fn decide_install(self: &Arc<Self>, operation: &str, approve: bool) -> io::Result<()> {
+        let captured_permit = {
+            let state = self.lock_state().map_err(|_| failure())?;
+            state
+                .installs
+                .get(operation)
+                .ok_or_else(failure)?
+                .permit
+                .clone()
+        };
+        if approve {
+            captured_permit.revalidate().map_err(|_| failure())?;
+        }
         let mut state = self.lock_state().map_err(|_| failure())?;
         let job = state.installs.get(operation).ok_or_else(failure)?;
         if job.running {
             return Err(failure());
         }
         let valid = job.deadline > Instant::now()
-            && job.permit.check().is_ok()
+            && job.permit.check_local().is_ok()
             && job.file.as_ref().is_some_and(|f| {
                 f.artifact
                     .expires_at_seconds
@@ -405,7 +417,7 @@ impl Broker {
             .map_err(|_| failure())?;
         let job = state.installs.get_mut(operation).unwrap();
         job.deadline = Instant::now() + Duration::from_secs(180);
-        job.permit = NativePermit::until(job.deadline);
+        job.permit = job.permit.renew(job.deadline);
         job.running = true;
         let request = AndroidInstallRequest {
             input: job.input.clone(),
@@ -421,7 +433,7 @@ impl Broker {
         self.schedule_install_expiry(op.clone(), Duration::from_secs(180));
         let broker = self.clone();
         drop(self.spawn_worker(move || {
-            let result = dispatch(request);
+            let result = request.check().and_then(|()| dispatch(request));
             let _ = broker.finish_install(&op, result);
         }));
         Ok(())
@@ -436,7 +448,7 @@ impl Broker {
         if !job.running {
             return Err(failure());
         }
-        let authorized = job.permit.check().is_ok()
+        let authorized = job.permit.check_local().is_ok()
             && Self::install_access(&state, &job.pairing, &job.input).is_ok();
         let result = result.and_then(|result| {
             if !authorized

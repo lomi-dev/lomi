@@ -32,9 +32,11 @@ use tokio::{
 mod browsers;
 mod chat_close;
 mod operations;
+mod request_admission;
 pub use browsers::{BrowserNavigationDispatch, BrowserStart};
 pub use chat_close::ChatCloseDispatch;
 pub use operations::NativePermit;
+pub use request_admission::{SessionEffectPermit, SessionRequestAdmission, SessionRequestPolicy};
 mod panel_control;
 pub use panel_control::{PendingControlView, TerminalAttachDispatch};
 mod android;
@@ -338,6 +340,7 @@ impl Grant {
 struct Session {
     alive: Arc<AtomicBool>,
     peer_pid: Option<u32>,
+    request_policy: Option<Arc<dyn SessionRequestPolicy>>,
     view: SessionView,
     grant: Grant,
     retry_epoch: String,
@@ -406,6 +409,7 @@ pub struct Broker {
     task: Mutex<Option<tokio::task::JoinHandle<()>>>,
     dispatch: Mutex<Option<UiDispatch>>,
     project_write_admission: Option<ProjectWriteAdmissionDispatch>,
+    session_request_admission: Option<SessionRequestAdmission>,
     terminal_dispatch: Mutex<Option<TerminalDispatch>>,
     terminal_input_dispatch: Mutex<Option<TerminalInputDispatch>>,
     terminal_close_dispatch: Mutex<Option<TerminalCloseDispatch>>,
@@ -489,18 +493,27 @@ fn error(code: ErrorCode) -> Reply {
 
 impl Broker {
     pub fn start(root: &Path) -> io::Result<Arc<Self>> {
-        Self::start_inner(root, None)
+        Self::start_inner(root, None, None)
     }
     /// Install the host policy before any listener task can accept a connection.
     pub fn start_with_project_write_admission(
         root: &Path,
         admission: ProjectWriteAdmissionDispatch,
     ) -> io::Result<Arc<Self>> {
-        Self::start_inner(root, Some(admission))
+        Self::start_inner(root, Some(admission), None)
+    }
+    /// Install immutable host admission before the listener can enroll clients.
+    pub fn start_with_admission(
+        root: &Path,
+        project_write_admission: Option<ProjectWriteAdmissionDispatch>,
+        session_request_admission: Option<SessionRequestAdmission>,
+    ) -> io::Result<Arc<Self>> {
+        Self::start_inner(root, project_write_admission, session_request_admission)
     }
     fn start_inner(
         root: &Path,
         project_write_admission: Option<ProjectWriteAdmissionDispatch>,
+        session_request_admission: Option<SessionRequestAdmission>,
     ) -> io::Result<Arc<Self>> {
         use std::os::unix::fs::PermissionsExt;
         let cleanup_runtime = tokio::runtime::Handle::try_current().map_err(|_| failure())?;
@@ -509,7 +522,9 @@ impl Broker {
             .prefix("lomi-control-")
             .tempdir_in("/tmp")?;
         fs::set_permissions(runtime.path(), fs::Permissions::from_mode(0o700))?;
-        let endpoint = runtime.path().join("control.sock");
+        // Publish the physical socket path used by the native sandbox. On
+        // Darwin /tmp is an alias of /private/tmp, which strict policies reject.
+        let endpoint = runtime.path().canonicalize()?.join("control.sock");
         let listener = UnixListener::bind(&endpoint)?;
         fs::set_permissions(&endpoint, fs::Permissions::from_mode(0o600))?;
         let instance_id = new_id()?;
@@ -541,6 +556,7 @@ impl Broker {
             task: Mutex::new(None),
             dispatch: Mutex::new(None),
             project_write_admission,
+            session_request_admission,
             terminal_dispatch: Mutex::new(None),
             terminal_input_dispatch: Mutex::new(None),
             terminal_close_dispatch: Mutex::new(None),
@@ -650,6 +666,49 @@ impl Broker {
     }
     fn projection_ready(projection: &Projection) -> bool {
         !projection.ui_epoch.is_empty() && projection.revision != "0"
+    }
+    /// Resolve a workspace alias from the current server projection only. This
+    /// proves project selection, not tool authorization; the request still
+    /// passes its session grants and native task ceiling.
+    pub fn request_workspace_root(&self, alias: &str) -> Result<PathBuf, ErrorCode> {
+        if !valid_id(alias) {
+            return Err(ErrorCode::ScopeDenied);
+        }
+        let (epoch, revision, project_id, path) = {
+            let state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
+            if !Self::projection_ready(&state.projection) {
+                return Err(ErrorCode::AppUnavailable);
+            }
+            let workspace = state
+                .projection
+                .workspaces
+                .iter()
+                .find(|workspace| workspace.id == alias)
+                .ok_or(ErrorCode::TargetNotFound)?;
+            (
+                state.projection.ui_epoch.clone(),
+                state.projection.revision.clone(),
+                workspace.project_id.clone(),
+                PathBuf::from(&workspace.project_path),
+            )
+        };
+        // ProjectDirectory walks from / with O_NOFOLLOW and checks the anchored
+        // inode again. Never turn an opaque alias into a client-supplied path.
+        let directory = crate::project_files::ProjectDirectory::open(&path)?;
+        directory.check()?;
+        let state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
+        if state.projection.ui_epoch != epoch
+            || state.projection.revision != revision
+            || !state.projection.workspaces.iter().any(|workspace| {
+                workspace.id == alias
+                    && workspace.project_id == project_id
+                    && Path::new(&workspace.project_path) == path
+            })
+        {
+            return Err(ErrorCode::RevisionConflict);
+        }
+        directory.check()?;
+        Ok(path)
     }
     fn empty_yolo_grant(policy_revision: u64, projection: &Projection) -> io::Result<Grant> {
         let scopes: HashSet<_> = YOLO_SCOPES.iter().map(|s| (*s).to_owned()).collect();
@@ -1559,6 +1618,15 @@ impl Broker {
     ) -> io::Result<()> {
         require_same_user(&stream)?;
         let peer_pid = crate::authentication::peer_pid(&stream);
+        // Only OS-observed connection provenance reaches the host admission.
+        // Capture before either manual approval or automatic YOLO pairing.
+        let request_policy = self
+            .session_request_admission
+            .as_ref()
+            .map(|admit| admit(peer_pid))
+            .transpose()
+            .map_err(|_| failure())?
+            .flatten();
         let hello: Enrollment = read_frame(&mut stream, 16 * 1024, Duration::from_secs(10)).await?;
         if hello.ipc_version != IPC_VERSION
             || hello.instance_id != self.endpoint.instance_id
@@ -1659,6 +1727,7 @@ impl Broker {
                         Session {
                             alive,
                             peer_pid,
+                            request_policy,
                             view: SessionView {
                                 terminal_profile: grant.terminal_profile.clone(),
                                 id: session_id.clone(),
@@ -1750,6 +1819,11 @@ impl Broker {
             .transpose()
     }
     fn call(self: &Arc<Self>, id: &str, request: Request) -> Reply {
+        let captured = match self.capture_request(id, &request) {
+            Ok(captured) => captured,
+            Err(code) => return error(code),
+        };
+        let _request_scope = request_admission::RequestScope::enter(Some(captured));
         let _project_write = if needs_project_write_admission(&request) {
             match self.project_write_admission() {
                 Ok(permit) => permit,
@@ -2357,6 +2431,58 @@ mod project_admission_tests {
         let legacy = tempfile::tempdir().unwrap();
         let broker = Broker::start(&legacy.path().join("control")).unwrap();
         assert!(broker.project_write_admission().unwrap().is_none());
+        broker.shutdown().await;
+    }
+    #[tokio::test]
+    async fn workspace_resolver_requires_current_projection_and_physical_root() {
+        let directory = tempfile::tempdir().unwrap();
+        let broker = Broker::start(&directory.path().join("control")).unwrap();
+        assert!(broker.request_workspace_root("workspace_1").is_err());
+        let epoch = broker.register_ui().unwrap();
+        assert_eq!(
+            broker.request_workspace_root("workspace_1").err(),
+            Some(ErrorCode::AppUnavailable)
+        );
+        let project = directory.path().join("project");
+        fs::create_dir(&project).unwrap();
+        let project = fs::canonicalize(project).unwrap();
+        broker
+            .publish(Projection {
+                ui_epoch: epoch,
+                revision: "1".into(),
+                workspaces: vec![Workspace {
+                    id: "workspace_1".into(),
+                    active_panel_id: None,
+                    project_id: "project_1".into(),
+                    name: "Workspace".into(),
+                    project_name: "Project".into(),
+                    project_path: project.to_str().unwrap().into(),
+                }],
+                ..Projection::default()
+            })
+            .unwrap();
+        assert_eq!(
+            broker.request_workspace_root("workspace_1").unwrap(),
+            project
+        );
+        assert_eq!(
+            broker.request_workspace_root("unknown").err(),
+            Some(ErrorCode::TargetNotFound)
+        );
+        assert_eq!(
+            broker
+                .request_workspace_root(project.to_str().unwrap())
+                .err(),
+            Some(ErrorCode::ScopeDenied)
+        );
+        let moved = project.with_file_name("retired");
+        fs::rename(&project, &moved).unwrap();
+        std::os::unix::fs::symlink(&moved, &project).unwrap();
+        assert!(broker.request_workspace_root("workspace_1").is_err());
+        fs::remove_file(&project).unwrap();
+        fs::rename(&moved, &project).unwrap();
+        broker.invalidate_ui();
+        assert!(broker.request_workspace_root("workspace_1").is_err());
         broker.shutdown().await;
     }
     #[test]

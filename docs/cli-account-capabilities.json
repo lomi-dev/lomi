@@ -1,0 +1,2818 @@
+{
+  "schema": 1,
+  "date": "2026-10-06",
+  "lomiSourceCommit": "834f883fce7aad6e5b247f59e98bb36ef1b631fd",
+  "t3SourceCommit": "3e6b45028ceec5820dacb37dc3852470ebdc9411",
+  "implementationCommit": "uncommitted working tree",
+  "state": "restricted_host_locally_verified_account_qualification_pending",
+  "evidencePolicy": "Source, synthetic fixtures, exact public CLI compatibility and authenticated real-account qualification remain separate. No real credentials, login or inference authorized/executed.",
+  "installedCodexMismatch": "Installed 0.160.1 is outside the adopted 0.160.0 contract and is rejected before prompt dispatch.",
+  "records": [
+    {
+      "cli": "codex",
+      "versions": ["0.160.0"],
+      "platforms": ["darwin-arm64"],
+      "models": "Exact slugs and supported reasoning efforts from the adopted 0.160.0 metadata; not a universal model claim",
+      "historyKinds": ["observed_task_journal", "owned_native_history"],
+      "artifact": {
+        "admission": "Pinned official native SHA-256 before --version; owner/mode/link/file identity and path rechecked immediately before execution. Byte admission does not prove lifecycle containment or atomic pathname exec.",
+        "nativeSha256": "112fae7a5a1223e673c8a1791d32338f37df8b527ff1159bb8adac6c4dbf1b4b",
+        "archiveSha256": "07c3c7ca376a8f791115342f53138dda37e97cfa29b8125d0652d93784894b5d",
+        "source": "https://github.com/openai/codex/releases/download/rust-v0.160.0/codex-aarch64-apple-darwin.tar.gz",
+        "positiveFixture": "/tmp/lomi-native-artifact-public-tests.log"
+      },
+      "migrationDecision": "Adopt verified physical credential root; archive old execution, journals and API configuration without dispatch",
+      "capabilities": {
+        "account_terminal": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "isolation_and_launch_admission_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Production macOS host worker and fresh native runner are included in normal builds. Durable parent-indexed intents precede every version/collector/turn/account PTY; no managed direct-spawn fallback. Previously proved, sealed kernel coalition ESRCH plus drained host effects retires local ownership in the same boot. EOF, PID scans and timeouts never substitute for that receipt. Exact admission: Darwin 27.0.0/build 26A434/ARM64. Fixed native login arguments; authenticated login qualification pending."
+        },
+        "login": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "isolated_terminal_and_auth_revision_policy_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification."
+        },
+        "verify_auth": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "read_only_command_and_binding_policy_only",
+          "localIntegration": "isolated_public_cli_status_not_logged_in_only; production account IPC not exercised",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification.",
+          "evidence": "/var/folders/q6/xvq1c0vj24n0cnh7hrysr4k40000gn/T/lomi-native-policy-modes-3dsaodbx/result.json"
+        },
+        "managed_execution": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "wire_codec_and_durable_owner_policy_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Codex/Claude passive configuration allowlists reject hooks, foreign MCP, provider routes, execution helpers and managed-policy overrides. Fixed file credential storage for Codex and correlated effective config/read precede session/prompt. Claude restricted tools, disabled ordinary hooks/plugins/skills/connectors/Chrome and strict owned-or-empty MCP. Configuration files remain protected; Claude login-only state bookkeeping is writable. HTTPS CONNECT proxy allows exact provider authorities, authenticates before DNS, rejects nonpublic addresses and drains sockets on Stop. Public CA file is readonly; no securityd/trustd delegation. Real-account native tools and effects remain unqualified."
+        },
+        "native_tools": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "native_wire_tool_ledger_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification."
+        },
+        "permission_protocol": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "wire_frames_and_ui_decision_roundtrip",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification."
+        },
+        "stop_drain": {
+          "source": "supported",
+          "implementation": "implemented_fail_closed",
+          "fixture": "owned_kernel_cohort_and_host_effect_stop",
+          "localIntegration": "own_fixture_processes_only",
+          "realAccounts": "unqualified",
+          "reason": "Production macOS host worker and fresh native runner are included in normal builds. Durable parent-indexed intents precede every version/collector/turn/account PTY; no managed direct-spawn fallback. Previously proved, sealed kernel coalition ESRCH plus drained host effects retires local ownership in the same boot. EOF, PID scans and timeouts never substitute for that receipt. Exact admission: Darwin 27.0.0/build 26A434/ARM64. Native remote tool outcomes require qualification."
+        },
+        "same_account_resume": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "owned_history_and_revision_fences_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification."
+        },
+        "cross_account_native_resume": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "Cross-account continuation identity and real-account acceptance are unqualified."
+        },
+        "reviewed_transfer": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "portable_handoff": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "full_journal_budget_grants_and_ui_policy",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification."
+        },
+        "quota_read": {
+          "source": "supported",
+          "implementation": "unknown_advisory",
+          "fixture": "manual_selection_without_quota_covered",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Independent usage readers remain. New task/account UI reports quota unavailable; missing numeric quota never blocks eligible manual selection."
+        },
+        "active_stop_and_switch": {
+          "source": "unqualified",
+          "implementation": "implemented_but_gated",
+          "fixture": "qualified_mock_flow_and_unqualified_refusal_covered",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Each admitted native client has conditional or unproven descendant ownership. Native capability is disabled until complete source/config/process qualification; Stop and next-turn selection remain explicit. Unknown effects cannot be acknowledged away."
+        },
+        "lifecycle_settlement": {
+          "source": "unqualified",
+          "implementation": "owned_same_boot_retirement_with_unknown_effect_fences",
+          "fixture": "sealed_kernel_cohort_and_durable_finalization",
+          "localIntegration": "production_driver_and_public_cli_no_credentials",
+          "realAccounts": "unqualified",
+          "reason": "Production macOS host worker and fresh native runner are included in normal builds. Durable parent-indexed intents precede every version/collector/turn/account PTY; no managed direct-spawn fallback. Previously proved, sealed kernel coalition ESRCH plus drained host effects retires local ownership in the same boot. EOF, PID scans and timeouts never substitute for that receipt. Exact admission: Darwin 27.0.0/build 26A434/ARM64. Unknown remote or background effects remain fenced; real-account qualification pending."
+        }
+      },
+      "platformQualification": {
+        "source": ["unix"],
+        "fixture": "darwin-arm64",
+        "linux": "source_only_not_locally_run",
+        "windows_wsl": "managed_native_unqualified",
+        "realAccounts": "not_run"
+      },
+      "managedConfigurationRestriction": "Codex/Claude passive configuration allowlists reject hooks, foreign MCP, provider routes, execution helpers and managed-policy overrides. Fixed file credential storage for Codex and correlated effective config/read precede session/prompt. Claude restricted tools, disabled ordinary hooks/plugins/skills/connectors/Chrome and strict owned-or-empty MCP. Configuration files remain protected; Claude login-only state bookkeeping is writable. HTTPS CONNECT proxy allows exact provider authorities, authenticates before DNS, rejects nonpublic addresses and drains sockets on Stop. Public CA file is readonly; no securityd/trustd delegation."
+    },
+    {
+      "cli": "claude",
+      "versions": ["2.1.287"],
+      "platforms": ["darwin-arm64"],
+      "models": "Exact admitted native model identifier; each selected model still requires account qualification",
+      "historyKinds": ["observed_task_journal", "owned_native_history"],
+      "artifact": {
+        "admission": "Pinned official native SHA-256 before --version; owner/mode/link/file identity and path rechecked immediately before execution. Byte admission does not prove lifecycle containment or atomic pathname exec.",
+        "nativeSha256": "6eab8333fe2121553100d8f40bfada384a3e989b94f947e18ba6677a6fcb41ea",
+        "archiveSha256": "81f45ee02e22cf26a79ca4134f5b0b6f680fb9b5155694cd37088756ae6d9278",
+        "source": "https://registry.npmjs.org/@anthropic-ai/claude-code-darwin-arm64/-/claude-code-darwin-arm64-2.1.287.tgz",
+        "positiveFixture": "/tmp/lomi-native-artifact-public-tests.log"
+      },
+      "migrationDecision": "Adopt verified physical credential root; archive old execution, journals and API configuration without dispatch",
+      "capabilities": {
+        "account_terminal": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "isolation_and_launch_admission_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Production macOS host worker and fresh native runner are included in normal builds. Durable parent-indexed intents precede every version/collector/turn/account PTY; no managed direct-spawn fallback. Previously proved, sealed kernel coalition ESRCH plus drained host effects retires local ownership in the same boot. EOF, PID scans and timeouts never substitute for that receipt. Exact admission: Darwin 27.0.0/build 26A434/ARM64. Fixed native login arguments; authenticated login qualification pending."
+        },
+        "login": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "isolated_terminal_and_auth_revision_policy_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification."
+        },
+        "verify_auth": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "read_only_command_and_binding_policy_only",
+          "localIntegration": "isolated_public_cli_status_not_logged_in_only; production account IPC not exercised",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification.",
+          "evidence": "/var/folders/q6/xvq1c0vj24n0cnh7hrysr4k40000gn/T/lomi-native-policy-modes-3dsaodbx/result.json"
+        },
+        "managed_execution": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "wire_codec_and_durable_owner_policy_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Codex/Claude passive configuration allowlists reject hooks, foreign MCP, provider routes, execution helpers and managed-policy overrides. Fixed file credential storage for Codex and correlated effective config/read precede session/prompt. Claude restricted tools, disabled ordinary hooks/plugins/skills/connectors/Chrome and strict owned-or-empty MCP. Configuration files remain protected; Claude login-only state bookkeeping is writable. HTTPS CONNECT proxy allows exact provider authorities, authenticates before DNS, rejects nonpublic addresses and drains sockets on Stop. Public CA file is readonly; no securityd/trustd delegation. Real-account native tools and effects remain unqualified."
+        },
+        "native_tools": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "native_wire_tool_ledger_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Managed mode retains native Bash, Read and Edit only. No inherited MCP, plugin or skill tools. Offline wire and public no-account restrictions fixtures do not qualify real-account tool execution."
+        },
+        "permission_protocol": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "wire_frames_and_ui_decision_roundtrip",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification."
+        },
+        "stop_drain": {
+          "source": "supported",
+          "implementation": "implemented_fail_closed",
+          "fixture": "owned_kernel_cohort_and_host_effect_stop",
+          "localIntegration": "own_fixture_processes_only",
+          "realAccounts": "unqualified",
+          "reason": "Production macOS host worker and fresh native runner are included in normal builds. Durable parent-indexed intents precede every version/collector/turn/account PTY; no managed direct-spawn fallback. Previously proved, sealed kernel coalition ESRCH plus drained host effects retires local ownership in the same boot. EOF, PID scans and timeouts never substitute for that receipt. Exact admission: Darwin 27.0.0/build 26A434/ARM64. Native remote tool outcomes require qualification."
+        },
+        "same_account_resume": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "owned_history_and_revision_fences_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification."
+        },
+        "cross_account_native_resume": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "Cross-account continuation identity and real-account acceptance are unqualified."
+        },
+        "reviewed_transfer": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "portable_handoff": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "full_journal_budget_grants_and_ui_policy",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification."
+        },
+        "quota_read": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "active_stop_and_switch": {
+          "source": "unqualified",
+          "implementation": "implemented_but_gated",
+          "fixture": "qualified_mock_flow_and_unqualified_refusal_covered",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Each admitted native client has conditional or unproven descendant ownership. Native capability is disabled until complete source/config/process qualification; Stop and next-turn selection remain explicit. Unknown effects cannot be acknowledged away."
+        },
+        "lifecycle_settlement": {
+          "source": "unqualified",
+          "implementation": "owned_same_boot_retirement_with_unknown_effect_fences",
+          "fixture": "sealed_kernel_cohort_and_durable_finalization",
+          "localIntegration": "production_driver_and_public_cli_no_credentials",
+          "realAccounts": "unqualified",
+          "reason": "Production macOS host worker and fresh native runner are included in normal builds. Durable parent-indexed intents precede every version/collector/turn/account PTY; no managed direct-spawn fallback. Previously proved, sealed kernel coalition ESRCH plus drained host effects retires local ownership in the same boot. EOF, PID scans and timeouts never substitute for that receipt. Exact admission: Darwin 27.0.0/build 26A434/ARM64. Unknown remote or background effects remain fenced; real-account qualification pending."
+        }
+      },
+      "platformQualification": {
+        "source": ["unix"],
+        "fixture": "darwin-arm64",
+        "linux": "source_only_not_locally_run",
+        "windows_wsl": "managed_native_unqualified",
+        "realAccounts": "not_run"
+      },
+      "managedConfigurationRestriction": "Codex/Claude passive configuration allowlists reject hooks, foreign MCP, provider routes, execution helpers and managed-policy overrides. Fixed file credential storage for Codex and correlated effective config/read precede session/prompt. Claude restricted tools, disabled ordinary hooks/plugins/skills/connectors/Chrome and strict owned-or-empty MCP. Configuration files remain protected; Claude login-only state bookkeeping is writable. HTTPS CONNECT proxy allows exact provider authorities, authenticates before DNS, rejects nonpublic addresses and drains sockets on Stop. Public CA file is readonly; no securityd/trustd delegation."
+    },
+    {
+      "cli": "pi",
+      "versions": ["1.0.1"],
+      "platforms": ["macos-arm64"],
+      "models": "Native provider/model identifier; reviewed transfer only Pi 1.0.1 openai/<model> with exact validated settled journal",
+      "historyKinds": ["observed_task_journal", "owned_native_history"],
+      "artifact": {
+        "admission": "Exact standard Pi 1.0.1 entry, independently reproduced complete npm dependency closure (15025 files/links), and direct official Node 22.22.3 interpreter; checked before version probe and spawn. No editable receipt trust or PATH interpreter.",
+        "closureDigest": "007dd63a973108bd475255b06a91873f217e32de84eb86ddfe0257a1c0ffd1dd",
+        "nodeBinarySha256": "5d9d3872911e2340a43b707962e68143de8a4e8d54628845c0c4f2de1fb7cd5c"
+      },
+      "migrationDecision": "Adopt verified physical credential root; archive old execution, journals and API configuration without dispatch",
+      "capabilities": {
+        "account_terminal": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "isolation_and_launch_admission_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification."
+        },
+        "login": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "isolated_terminal_and_auth_revision_policy_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification."
+        },
+        "verify_auth": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "managed_execution": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "wire_codec_and_durable_owner_policy_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification. Pi artifact identity is verified separately; !command credentials/OAuth headers and package helpers remain outside the tool journal. Generic lifecycle recovery is never cleared from artifact proof or terminal completion alone."
+        },
+        "native_tools": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "native_wire_tool_ledger_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification."
+        },
+        "permission_protocol": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "wire_frames_and_ui_decision_roundtrip",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification."
+        },
+        "stop_drain": {
+          "source": "supported",
+          "implementation": "implemented_fail_closed",
+          "fixture": "same_group_and_visible_marker_descendants_passed",
+          "localIntegration": "own_fixture_processes_only",
+          "realAccounts": "unqualified",
+          "reason": "Owned groups, observable detached descendants, streams, permission and durable finalization fences are implemented. Invisible, external, async or scrubbed ownership remains recovery; unrestricted native G02 is unqualified."
+        },
+        "same_account_resume": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "owned_history_and_revision_fences_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification. Pi artifact identity is verified separately; !command credentials/OAuth headers and package helpers remain outside the tool journal. Generic lifecycle recovery is never cleared from artifact proof or terminal completion alone."
+        },
+        "cross_account_native_resume": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "Cross-account continuation identity and real-account acceptance are unqualified."
+        },
+        "reviewed_transfer": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "covered_by_offline_fixtures",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Implemented native Pi 1.0.1 openai/<model> source-record validation, digest/intention/receipt, explicit review/apply and separate Send. Other versions/models are blocked. Pi artifact identity is verified separately; !command credentials/OAuth headers and package helpers remain outside the tool journal. Generic lifecycle recovery is never cleared from artifact proof or terminal completion alone."
+        },
+        "portable_handoff": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "full_journal_budget_grants_and_ui_policy",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification. Pi artifact identity is verified separately; !command credentials/OAuth headers and package helpers remain outside the tool journal. Generic lifecycle recovery is never cleared from artifact proof or terminal completion alone."
+        },
+        "quota_read": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "active_stop_and_switch": {
+          "source": "unqualified",
+          "implementation": "implemented_but_gated",
+          "fixture": "qualified_mock_flow_and_unqualified_refusal_covered",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Each admitted native client has conditional or unproven descendant ownership. Native capability is disabled until complete source/config/process qualification; Stop and next-turn selection remain explicit. Unknown effects cannot be acknowledged away."
+        },
+        "lifecycle_settlement": {
+          "source": "unqualified",
+          "implementation": "protected_recovery_until_verified_boot_change",
+          "fixture": "owned_argv_and_lifecycle_boundary_policy",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Production host cohort contains local descendants and drains owned host effects. Helper-capable configuration and opaque remote/background effects remain unqualified; generic effect uncertainty is retained."
+        }
+      },
+      "platformQualification": {
+        "source": ["macos-arm64"],
+        "fixture": "darwin-arm64",
+        "linux": "managed_native_rejected_unqualified_artifact_and_interpreter",
+        "windows_wsl": "managed_native_rejected_unqualified",
+        "realAccounts": "not_run"
+      }
+    },
+    {
+      "cli": "kimi",
+      "versions": ["2.1.1"],
+      "platforms": ["unix"],
+      "models": "Exact admitted native model identifier; each selected model still requires account qualification",
+      "historyKinds": ["observed_task_journal", "owned_native_history"],
+      "artifact": {
+        "admission": "owned executable identity and exact version; prepared artifacts in scripts/agent-cli-installations.json for Kimi/Kilo/Pi"
+      },
+      "migrationDecision": "Adopt verified physical credential root; archive old execution, journals and API configuration without dispatch",
+      "capabilities": {
+        "account_terminal": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "isolation_and_launch_admission_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification."
+        },
+        "login": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "isolated_terminal_and_auth_revision_policy_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification."
+        },
+        "verify_auth": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "managed_execution": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "wire_codec_and_durable_owner_policy_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification. Current lifecycle settlement is unqualified: even pure-text runs retain protected recovery until verified OS boot change. This is not full native switching parity."
+        },
+        "native_tools": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "native_wire_tool_ledger_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification."
+        },
+        "permission_protocol": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "wire_frames_and_ui_decision_roundtrip",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification."
+        },
+        "stop_drain": {
+          "source": "supported",
+          "implementation": "implemented_fail_closed",
+          "fixture": "same_group_and_visible_marker_descendants_passed",
+          "localIntegration": "own_fixture_processes_only",
+          "realAccounts": "unqualified",
+          "reason": "Owned groups, observable detached descendants, streams, permission and durable finalization fences are implemented. Invisible, external, async or scrubbed ownership remains recovery; unrestricted native G02 is unqualified."
+        },
+        "same_account_resume": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "owned_history_and_revision_fences_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification. Current lifecycle settlement is unqualified: even pure-text runs retain protected recovery until verified OS boot change. This is not full native switching parity."
+        },
+        "cross_account_native_resume": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "Cross-account continuation identity and real-account acceptance are unqualified."
+        },
+        "reviewed_transfer": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "portable_handoff": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "full_journal_budget_grants_and_ui_policy",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification. Current lifecycle settlement is unqualified: even pure-text runs retain protected recovery until verified OS boot change. This is not full native switching parity."
+        },
+        "quota_read": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "active_stop_and_switch": {
+          "source": "unqualified",
+          "implementation": "implemented_but_gated",
+          "fixture": "qualified_mock_flow_and_unqualified_refusal_covered",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Each admitted native client has conditional or unproven descendant ownership. Native capability is disabled until complete source/config/process qualification; Stop and next-turn selection remain explicit. Unknown effects cannot be acknowledged away."
+        },
+        "lifecycle_settlement": {
+          "source": "unqualified",
+          "implementation": "protected_recovery_until_verified_boot_change",
+          "fixture": "owned_argv_and_lifecycle_boundary_policy",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Production host cohort contains local descendants and drains owned host effects. Helper-capable configuration and opaque remote/background effects remain unqualified; generic effect uncertainty is retained."
+        }
+      },
+      "platformQualification": {
+        "source": ["unix"],
+        "fixture": "darwin-arm64",
+        "linux": "source_only_not_locally_run",
+        "windows_wsl": "managed_native_unqualified",
+        "realAccounts": "not_run"
+      }
+    },
+    {
+      "cli": "kilo",
+      "versions": ["7.8.3"],
+      "platforms": ["unix"],
+      "models": "Exact admitted provider/model identifier",
+      "historyKinds": ["observed_task_journal", "owned_native_history"],
+      "artifact": {
+        "admission": "owned executable identity and exact version; prepared artifacts in scripts/agent-cli-installations.json for Kimi/Kilo/Pi"
+      },
+      "migrationDecision": "Adopt verified physical credential root; archive old execution, journals and API configuration without dispatch",
+      "capabilities": {
+        "account_terminal": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "isolation_and_launch_admission_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification."
+        },
+        "login": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "isolated_terminal_and_auth_revision_policy_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification."
+        },
+        "verify_auth": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "managed_execution": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "wire_codec_and_durable_owner_policy_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification. Current lifecycle settlement is unqualified: even pure-text runs retain protected recovery until verified OS boot change. This is not full native switching parity."
+        },
+        "native_tools": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "native_wire_tool_ledger_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification."
+        },
+        "permission_protocol": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "wire_frames_and_ui_decision_roundtrip",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification."
+        },
+        "stop_drain": {
+          "source": "supported",
+          "implementation": "implemented_fail_closed",
+          "fixture": "same_group_and_visible_marker_descendants_passed",
+          "localIntegration": "own_fixture_processes_only",
+          "realAccounts": "unqualified",
+          "reason": "Owned groups, observable detached descendants, streams, permission and durable finalization fences are implemented. Invisible, external, async or scrubbed ownership remains recovery; unrestricted native G02 is unqualified."
+        },
+        "same_account_resume": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "owned_history_and_revision_fences_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification. Current lifecycle settlement is unqualified: even pure-text runs retain protected recovery until verified OS boot change. This is not full native switching parity."
+        },
+        "cross_account_native_resume": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "Cross-account continuation identity and real-account acceptance are unqualified."
+        },
+        "reviewed_transfer": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "portable_handoff": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "full_journal_budget_grants_and_ui_policy",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification. Current lifecycle settlement is unqualified: even pure-text runs retain protected recovery until verified OS boot change. This is not full native switching parity."
+        },
+        "quota_read": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "active_stop_and_switch": {
+          "source": "unqualified",
+          "implementation": "implemented_but_gated",
+          "fixture": "qualified_mock_flow_and_unqualified_refusal_covered",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Each admitted native client has conditional or unproven descendant ownership. Native capability is disabled until complete source/config/process qualification; Stop and next-turn selection remain explicit. Unknown effects cannot be acknowledged away."
+        },
+        "lifecycle_settlement": {
+          "source": "unqualified",
+          "implementation": "protected_recovery_until_verified_boot_change",
+          "fixture": "owned_argv_and_lifecycle_boundary_policy",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Production host cohort contains local descendants and drains owned host effects. Helper-capable configuration and opaque remote/background effects remain unqualified; generic effect uncertainty is retained."
+        }
+      },
+      "platformQualification": {
+        "source": ["unix"],
+        "fixture": "darwin-arm64",
+        "linux": "source_only_not_locally_run",
+        "windows_wsl": "managed_native_unqualified",
+        "realAccounts": "not_run"
+      }
+    },
+    {
+      "cli": "opencode",
+      "versions": ["1.18.33", "1.18.34"],
+      "platforms": ["unix"],
+      "models": "Exact admitted provider/model identifier",
+      "historyKinds": ["observed_task_journal", "owned_native_history"],
+      "artifact": {
+        "admission": "owned executable identity and exact version; prepared artifacts in scripts/agent-cli-installations.json for Kimi/Kilo/Pi"
+      },
+      "migrationDecision": "Adopt verified physical credential root; archive old execution, journals and API configuration without dispatch",
+      "capabilities": {
+        "account_terminal": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "isolation_and_launch_admission_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification."
+        },
+        "login": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "isolated_terminal_and_auth_revision_policy_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification."
+        },
+        "verify_auth": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "managed_execution": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "wire_codec_and_durable_owner_policy_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification. Current lifecycle settlement is unqualified: even pure-text runs retain protected recovery until verified OS boot change. This is not full native switching parity."
+        },
+        "native_tools": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "native_wire_tool_ledger_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification."
+        },
+        "permission_protocol": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "wire_frames_and_ui_decision_roundtrip",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification."
+        },
+        "stop_drain": {
+          "source": "supported",
+          "implementation": "implemented_fail_closed",
+          "fixture": "same_group_and_visible_marker_descendants_passed",
+          "localIntegration": "own_fixture_processes_only",
+          "realAccounts": "unqualified",
+          "reason": "Owned groups, observable detached descendants, streams, permission and durable finalization fences are implemented. Invisible, external, async or scrubbed ownership remains recovery; unrestricted native G02 is unqualified."
+        },
+        "same_account_resume": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "owned_history_and_revision_fences_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification. Current lifecycle settlement is unqualified: even pure-text runs retain protected recovery until verified OS boot change. This is not full native switching parity."
+        },
+        "cross_account_native_resume": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "Cross-account continuation identity and real-account acceptance are unqualified."
+        },
+        "reviewed_transfer": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "portable_handoff": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "full_journal_budget_grants_and_ui_policy",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification. Current lifecycle settlement is unqualified: even pure-text runs retain protected recovery until verified OS boot change. This is not full native switching parity."
+        },
+        "quota_read": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "active_stop_and_switch": {
+          "source": "unqualified",
+          "implementation": "implemented_but_gated",
+          "fixture": "qualified_mock_flow_and_unqualified_refusal_covered",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Each admitted native client has conditional or unproven descendant ownership. Native capability is disabled until complete source/config/process qualification; Stop and next-turn selection remain explicit. Unknown effects cannot be acknowledged away."
+        },
+        "lifecycle_settlement": {
+          "source": "unqualified",
+          "implementation": "protected_recovery_until_verified_boot_change",
+          "fixture": "owned_argv_and_lifecycle_boundary_policy",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Production host cohort contains local descendants and drains owned host effects. Helper-capable configuration and opaque remote/background effects remain unqualified; generic effect uncertainty is retained."
+        }
+      },
+      "platformQualification": {
+        "source": ["unix"],
+        "fixture": "darwin-arm64",
+        "linux": "source_only_not_locally_run",
+        "windows_wsl": "managed_native_unqualified",
+        "realAccounts": "not_run"
+      }
+    },
+    {
+      "cli": "grok",
+      "versions": ["1.0.45"],
+      "platforms": ["darwin-arm64"],
+      "models": "Exact admitted native model identifier; each selected model still requires account qualification",
+      "historyKinds": ["observed_task_journal", "owned_native_history"],
+      "artifact": {
+        "sha256": "b985241c2dc8ff135994174ad65844278e470afd1b171ca6737b4960bdb66de4",
+        "manifest": "scripts/agent-grok-artifacts.json"
+      },
+      "migrationDecision": "Adopt verified physical credential root; archive old execution, journals and API configuration without dispatch",
+      "capabilities": {
+        "account_terminal": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "isolation_and_launch_admission_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification."
+        },
+        "login": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "isolated_terminal_and_auth_revision_policy_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification."
+        },
+        "verify_auth": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "managed_execution": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "wire_codec_and_durable_owner_policy_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification. Current lifecycle settlement is unqualified: even pure-text runs retain protected recovery until verified OS boot change. This is not full native switching parity."
+        },
+        "native_tools": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "native_wire_tool_ledger_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification."
+        },
+        "permission_protocol": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "wire_frames_and_ui_decision_roundtrip",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification."
+        },
+        "stop_drain": {
+          "source": "supported",
+          "implementation": "implemented_fail_closed",
+          "fixture": "same_group_and_visible_marker_descendants_passed",
+          "localIntegration": "own_fixture_processes_only",
+          "realAccounts": "unqualified",
+          "reason": "Owned groups, observable detached descendants, streams, permission and durable finalization fences are implemented. Invisible, external, async or scrubbed ownership remains recovery; unrestricted native G02 is unqualified."
+        },
+        "same_account_resume": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "owned_history_and_revision_fences_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification. Current lifecycle settlement is unqualified: even pure-text runs retain protected recovery until verified OS boot change. This is not full native switching parity."
+        },
+        "cross_account_native_resume": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "Cross-account continuation identity and real-account acceptance are unqualified."
+        },
+        "reviewed_transfer": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "portable_handoff": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "full_journal_budget_grants_and_ui_policy",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification. Current lifecycle settlement is unqualified: even pure-text runs retain protected recovery until verified OS boot change. This is not full native switching parity."
+        },
+        "quota_read": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "active_stop_and_switch": {
+          "source": "unqualified",
+          "implementation": "implemented_but_gated",
+          "fixture": "qualified_mock_flow_and_unqualified_refusal_covered",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Each admitted native client has conditional or unproven descendant ownership. Native capability is disabled until complete source/config/process qualification; Stop and next-turn selection remain explicit. Unknown effects cannot be acknowledged away."
+        },
+        "lifecycle_settlement": {
+          "source": "unqualified",
+          "implementation": "protected_recovery_until_verified_boot_change",
+          "fixture": "owned_argv_and_lifecycle_boundary_policy",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Production host cohort contains local descendants and drains owned host effects. Helper-capable configuration and opaque remote/background effects remain unqualified; generic effect uncertainty is retained."
+        }
+      },
+      "platformQualification": {
+        "source": ["darwin-arm64"],
+        "fixture": "darwin-arm64",
+        "linux": "source_only_not_locally_run",
+        "windows_wsl": "managed_native_unqualified",
+        "realAccounts": "not_run"
+      }
+    },
+    {
+      "cli": "agy",
+      "versions": ["1.2.16"],
+      "platforms": ["darwin-arm64"],
+      "models": "No managed native model admission; qualified account terminal only",
+      "historyKinds": ["account_terminal"],
+      "artifact": {
+        "sha256": "7dca095cfc1df2c057a385ed88a76c7ba98dc103258a80be87a8f42e484cb3aa"
+      },
+      "migrationDecision": "Adopt verified physical credential root; archive old execution, journals and API configuration without dispatch",
+      "capabilities": {
+        "account_terminal": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "isolation_and_launch_admission_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification."
+        },
+        "login": {
+          "source": "supported",
+          "implementation": "implemented",
+          "fixture": "isolated_terminal_and_auth_revision_policy_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Exact native source gate adopted under new owner. Offline fixture coverage does not establish real-account qualification."
+        },
+        "verify_auth": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "managed_execution": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "native_tools": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "permission_protocol": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "stop_drain": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "same_account_resume": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "cross_account_native_resume": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "Cross-account continuation identity and real-account acceptance are unqualified."
+        },
+        "reviewed_transfer": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "portable_handoff": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "quota_read": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "active_stop_and_switch": {
+          "source": "unqualified",
+          "implementation": "implemented_but_gated",
+          "fixture": "unavailable_driver_policy_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Each admitted native client has conditional or unproven descendant ownership. Native capability is disabled until complete source/config/process qualification; Stop and next-turn selection remain explicit. Unknown effects cannot be acknowledged away."
+        },
+        "lifecycle_settlement": {
+          "source": "not_applicable",
+          "implementation": "not_applicable",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "Production host cohort contains local descendants and drains owned host effects. Helper-capable configuration and opaque remote/background effects remain unqualified; generic effect uncertainty is retained."
+        }
+      },
+      "platformQualification": {
+        "source": ["darwin-arm64"],
+        "fixture": "darwin-arm64",
+        "linux": "source_only_not_locally_run",
+        "windows_wsl": "managed_native_unqualified",
+        "realAccounts": "not_run"
+      }
+    },
+    {
+      "cli": "gemini",
+      "versions": [],
+      "platforms": [],
+      "models": "No qualified managed-native subscription adapter; independent catalog/terminal integrations and legacy archive retained",
+      "historyKinds": ["legacy_archive", "independent_terminal"],
+      "artifact": {
+        "admission": "owned executable identity and exact version; prepared artifacts in scripts/agent-cli-installations.json for Kimi/Kilo/Pi"
+      },
+      "migrationDecision": "Preserve catalog, independent integrations and archived API configuration; no managed native subscription adapter",
+      "capabilities": {
+        "account_terminal": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "login": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "verify_auth": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "managed_execution": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "native_tools": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "permission_protocol": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "stop_drain": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "same_account_resume": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "cross_account_native_resume": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "reviewed_transfer": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "portable_handoff": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "quota_read": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "active_stop_and_switch": {
+          "source": "unqualified",
+          "implementation": "implemented_but_gated",
+          "fixture": "unavailable_driver_policy_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Each admitted native client has conditional or unproven descendant ownership. Native capability is disabled until complete source/config/process qualification; Stop and next-turn selection remain explicit. Unknown effects cannot be acknowledged away."
+        },
+        "lifecycle_settlement": {
+          "source": "not_applicable",
+          "implementation": "not_applicable",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "Production host cohort contains local descendants and drains owned host effects. Helper-capable configuration and opaque remote/background effects remain unqualified; generic effect uncertainty is retained."
+        }
+      },
+      "platformQualification": {
+        "source": [],
+        "fixture": "darwin-arm64",
+        "linux": "source_only_not_locally_run",
+        "windows_wsl": "managed_native_unqualified",
+        "realAccounts": "not_run"
+      }
+    },
+    {
+      "cli": "cursor",
+      "versions": [],
+      "platforms": [],
+      "models": "No qualified managed-native subscription adapter; independent catalog/terminal integrations and legacy archive retained",
+      "historyKinds": ["legacy_archive", "independent_terminal"],
+      "artifact": {
+        "admission": "owned executable identity and exact version; prepared artifacts in scripts/agent-cli-installations.json for Kimi/Kilo/Pi"
+      },
+      "migrationDecision": "Preserve catalog, independent integrations and archived API configuration; no managed native subscription adapter",
+      "capabilities": {
+        "account_terminal": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "login": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "verify_auth": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "managed_execution": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "native_tools": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "permission_protocol": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "stop_drain": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "same_account_resume": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "cross_account_native_resume": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "reviewed_transfer": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "portable_handoff": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "quota_read": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "active_stop_and_switch": {
+          "source": "unqualified",
+          "implementation": "implemented_but_gated",
+          "fixture": "unavailable_driver_policy_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Each admitted native client has conditional or unproven descendant ownership. Native capability is disabled until complete source/config/process qualification; Stop and next-turn selection remain explicit. Unknown effects cannot be acknowledged away."
+        },
+        "lifecycle_settlement": {
+          "source": "not_applicable",
+          "implementation": "not_applicable",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "Production host cohort contains local descendants and drains owned host effects. Helper-capable configuration and opaque remote/background effects remain unqualified; generic effect uncertainty is retained."
+        }
+      },
+      "platformQualification": {
+        "source": [],
+        "fixture": "darwin-arm64",
+        "linux": "source_only_not_locally_run",
+        "windows_wsl": "managed_native_unqualified",
+        "realAccounts": "not_run"
+      }
+    },
+    {
+      "cli": "copilot",
+      "versions": [],
+      "platforms": [],
+      "models": "No qualified managed-native subscription adapter; independent catalog/terminal integrations and legacy archive retained",
+      "historyKinds": ["legacy_archive", "independent_terminal"],
+      "artifact": {
+        "admission": "owned executable identity and exact version; prepared artifacts in scripts/agent-cli-installations.json for Kimi/Kilo/Pi"
+      },
+      "migrationDecision": "Preserve catalog, independent integrations and archived API configuration; no managed native subscription adapter",
+      "capabilities": {
+        "account_terminal": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "login": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "verify_auth": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "managed_execution": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "native_tools": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "permission_protocol": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "stop_drain": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "same_account_resume": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "cross_account_native_resume": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "reviewed_transfer": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "portable_handoff": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "quota_read": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "active_stop_and_switch": {
+          "source": "unqualified",
+          "implementation": "implemented_but_gated",
+          "fixture": "unavailable_driver_policy_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Each admitted native client has conditional or unproven descendant ownership. Native capability is disabled until complete source/config/process qualification; Stop and next-turn selection remain explicit. Unknown effects cannot be acknowledged away."
+        },
+        "lifecycle_settlement": {
+          "source": "not_applicable",
+          "implementation": "not_applicable",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "Production host cohort contains local descendants and drains owned host effects. Helper-capable configuration and opaque remote/background effects remain unqualified; generic effect uncertainty is retained."
+        }
+      },
+      "platformQualification": {
+        "source": [],
+        "fixture": "darwin-arm64",
+        "linux": "source_only_not_locally_run",
+        "windows_wsl": "managed_native_unqualified",
+        "realAccounts": "not_run"
+      }
+    },
+    {
+      "cli": "openclaw",
+      "versions": [],
+      "platforms": [],
+      "models": "No qualified managed-native subscription adapter; independent catalog/terminal integrations and legacy archive retained",
+      "historyKinds": ["legacy_archive", "independent_terminal"],
+      "artifact": {
+        "admission": "owned executable identity and exact version; prepared artifacts in scripts/agent-cli-installations.json for Kimi/Kilo/Pi"
+      },
+      "migrationDecision": "Preserve catalog, independent integrations and archived API configuration; no managed native subscription adapter",
+      "capabilities": {
+        "account_terminal": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "login": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "verify_auth": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "managed_execution": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "native_tools": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "permission_protocol": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "stop_drain": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "same_account_resume": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "cross_account_native_resume": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "reviewed_transfer": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "portable_handoff": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "quota_read": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "active_stop_and_switch": {
+          "source": "unqualified",
+          "implementation": "implemented_but_gated",
+          "fixture": "unavailable_driver_policy_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Each admitted native client has conditional or unproven descendant ownership. Native capability is disabled until complete source/config/process qualification; Stop and next-turn selection remain explicit. Unknown effects cannot be acknowledged away."
+        },
+        "lifecycle_settlement": {
+          "source": "not_applicable",
+          "implementation": "not_applicable",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "Production host cohort contains local descendants and drains owned host effects. Helper-capable configuration and opaque remote/background effects remain unqualified; generic effect uncertainty is retained."
+        }
+      },
+      "platformQualification": {
+        "source": [],
+        "fixture": "darwin-arm64",
+        "linux": "source_only_not_locally_run",
+        "windows_wsl": "managed_native_unqualified",
+        "realAccounts": "not_run"
+      }
+    },
+    {
+      "cli": "hermes",
+      "versions": [],
+      "platforms": [],
+      "models": "No qualified managed-native subscription adapter; independent catalog/terminal integrations and legacy archive retained",
+      "historyKinds": ["legacy_archive", "independent_terminal"],
+      "artifact": {
+        "admission": "owned executable identity and exact version; prepared artifacts in scripts/agent-cli-installations.json for Kimi/Kilo/Pi"
+      },
+      "migrationDecision": "Preserve catalog, independent integrations and archived API configuration; no managed native subscription adapter",
+      "capabilities": {
+        "account_terminal": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "login": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "verify_auth": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "managed_execution": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "native_tools": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "permission_protocol": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "stop_drain": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "same_account_resume": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "cross_account_native_resume": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "reviewed_transfer": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "portable_handoff": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "quota_read": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "active_stop_and_switch": {
+          "source": "unqualified",
+          "implementation": "implemented_but_gated",
+          "fixture": "unavailable_driver_policy_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Each admitted native client has conditional or unproven descendant ownership. Native capability is disabled until complete source/config/process qualification; Stop and next-turn selection remain explicit. Unknown effects cannot be acknowledged away."
+        },
+        "lifecycle_settlement": {
+          "source": "not_applicable",
+          "implementation": "not_applicable",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "Production host cohort contains local descendants and drains owned host effects. Helper-capable configuration and opaque remote/background effects remain unqualified; generic effect uncertainty is retained."
+        }
+      },
+      "platformQualification": {
+        "source": [],
+        "fixture": "darwin-arm64",
+        "linux": "source_only_not_locally_run",
+        "windows_wsl": "managed_native_unqualified",
+        "realAccounts": "not_run"
+      }
+    },
+    {
+      "cli": "qwen",
+      "versions": [],
+      "platforms": [],
+      "models": "No qualified managed-native subscription adapter; independent catalog/terminal integrations and legacy archive retained",
+      "historyKinds": ["legacy_archive", "independent_terminal"],
+      "artifact": {
+        "admission": "owned executable identity and exact version; prepared artifacts in scripts/agent-cli-installations.json for Kimi/Kilo/Pi"
+      },
+      "migrationDecision": "Preserve catalog, independent integrations and archived API configuration; no managed native subscription adapter",
+      "capabilities": {
+        "account_terminal": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "login": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "verify_auth": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "managed_execution": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "native_tools": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "permission_protocol": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "stop_drain": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "same_account_resume": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "cross_account_native_resume": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "reviewed_transfer": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "portable_handoff": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "quota_read": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "active_stop_and_switch": {
+          "source": "unqualified",
+          "implementation": "implemented_but_gated",
+          "fixture": "unavailable_driver_policy_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Each admitted native client has conditional or unproven descendant ownership. Native capability is disabled until complete source/config/process qualification; Stop and next-turn selection remain explicit. Unknown effects cannot be acknowledged away."
+        },
+        "lifecycle_settlement": {
+          "source": "not_applicable",
+          "implementation": "not_applicable",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "Production host cohort contains local descendants and drains owned host effects. Helper-capable configuration and opaque remote/background effects remain unqualified; generic effect uncertainty is retained."
+        }
+      },
+      "platformQualification": {
+        "source": [],
+        "fixture": "darwin-arm64",
+        "linux": "source_only_not_locally_run",
+        "windows_wsl": "managed_native_unqualified",
+        "realAccounts": "not_run"
+      }
+    },
+    {
+      "cli": "kiro",
+      "versions": [],
+      "platforms": [],
+      "models": "No qualified managed-native subscription adapter; independent catalog/terminal integrations and legacy archive retained",
+      "historyKinds": ["legacy_archive", "independent_terminal"],
+      "artifact": {
+        "admission": "owned executable identity and exact version; prepared artifacts in scripts/agent-cli-installations.json for Kimi/Kilo/Pi"
+      },
+      "migrationDecision": "Preserve catalog, independent integrations and archived API configuration; no managed native subscription adapter",
+      "capabilities": {
+        "account_terminal": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "login": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "verify_auth": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "managed_execution": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "native_tools": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "permission_protocol": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "stop_drain": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "same_account_resume": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "cross_account_native_resume": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "reviewed_transfer": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "portable_handoff": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "quota_read": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "active_stop_and_switch": {
+          "source": "unqualified",
+          "implementation": "implemented_but_gated",
+          "fixture": "unavailable_driver_policy_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Each admitted native client has conditional or unproven descendant ownership. Native capability is disabled until complete source/config/process qualification; Stop and next-turn selection remain explicit. Unknown effects cannot be acknowledged away."
+        },
+        "lifecycle_settlement": {
+          "source": "not_applicable",
+          "implementation": "not_applicable",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "Production host cohort contains local descendants and drains owned host effects. Helper-capable configuration and opaque remote/background effects remain unqualified; generic effect uncertainty is retained."
+        }
+      },
+      "platformQualification": {
+        "source": [],
+        "fixture": "darwin-arm64",
+        "linux": "source_only_not_locally_run",
+        "windows_wsl": "managed_native_unqualified",
+        "realAccounts": "not_run"
+      }
+    },
+    {
+      "cli": "vibe",
+      "versions": [],
+      "platforms": [],
+      "models": "No qualified managed-native subscription adapter; independent catalog/terminal integrations and legacy archive retained",
+      "historyKinds": ["legacy_archive", "independent_terminal"],
+      "artifact": {
+        "admission": "owned executable identity and exact version; prepared artifacts in scripts/agent-cli-installations.json for Kimi/Kilo/Pi"
+      },
+      "migrationDecision": "Preserve catalog, independent integrations and archived API configuration; no managed native subscription adapter",
+      "capabilities": {
+        "account_terminal": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "login": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "verify_auth": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "managed_execution": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "native_tools": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "permission_protocol": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "stop_drain": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "same_account_resume": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "cross_account_native_resume": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "reviewed_transfer": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "portable_handoff": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "quota_read": {
+          "source": "unqualified",
+          "implementation": "disabled",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "No qualified subscription-native contract for this capability in the adopted source."
+        },
+        "active_stop_and_switch": {
+          "source": "unqualified",
+          "implementation": "implemented_but_gated",
+          "fixture": "unavailable_driver_policy_only",
+          "localIntegration": "not_run_with_native_cli",
+          "realAccounts": "unqualified",
+          "reason": "Each admitted native client has conditional or unproven descendant ownership. Native capability is disabled until complete source/config/process qualification; Stop and next-turn selection remain explicit. Unknown effects cannot be acknowledged away."
+        },
+        "lifecycle_settlement": {
+          "source": "not_applicable",
+          "implementation": "not_applicable",
+          "fixture": "not_applicable",
+          "localIntegration": "not_applicable",
+          "realAccounts": "unqualified",
+          "reason": "Production host cohort contains local descendants and drains owned host effects. Helper-capable configuration and opaque remote/background effects remain unqualified; generic effect uncertainty is retained."
+        }
+      },
+      "platformQualification": {
+        "source": [],
+        "fixture": "darwin-arm64",
+        "linux": "source_only_not_locally_run",
+        "windows_wsl": "managed_native_unqualified",
+        "realAccounts": "not_run"
+      }
+    }
+  ],
+  "processQualification": "docs/agent-runtime-process-qualification.json",
+  "localPlatform": "macOS ARM64; native CLI real-account execution not run",
+  "fixtureEvidence": {
+    "accountIsolation": ["src-tauri/src/agent_runtime/native_accounts.rs"],
+    "nativeWire": [
+      "src-tauri/src/agent_runtime/native_wire.rs",
+      "tests/ui/agent-runtime.spec.ts"
+    ],
+    "nativeHistory": ["src-tauri/src/agent_runtime/native_history.rs"],
+    "taskPolicy": [
+      "src-tauri/src/agent_runtime/tests.rs",
+      "tests/agent-runtime.test.ts"
+    ],
+    "processOwnership": [
+      "src-tauri/src/agent_runtime/process_owner_tests.rs",
+      "src-tauri/src/agent_runtime/process_supervision.rs"
+    ],
+    "piTransfer": [
+      "src-tauri/src/agent_runtime/native_transfer.rs",
+      "tests/ui/agent-runtime.spec.ts"
+    ],
+    "migration": ["src-tauri/src/agent_runtime/migration/mod.rs"]
+  },
+  "remainingGates": [
+    "Authorized isolated real accounts and budgets for exact-version/model G01/G08/G09 acceptance",
+    "Restricted G02 qualification: native Stop/drain and same-boot A/B/C including tool outcomes; active Stop-to-B remains disabled until qualified",
+    "Helper-capable non-Codex/Claude configurations and arbitrary remote/background effects remain explicitly unqualified",
+    "Real native auth/provider TLS/account PTY compatibility; opaque keyring credentials require native file-backed login, no secret migration"
+  ],
+  "productQualification": "Restricted host implementation is integrated; full production acceptance awaits real-account and native tool/effect qualification. Local coalition retirement alone does not prove arbitrary remote/helper effects.",
+  "productAcceptance": {
+    "state": "pending_qualification",
+    "gates": ["G02", "real-account G01/G08/G09"],
+    "reason": "Owned same-boot local retirement is implemented. Restricted Codex/Claude configuration admission is implemented; unknown background/remote tools and helper-capable other families remain fenced. Active Stop-to-B and cross-account native resume stay disabled until qualification.",
+    "nativeCrossAccountResume": "disabled",
+    "nativeCloseQualification": "Qualified locally in real WebKit/Tauri: two restored references, reload, Dockview move, final close once, prepare/save/drain/normal exit 0; unresolved same-boot ownership refuses close/quit and retains the final view. Does not qualify G02/native CLI lifecycle."
+  },
+  "workingTreeBaseCommit": "b3600dafc4a867d1629caf38a7137171df9f533b",
+  "concurrentCommitsPreserved": [
+    "023eb1242329a1e3e1fb86aa5345a3e85053b40a",
+    "b3600dafc4a867d1629caf38a7137171df9f533b"
+  ],
+  "productionPreparation": {
+    "state": "restricted_host_locally_verified_account_qualification_pending",
+    "userDecision": "Host-native clients with explicit restricted configurations; complete independent work before real test accounts are supplied.",
+    "host": "macOS 27.0.1, xnu-13432.1.9, darwin-arm64",
+    "processBoundary": "Production macOS host worker and fresh native runner are included in normal builds. Durable parent-indexed intents precede every version/collector/turn/account PTY; no managed direct-spawn fallback. Previously proved, sealed kernel coalition ESRCH plus drained host effects retires local ownership in the same boot. EOF, PID scans and timeouts never substitute for that receipt. Exact admission: Darwin 27.0.0/build 26A434/ARM64.",
+    "mcpBoundary": "Fresh audit-token/cohort attribution captures immutable account/auth/task/attempt/generation and durable physical project identity. The owned Lomi MCP registration permits only project observations through server-resolved opaque workspace aliases. Unmatched peers retain Status/Connect ceiling during native ownership. Existing sessions, labels and YOLO cannot widen either ceiling; effect guards span actual completion and Stop.",
+    "accounts": "Deferred by user; no real account or inference executed.",
+    "accountRecovery": "Optional schema-1 DTO; verified OS restart plus explicit effects review atomically invalidates auth/grants without replay. Frontend preserves failed review and refuses same-boot acknowledgement overrides.",
+    "artifactAdmission": "Official Codex 0.160.0 and Claude 2.1.287 native darwin-arm64 SHA-256 files admitted before --version; wrappers and identity/path mutations rejected. Linux and macOS Intel support is explicitly unavailable for these artifacts.",
+    "nativeRestrictions": "Codex/Claude passive configuration allowlists reject hooks, foreign MCP, provider routes, execution helpers and managed-policy overrides. Fixed file credential storage for Codex and correlated effective config/read precede session/prompt. Claude restricted tools, disabled ordinary hooks/plugins/skills/connectors/Chrome and strict owned-or-empty MCP. Configuration files remain protected; Claude login-only state bookkeeping is writable. HTTPS CONNECT proxy allows exact provider authorities, authenticates before DNS, rejects nonpublic addresses and drains sockets on Stop. Public CA file is readonly; no securityd/trustd delegation.",
+    "accountLogin": "Exact Codex login / Claude auth login subcommands under fixed restrictions, with final artifact admission at PTY spawn; no dependency on interactive slash commands. Public --help parsing tested without completing OAuth.",
+    "remainingAcceptance": "Authorized real-account authentication/provider TLS/model/native PTY, native tools/effects/Stop/crash/history grants/same-account resume/A-B-C handoff and restricted G02 qualification. All independent implementation and local checks are complete.",
+    "sourceReview": "Closed: no remaining material findings in reviewed production changes or final test-only lint corrections.",
+    "preferenceCompatibility": {
+      "result": "Owned exact Codex config/read includeLayers succeeds with readonly com.openai.codex cfprefsd/shared-memory grants. Earlier four failures are historical, before exact shared-memory read repair. No preference writes or broad Mach services admitted.",
+      "evidence": "/private/tmp/lomi-owned-codex-preferences-qqkcl_hb/shm-mcp.json"
+    },
+    "supervisorRequirement": "Normal unsandboxed host supervisor; macOS launchd refuses bootstrap from an externally sandboxed caller. Managed native children retain the exact production SBPL.",
+    "claudeCredentialSelection": {
+      "version": "2.1.287",
+      "implementation": "Trusted exact staged security selector on fixed managed PATH; original OAuth private-file fallback. No Keychain calls or secret echo. Interactive input bounded to 256 KiB and 2 s monotonic deadline.",
+      "storageFlows": "OAuth only; console/device/API-key-only credential storage unsupported",
+      "sourceDerivedFixture": {
+        "passed": 10,
+        "fullCliAccountQualification": false,
+        "script": "tests/native/claude-oauth-file-store.cjs",
+        "result": "/private/tmp/lomi-claude-oauth-owned-fixture/result.json"
+      }
+    },
+    "loopbackReservation": {
+      "admission": "Both exact 127.0.0.1 and ::1 TCP sockets are bound at the selected numeric port before native release. IPv6 occupation refuses admission; both listeners share authentication before DNS, provider authority checks and effect accounting.",
+      "stop": "Cancel closes accepted/tunnel sockets and stops acceptance while original listening sockets remain reserved. The immutable boundary retains the Proxy through failed Stop and Child Drop; same-process restore recovers the scope.",
+      "release": "Only job seal, fresh kernel ESRCH, drained effects and durable Retired release retained resources. Resource destructors run outside the retirement-hold mutex.",
+      "qualificationLimit": "Reservation survival across a supervisor process crash or forced termination is unqualified. Interrupted delivery and unobserved external effects retain recovery fences; no automatic replay or G02 claim."
+    },
+    "claudeTemporaryDirectory": {
+      "implementation": "Stable private short wrapper with exact symlink to the existing canonical account/.native-tmp. Real/effective UID equality, byte budget, private owner/mode, link target, no extra entries and inode identities are verified before Held release.",
+      "authority": "Existing physical account temporary write grant; readonly wrapper runtime grant. No writable shared /tmp grant.",
+      "versionProbe": "Exact --version retains its transient private probe cwd and creates no permanent account alias.",
+      "sourceFixture": {
+        "passed": 5,
+        "script": "tests/native/claude-temp-directory.cjs",
+        "result": "/private/tmp/lomi-claude-temp-directory-source-result.json",
+        "fullCliQualification": false
+      },
+      "heldIntegration": {
+        "passed": 1,
+        "checks": 8,
+        "log": "/private/tmp/lomi-claude-short-alias-held-final-test.log"
+      },
+      "nativeDesktop": {
+        "passed": true,
+        "root": "/private/var/folders/q6/xvq1c0vj24n0cnh7hrysr4k40000gn/T/lomi-agent-runtime-desktop-VgrCZT",
+        "result": "/private/var/folders/q6/xvq1c0vj24n0cnh7hrysr4k40000gn/T/lomi-agent-runtime-desktop-VgrCZT/result.json",
+        "log": "/private/tmp/lomi-production-short-alias-final-desktop.log",
+        "buildLog": "/private/tmp/lomi-production-short-alias-final-build.log",
+        "checks": [
+          "normal production worker and runner execute",
+          "shared native launch has a durable intent before release",
+          "sealed kernel retirement finalizes while Child retains its lock",
+          "owned helper and process fences settle",
+          "completed checkpoint survives store reopening"
+        ],
+        "ownedPtyChecks": [
+          "owned interactive PTY stopped by application drain",
+          "transport completion precedes delayed durable helper finalization",
+          "application drain waits finalization token and positive helper ledger"
+        ],
+        "claudeNativeFileStatus": [
+          {
+            "syntheticFile": false,
+            "loggedIn": false,
+            "exit": 1
+          },
+          {
+            "syntheticFile": true,
+            "loggedIn": true,
+            "exit": 0
+          },
+          {
+            "syntheticFile": false,
+            "loggedIn": false,
+            "exit": 1
+          }
+        ],
+        "outcomes": [
+          "normal-quit-exited-zero",
+          "close-and-quit-refused-view-retained"
+        ],
+        "realAccounts": false,
+        "inference": false
+      }
+    }
+  },
+  "historicalVerification": {
+    "date": "2026-10-06",
+    "platform": "darwin-arm64",
+    "node": "22.22.3",
+    "pnpm": "11.25.0",
+    "rust": "1.98.0",
+    "scope": "Previous frozen candidate; superseded by production host adoption. Historical test-only/artifact statements do not qualify current source.",
+    "checks": [
+      {
+        "command": "pnpm check",
+        "result": "passed",
+        "log": "/tmp/lomi-host-mcp-frontend-check.log"
+      },
+      {
+        "command": "pnpm test",
+        "result": "246 frontend/domain + 45 AI passed",
+        "log": "/tmp/lomi-host-mcp-frontend-test-final.log"
+      },
+      {
+        "command": "pnpm build",
+        "result": "passed; final host/MCP desktop and normal debug beforeBuild repeated check/build",
+        "log": "/tmp/lomi-host-mcp-debug-build-final.log"
+      },
+      {
+        "command": "pnpm test:rust",
+        "result": "873 passed, 0 failed, 43 explicit ignored; final frozen locked workspace and doctests after host/MCP repairs",
+        "log": "/tmp/lomi-host-mcp-rust-workspace-final.log"
+      },
+      {
+        "command": "pnpm check:rust",
+        "result": "passed; locked workspace/all-targets",
+        "log": "/tmp/lomi-host-mcp-rust-check-final.log"
+      },
+      {
+        "command": "cargo clippy --manifest-path src-tauri/Cargo.toml --locked -- -D warnings",
+        "result": "passed",
+        "log": "/tmp/lomi-host-mcp-clippy-final.log"
+      },
+      {
+        "command": "cargo fmt --manifest-path src-tauri/Cargo.toml --check",
+        "result": "passed",
+        "log": "/tmp/lomi-host-mcp-rust-format-final.log"
+      },
+      {
+        "command": "pnpm test:mcp",
+        "result": "8 passed",
+        "log": "/tmp/lomi-host-mcp-protocol-tests.log"
+      },
+      {
+        "command": "Changed agent-runtime/application-close/workbench/editor-native-freeze/editor-project-freeze/source-control Playwright specs",
+        "result": "75 Chromium + 75 WebKit passed; new unavailable-platform regression run separately in each browser",
+        "logs": [
+          "/tmp/lomi-agent-production-chromium-changed-final.log",
+          "/tmp/lomi-agent-production-webkit-changed2.log",
+          "/tmp/lomi-agent-unavailable-account-chromium.log",
+          "/tmp/lomi-agent-unavailable-account-webkit.log"
+        ]
+      },
+      {
+        "command": "agent_runtime Rust focused suite after equivalent lint fixes",
+        "result": "105 passed, 1 isolated artifact fixture ignored",
+        "log": "/tmp/lomi-agent-final-native-lint-regression.log"
+      },
+      {
+        "command": "Isolated official Pi artifact fixture",
+        "result": "1 separately passed; wrapper and dependency mutation refused; no CLI inference executed",
+        "log": "/tmp/lomi-pi-artifact-qualified.log"
+      },
+      {
+        "command": "pnpm tauri build --debug --no-bundle --no-sign --ci --config <isolated identifier, devUrl null> -- --locked",
+        "result": "passed: final normal debug, embedded frontend, no native-smoke feature, no host-worker entry or strong audited-signal/private-coalition import",
+        "log": "/tmp/lomi-host-mcp-debug-build-final.log"
+      },
+      {
+        "command": "Isolated desktop startup and reopen with fresh HOME and outbound network denied",
+        "result": "2 startup runs + 2 synthetic archive reopens passed; schema 1/session v5, 2 views of 1 archived Task, accounts/outbox/process ownership 0",
+        "logs": [
+          "/tmp/lomi-agent-desktop-smoke-result.json",
+          "/tmp/lomi-agent-desktop-archive-smoke-result.json"
+        ]
+      },
+      {
+        "command": "node scripts/check-agent-runtime-cutover.mjs --bundle",
+        "result": "passed; old executable owner/IPC absent",
+        "log": "/tmp/lomi-host-mcp-cutover-final.log"
+      },
+      {
+        "command": "node tests/native/agent-runtime-desktop.mjs",
+        "result": "passed with strengthened completed=true/false and strict ordering assertions; fresh compiled WebKit/Tauri shared-task restore/reload/move/final-close and normal quit; unknown ownership retains final view and refuses quit; schema1 fixture backup/upgraded to internal2, accounts/outbox0",
+        "log": "/tmp/lomi-host-mcp-desktop-final.log",
+        "evidence": "/private/var/folders/q6/xvq1c0vj24n0cnh7hrysr4k40000gn/T/lomi-agent-runtime-desktop-2OVX1K/result.json"
+      },
+      {
+        "command": "CI=1 pnpm test:ui --workers=4",
+        "result": "737 passed, 0 failed, 1 existing plugin-author fixture skip; completed full run before later account-recovery UI, which passed separately in both browsers",
+        "log": "/tmp/lomi-agent-production-chromium-full2.log"
+      },
+      {
+        "command": "agent_runtime focused Rust suite after final review fixes",
+        "result": "133 passed, 0 failed, 7 explicit ignored; later fixed login-policy6 and terminal19 passed",
+        "logs": [
+          "/tmp/lomi-agent-final-runtime3.log",
+          "/tmp/lomi-native-policy-login-cargo-tests.log",
+          "/tmp/lomi-agent-final-terminal2.log"
+        ]
+      },
+      {
+        "command": "Official Codex/Claude artifact byte fixture",
+        "result": "1 separately passed; hashes only, never executes native code",
+        "log": "/tmp/lomi-native-artifact-public-tests.log"
+      },
+      {
+        "command": "Public exact Codex/Claude fixed arguments with --help/--version/auth status/login --help",
+        "result": "all mode parse checks passed; loggedIn false/NotLoggedIn in fresh HOME/env_clear; outbound/user-HOME/securityd denied; no credentials/inference",
+        "evidence": "/var/folders/q6/xvq1c0vj24n0cnh7hrysr4k40000gn/T/lomi-native-policy-modes-3dsaodbx/result.json"
+      },
+      {
+        "command": "pnpm tauri build --no-bundle --no-sign --ci --config <isolated identifier, devUrl null> -- --locked",
+        "result": "passed: final optimized release, embedded frontend, no qualification features or test-only host-worker entry; no strong audited-signal/private-coalition import",
+        "log": "/tmp/lomi-host-mcp-release-build-final.log",
+        "artifactManifest": "/tmp/lomi-agent-production-release-artifact.json"
+      },
+      {
+        "command": "Host-boundary exact native opt-in fixtures, serial",
+        "result": "10 passed, 0 failed, 423.79 s; complete exact Codex/Claude help, original containment, anonymous stdin/output/error, delegation refusal and canonical/Data alias denials. Test-only, not production G02.",
+        "log": "/private/tmp/lomi-held-narrow-system-fixtures-jyggrsgq/all-native-serial.log"
+      },
+      {
+        "command": "Sentinel audit-guard cleanup targeted delegation rerun",
+        "result": "1 passed, 0 failed, 30.88 s; no sandbox or relay changes",
+        "log": "/private/tmp/lomi-held-audit-sentinel-fixture-jfm03809/delegation.log"
+      },
+      {
+        "command": "Runtime MCP policy focused tests plus explicit serial admission fixtures",
+        "result": "3 regular + 3 serial passed; active/helper ceiling, Send/switch before mutation, actual Unix TLS broker and YOLO reconnect",
+        "logs": [
+          "/tmp/lomi-host-mcp-runtime-tests-final.log",
+          "/tmp/lomi-host-mcp-admission-serial.log",
+          "/tmp/lomi-host-mcp-native-broker-serial.log"
+        ]
+      },
+      {
+        "command": "Deferred broker policy and effect-lifetime focused tests",
+        "result": "6 policy + 68 broker integration passed; reviewer independently repeated 6 policy tests"
+      },
+      {
+        "command": "Owned Codex managed preference compatibility",
+        "result": "All four domain-scoped profiles failed config/read includeLayers with CFPreferencesAppSynchronize failure; compatibility remains unqualified",
+        "evidence": "/private/tmp/lomi-owned-codex-preferences-qqkcl_hb/manifest.json"
+      }
+    ],
+    "notFullyPassed": [
+      "Existing global Prettier failures in unrelated remote-terminal files; changed scope passed.",
+      "Existing stricter workspace/all-targets Clippy failures in vendored snow; required app Clippy passed without lint suppression.",
+      "Real-account G01/G08/G09 and unrestricted lifecycle/process G02 remain unqualified.",
+      "Test-only host boundary: ten native fixtures now pass serially. Two earlier concurrent startups failed before held publication with cause unproven. Normal runtime/PTY adoption, native configuration/auth/TLS and delegated-service lifecycle remain unqualified."
+    ],
+    "desktopArtifact": {
+      "path": "/Users/woro/Documents/Lomi/lomi/src-tauri/target/debug/lomi",
+      "sha256": "3167e31fbbfa17172e573272bd9d1a0cf3ce98b354c132e4f5d6402594a1cb7b",
+      "bytes": 220613432,
+      "identifier": "dev.lomi.agent-runtime-smoke-20261006",
+      "kind": "debug no-bundle no-sign; embedded frontend; no native-smoke",
+      "strongAuditSignalOrPrivateCoalitionImports": false,
+      "hostWorkerEntry": false,
+      "nativeSmokeEntry": false,
+      "log": "/tmp/lomi-host-mcp-debug-build-final.log"
+    },
+    "finalEvidenceManifest": "/tmp/lomi-agent-final-evidence.json",
+    "commitPolicy": "This runtime implementation session created no commit or PR. Separate concurrent Explorer/UI commits are preserved; lomiSourceCommit is the audited baseline and workingTreeBaseCommit is the final shared HEAD.",
+    "releaseArtifact": {
+      "path": "/Users/woro/Documents/Lomi/lomi/src-tauri/target/release/lomi",
+      "sha256": "d792b482ac098b36acc084edccc9812a61595eab2f4692a0952b6f76ebc7727a",
+      "bytes": 74877744,
+      "identifier": "dev.lomi.agent-runtime-release-check-20261006",
+      "kind": "optimized release no-bundle no-sign; embedded frontend; no native-smoke",
+      "strongAuditSignalOrPrivateCoalitionImports": false,
+      "hostWorkerEntry": false,
+      "nativeSmokeEntry": false,
+      "log": "/tmp/lomi-host-mcp-release-build-final.log"
+    }
+  },
+  "localVerification": {
+    "state": "passed",
+    "date": "2026-10-06",
+    "platform": "darwin-arm64 / macOS 27.0.1 build 26A434",
+    "checks": [
+      {
+        "name": "rustWorkspace",
+        "passed": 917,
+        "failed": 0,
+        "ignored": 56,
+        "suites": 24,
+        "workspaceLocked": true,
+        "doctestsIncluded": true,
+        "finalSource": true,
+        "log": "/tmp/lomi-production-complete-rust-workspace.log"
+      },
+      {
+        "name": "rustCheck",
+        "passed": true,
+        "workspaceAllTargetsLocked": true,
+        "log": "/tmp/lomi-production-complete-rust-check.log"
+      },
+      {
+        "name": "clippy",
+        "passed": true,
+        "allTargets": true,
+        "warningsDenied": true,
+        "log": "/tmp/lomi-production-complete-clippy.log"
+      },
+      {
+        "name": "mcpProtocol",
+        "passed": 8,
+        "failed": 0,
+        "log": "/tmp/lomi-production-complete-mcp.log"
+      },
+      {
+        "name": "frontendTests",
+        "domain": 246,
+        "ai": 45,
+        "passed": true,
+        "log": "/tmp/lomi-production-final-frontend-tests.log"
+      },
+      {
+        "name": "frontendCheck",
+        "passed": true,
+        "log": "/tmp/lomi-production-final-frontend-check.log"
+      },
+      {
+        "name": "frontendBuild",
+        "passed": true,
+        "log": "/tmp/lomi-production-final-frontend-build.log"
+      },
+      {
+        "name": "uiTests",
+        "changedChromium": 55,
+        "changedWebKit": 55,
+        "qualificationNoticeChromium": 2,
+        "qualificationNoticeWebKit": 2,
+        "failed": 0,
+        "logs": [
+          "/tmp/lomi-production-final-ui-chromium.log",
+          "/tmp/lomi-production-final-ui-webkit.log",
+          "/tmp/lomi-production-final-notice-chromium.log",
+          "/tmp/lomi-production-final-notice-webkit.log"
+        ]
+      },
+      {
+        "name": "hostBoundary",
+        "normalBuildIncluded": true,
+        "restrictedOs": "Darwin 27.0.0/build26A434/ARM64",
+        "nativeFixtures": {
+          "passed": 24,
+          "failed": 0,
+          "log": "/private/tmp/lomi-host-boundary-final-validation.log"
+        },
+        "qualification": false
+      },
+      {
+        "name": "nativeDesktop",
+        "passed": true,
+        "root": "/private/var/folders/q6/xvq1c0vj24n0cnh7hrysr4k40000gn/T/lomi-agent-runtime-desktop-VgrCZT",
+        "result": "/private/var/folders/q6/xvq1c0vj24n0cnh7hrysr4k40000gn/T/lomi-agent-runtime-desktop-VgrCZT/result.json",
+        "log": "/private/tmp/lomi-production-short-alias-final-desktop.log",
+        "buildLog": "/private/tmp/lomi-production-short-alias-final-build.log",
+        "checks": [
+          "normal production worker and runner execute",
+          "shared native launch has a durable intent before release",
+          "sealed kernel retirement finalizes while Child retains its lock",
+          "owned helper and process fences settle",
+          "completed checkpoint survives store reopening"
+        ],
+        "ownedPtyChecks": [
+          "owned interactive PTY stopped by application drain",
+          "transport completion precedes delayed durable helper finalization",
+          "application drain waits finalization token and positive helper ledger"
+        ],
+        "claudeNativeFileStatus": [
+          {
+            "syntheticFile": false,
+            "loggedIn": false,
+            "exit": 1
+          },
+          {
+            "syntheticFile": true,
+            "loggedIn": true,
+            "exit": 0
+          },
+          {
+            "syntheticFile": false,
+            "loggedIn": false,
+            "exit": 1
+          }
+        ],
+        "outcomes": [
+          "normal-quit-exited-zero",
+          "close-and-quit-refused-view-retained"
+        ],
+        "realAccounts": false,
+        "inference": false
+      },
+      {
+        "name": "correlatedConfiguration",
+        "passed": 3,
+        "failed": 0,
+        "log": "/private/tmp/lomi-native-configuration-query-tests.log"
+      },
+      {
+        "name": "managedConfiguration",
+        "passed": 6,
+        "failed": 0,
+        "log": "/private/tmp/lomi-managed-config-final-six.log"
+      },
+      {
+        "name": "storeBoundary",
+        "passed": 7,
+        "failed": 0,
+        "log": "/private/tmp/lomi-store-boundary-final-seven.log"
+      },
+      {
+        "name": "networkProxy",
+        "passed": 6,
+        "failed": 0,
+        "log": "/private/tmp/lomi-dual-network-final-tests.log",
+        "coverage": [
+          "IPv4 and IPv6 authenticated opaque TLS bidirectional tunnelling",
+          "Both families deny unauthenticated or ambiguous authority before DNS",
+          "Cancellation preserves both exact listening sockets until owner release",
+          "Occupied IPv6 endpoint refuses transport admission",
+          "Nonpublic IP rejection",
+          "Outbound failure drains accepted connections"
+        ]
+      },
+      {
+        "name": "proxyRetirementRetention",
+        "passed": 1,
+        "failed": 0,
+        "seconds": 35.19,
+        "log": "/private/tmp/lomi-proxy-retirement-resource-test.log",
+        "scope": "Real held command trusted exit; live effect makes Child Drop fail retirement. Both reserved ports remain occupied; restore recovers same effect scope; only effect drain plus physical/durable receipt releases reservations."
+      },
+      {
+        "name": "actualOwnedCohortBroker",
+        "passed": 1,
+        "failed": 0,
+        "threeCohorts": true,
+        "log": "/private/tmp/lomi-owned-cohort-broker.log"
+      },
+      {
+        "name": "previousBootRecovery",
+        "passed": 1,
+        "failed": 0,
+        "log": "/private/tmp/lomi-owned-old-boot-recovery-final.log"
+      },
+      {
+        "name": "claudeOAuthSourceFixture",
+        "passed": 10,
+        "failed": 0,
+        "fullCliAccountQualification": false,
+        "result": "/private/tmp/lomi-claude-oauth-owned-fixture/result.json",
+        "script": "/Users/woro/Documents/Lomi/lomi/tests/native/claude-oauth-file-store.cjs"
+      },
+      {
+        "name": "claudeTempSourceFixture",
+        "passed": 5,
+        "failed": 0,
+        "result": "/private/tmp/lomi-claude-temp-directory-source-result.json",
+        "script": "tests/native/claude-temp-directory.cjs",
+        "fullCliQualification": false,
+        "scope": "Original pinned hl/nEe/UYo functions, actual private data writer and alias, plus denied adapter for known long-path shared-directory fallback."
+      },
+      {
+        "name": "claudeShortAliasHeld",
+        "passed": 1,
+        "failed": 0,
+        "checks": 8,
+        "seconds": 16.77,
+        "log": "/private/tmp/lomi-claude-short-alias-held-final-test.log",
+        "scope": "Original pinned Claude S/nEe/UYo under actual Held production Seatbelt: private physical write, no shared fallback, wrapper unlink/rename denied, shared/unrelated /tmp denied, escape symlink read/write denied."
+      },
+      {
+        "name": "claudeShortAliasUnit",
+        "passed": 1,
+        "failed": 0,
+        "log": "/private/tmp/lomi-claude-short-alias-unit-tests.log"
+      },
+      {
+        "name": "desktopArtifact",
+        "binary": "/Users/woro/Documents/Lomi/lomi/src-tauri/target/debug/lomi",
+        "bytes": 223348120,
+        "sha256": "14b6c08ec800f1c451d14e6324e7909658d295333f14a6a7d0c6dfb989d941e6",
+        "nativeSmokeFixtureExcluded": true,
+        "ownedFixtureRoot": "/private/tmp/lomi-normal-artifact-ayx0pe08",
+        "passed": 7,
+        "failed": 0,
+        "checks": [
+          {
+            "check": "find-generic-password",
+            "passed": true,
+            "exit": 44
+          },
+          {
+            "check": "delete-generic-password",
+            "passed": true,
+            "exit": 44
+          },
+          {
+            "check": "add-generic-password",
+            "passed": true,
+            "exit": 1
+          },
+          {
+            "check": "open-stdin",
+            "passed": true,
+            "seconds": 2.041,
+            "exit": 1
+          },
+          {
+            "check": "open-partial-stdin",
+            "passed": true,
+            "seconds": 2.065,
+            "exit": 1
+          },
+          {
+            "check": "--agent-runtime-host-worker:missing-root",
+            "passed": true,
+            "exit": 2
+          },
+          {
+            "check": "--agent-runtime-host-native-child:missing-root",
+            "passed": true,
+            "exit": 2
+          }
+        ],
+        "buildLog": "/tmp/lomi-production-complete-debug-build.log",
+        "entryLog": "/tmp/lomi-production-complete-debug-entry.log",
+        "importsLog": "/tmp/lomi-production-complete-debug-imports.txt",
+        "noStrongOptionalAuditSignalOrCoalitionImport": true,
+        "embeddedFrontend": true,
+        "nativeSmokeFeature": false
+      },
+      {
+        "name": "releaseArtifact",
+        "binary": "/Users/woro/Documents/Lomi/lomi/src-tauri/target/release/lomi",
+        "bytes": 75642800,
+        "sha256": "feaa0e83bbf9acb956be88bb76fd1e8b42187c1404f92f4fd71cae42c5e913e3",
+        "nativeSmokeFixtureExcluded": true,
+        "ownedFixtureRoot": "/private/tmp/lomi-normal-artifact-mk5fcc3k",
+        "passed": 7,
+        "failed": 0,
+        "checks": [
+          {
+            "check": "find-generic-password",
+            "passed": true,
+            "exit": 44
+          },
+          {
+            "check": "delete-generic-password",
+            "passed": true,
+            "exit": 44
+          },
+          {
+            "check": "add-generic-password",
+            "passed": true,
+            "exit": 1
+          },
+          {
+            "check": "open-stdin",
+            "passed": true,
+            "seconds": 2.04,
+            "exit": 1
+          },
+          {
+            "check": "open-partial-stdin",
+            "passed": true,
+            "seconds": 2.05,
+            "exit": 1
+          },
+          {
+            "check": "--agent-runtime-host-worker:missing-root",
+            "passed": true,
+            "exit": 2
+          },
+          {
+            "check": "--agent-runtime-host-native-child:missing-root",
+            "passed": true,
+            "exit": 2
+          }
+        ],
+        "buildLog": "/tmp/lomi-production-complete-release-build.log",
+        "entryLog": "/tmp/lomi-production-complete-release-entry.log",
+        "importsLog": "/tmp/lomi-production-complete-release-imports.txt",
+        "noStrongOptionalAuditSignalOrCoalitionImport": true,
+        "embeddedFrontend": true,
+        "nativeSmokeFeature": false
+      },
+      {
+        "name": "finalChecks",
+        "state": "passed",
+        "cutover": {
+          "passed": true,
+          "log": "/tmp/lomi-production-complete-cutover.log"
+        },
+        "diffCheck": {
+          "passed": true,
+          "log": "/tmp/lomi-production-complete-diff-check.log"
+        },
+        "rustfmtBeforeShortTempAlias": {
+          "passed": true,
+          "log": "/tmp/lomi-production-frozen-rustfmt.log"
+        },
+        "scopedPrettier": {
+          "passed": true,
+          "files": 59,
+          "log": "/tmp/lomi-production-complete-scoped-format.log"
+        },
+        "rustfmt": {
+          "passed": true,
+          "log": "/tmp/lomi-production-complete-rustfmt.log"
+        },
+        "sourceFilesUnchanged": true,
+        "releaseEntry": {
+          "passed": 7,
+          "failed": 0,
+          "log": "/tmp/lomi-production-complete-release-entry.log"
+        }
+      }
+    ],
+    "finalEvidenceManifest": "/tmp/lomi-agent-final-evidence.json",
+    "sourceManifest": {
+      "file": "/tmp/lomi-production-frozen-source.json",
+      "sha256": "545272d4f25584e48224e078c72dc0ebcb54c4e976e5dd632f0dac0ae4bd20f0"
+    },
+    "preservation": {
+      "head": "b3600dafc4a867d1629caf38a7137171df9f533b",
+      "authDiffExactlyPreserved": true,
+      "pnpmLockUnchanged": true,
+      "cargoLockOnlyIntentionalExistingAnyhowDependency": true,
+      "codexMetadataAndNoticeByteIdentical": true,
+      "externalCommitsPreserved": true
+    }
+  }
+}

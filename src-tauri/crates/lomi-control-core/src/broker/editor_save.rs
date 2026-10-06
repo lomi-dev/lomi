@@ -119,6 +119,7 @@ impl Broker {
         body: EditorSaveBody,
         encode: impl FnOnce(&[u8], &str) -> Result<Vec<u8>, ErrorCode>,
     ) -> Result<EditorSaved, ErrorCode> {
+        let _request_permit = self.check_work_request(operation)?;
         let _project_write = self.project_write_admission()?;
         let (command, owner, directory, permit, connected, policy) = {
             let mut state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
@@ -130,7 +131,7 @@ impl Broker {
             {
                 return Err(ErrorCode::ControlRevoked);
             }
-            work.native_permit.check()?;
+            work.native_permit.check_local()?;
             let UiAction::EditorSave(command) = &work.command.action else {
                 return Err(ErrorCode::ScopeDenied);
             };
@@ -161,7 +162,7 @@ impl Broker {
             result
         };
         let check = || {
-            permit.check()?;
+            permit.revalidate()?;
             if !connected.load(Ordering::SeqCst)
                 || self.authorization.load(Ordering::SeqCst) != policy
             {

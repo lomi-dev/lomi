@@ -186,6 +186,7 @@ impl Broker {
         operation: &str,
         nonce: &str,
     ) -> Result<PreparedGitView, ErrorCode> {
+        let _request_permit = self.check_work_request(operation)?;
         let (command, owner, directory, permit, alive, policy) = {
             let mut state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
             let work = state.work.get(operation).ok_or(ErrorCode::ControlRevoked)?;
@@ -199,7 +200,7 @@ impl Broker {
             if work.command.domain_revision != state.projection.revision {
                 return Err(ErrorCode::RevisionConflict);
             }
-            work.native_permit.check()?;
+            work.native_permit.check_local()?;
             let UiAction::GitOpen(command) = &work.command.action else {
                 return Err(ErrorCode::ScopeDenied);
             };
@@ -228,7 +229,7 @@ impl Broker {
                 .try_acquire_owned()
                 .map_err(|_| ErrorCode::ResourceExhausted)?;
             let check = || {
-                permit.check()?;
+                permit.revalidate()?;
                 if !alive.load(Ordering::SeqCst)
                     || self.authorization.load(Ordering::SeqCst) != policy
                 {
@@ -268,7 +269,7 @@ impl Broker {
                 .work
                 .get_mut(operation)
                 .ok_or(ErrorCode::ControlRevoked)?;
-            work.native_permit.check()?;
+            work.native_permit.check_local()?;
             work.git_view_revision = Some(observation_revision.clone());
             state.git_permits.insert(
                 id.clone(),
@@ -282,6 +283,7 @@ impl Broker {
                     bytes: bytes.len(),
                 },
             );
+            drop(state);
             check()?;
             Ok(PreparedGitView {
                 root,

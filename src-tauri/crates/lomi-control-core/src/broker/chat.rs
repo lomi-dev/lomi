@@ -175,6 +175,7 @@ impl Broker {
         operation: &str,
         nonce: &str,
     ) -> Result<ChatSummary, ErrorCode> {
+        let _request_permit = self.check_work_request(operation)?;
         let _producer = self
             .file_reads
             .clone()
@@ -229,7 +230,7 @@ impl Broker {
             {
                 return Err(ErrorCode::ResourceExhausted);
             }
-            work.native_permit.check()?;
+            work.native_permit.check_local()?;
             let result = (
                 work.pairing.clone(),
                 project,
@@ -241,7 +242,7 @@ impl Broker {
             result
         };
         let check = || {
-            permit.check()?;
+            permit.revalidate()?;
             if self.authorization.load(Ordering::SeqCst) != policy {
                 return Err(ErrorCode::ControlRevoked);
             }
@@ -270,7 +271,7 @@ impl Broker {
         if work.command.nonce != nonce || work.chat_open.is_some() {
             return Err(ErrorCode::ControlRevoked);
         }
-        permit.check()?;
+        permit.check_local()?;
         work.chat_open = Some(summary.clone());
         if command.create {
             let session = state
@@ -356,7 +357,8 @@ impl Broker {
             Err(_) => return error(ErrorCode::ResourceExhausted),
         };
         let deadline = Instant::now() + Duration::from_secs(2);
-        let check = || {
+        let captured = request_admission::current_request();
+        let check_local = || {
             if self.authorization.load(Ordering::SeqCst) != policy {
                 return Err(ErrorCode::ControlRevoked);
             }
@@ -383,6 +385,12 @@ impl Broker {
                 return Err(ErrorCode::TargetBusy);
             }
             Ok(())
+        };
+        let check = || {
+            if let Some(request) = &captured {
+                request.check()?;
+            }
+            check_local()
         };
         let read = || -> Result<ChatList, ErrorCode> {
             check()?;
@@ -504,7 +512,8 @@ impl Broker {
             return error(ErrorCode::UiNotReady);
         };
         let deadline = Instant::now() + Duration::from_secs(2);
-        let check = || {
+        let captured = request_admission::current_request();
+        let check_local = || {
             if self.authorization.load(Ordering::SeqCst) != policy {
                 return Err(ErrorCode::ControlRevoked);
             }
@@ -516,6 +525,12 @@ impl Broker {
                 return Err(ErrorCode::TargetBusy);
             }
             Ok(())
+        };
+        let check = || {
+            if let Some(request) = &captured {
+                request.check()?;
+            }
+            check_local()
         };
         let read = || -> Result<ChatRead, ErrorCode> {
             check()?;

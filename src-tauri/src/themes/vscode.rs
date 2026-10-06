@@ -543,7 +543,7 @@ fn export_package(
         target = directory.join(format!("{slug}-{suffix}.vsix"));
         suffix += 1;
     }
-    let _admission = crate::cli_router::project_lease::admit(&[&target, &directory])?;
+    let _admission = crate::project_write_guard::admit(&[&target, &directory])?;
     let mut temporary = tempfile::NamedTempFile::new_in(&directory).map_err(|e| e.to_string())?;
     let mut zip = ZipWriter::new(temporary.as_file_mut());
     let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);

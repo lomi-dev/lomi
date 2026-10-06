@@ -2,6 +2,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
+    #[cfg(target_os = "macos")]
+    if let Some(code) = lomi_lib::agent_runtime_host_worker_entry() {
+        std::process::exit(code);
+    }
     if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--mcp")) {
         if let Err(error) = lomi_mcp::run(std::env::args().skip(2).collect()) {
             eprintln!("{error}");

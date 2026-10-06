@@ -196,7 +196,7 @@ impl Broker {
         if work.command.domain_revision != state.projection.revision {
             return Err(ErrorCode::RevisionConflict);
         }
-        work.native_permit.check()?;
+        work.native_permit.check_local()?;
         let UiAction::GitMutate(command) = &work.command.action else {
             return Err(ErrorCode::ScopeDenied);
         };
@@ -215,6 +215,7 @@ impl Broker {
         nonce: &str,
         lock: impl FnOnce(&str) -> Result<G, ErrorCode>,
     ) -> Result<GitMutationPlan, ErrorCode> {
+        let _request_permit = self.check_work_request(operation)?;
         let (command, owner, directory, permit, alive, policy) = {
             let mut state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
             let work = self.git_mutation_work(&state, operation, nonce)?;
@@ -251,7 +252,7 @@ impl Broker {
                 .try_acquire_owned()
                 .map_err(|_| ErrorCode::ResourceExhausted)?;
             let check = || {
-                permit.check()?;
+                permit.revalidate()?;
                 if !alive.load(Ordering::SeqCst)
                     || self.authorization.load(Ordering::SeqCst) != policy
                 {
@@ -324,6 +325,9 @@ impl Broker {
         result
     }
     pub fn git_mutation_pending(&self, operation: &str, nonce: &str, hash: &str) -> bool {
+        if self.check_work_request(operation).is_err() {
+            return false;
+        }
         let Ok(state) = self.lock_state() else {
             return false;
         };
@@ -337,6 +341,11 @@ impl Broker {
         hash: &str,
         approved: bool,
     ) -> Result<(), ErrorCode> {
+        let _request_permit = if approved {
+            Some(self.check_work_request(operation)?)
+        } else {
+            None
+        };
         let mut state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
         let work = self.git_mutation_work(&state, operation, nonce)?;
         if !matches!(&work.git_mutation, Some(Approval::Ready { plan, approved: false }) if plan.revision() == hash)
@@ -380,6 +389,7 @@ impl Broker {
         hash: &str,
         lock: impl FnOnce(&str) -> Result<G, ErrorCode>,
     ) -> Result<GitMutated, ErrorCode> {
+        let _request_permit = self.check_work_request(operation)?;
         let _project_write = self.project_write_admission()?;
         let (command, owner, directory, permit, alive, policy, plan) = {
             let mut state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
@@ -430,7 +440,7 @@ impl Broker {
             };
             let _guard = lock(root.to_str().ok_or(ErrorCode::ScopeDenied)?)?;
             let check = || {
-                permit.check()?;
+                permit.revalidate()?;
                 if !alive.load(Ordering::SeqCst)
                     || self.authorization.load(Ordering::SeqCst) != policy
                 {

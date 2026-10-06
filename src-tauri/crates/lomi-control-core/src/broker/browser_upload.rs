@@ -69,7 +69,7 @@ impl Broker {
         {
             return Err(ErrorCode::ControlRevoked);
         }
-        work.native_permit.check()?;
+        work.native_permit.check_local()?;
         Ok(work)
     }
     fn upload_artifact_access(
@@ -206,6 +206,7 @@ impl Broker {
             NativePermit,
         ) -> Result<BrowserUploadTarget, ErrorCode>,
     ) -> Result<NativePermit, ErrorCode> {
+        let _request_permit = self.check_work_request(operation)?;
         let (input, control, owner, file, permit) = {
             let state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
             let work = Self::upload_work(&state, operation, Some(nonce))?;
@@ -286,7 +287,7 @@ impl Broker {
                 if !authorized
                     || !work.claimed
                     || work.native_committed
-                    || work.native_permit.check().is_err()
+                    || work.native_permit.check_local().is_err()
                 {
                     return None;
                 }
@@ -328,6 +329,11 @@ impl Broker {
         approve: bool,
         dispatch: impl FnOnce(BrowserUploadApproval) -> Result<(), BrowserDownloadFailure>,
     ) -> Result<(), ErrorCode> {
+        let _request_permit = if approve {
+            Some(self.check_work_request(operation)?)
+        } else {
+            None
+        };
         let (approval, nonce, artifact, input, target, permit, check) = {
             let mut state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
             let work = Self::upload_work(&state, operation, None)?;
@@ -408,7 +414,7 @@ impl Broker {
             .filter(|w| w.command.nonce == nonce)
             .ok_or(ErrorCode::ControlRevoked)?;
         let result = result.and_then(|()| {
-            permit.check().map_err(|code| BrowserDownloadFailure {
+            permit.check_local().map_err(|code| BrowserDownloadFailure {
                 code,
                 no_effect: false,
             })

@@ -224,7 +224,7 @@ fn prepare_session_save(
     recovery: bool,
 ) -> Result<(), String> {
     use std::io::{Read, Write};
-    if data["version"] != 4 || !data["projects"].is_array() {
+    if data["version"] != 5 || !data["projects"].is_array() {
         return Err("Unsupported session output.".into());
     }
     let file = match fs::File::open(path) {
@@ -243,7 +243,7 @@ fn prepare_session_save(
     let version = saved
         .as_ref()
         .and_then(|v| v["version"].as_u64())
-        .filter(|v| [1, 2, 3, 4].contains(v));
+        .filter(|v| [1, 2, 3, 4, 5].contains(v));
     let valid = version.is_some() && saved.as_ref().is_some_and(|v| v["projects"].is_array());
     if !valid && !recovery {
         return Err(
@@ -251,7 +251,7 @@ fn prepare_session_save(
                 .into(),
         );
     }
-    if version == Some(4) && valid && !recovery {
+    if version == Some(5) && valid && !recovery {
         return Ok(());
     }
     let name = if recovery {
@@ -482,8 +482,8 @@ mod tests {
     fn session_upgrade_backs_up_exact_legacy_bytes_and_preserves_unknown_files() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("session.json");
-        let output = serde_json::json!({"version":4,"projects":[]});
-        for version in [1, 2, 3] {
+        let output = serde_json::json!({"version":5,"projects":[]});
+        for version in [1, 2, 3, 4] {
             let bytes = format!("{{ \"version\": {version}, \"projects\": [] }}\n");
             fs::write(&path, &bytes).unwrap();
             prepare_session_save(&path, &output, false).unwrap();

@@ -599,7 +599,7 @@ pub async fn chat_export(
         let extension = if format=="json" {"json"} else {"md"};
         let Some(path) = app.dialog().file().set_parent(&window).set_title("Export conversation (attachment descriptions only)").set_file_name(format!("conversation.{extension}")).add_filter("Conversation", &[extension]).blocking_save_file() else {return Ok(false);};
         let path = path.into_path().map_err(|_|"Invalid export destination.")?;
-        let _admission = crate::cli_router::project_lease::admit(&[&path])?;
+        let _admission = crate::project_write_guard::admit(&[&path])?;
         super::storage::atomic(&path,&bytes)?;
         Ok(true)
     }).await.map_err(|_|"Cannot export the conversation.")?

@@ -17,10 +17,21 @@ impl Broker {
         Ok(())
     }
     pub(super) async fn call_async(self: &Arc<Self>, id: &str, request: Request) -> Reply {
+        if let Err(code) = self.check_session_request(id, &request) {
+            return error(code);
+        }
         let broker = self.clone();
         let id = id.to_string();
         self.spawn_worker(move || match request {
-            Request::InputTerminal(input) => broker.input_terminal(&id, input),
+            Request::InputTerminal(input) => {
+                let captured =
+                    match broker.capture_request(&id, &Request::InputTerminal(input.clone())) {
+                        Ok(captured) => captured,
+                        Err(code) => return error(code),
+                    };
+                let _scope = request_admission::RequestScope::enter(Some(captured));
+                broker.input_terminal(&id, input)
+            }
             request => broker.call(&id, request),
         })
         .await
@@ -87,7 +98,11 @@ impl Broker {
         let owner = id.to_string();
         let target = input.clone();
         let deadline = Instant::now() + Duration::from_secs(5);
+        let captured = request_admission::current_request();
         let permit = Arc::new(move || {
+            if let Some(request) = &captured {
+                request.check().ok()?;
+            }
             if Instant::now() >= deadline {
                 return None;
             }

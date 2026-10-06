@@ -133,6 +133,7 @@ impl Broker {
         operation: &str,
         nonce: &str,
     ) -> Result<ChatDraftUpdated, ErrorCode> {
+        let _request_permit = self.check_work_request(operation)?;
         let _producer = self
             .file_reads
             .clone()
@@ -159,7 +160,7 @@ impl Broker {
                 return Err(ErrorCode::ScopeDenied);
             };
             let project = Self::draft_access(&state, &work.pairing, &command.input)?;
-            work.native_permit.check()?;
+            work.native_permit.check_local()?;
             let result = (
                 work.pairing.clone(),
                 project,
@@ -171,7 +172,7 @@ impl Broker {
             result
         };
         let check = || {
-            permit.check()?;
+            permit.revalidate()?;
             if self.authorization.load(Ordering::SeqCst) != policy {
                 return Err(ErrorCode::ControlRevoked);
             }
@@ -225,7 +226,7 @@ impl Broker {
             return Err(ErrorCode::OutcomeUnknown);
         }
         let state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
-        permit.check()?;
+        permit.check_local()?;
         if self.authorization.load(Ordering::SeqCst) != policy
             || Self::draft_access(&state, &owner, &input)? != project
         {

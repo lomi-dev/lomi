@@ -26,6 +26,7 @@ pub(crate) fn commit(
     hash: &str,
     channel: tauri::ipc::Channel<serde_json::Value>,
 ) -> Result<SendReply, ErrorCode> {
+    let effect_permit = broker.operation_effect_permit(operation)?;
     let authorized = broker.authorize_chat_send(operation, nonce, hash)?;
     let command = authorized.command;
     let start = start_input(&command, authorized.plan.draft_text)?;
@@ -37,23 +38,26 @@ pub(crate) fn commit(
         .clone()
         .ok_or(ErrorCode::UiNotReady)?;
     let rejected = std::cell::Cell::new(None);
+    effect_permit.check()?;
     let outcome = backend.start_checked(
         start,
         channel,
         |start, conversation, connection, context| {
-            let validation =
+            let validation = effect_permit.check().and_then(|_| {
                 fingerprint(start, conversation, connection, context).and_then(|current| {
                     if current != hash {
                         return Err(ErrorCode::RevisionConflict);
                     }
                     broker.check_chat_send(operation, nonce, hash)
-                });
+                })
+            });
             validation.map_err(|code| {
                 rejected.set(Some(code));
                 error_string(code)
             })
         },
         || {
+            effect_permit.check().map_err(error_string)?;
             broker
                 .check_chat_send(operation, nonce, hash)
                 .map_err(error_string)

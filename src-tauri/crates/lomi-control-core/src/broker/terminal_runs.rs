@@ -20,6 +20,7 @@ pub struct TerminalDispatchRequest {
 }
 #[derive(Clone)]
 pub(super) struct Run {
+    request: Option<request_admission::CapturedRequest>,
     pairing: String,
     project: String,
     workspace: String,
@@ -350,6 +351,7 @@ impl Broker {
             };
         }
         let run = Run {
+            request: request_admission::current_request(),
             pairing: id.into(),
             project,
             workspace: input.workspace_id.clone(),
@@ -372,7 +374,11 @@ impl Broker {
         let owner = id.to_string();
         let target_input = input.clone();
         let permit_op = op.clone();
+        let captured = run.request.clone();
         let permit: Arc<dyn Fn() -> Option<Vec<u32>> + Send + Sync> = Arc::new(move || {
+            if let Some(request) = &captured {
+                request.check().ok()?;
+            }
             let broker = permit_weak.upgrade()?;
             let state = broker.writer_state()?;
             let active = state.runs.get(&permit_op)?;
@@ -611,7 +617,11 @@ impl Broker {
         let generation = run.generation.clone();
         let expected_lease = lease.clone();
         let deadline = Instant::now() + Duration::from_secs(5);
+        let captured = run.request.clone();
         let permit = Arc::new(move || {
+            if let Some(request) = &captured {
+                request.check().ok()?;
+            }
             if Instant::now() >= deadline {
                 return None;
             }

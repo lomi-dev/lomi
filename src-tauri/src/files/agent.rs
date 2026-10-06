@@ -25,7 +25,7 @@ pub(crate) fn with_writer<T>(
 ) -> Result<T, ErrorCode> {
     use tauri::Manager;
     let _admission =
-        crate::cli_router::project_lease::admit_unscoped().map_err(|_| ErrorCode::TargetBusy)?;
+        crate::project_write_guard::admit_unscoped().map_err(|_| ErrorCode::TargetBusy)?;
     let state = app.state::<super::editor::EditorFiles>();
     let _guard = state.writes.try_lock().map_err(|_| ErrorCode::TargetBusy)?;
     write()

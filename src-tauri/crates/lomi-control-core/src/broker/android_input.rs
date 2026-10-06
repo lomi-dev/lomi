@@ -268,6 +268,7 @@ impl Broker {
         operation: &str,
         nonce: &str,
     ) -> Result<AndroidInputDispatch, ErrorCode> {
+        let _request_permit = self.check_work_request(operation)?;
         let mut state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
         let work = state.work.get(operation).ok_or(ErrorCode::TargetNotFound)?;
         if !work.claimed
@@ -277,7 +278,7 @@ impl Broker {
         {
             return Err(ErrorCode::ControlRevoked);
         }
-        work.native_permit.check()?;
+        work.native_permit.check_local()?;
         let (workspace, panel, device, generation, selected) = match &work.command.action {
             UiAction::AndroidInputControl(i) => (
                 &i.workspace_id,
@@ -368,7 +369,7 @@ impl Broker {
             ),
             _ => return Err(failure()),
         };
-        let result = if work.native_permit.check().is_err() {
+        let result = if work.native_permit.check_local().is_err() {
             Err(ErrorCode::OutcomeUnknown)
         } else {
             result

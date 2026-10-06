@@ -326,6 +326,9 @@ impl Broker {
         )
     }
     pub fn workspace_close_pending(&self, operation: &str, nonce: &str, epoch: &str) -> bool {
+        if self.check_work_request(operation).is_err() {
+            return false;
+        }
         let Ok(state) = self.lock_state() else {
             return false;
         };
@@ -342,7 +345,7 @@ impl Broker {
                 work.command.action,
                 UiAction::CloseWorkspace(_) | UiAction::CloseProject(_)
             )
-            || work.native_permit.check().is_err()
+            || work.native_permit.check_local().is_err()
             || self.check_policy(&state).is_err()
         {
             return false;
@@ -360,6 +363,7 @@ impl Broker {
         nonce: &str,
         epoch: &str,
     ) -> Result<(), ErrorCode> {
+        let _request_permit = self.check_work_request(operation)?;
         let mut state = self.lock_state().map_err(|_| ErrorCode::AppUnavailable)?;
         let work = state.work.get(operation).ok_or(ErrorCode::TargetNotFound)?;
         if !work.claimed
@@ -371,7 +375,7 @@ impl Broker {
         {
             return Err(ErrorCode::ControlRevoked);
         }
-        work.native_permit.check()?;
+        work.native_permit.check_local()?;
         Self::validate_android_layout(&state, work)?;
         self.check_policy(&state)
             .map_err(|_| ErrorCode::ControlRevoked)?;
@@ -515,7 +519,9 @@ impl Broker {
         operation: &str,
         steps: CloseSteps,
     ) -> Result<(), ErrorCode> {
+        let _request_permit = self.check_work_request(operation)?;
         for step in steps {
+            _request_permit.check()?;
             {
                 let state = self.lock_state().map_err(|_| ErrorCode::OutcomeUnknown)?;
                 self.check_close_pending(&state, operation)?;
@@ -532,7 +538,7 @@ impl Broker {
             .map_err(|_| ErrorCode::OutcomeUnknown)?;
         let work = state.work.get(operation).ok_or(ErrorCode::OutcomeUnknown)?;
         work.native_permit
-            .check()
+            .check_local()
             .map_err(|_| ErrorCode::OutcomeUnknown)?;
         if !work.native_committed
             || work.close_completed

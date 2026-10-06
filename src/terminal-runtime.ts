@@ -38,7 +38,7 @@ interface Snapshot {
   status: "starting" | "running" | "exited" | "error";
   title: string;
   titleBusy: boolean;
-  routerProfileLabel: string | null;
+  accountLabel: string | null;
   agentSignal: AgentSignal | null;
   foregroundProgram: string;
   agentControlled: boolean;
@@ -73,11 +73,6 @@ export function configureTerminals(
 ) {
   directoryListener = onDirectory;
   reportError = onError;
-}
-
-export interface GatewayTerminalBinding {
-  runId: string;
-  revision: number;
 }
 
 interface AgentTerminalStart {
@@ -131,6 +126,7 @@ export class TerminalRuntime {
   private rendererGeneration = 0;
   private rendererPromise?: Promise<void>;
   private disposed = false;
+  private nativeCloseComplete = false;
   private startPromise?: Promise<void>;
   private input = Promise.resolve();
   private pasteOutput?: string[];
@@ -154,10 +150,7 @@ export class TerminalRuntime {
     readonly profile: ShellProfile,
     cwd: string,
     private readonly cliLaunch?: CliAgent,
-    private readonly routerProfileId?: string,
-    private readonly routerId?: string,
-    readonly gateway?: GatewayTerminalBinding,
-    private readonly nativeRecovery?: GatewayTerminalBinding,
+    private readonly accountId?: string,
   ) {
     this.agentStart = agentStarts.get(paneId);
     agentStarts.delete(paneId);
@@ -166,7 +159,7 @@ export class TerminalRuntime {
       status: "starting",
       title: "",
       titleBusy: false,
-      routerProfileLabel: null,
+      accountLabel: null,
       agentSignal: null,
       foregroundProgram: "",
       agentControlled: false,
@@ -414,6 +407,13 @@ export class TerminalRuntime {
     } finally {
       clearTimeout(timer);
     }
+  }
+  async prepareOwnedClose() {
+    if (!this.accountId || this.nativeCloseComplete) return;
+    await this.startPromise;
+    await this.input;
+    await api("close_terminal", { id: this.sessionId });
+    this.nativeCloseComplete = true;
   }
   observeControl(agentControlled: boolean) {
     if (agentControlled !== this.snapshot.agentControlled)
@@ -722,8 +722,8 @@ export class TerminalRuntime {
         const requestedCwd = this.snapshot.cwd;
         const started = await api<{
           cwd: string;
-          routerProfileId?: string | null;
-          routerProfileLabel?: string | null;
+          accountId?: string | null;
+          accountLabel?: string | null;
         }>("start_terminal", {
           request: {
             id: this.sessionId,
@@ -738,11 +738,7 @@ export class TerminalRuntime {
                 }
               : null,
             cliLaunch: this.cliLaunch ?? null,
-            routerProfileId: this.routerProfileId ?? null,
-            routerId: this.routerId ?? null,
-            gatewayRunId: this.gateway?.runId ?? null,
-            gatewayRunRevision: this.gateway?.revision ?? null,
-            nativeRecovery: this.nativeRecovery ?? null,
+            accountId: this.accountId ?? null,
           },
           output,
           exited,
@@ -757,7 +753,7 @@ export class TerminalRuntime {
           this.update({
             status: "running",
             cwd,
-            routerProfileLabel: started.routerProfileLabel ?? null,
+            accountLabel: started.accountLabel ?? null,
           });
         directoryListener(this.paneId, cwd);
         this.scheduleFit();
@@ -1011,9 +1007,12 @@ export class TerminalRuntime {
     clearTimeout(this.ackTimer);
     this.listeners.clear();
     this.terminal.dispose();
-    void this.startPromise?.finally(() =>
-      api("close_terminal", { id: this.sessionId }).catch(() => {}),
-    );
+    if (!this.nativeCloseComplete)
+      void this.startPromise?.finally(() =>
+        api("close_terminal", { id: this.sessionId }).catch((error) =>
+          reportError(errorMessage(error)),
+        ),
+      );
   }
 }
 
@@ -1051,10 +1050,7 @@ export function terminalFor(
   pane: Pane,
   profile: ShellProfile,
   cliLaunch?: CliAgent,
-  routerProfileId?: string,
-  routerId?: string,
-  gateway?: GatewayTerminalBinding,
-  nativeRecovery?: GatewayTerminalBinding,
+  accountId?: string,
 ): TerminalRuntime {
   let runtime = runtimes.get(pane.id);
   if (!runtime) {
@@ -1063,10 +1059,7 @@ export function terminalFor(
       profile,
       pane.cwd,
       cliLaunch,
-      routerProfileId,
-      routerId,
-      gateway,
-      nativeRecovery,
+      accountId,
     );
     runtimes.set(pane.id, runtime);
     terminalLifecycleChanged();
@@ -1074,22 +1067,6 @@ export function terminalFor(
   return runtime;
 }
 export const runningTerminal = (id: string) => runtimes.get(id);
-export function gatewayTerminal(runId: string) {
-  return [...runtimes.values()].find(
-    (runtime) => runtime.gateway?.runId === runId,
-  );
-}
-export function closeGatewayTerminals(runIds: readonly string[]) {
-  const selected = new Set(runIds);
-  closeTerminals(
-    [...runtimes.values()]
-      .filter(
-        (runtime) => runtime.gateway && selected.has(runtime.gateway.runId),
-      )
-      .map((runtime) => runtime.paneId),
-  );
-}
-
 export function synchronizeVisibleTerminalFits(root: HTMLElement) {
   for (const pane of root.querySelectorAll<HTMLElement>(
     ".terminal-pane[data-pane-id]",
@@ -1128,6 +1105,9 @@ export async function terminalsWithProcesses(ids?: readonly string[]) {
         .getSnapshot()
         .blocks.some((block) => block.finished === undefined),
   ).length;
+}
+export async function prepareOwnedTerminalClose(ids: readonly string[]) {
+  for (const id of ids) await runtimes.get(id)?.prepareOwnedClose();
 }
 export function closeTerminals(ids: string[]) {
   for (const id of ids) {
