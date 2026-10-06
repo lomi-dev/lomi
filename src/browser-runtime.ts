@@ -77,6 +77,16 @@ let frame = 0;
 let dirty = false;
 let pending: Promise<void> | undefined;
 let mutation: MutationObserver | undefined;
+let toastResize: ResizeObserver | undefined;
+let toastViewport: Element | null = null;
+
+function observeToastViewports() {
+  const element = document.querySelector(".app-toasts");
+  if (element === toastViewport) return;
+  toastResize?.disconnect();
+  toastViewport = element;
+  if (element) toastResize?.observe(element);
+}
 
 let localServers: { urls: string[] | null; error: string } = {
   urls: null,
@@ -229,8 +239,11 @@ function synchronize(): Promise<void> {
       // Native views sit above HTML. Hide them while an app overlay or drag owns input.
       const covered =
         document.querySelector(
-          "dialog[open], .menu, :popover-open, .tab-drag-ghost, .pane-drag-ghost, .pane-limit-notice, [role=separator]:active",
+          "dialog[open], .menu, :popover-open, .tab-drag-ghost, .pane-drag-ghost, [role=separator]:active",
         ) !== null;
+      const toastBounds = [
+        ...document.querySelectorAll(".app-toasts:has(.app-toast)"),
+      ].map((element) => element.getBoundingClientRect());
       const zoom =
         Number(
           getComputedStyle(document.documentElement).getPropertyValue(
@@ -246,7 +259,18 @@ function synchronize(): Promise<void> {
               y = Math.max(0, rect.top);
             const width = Math.min(innerWidth, rect.right) - x,
               height = Math.min(innerHeight, rect.bottom) - y;
+            // Keep unrelated native panes visible while exposing toast controls.
+            const toastCovered = toastBounds.some(
+              (toast) =>
+                toast.width > 0 &&
+                toast.height > 0 &&
+                toast.left < rect.right &&
+                toast.right > rect.left &&
+                toast.top < rect.bottom &&
+                toast.bottom > rect.top,
+            );
             return tab &&
+              !toastCovered &&
               tab.url !== "about:blank" &&
               element.isConnected &&
               element.getClientRects().length &&
@@ -325,28 +349,37 @@ export function mountBrowser(
   const resize = new ResizeObserver(schedule);
   resize.observe(element);
   if (!mutation) {
+    toastResize = new ResizeObserver(schedule);
+    observeToastViewports();
     mutation = new MutationObserver((records) => {
       const overlays =
-        "dialog, .menu, .select-menu, .tab-drag-ghost, .pane-drag-ghost, .pane-limit-notice";
+        "dialog, .menu, .select-menu, .tab-drag-ghost, .pane-drag-ghost, .app-toasts, .app-toast";
       if (
         records.some((record) =>
-          record.type === "attributes"
-            ? record.target instanceof Element &&
-              (record.target.matches("body, html, dialog") ||
-                [...mounts.values()].some(({ element }) =>
-                  (record.target as Element).contains(element),
-                ))
-            : [...record.addedNodes, ...record.removedNodes].some(
-                (node) =>
-                  node instanceof Element &&
-                  (node.matches(overlays) || node.querySelector(overlays)),
-              ),
+          record.type === "characterData"
+            ? record.target.parentElement?.closest(".app-toasts")
+            : record.type === "attributes"
+              ? record.target instanceof Element &&
+                (record.target.matches(
+                  "body, html, dialog, .app-toasts, .app-toast",
+                ) ||
+                  [...mounts.values()].some(({ element }) =>
+                    (record.target as Element).contains(element),
+                  ))
+              : [...record.addedNodes, ...record.removedNodes].some(
+                  (node) =>
+                    node instanceof Element &&
+                    (node.matches(overlays) || node.querySelector(overlays)),
+                ),
         )
-      )
+      ) {
+        observeToastViewports();
         schedule();
+      }
     });
     mutation.observe(document.body, {
       childList: true,
+      characterData: true,
       subtree: true,
       attributes: true,
       attributeFilter: ["class", "style", "open", "hidden"],
@@ -365,6 +398,9 @@ export function mountBrowser(
     if (!mounts.size) {
       mutation?.disconnect();
       mutation = undefined;
+      toastResize?.disconnect();
+      toastResize = undefined;
+      toastViewport = null;
       document.removeEventListener("toggle", schedule, true);
       document.removeEventListener("pointerdown", resizeStart, true);
       document.removeEventListener("pointerup", schedule, true);
@@ -383,5 +419,6 @@ export async function browserAction(tab: BrowserTab, action: Action) {
     return;
   }
   await synchronize();
+  if (action.type === "focus" && !live.has(tab.id)) return;
   await api("browser_action", { id: tab.id, action });
 }

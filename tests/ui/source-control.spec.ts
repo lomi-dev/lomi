@@ -1040,6 +1040,9 @@ test("source control preserves an exact commit draft after failed Git actions", 
     page.getByRole("checkbox", { name: "Stage README.md", exact: true }),
   ).not.toBeChecked();
   await expect(input).toHaveValue(draft);
+  await page
+    .getByRole("button", { name: "Dismiss message", exact: true })
+    .click();
   await page.evaluate(() => {
     (window as any).__sourceControlTest.failStage = false;
     (window as any).__sourceControlTest.failCommit = true;

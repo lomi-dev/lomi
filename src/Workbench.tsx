@@ -46,7 +46,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { Folder, GitBranch, Layers, Terminal, X } from "./icons";
+import { Folder, GitBranch, Layers, Terminal } from "./icons";
 import TitlebarAccount from "./auth/TitlebarAccount";
 import { open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -125,8 +125,8 @@ import {
 } from "./terminal-runtime";
 import type { TerminalContext } from "./terminal-runtime";
 import { dropPaths, nativePositionToClient, terminalAt } from "./file-drag";
-import { IconButton, Modal, WindowControls } from "./ui";
-import { Notice } from "./Notice";
+import { Modal, WindowControls } from "./ui";
+import { AppToast, ToastViewport } from "./AppToast";
 import { useAgentUsage } from "./AgentUsage";
 import Explorer from "./Explorer";
 import ProjectSwitcher from "./ProjectSwitcher";
@@ -912,12 +912,6 @@ export default function Workbench() {
   useEffect(() => {
     if (preferences.error) setError(preferences.error);
   }, [preferences.error]);
-  useEffect(() => {
-    if (!paneNotice) return;
-    const timer = setTimeout(() => setPaneNotice(""), 5000);
-    return () => clearTimeout(timer);
-  }, [paneNotice]);
-
   useEffect(() => {
     if (!native) return;
     let current = true;
@@ -1848,14 +1842,14 @@ export default function Workbench() {
       onBrowse={() => void browse()}
     />
   );
-  const notice = (error || restoreError) && (
-    <Notice
-      className="notice"
-      tone="error"
-      action={
-        <>
-          {restoreError && (
+  const notice = (
+    <ToastViewport>
+      {restoreError && (
+        <AppToast
+          tone="error"
+          action={
             <button
+              type="button"
               className="text-button"
               onClick={() => {
                 savingEnabled.current = true;
@@ -1867,15 +1861,32 @@ export default function Workbench() {
             >
               Save current layout instead
             </button>
-          )}
-          <IconButton title="Dismiss message" onClick={() => setError("")}>
-            <X size={14} />
-          </IconButton>
-        </>
-      }
-    >
-      {error || restoreError}
-    </Notice>
+          }
+        >
+          {restoreError}
+        </AppToast>
+      )}
+      {error && (
+        <AppToast
+          className="notice"
+          tone="error"
+          onDismiss={() => setError("")}
+        >
+          {error}
+        </AppToast>
+      )}
+      {paneNotice && (
+        <AppToast
+          className="pane-limit-notice"
+          duration={5000}
+          dismissLabel="Dismiss panel limit"
+          onDismiss={() => setPaneNotice("")}
+        >
+          {paneNotice}
+        </AppToast>
+      )}
+      <AgentControlStartup />
+    </ToastViewport>
   );
   const sidebarOpen = (panel: SidebarPanel) =>
     session.sidebarSides[panel] === "left"
@@ -2051,7 +2062,6 @@ export default function Workbench() {
             {chatApproval.dialog}
 
             {agentNotifications.dialog}
-            <AgentControlStartup />
           </div>
         </SlotProvider>
       </HostContext.Provider>
@@ -2895,17 +2905,6 @@ export default function Workbench() {
                   />
                 </div>
               )}
-              {paneNotice && (
-                <div className="pane-limit-notice" role="status">
-                  <span>{paneNotice}</span>
-                  <IconButton
-                    title="Dismiss panel limit"
-                    onClick={() => setPaneNotice("")}
-                  >
-                    <X size={14} />
-                  </IconButton>
-                </div>
-              )}
             </main>
           </div>
           <footer className="statusbar">
@@ -3202,7 +3201,6 @@ export default function Workbench() {
           )}
 
           {agentNotifications.dialog}
-          <AgentControlStartup />
         </div>
       </SlotProvider>
     </HostContext.Provider>

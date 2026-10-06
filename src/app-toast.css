@@ -1,0 +1,105 @@
+.app-toasts {
+  position: fixed;
+  right: 0;
+  bottom: var(--statusbar-height);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  width: min(396px, 100vw);
+  max-height: calc(100dvh - var(--titlebar-height) - var(--statusbar-height));
+  padding: 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  pointer-events: none;
+}
+
+.app-toasts > dialog {
+  pointer-events: auto;
+}
+
+.app-toasts .app-toast {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-start;
+  gap: var(--space-8);
+  margin: 0;
+  padding: var(--space-10) var(--space-12);
+  border: var(--border-width) solid var(--color-outline);
+  border-radius: var(--radius-menu);
+  background: var(--menu-background);
+  color: var(--color-surface-text);
+  box-shadow: var(--shadow-menu);
+  font-size: var(--font-size-12);
+  line-height: 1.5;
+  pointer-events: auto;
+  animation: app-toast-enter 180ms ease-out;
+}
+
+.app-toast-icon {
+  flex: 0 0 auto;
+  margin-top: var(--space-2);
+  color: var(--color-muted-text);
+}
+
+.app-toast[data-tone="error"] > .app-toast-icon {
+  color: var(--color-error);
+}
+
+.app-toast[data-tone="warning"] > .app-toast-icon {
+  color: var(--color-warning);
+}
+
+.app-toast-body {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.app-toast-message p {
+  margin: 0;
+}
+
+.app-toast-message p + p {
+  margin-top: var(--space-6);
+}
+
+.app-toast-action {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+  margin-top: var(--space-8);
+}
+
+.app-toast-action :is(.button, .text-button) {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  text-align: start;
+}
+
+.app-toast .app-toast-dismiss {
+  flex: 0 0 auto;
+  width: calc(22px * var(--density));
+  height: calc(22px * var(--density));
+  margin: calc(-2px * var(--density)) calc(-4px * var(--density)) 0 0;
+  color: var(--color-muted-text);
+}
+
+@keyframes app-toast-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-toasts .app-toast {
+    animation: none;
+  }
+}

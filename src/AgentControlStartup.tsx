@@ -3,11 +3,13 @@ import { listen } from "@tauri-apps/api/event";
 import { api, errorMessage, native } from "./api";
 import type { ControlStartupState } from "./agent-control-startup";
 import { Modal } from "./ui";
-import { Notice } from "./Notice";
+import { AppToast } from "./AppToast";
 
 export default function AgentControlStartup() {
   const [state, setState] = useState<ControlStartupState>();
   const [loadError, setLoadError] = useState("");
+  const [dismissedLoadError, setDismissedLoadError] = useState("");
+  const [dismissedStartupError, setDismissedStartupError] = useState("");
   const [saveError, setSaveError] = useState("");
   const [saving, setSaving] = useState(false);
   const [dismissed, setDismissed] = useState(false);
@@ -124,12 +126,28 @@ export default function AgentControlStartup() {
   };
 
   const startupError = state?.error;
+  const startupMessage =
+    startupError && state
+      ? state.autoStart
+        ? `Automatic MCP startup is enabled, but the server could not start: ${startupError} The saved choice is still enabled. Open Settings → Agent control to change it or enable control for this session.`
+        : state.autoStart === false
+          ? `Automatic MCP startup is disabled. ${startupError}`
+          : `Could not load the saved automatic MCP startup choice: ${startupError}`
+      : "";
+  useEffect(() => {
+    if (!loadError) setDismissedLoadError("");
+  }, [loadError]);
+  useEffect(() => {
+    if (!startupMessage) setDismissedStartupError("");
+  }, [startupMessage]);
   return (
     <>
-      {loadError && (
-        <Notice
+      {loadError && loadError !== dismissedLoadError && (
+        <AppToast
           className="notice"
           tone="error"
+          dismissLabel="Dismiss MCP startup message"
+          onDismiss={() => setDismissedLoadError(loadError)}
           action={
             <button className="text-button" onClick={() => void refresh()}>
               Retry
@@ -137,16 +155,17 @@ export default function AgentControlStartup() {
           }
         >
           Could not load automatic MCP startup settings: {loadError}
-        </Notice>
+        </AppToast>
       )}
-      {startupError && state && (
-        <Notice className="notice" tone="error">
-          {state.autoStart
-            ? `Automatic MCP startup is enabled, but the server could not start: ${startupError} The saved choice is still enabled. Open Settings → Agent control to change it or enable control for this session.`
-            : state.autoStart === false
-              ? `Automatic MCP startup is disabled. ${startupError}`
-              : `Could not load the saved automatic MCP startup choice: ${startupError}`}
-        </Notice>
+      {startupMessage && startupMessage !== dismissedStartupError && (
+        <AppToast
+          className="notice"
+          tone="error"
+          dismissLabel="Dismiss MCP startup message"
+          onDismiss={() => setDismissedStartupError(startupMessage)}
+        >
+          {startupMessage}
+        </AppToast>
       )}
       {eligible && readyToPrompt && (
         <Modal

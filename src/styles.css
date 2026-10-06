@@ -1840,25 +1840,6 @@ svg {
   color: var(--color-surface-text);
   font-size: var(--font-size-14);
 }
-.pane-limit-notice {
-  position: absolute;
-  bottom: 12px;
-  left: 12px;
-  right: 12px;
-  z-index: 5;
-  display: flex;
-  align-items: center;
-  gap: var(--space-12);
-  padding: var(--space-8) var(--space-12);
-  border: var(--border-width) solid var(--color-outline);
-  border-radius: var(--radius-tab);
-  background: var(--color-surface-container);
-  color: var(--color-surface-text);
-  font-size: var(--font-size-12);
-}
-.pane-limit-notice span {
-  flex: 1;
-}
 .split-child {
   padding: var(--pane-spacing);
   display: flex;
@@ -3952,7 +3933,6 @@ svg {
 .settings-notice {
   margin: 0 0 var(--space-16);
 }
-.notice,
 .editor-notice {
   margin: var(--space-6) var(--space-8);
 }
