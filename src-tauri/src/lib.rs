@@ -4,6 +4,7 @@
         feature = "chat-probe",
         feature = "android-probe",
         feature = "remote-probe",
+        feature = "remote-visual-probe",
         feature = "mcp-probe"
     ),
     not(debug_assertions)
@@ -48,6 +49,13 @@ mod mcp_browser_probe;
 mod mcp_control_probe;
 mod notifications;
 mod remote;
+#[cfg(all(
+    feature = "remote-visual-probe",
+    target_os = "macos",
+    target_arch = "aarch64"
+))]
+#[path = "../../tests/native/remote-browser-capture-support.rs"]
+mod remote_browser_capture_probe;
 #[cfg(feature = "remote-probe")]
 #[path = "../../tests/native/remote-support.rs"]
 mod remote_probe;
@@ -234,6 +242,12 @@ pub fn run() {
             #[cfg(feature = "chat-probe")]
             app.manage(chat_probe::Probe::default());
             let handle = app.handle().clone();
+            #[cfg(all(
+                feature = "remote-visual-probe",
+                target_os = "macos",
+                target_arch = "aarch64"
+            ))]
+            remote_browser_capture_probe::start(handle.clone());
             #[cfg(all(feature = "mcp-probe", target_os = "macos"))]
             mcp_browser_probe::start(app.handle().clone());
             #[cfg(all(feature = "mcp-probe", target_os = "macos"))]

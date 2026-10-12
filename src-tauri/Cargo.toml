@@ -32,6 +32,7 @@ native-smoke = []
 remote-probe = ["native-smoke"]
 chat-probe = ["native-smoke"]
 android-probe = ["native-smoke", "dep:turbojpeg", "objc2/exception"]
+remote-visual-probe = []
 mcp-probe = ["objc2-app-kit/NSGraphicsContext"]
 
 [[example]]

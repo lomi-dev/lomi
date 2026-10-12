@@ -41,6 +41,9 @@ pub mod manager;
 pub mod open;
 mod process_identity;
 mod recovery;
+#[cfg(feature = "remote-visual-probe")]
+#[allow(dead_code)]
+pub(crate) mod remote_probe;
 mod repository;
 mod rpc;
 mod runtime;

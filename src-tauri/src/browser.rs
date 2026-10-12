@@ -15,6 +15,12 @@ mod agent_navigation;
 pub(crate) mod agent_permissions;
 #[cfg(target_os = "macos")]
 pub(crate) mod native_input;
+#[cfg(all(
+    feature = "remote-visual-probe",
+    target_os = "macos",
+    target_arch = "aarch64"
+))]
+pub(crate) mod remote_probe;
 pub mod servers;
 
 // The engine may outlive a view callback. A missing Finished event keeps its
@@ -48,6 +54,15 @@ pub struct Page {
     control: Option<std::sync::Arc<lomi_control_core::browser::BrowserControl>>,
     #[serde(skip)]
     bounds: Option<Bounds>,
+    #[cfg(feature = "remote-visual-probe")]
+    #[serde(skip)]
+    incarnation: String,
+    #[cfg(feature = "remote-visual-probe")]
+    #[serde(skip)]
+    content_epoch: u64,
+    #[cfg(feature = "remote-visual-probe")]
+    #[serde(skip)]
+    geometry_epoch: u64,
 }
 
 #[derive(Clone, Copy, Deserialize, PartialEq)]
@@ -313,6 +328,12 @@ async fn create(window: &Window, slot: &Slot) -> Result<Webview, String> {
         #[cfg(unix)]
         control: control.clone(),
         bounds: None,
+        #[cfg(feature = "remote-visual-probe")]
+        incarnation: next_page_revision(),
+        #[cfg(feature = "remote-visual-probe")]
+        content_epoch: 0,
+        #[cfg(feature = "remote-visual-probe")]
+        geometry_epoch: 0,
     };
     app.state::<Browsers>()
         .pages
@@ -369,6 +390,10 @@ async fn create(window: &Window, slot: &Slot) -> Result<Webview, String> {
                 });
             }
             update(&navigation_app, &navigation_id, |page| {
+                #[cfg(feature = "remote-visual-probe")]
+                {
+                    page.content_epoch = page.content_epoch.saturating_add(1);
+                }
                 page.url = url.to_string();
                 page.error.clear();
             });
@@ -406,6 +431,10 @@ async fn create(window: &Window, slot: &Slot) -> Result<Webview, String> {
             update(webview.app_handle(), &load_id, |page| {
                 if address(payload.url().as_str()).is_ok() {
                     page.url = payload.url().to_string();
+                }
+                #[cfg(feature = "remote-visual-probe")]
+                {
+                    page.content_epoch = page.content_epoch.saturating_add(1);
                 }
                 page.loading = matches!(payload.event(), PageLoadEvent::Started);
                 // The accepted navigation policy already clears automation errors.
@@ -634,7 +663,14 @@ pub async fn sync_browsers(
                 .lock()
                 .map_err(|e| e.to_string())?
                 .get_mut(&id)
-                .and_then(|page| page.bounds.take())
+                .and_then(|page| {
+                    let previous = page.bounds.take();
+                    #[cfg(feature = "remote-visual-probe")]
+                    if previous.is_some() {
+                        page.geometry_epoch = page.geometry_epoch.saturating_add(1);
+                    }
+                    previous
+                })
                 .is_some();
             if visible {
                 view(app, &id)?.hide().map_err(|e| e.to_string())?;
@@ -671,6 +707,10 @@ pub async fn sync_browsers(
                     .get_mut(&slot.id)
                 {
                     page.bounds = None;
+                    #[cfg(feature = "remote-visual-probe")]
+                    {
+                        page.geometry_epoch = page.geometry_epoch.saturating_add(1);
+                    }
                 }
             }
         } else if previous != Some(slot.bounds) {
@@ -683,6 +723,10 @@ pub async fn sync_browsers(
                 .get_mut(&slot.id)
             {
                 page.bounds = Some(slot.bounds);
+                #[cfg(feature = "remote-visual-probe")]
+                {
+                    page.geometry_epoch = page.geometry_epoch.saturating_add(1);
+                }
             }
         }
     }
@@ -901,6 +945,10 @@ pub async fn signal(webview: Webview, signal: Signal) -> Result<(), String> {
                     if let Some(control) = &page.control {
                         control.document_changed(url.as_str());
                         page.navigation_id = Some(control.navigation_id());
+                    }
+                    #[cfg(feature = "remote-visual-probe")]
+                    {
+                        page.content_epoch = page.content_epoch.saturating_add(1);
                     }
                     page.url = url.to_string();
                 });
