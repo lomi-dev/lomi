@@ -612,6 +612,48 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn renewed_signed_bearer_is_forwarded_unchanged_to_remote() {
+        for renewed_token in [
+            "native-token.signature+with/padding=",
+            "native-token.signature%2Bwith%2Fpadding%3D",
+        ] {
+            let (origin, server) = loopback_server(vec![
+                reply(
+                    "200 OK",
+                    &format!("set-auth-token: {renewed_token}\r\n"),
+                    r#"{"user":{"id":"user-1","displayName":"Ada","status":"active"},"session":{"id":"session-1","expiresAt":"2026-10-01T00:00:00Z"}}"#,
+                ),
+                reply("200 OK", "", r#"{"accountId":"account-1"}"#),
+            ]);
+            let mut api = test_api(origin.clone());
+            api.remote_origin = Some(origin);
+            let check = api.check_session("native-token").await.unwrap();
+            assert_eq!(check.renewed_token.as_deref(), Some(renewed_token));
+            api.remote_request(
+                check.renewed_token.as_deref().unwrap(),
+                reqwest::Method::GET,
+                "/v1/remote/native/session",
+                None,
+            )
+            .await
+            .unwrap();
+
+            let requests = server.join().unwrap();
+            assert!(requests[0].starts_with("GET /v1/me "));
+            assert!(requests[1].starts_with("GET /v1/remote/native/session "));
+            assert!(requests[1].contains(&format!("authorization: Bearer {renewed_token}\r\n")));
+            let headers = requests[1]
+                .split("\r\n\r\n")
+                .next()
+                .unwrap()
+                .to_ascii_lowercase();
+            for forbidden in ["cookie:", "origin:", "sec-fetch-site:"] {
+                assert!(!headers.contains(forbidden));
+            }
+        }
+    }
+
+    #[tokio::test]
     async fn native_remote_classifies_exact_update_requirement_without_server_text() {
         let (origin, server) = loopback_server(vec![reply(
             "426 Upgrade Required",

@@ -1364,7 +1364,21 @@ fn desktop_start_message(problem: HttpProblem) -> &'static str {
 fn remote_request_message(problem: HttpProblem) -> &'static str {
     match problem {
         HttpProblem::DesktopUpdateRequired => "Update Lomi to share workspaces remotely.",
-        _ => "Remote authorization could not be confirmed.",
+        HttpProblem::Transport => {
+            "Cannot connect to the Remote service. Check your connection and retry."
+        }
+        HttpProblem::Temporary => {
+            "The Remote service is temporarily unavailable. Try again shortly."
+        }
+        HttpProblem::RateLimited(_) => "Too many Remote requests. Wait a moment and retry.",
+        HttpProblem::Unauthorized => {
+            "The Remote service could not verify your account session. Check Account settings and retry."
+        }
+        HttpProblem::Forbidden => "The Remote service denied access to this account.",
+        HttpProblem::InvalidResponse => {
+            "The Remote service returned an invalid response. Try again later."
+        }
+        HttpProblem::Rejected => "The Remote service rejected the request. Try again later.",
     }
 }
 
@@ -2480,15 +2494,24 @@ mod tests {
     }
 
     #[test]
-    fn remote_update_requirement_uses_a_fixed_sharing_message() {
+    fn remote_failures_distinguish_authorization_from_service_problems() {
         assert_eq!(
             remote_request_message(HttpProblem::DesktopUpdateRequired),
             "Update Lomi to share workspaces remotely."
         );
+        let authorization_message = remote_request_message(HttpProblem::Unauthorized);
         assert_eq!(
-            remote_request_message(HttpProblem::Unauthorized),
-            "Remote authorization could not be confirmed."
+            authorization_message,
+            "The Remote service could not verify your account session. Check Account settings and retry."
         );
+        for problem in [
+            HttpProblem::Transport,
+            HttpProblem::Temporary,
+            HttpProblem::RateLimited(Some(20)),
+            HttpProblem::InvalidResponse,
+        ] {
+            assert_ne!(remote_request_message(problem), authorization_message);
+        }
     }
 
     #[test]
