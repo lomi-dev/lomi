@@ -577,13 +577,15 @@ for (const depth of [0, 3]) {
           ),
         )
         .toBe(2);
-      expect(
-        await page.evaluate(
-          () =>
-            JSON.parse(localStorage.getItem("test-session") ?? "null")
-              ?.projects[0].workspaces[0].tabs[0].layout,
-        ),
-      ).toEqual(expectedLayout);
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () =>
+              JSON.parse(localStorage.getItem("test-session") ?? "null")
+                ?.projects[0].workspaces[0].tabs[0].layout,
+          ),
+        )
+        .toEqual(expectedLayout);
     }
   });
 }
