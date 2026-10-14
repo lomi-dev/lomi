@@ -86,15 +86,23 @@ const child = spawn(
   },
 );
 let log = "";
+// Cold compilation has its own bound; application checks retain three minutes.
+const buildDeadline = Date.now() + 15 * 60_000;
+let applicationDeadline;
 for (const stream of [child.stdout, child.stderr])
   stream.on("data", (chunk) => {
     log += chunk;
     process.stdout.write(chunk);
+    const plainLog = log.replace(/\u001b\[[0-9;]*m/g, "");
+    if (
+      applicationDeadline === undefined &&
+      /Finished `dev` profile/.test(plainLog)
+    )
+      applicationDeadline = Date.now() + 180000;
   });
 try {
-  const deadline = Date.now() + 180000;
   let result;
-  while (!result && Date.now() < deadline) {
+  while (!result && Date.now() < (applicationDeadline ?? buildDeadline)) {
     try {
       result = JSON.parse(
         await readFile(join(directory, "result.json"), "utf8"),
@@ -109,7 +117,12 @@ try {
       await new Promise((resolve) => setTimeout(resolve, 200));
     }
   }
-  if (!result) throw Error("Native notification smoke timed out.");
+  if (!result)
+    throw Error(
+      applicationDeadline === undefined
+        ? "Native notification smoke build timed out."
+        : "Native notification smoke application timed out.",
+    );
   console.log(JSON.stringify(result, null, 2));
   if (result.stage !== "passed") process.exitCode = 1;
 } finally {
