@@ -452,7 +452,9 @@ Ok(result)}
         shells: &Shells,
         r: TaskSend,
     ) -> Result<Task, String> {
+        let capture = crate::push::capture(app);
         let (task, dispatch) = self.with(app, |i| {
+            i.store.as_mut().unwrap().notification_capture = capture;
             prepare_send(i, &r, self.closing.load(Ordering::SeqCst))
         })?;
 
@@ -710,7 +712,9 @@ freeze.3=true;
         shells: &Shells,
         r: SwitchCommit,
     ) -> Result<Task, String> {
+        let capture = crate::push::capture(app);
         let (t, dispatch) = self.with(app, |i| {
+            i.store.as_mut().unwrap().notification_capture = capture;
             prepare_switch_commit(i, &r, self.closing.load(Ordering::SeqCst))
         })?;
 

@@ -48,6 +48,7 @@ mod mcp_browser_probe;
 #[path = "../../tests/native/mcp-control-support.rs"]
 mod mcp_control_probe;
 mod notifications;
+mod push;
 mod remote;
 #[cfg(all(
     feature = "remote-visual-probe",
@@ -185,6 +186,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(chat::commands::Chats::default())
         .manage(auth::AuthController::default())
+        .manage(push::Push::default())
         .manage(remote::Remote::default())
         .manage(agent_control::Control::default())
         .manage(android::manager::Android::default())
@@ -232,9 +234,11 @@ pub fn run() {
             shell::prepare(&integration).map_err(std::io::Error::other)?;
             app.state::<remote::Remote>()
                 .initialize(app.handle().clone());
+            app.state::<push::Push>().initialize(app.handle());
             let account_auth = app.path().app_data_dir()?.join("account-auth");
             app.state::<auth::AuthController>()
                 .initialize(&account_auth, app.handle().clone());
+            app.state::<push::Push>().start(app.handle());
             app.manage(terminal::Shells {
                 profiles: shell::discover(),
                 integration,
@@ -463,6 +467,16 @@ pub fn run() {
                 remote::hide_main_window,
                 remote::request_quit,
                 remote::reopen_main_window,
+                push::push_get_state,
+                push::push_refresh_state,
+                push::push_update_account_preferences,
+                push::push_set_source_enabled,
+                push::push_disable_installation,
+                push::push_send_test,
+                push::desktop_notifications_get_state,
+                push::desktop_notifications_save_preferences,
+                push::desktop_notifications_report_permission,
+                push::desktop_notifications_send_test,
                 auth::auth_get_state,
                 auth::auth_begin_login,
                 auth::auth_open_verification,

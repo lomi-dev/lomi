@@ -54,6 +54,7 @@ struct McpSessionEntry {
     last_used: Instant,
 }
 pub struct Backend {
+    notifications_app: Option<tauri::AppHandle>,
     pub services: Mutex<Services>,
     pub owner: Owner,
     pub requests: Mutex<HashMap<String, Arc<Request>>>,
@@ -158,6 +159,7 @@ impl Backend {
             bundle
         };
         Ok(Arc::new(Self {
+            notifications_app: Some(app.clone()),
             services: Mutex::new(Services { store, settings }),
             owner,
             requests: Mutex::new(HashMap::new()),
@@ -342,6 +344,11 @@ impl Backend {
         check: impl Fn() -> Result<(), String>,
     ) -> Result<Value, String> {
         check()?;
+        let admission = self
+            .notifications_app
+            .as_ref()
+            .map(crate::push::capture)
+            .unwrap_or_default();
         let mut services = self
             .services
             .lock()
@@ -455,7 +462,7 @@ impl Backend {
             .store
             .as_mut()
             .map_err(|e| e.clone())?
-            .begin(&input, &metadata)?;
+            .begin_with_notifications(&input, &metadata, &admission)?;
         if accepted.repeated {
             return Ok(serde_json::to_value(accepted).unwrap());
         }
@@ -1248,6 +1255,7 @@ mod tests {
             .unwrap();
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let backend = Arc::new(Backend {
+            notifications_app: None,
             services: Mutex::new(Services {
                 store,
                 settings: Ok(settings),

@@ -443,6 +443,39 @@ export async function mockDesktop(
           if (command.startsWith("auth_") && desktop.__authInvoke)
             return desktop.__authInvoke(command, args);
           if (
+            command.startsWith("push_") ||
+            command.startsWith("desktop_notifications_")
+          ) {
+            if (desktop.__completionInvoke)
+              return desktop.__completionInvoke(command, args);
+            return command.startsWith("push_")
+              ? {
+                  revision: 1,
+                  accountId: null,
+                  available: false,
+                  featureEnabled: false,
+                  preferences: { enabled: false, consentEpoch: 1, revision: 1 },
+                  sources: [],
+                  installations: [],
+                  currentSourceId: null,
+                  errorCode: null,
+                }
+              : {
+                  revision: 1,
+                  accountId: null,
+                  available: false,
+                  preferences: {
+                    schemaVersion: 1,
+                    enabled: false,
+                    backgroundOnly: true,
+                    consentEpoch: 1,
+                    revision: 1,
+                  },
+                  permissionStatus: "unknown",
+                  errorCode: null,
+                };
+          }
+          if (
             (command.startsWith("android_") ||
               command === "save_android_preferences") &&
             command !== "android_exit" &&

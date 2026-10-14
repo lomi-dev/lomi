@@ -170,7 +170,7 @@ impl Store {
         let connection = db(Connection::open(&path))?;
         db(connection.busy_timeout(Duration::from_secs(2)))?;
         let version: i64 = db(connection.query_row("PRAGMA user_version", [], |r| r.get(0)))?;
-        if version > 2 {
+        if version > 3 {
             return Err(
                 "The chat history was created by a newer version. It was preserved.".into(),
             );
@@ -193,6 +193,13 @@ impl Store {
         if version == 1 {
             db(connection.execute_batch("BEGIN IMMEDIATE; ALTER TABLE conversations ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0 CHECK(pinned IN (0,1)); CREATE INDEX conversation_history_order ON conversations(pinned DESC,updated_at DESC,id); PRAGMA user_version=2; COMMIT;"))?;
         }
+        if version <= 2 {
+            db(connection.execute_batch(&format!(
+                "BEGIN IMMEDIATE; {} PRAGMA user_version=3; COMMIT;",
+                crate::push::ledger::SCHEMA
+            )))?;
+        }
+        crate::push::ledger::validate(&connection)?;
         db(connection.execute_batch("BEGIN IMMEDIATE; UPDATE requests SET status='interrupted' WHERE status='active'; UPDATE messages SET status='interrupted' WHERE status='active'; COMMIT;"))?;
         Ok(Self { connection })
     }
@@ -399,7 +406,16 @@ impl Store {
         }
         Ok(None)
     }
+    #[cfg(test)]
     pub fn begin(&mut self, input: &Start, metadata: &Value) -> Result<Accepted, String> {
+        self.begin_with_notifications(input, metadata, &Default::default())
+    }
+    pub(crate) fn begin_with_notifications(
+        &mut self,
+        input: &Start,
+        metadata: &Value,
+        admission: &crate::push::ledger::Admission,
+    ) -> Result<Accepted, String> {
         for id in [
             &input.request_id,
             &input.conversation_id,
@@ -508,6 +524,7 @@ impl Store {
                 ))?;
             }
         }
+        crate::push::ledger::admit(&tx, &input.request_id, admission)?;
         db(tx.commit())?;
         Ok(Accepted {
             request_id: input.request_id.clone(),
@@ -551,6 +568,14 @@ impl Store {
                 .join("\n");
             db(tx.execute("INSERT INTO chat_search SELECT ?1,conversation_id,assistant_id FROM requests WHERE id=?2",params![text,request]))?;
             db(tx.execute("UPDATE conversations SET updated_at=?1 WHERE id=(SELECT conversation_id FROM requests WHERE id=?2)",params![now(),request]))?;
+        }
+        if status == "completed" {
+            let logical: String = db(tx.query_row(
+                "SELECT conversation_id FROM requests WHERE id=?1",
+                [request],
+                |r| r.get(0),
+            ))?;
+            crate::push::ledger::complete(&tx, "chat", &logical, request)?;
         }
         db(tx.commit())
     }
@@ -836,6 +861,25 @@ impl Store {
     }
 }
 
+impl Store {
+    pub(crate) fn notification_ready(
+        &self,
+        channel: crate::push::ledger::Channel,
+    ) -> Result<Vec<crate::push::ledger::Intent>, String> {
+        crate::push::ledger::ready(&self.connection, channel)
+    }
+    pub(crate) fn notification_transition(
+        &self,
+        channel: crate::push::ledger::Channel,
+        intent: &crate::push::ledger::Intent,
+        expected: &str,
+        state: &str,
+        next: u64,
+    ) -> Result<bool, String> {
+        crate::push::ledger::transition(&self.connection, channel, intent, expected, state, next)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -868,6 +912,116 @@ mod tests {
             target_id: None,
             text: "first".into(),
         }
+    }
+    fn notification_admission() -> crate::push::ledger::Admission {
+        let owner = crate::push::ledger::Owner {
+            user_id: "lomi-user".into(),
+            session_id: "session".into(),
+            process_id: "process".into(),
+            generation: 1,
+        };
+        crate::push::ledger::Admission {
+            desktop: Some(crate::push::ledger::DesktopStamp {
+                owner: owner.clone(),
+                installation_id: "computer".into(),
+                consent_epoch: 1,
+            }),
+            cloud: Some(crate::push::ledger::CloudStamp {
+                owner,
+                source_id: "source".into(),
+                consent_epoch: 1,
+                source_epoch: 1,
+            }),
+        }
+    }
+    #[test]
+    fn completion_notifications_share_final_save_transaction_and_retry() {
+        let (_root, mut store) = setup();
+        store.save_draft("conversation", "first", 0).unwrap();
+        store
+            .begin_with_notifications(&start(), &json!({}), &notification_admission())
+            .unwrap();
+        store.connection.execute_batch("CREATE TRIGGER fail_cloud_intent BEFORE INSERT ON push_notification_intents BEGIN SELECT RAISE(ABORT,'fixture failed final save'); END;").unwrap();
+        assert!(store
+            .checkpoint("request", 1, &json!([]), "completed", &json!({}))
+            .is_err());
+        assert_eq!(
+            store.message("conversation", "assistant").unwrap().status,
+            "active"
+        );
+        assert!(store
+            .notification_ready(crate::push::ledger::Channel::Desktop)
+            .unwrap()
+            .is_empty());
+        store
+            .connection
+            .execute_batch("DROP TRIGGER fail_cloud_intent")
+            .unwrap();
+        store
+            .checkpoint("request", 1, &json!([]), "completed", &json!({}))
+            .unwrap();
+        assert_eq!(
+            store
+                .notification_ready(crate::push::ledger::Channel::Desktop)
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            store
+                .notification_ready(crate::push::ledger::Channel::Cloud)
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(store
+            .checkpoint("request", 2, &json!([]), "completed", &json!({}))
+            .is_err());
+        assert_eq!(
+            store
+                .notification_ready(crate::push::ledger::Channel::Desktop)
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+    #[test]
+    fn startup_interruption_and_failed_requests_do_not_emit_completion() {
+        for status in ["failed", "cancelled", "interrupted"] {
+            let (root, mut store) = setup();
+            store.save_draft("conversation", "first", 0).unwrap();
+            store
+                .begin_with_notifications(&start(), &json!({}), &notification_admission())
+                .unwrap();
+            store
+                .checkpoint("request", 1, &json!([]), status, &json!({}))
+                .unwrap();
+            drop(store);
+            let store = Store::open(root.path()).unwrap();
+            assert!(store
+                .notification_ready(crate::push::ledger::Channel::Desktop)
+                .unwrap()
+                .is_empty());
+            assert!(store
+                .notification_ready(crate::push::ledger::Channel::Cloud)
+                .unwrap()
+                .is_empty());
+        }
+        let (root, mut store) = setup();
+        store.save_draft("conversation", "first", 0).unwrap();
+        store
+            .begin_with_notifications(&start(), &json!({}), &notification_admission())
+            .unwrap();
+        drop(store);
+        let store = Store::open(root.path()).unwrap();
+        assert_eq!(
+            store.message("conversation", "assistant").unwrap().status,
+            "interrupted"
+        );
+        assert!(store
+            .notification_ready(crate::push::ledger::Channel::Desktop)
+            .unwrap()
+            .is_empty());
     }
     #[test]
     fn send_consumes_exact_draft_and_retry_preserves_branch() {
@@ -1005,7 +1159,7 @@ mod tests {
         store.rename("conversation", "Saved conversation").unwrap();
         let before = serde_json::to_value(store.load("conversation", 0).unwrap()).unwrap();
         store.connection.execute_batch(
-            "DROP INDEX conversation_history_order; ALTER TABLE conversations DROP COLUMN pinned; PRAGMA user_version=1;"
+            "DROP INDEX conversation_history_order; ALTER TABLE conversations DROP COLUMN pinned; DROP TABLE notification_admissions; DROP TABLE push_notification_intents; DROP TABLE desktop_notification_intents; PRAGMA user_version=1;"
         ).unwrap();
         drop(store);
         let mut store = Store::open(root.path()).unwrap();

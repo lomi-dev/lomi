@@ -34,7 +34,119 @@ pub(super) enum HttpProblem {
     Rejected,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PushRequestError {
+    pub status: Option<u16>,
+    pub code: String,
+    pub retry_after_seconds: Option<u64>,
+}
+
+impl PushRequestError {
+    pub(crate) fn local(code: &str) -> Self {
+        Self {
+            status: None,
+            code: code.into(),
+            retry_after_seconds: None,
+        }
+    }
+}
+
+impl std::fmt::Display for PushRequestError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.code)
+    }
+}
+
+impl std::error::Error for PushRequestError {}
+
+fn push_resource_id(value: &str) -> bool {
+    value.len() == 36
+        && value.bytes().enumerate().all(|(index, byte)| {
+            if matches!(index, 8 | 13 | 18 | 23) {
+                byte == b'-'
+            } else {
+                byte.is_ascii_hexdigit()
+            }
+        })
+}
+
+fn push_route_allowed(method: &reqwest::Method, path: &str) -> bool {
+    if path.len() > 256 {
+        return false;
+    }
+    let Some(route) = path.strip_prefix("/v1/remote/native/push/") else {
+        return false;
+    };
+    match (method, route) {
+        (&reqwest::Method::GET, "preferences" | "sources" | "installations") => true,
+        (&reqwest::Method::POST, "preferences" | "sources/register" | "events" | "test") => true,
+        (&reqwest::Method::POST, _) => {
+            let pieces: Vec<_> = route.split('/').collect();
+            pieces.len() == 3
+                && push_resource_id(pieces[1])
+                && matches!(
+                    (pieces[0], pieces[2]),
+                    ("sources", "settings") | ("installations", "disable")
+                )
+        }
+        _ => false,
+    }
+}
+
+fn push_http_error(status: StatusCode, body: &[u8], retry_after: Option<u64>) -> PushRequestError {
+    let supplied = serde_json::from_slice::<Value>(body)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("error")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+        });
+    let fallback = match status.as_u16() {
+        400 => "INVALID_REQUEST",
+        401 => "SESSION_REQUIRED",
+        403 => "ACCOUNT_UNAVAILABLE",
+        404 => "NOT_FOUND",
+        409 => "REVISION_CONFLICT",
+        426 => "UPDATE_REQUIRED",
+        429 => "RATE_LIMITED",
+        500..=599 => "SERVICE_UNAVAILABLE",
+        _ => "REQUEST_REJECTED",
+    };
+    let code = supplied
+        .filter(|code| {
+            matches!(
+                code.as_str(),
+                "INVALID_REQUEST"
+                    | "ACCESS_EXPIRED"
+                    | "SESSION_REQUIRED"
+                    | "FEATURE_DISABLED"
+                    | "ACCOUNT_UNAVAILABLE"
+                    | "NOT_FOUND"
+                    | "REVISION_CONFLICT"
+                    | "BINDING_CHANGED"
+                    | "TOKEN_BINDING_CONFLICT"
+                    | "UPDATE_REQUIRED"
+                    | "RATE_LIMITED"
+                    | "SERVICE_UNAVAILABLE"
+            )
+        })
+        .unwrap_or_else(|| fallback.into());
+    PushRequestError {
+        status: Some(status.as_u16()),
+        code,
+        retry_after_seconds: retry_after.map(|seconds| seconds.clamp(1, 600)),
+    }
+}
+
 impl ApiClient {
+    #[cfg(test)]
+    pub(super) fn set_test_remote_origin(&mut self, origin: String) {
+        assert!(origin.starts_with("http://127.0.0.1:"));
+        self.remote_origin = Some(origin);
+    }
+
     pub fn new(config: AuthConfig) -> Result<Self, String> {
         let _ = rustls::crypto::ring::default_provider().install_default();
         let client = Client::builder()
@@ -93,6 +205,67 @@ impl ApiClient {
             return Err(classify_status(response, &bytes, retry_after));
         }
         serde_json::from_slice(&bytes).map_err(|_| HttpProblem::InvalidResponse)
+    }
+
+    pub async fn push_request(
+        &self,
+        token: &str,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&Value>,
+    ) -> Result<Value, PushRequestError> {
+        if !push_route_allowed(&method, path) {
+            return Err(PushRequestError::local("INVALID_REQUEST"));
+        }
+        let origin = self
+            .remote_origin
+            .as_ref()
+            .ok_or_else(|| PushRequestError::local("SERVICE_UNAVAILABLE"))?;
+        let url = reqwest::Url::parse(&format!("{origin}{path}"))
+            .map_err(|_| PushRequestError::local("INVALID_REQUEST"))?;
+        let request = self
+            .client
+            .request(method, url)
+            .bearer_auth(token)
+            .header("X-Lomi-Remote-Protocol", "live-atomic-renew-v1")
+            .timeout(Duration::from_secs(5));
+        let request = if let Some(body) = body {
+            let bytes =
+                serde_json::to_vec(body).map_err(|_| PushRequestError::local("INVALID_REQUEST"))?;
+            if bytes.len() > 16 * 1024 {
+                return Err(PushRequestError::local("INVALID_REQUEST"));
+            }
+            request
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(bytes)
+        } else {
+            request
+        };
+        let response = request
+            .send()
+            .await
+            .map_err(|_| PushRequestError::local("TRANSPORT_UNKNOWN"))?;
+        let status = response.status();
+        let (response, bytes, retry_after) = read_response_limit(response, RESPONSE_LIMIT)
+            .await
+            .map_err(|problem| PushRequestError {
+                status: Some(status.as_u16()),
+                code: if problem == HttpProblem::Transport {
+                    "TRANSPORT_UNKNOWN"
+                } else {
+                    "INVALID_RESPONSE"
+                }
+                .into(),
+                retry_after_seconds: None,
+            })?;
+        if !response.status().is_success() {
+            return Err(push_http_error(status, &bytes, retry_after));
+        }
+        serde_json::from_slice(&bytes).map_err(|_| PushRequestError {
+            status: Some(status.as_u16()),
+            code: "INVALID_RESPONSE".into(),
+            retry_after_seconds: None,
+        })
     }
 
     pub async fn start_desktop(
@@ -819,6 +992,119 @@ mod tests {
                 None
             ),
             HttpProblem::Rejected
+        );
+    }
+
+    #[tokio::test]
+    async fn push_preserves_bounded_errors_and_fixed_native_transport() {
+        let (origin, server) = loopback_server(vec![
+            reply(
+                "409 Conflict",
+                "",
+                r#"{"error":"BINDING_CHANGED","secret":"never-forward"}"#,
+            ),
+            reply("426 Upgrade Required", "", r#"{"error":"UPDATE_REQUIRED"}"#),
+            reply(
+                "429 Too Many Requests",
+                "Retry-After: 17\r\n",
+                r#"{"error":"RATE_LIMITED"}"#,
+            ),
+            reply(
+                "503 Service Unavailable",
+                "",
+                r#"{"error":"token-from-untrusted-server"}"#,
+            ),
+        ]);
+        let mut api = test_api("https://auth.lomi.dev".into());
+        api.remote_origin = Some(origin);
+        for (status, code, retry) in [
+            (409, "BINDING_CHANGED", None),
+            (426, "UPDATE_REQUIRED", None),
+            (429, "RATE_LIMITED", Some(17)),
+            (503, "SERVICE_UNAVAILABLE", None),
+        ] {
+            let error = api
+                .push_request(
+                    "test-token",
+                    reqwest::Method::POST,
+                    "/v1/remote/native/push/preferences",
+                    Some(&serde_json::json!({"enabled":false})),
+                )
+                .await
+                .unwrap_err();
+            assert_eq!(error.status, Some(status));
+            assert_eq!(error.code, code);
+            assert_eq!(error.retry_after_seconds, retry);
+            let serialized = serde_json::to_string(&error).unwrap();
+            assert!(!serialized.contains("never-forward"));
+            assert!(!serialized.contains("token-from-untrusted-server"));
+        }
+        for request in server.join().unwrap() {
+            assert!(request.starts_with("POST /v1/remote/native/push/preferences "));
+            let headers = request
+                .split("\r\n\r\n")
+                .next()
+                .unwrap()
+                .to_ascii_lowercase();
+            assert!(headers.contains("authorization: bearer test-token\r\n"));
+            assert!(headers.contains("x-lomi-remote-protocol: live-atomic-renew-v1\r\n"));
+            for forbidden in ["cookie:", "origin:", "sec-fetch-site:"] {
+                assert!(!headers.contains(forbidden));
+            }
+        }
+        for path in [
+            "/v1/remote/native/session",
+            "/v1/remote/native/push/events/extra",
+            "/v1/remote/native/push/preferences?token=x",
+            "/v1/remote/native/push/../session",
+            "https://evil.test/v1/remote/native/push/preferences",
+        ] {
+            assert!(api
+                .push_request("test-token", reqwest::Method::GET, path, None)
+                .await
+                .is_err());
+        }
+        assert!(!push_route_allowed(
+            &reqwest::Method::DELETE,
+            "/v1/remote/native/push/preferences"
+        ));
+        assert!(!push_route_allowed(
+            &reqwest::Method::GET,
+            "/v1/remote/native/push/events"
+        ));
+        assert_eq!(
+            push_http_error(StatusCode::TOO_MANY_REQUESTS, b"{}", Some(u64::MAX))
+                .retry_after_seconds,
+            Some(600)
+        );
+    }
+
+    #[tokio::test]
+    async fn push_redirect_never_forwards_authorization() {
+        let target = TcpListener::bind("127.0.0.1:0").unwrap();
+        target.set_nonblocking(true).unwrap();
+        let location = format!(
+            "Location: http://{}/capture\r\n",
+            target.local_addr().unwrap()
+        );
+        let (origin, server) = loopback_server(vec![reply("302 Found", &location, "{}")]);
+        let mut api = test_api("https://auth.lomi.dev".into());
+        api.remote_origin = Some(origin);
+        assert_eq!(
+            api.push_request(
+                "test-token",
+                reqwest::Method::GET,
+                "/v1/remote/native/push/preferences",
+                None
+            )
+            .await
+            .unwrap_err()
+            .status,
+            Some(302)
+        );
+        server.join().unwrap();
+        assert!(
+            matches!(target.accept(), Err(error) if error.kind() == std::io::ErrorKind::WouldBlock)
         );
     }
 

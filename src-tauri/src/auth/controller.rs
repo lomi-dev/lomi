@@ -14,6 +14,30 @@ use std::{
 };
 use tauri::{Emitter, EventTarget, Manager};
 
+pub(crate) use super::http::PushRequestError;
+
+// Order: emission guard, auth core, notification preferences. Never hold this
+// guard across HTTP, source-store access, or an asynchronous OS result.
+pub(crate) static LOCAL_NOTIFICATION_EMISSION_GUARD: Mutex<()> = Mutex::new(());
+
+struct AuthorityMutation<'a> {
+    core: std::sync::MutexGuard<'a, Core>,
+    _emission: std::sync::MutexGuard<'static, ()>,
+}
+
+impl std::ops::Deref for AuthorityMutation<'_> {
+    type Target = Core;
+    fn deref(&self) -> &Core {
+        &self.core
+    }
+}
+
+impl std::ops::DerefMut for AuthorityMutation<'_> {
+    fn deref_mut(&mut self) -> &mut Core {
+        &mut self.core
+    }
+}
+
 #[derive(Clone)]
 pub struct AuthController {
     inner: Arc<Inner>,
@@ -184,6 +208,35 @@ fn remote_binding(core: &Core) -> Result<RemoteBinding, String> {
     })
 }
 
+fn local_notification_binding(core: &Core) -> Result<RemoteBinding, String> {
+    if !matches!(
+        core.state.status,
+        AuthStatus::SignedIn | AuthStatus::Offline
+    ) || core.active_attempt_id.is_some()
+        || core.attempt.is_some()
+    {
+        return Err("An active account session is required.".into());
+    }
+    let user = core.state.user.as_ref().ok_or("Sign in first.")?;
+    let session = core.state.session.as_ref().ok_or("Sign in first.")?;
+    let expires = chrono::DateTime::parse_from_rfc3339(&session.expires_at)
+        .map_err(|_| "Invalid account expiry.")?
+        .timestamp();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| "Clock unavailable.")?
+        .as_secs();
+    if core.token.is_none() || user.status != "active" || expires <= now as i64 {
+        return Err("Account authorization expired.".into());
+    }
+    Ok(RemoteBinding {
+        user_id: user.id.clone(),
+        session_id: session.id.clone(),
+        expires_at: expires as u64,
+        generation: core.generation,
+    })
+}
+
 impl Default for AuthController {
     fn default() -> Self {
         let config = AuthConfig::from_build().ok();
@@ -213,9 +266,145 @@ impl Default for AuthController {
 }
 
 impl AuthController {
+    fn authority_mutation(&self) -> Result<AuthorityMutation<'_>, &'static str> {
+        let emission = LOCAL_NOTIFICATION_EMISSION_GUARD
+            .lock()
+            .map_err(|_| "Account unavailable.")?;
+        let core = self.inner.core.lock().map_err(|_| "Account unavailable.")?;
+        Ok(AuthorityMutation {
+            core,
+            _emission: emission,
+        })
+    }
+
+    pub(crate) fn local_notification_binding(&self) -> Result<RemoteBinding, String> {
+        local_notification_binding(&*self.inner.core.lock().map_err(|_| "Account unavailable.")?)
+    }
+
+    pub(crate) async fn push_request(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&serde_json::Value>,
+    ) -> Result<(RemoteBinding, serde_json::Value), PushRequestError> {
+        self.push_request_inner(method, path, body, None).await
+    }
+
+    pub(crate) async fn push_request_bound(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&serde_json::Value>,
+        expected: &RemoteBinding,
+    ) -> Result<(RemoteBinding, serde_json::Value), PushRequestError> {
+        self.push_request_inner(method, path, body, Some(expected))
+            .await
+    }
+
+    async fn push_request_inner(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&serde_json::Value>,
+        expected: Option<&RemoteBinding>,
+    ) -> Result<(RemoteBinding, serde_json::Value), PushRequestError> {
+        let (token, binding) = {
+            let core = self
+                .inner
+                .core
+                .lock()
+                .map_err(|_| PushRequestError::local("SESSION_REQUIRED"))?;
+            let binding =
+                remote_binding(&core).map_err(|_| PushRequestError::local("SESSION_REQUIRED"))?;
+            if expected.is_some_and(|owner| !owner.same_authority(&binding)) {
+                return Err(PushRequestError::local("AUTHORITY_CHANGED"));
+            }
+            (
+                core.token
+                    .clone()
+                    .ok_or_else(|| PushRequestError::local("SESSION_REQUIRED"))?,
+                binding,
+            )
+        };
+        let result = self
+            .inner
+            .api
+            .as_ref()
+            .ok_or_else(|| PushRequestError::local("SERVICE_UNAVAILABLE"))?
+            .push_request(token.exposed(), method, path, body)
+            .await;
+        let retirement = result.as_ref().is_err_and(|error| {
+            matches!(
+                (error.status, error.code.as_str()),
+                (Some(401), "SESSION_REQUIRED") | (Some(403), "ACCOUNT_UNAVAILABLE")
+            )
+        });
+        if retirement {
+            self.retire_denied_push_authority(&binding, &token)?;
+            return Err(result.expect_err("known denial requires an error"));
+        }
+        let core = self
+            .inner
+            .core
+            .lock()
+            .map_err(|_| PushRequestError::local("SESSION_REQUIRED"))?;
+        let current =
+            remote_binding(&core).map_err(|_| PushRequestError::local("SESSION_REQUIRED"))?;
+        if !current.same_authority(&binding) {
+            return Err(PushRequestError::local("AUTHORITY_CHANGED"));
+        }
+        Ok((current, result?))
+    }
+
+    fn retire_denied_push_authority(
+        &self,
+        expected: &RemoteBinding,
+        expected_token: &Secret,
+    ) -> Result<(), PushRequestError> {
+        {
+            let mut core = self
+                .authority_mutation()
+                .map_err(|_| PushRequestError::local("SESSION_REQUIRED"))?;
+            // A definitive denial fences this captured authority even if a
+            // concurrent connectivity check moved it to Offline or Checking.
+            let same_owner = core.generation == expected.generation
+                && core
+                    .state
+                    .user
+                    .as_ref()
+                    .is_some_and(|u| u.id == expected.user_id)
+                && core
+                    .state
+                    .session
+                    .as_ref()
+                    .is_some_and(|s| s.id == expected.session_id);
+            if !same_owner
+                || core
+                    .token
+                    .as_ref()
+                    .is_none_or(|t| t.exposed() != expected_token.exposed())
+            {
+                return Err(PushRequestError::local("AUTHORITY_CHANGED"));
+            }
+            retire_notification_owner(&core);
+            let persisted = tombstone_store(&mut core);
+            core.next_generation();
+            clear_account(&mut core);
+            core.state.status = if persisted {
+                AuthStatus::SignedOut
+            } else {
+                AuthStatus::StorageLocked
+            };
+            core.state.message =
+                Some("The account session is no longer authorized. Sign in again.".into());
+        }
+        self.publish();
+        Ok(())
+    }
+
     pub fn initialize(&self, root: &Path, app: tauri::AppHandle) {
         let mut startup_check = false;
-        if let Ok(mut core) = self.inner.core.lock() {
+        if let Ok(mut core) = self.authority_mutation() {
             core.app = Some(app);
             if core.state.status == AuthStatus::Unavailable {
                 drop(core);
@@ -272,7 +461,7 @@ impl AuthController {
 
     fn start_session_refresh(&self) {
         let mut stopped = {
-            let Ok(mut core) = self.inner.core.lock() else {
+            let Ok(mut core) = self.authority_mutation() else {
                 return;
             };
             if core.session_refresh_stop.is_some() {
@@ -356,7 +545,7 @@ impl AuthController {
         {
             return Err("Probe account must use the isolated local identity fixture.".into());
         }
-        let mut core = self.inner.core.lock().map_err(|_| "Account unavailable.")?;
+        let mut core = self.authority_mutation()?;
         core.next_generation();
         core.store = None;
         core.token = Some(Secret::new(token));
@@ -401,7 +590,7 @@ impl AuthController {
             }
         };
         let generation = {
-            let Ok(mut core) = self.inner.core.lock() else {
+            let Ok(mut core) = self.authority_mutation() else {
                 return self.snapshot();
             };
             if core.token.is_some() || core.active_attempt_id.is_some() {
@@ -519,7 +708,7 @@ impl AuthController {
                     expires_at_text: expires_at_text.clone(),
                 };
                 let mut accepted = false;
-                if let Ok(mut core) = self.inner.core.lock() {
+                if let Ok(mut core) = self.authority_mutation() {
                     if core.current_attempt(generation, &attempt_id) {
                         core.state.status = AuthStatus::Authorizing;
                         core.state.storage = Some(storage);
@@ -553,7 +742,7 @@ impl AuthController {
                 }
             }
             Err(problem) => {
-                if let Ok(mut core) = self.inner.core.lock() {
+                if let Ok(mut core) = self.authority_mutation() {
                     if core.current_attempt(generation, &attempt_id) {
                         core.next_generation();
                         core.state.status = if matches!(
@@ -612,7 +801,7 @@ impl AuthController {
     }
 
     pub fn cancel_login(&self, attempt_id: &str) -> AuthState {
-        if let Ok(mut core) = self.inner.core.lock() {
+        if let Ok(mut core) = self.authority_mutation() {
             if core.invalidate_attempt(attempt_id) {
                 core.state.status = AuthStatus::SignedOut;
                 core.state.storage = None;
@@ -632,7 +821,7 @@ impl AuthController {
             return self.snapshot();
         }
         let action = {
-            let Ok(mut core) = self.inner.core.lock() else {
+            let Ok(mut core) = self.authority_mutation() else {
                 return self.snapshot();
             };
             // Background checks never load storage or probe without a usable token.
@@ -726,7 +915,7 @@ impl AuthController {
     }
 
     fn apply_probe_result(&self, generation: u64, result: Result<(), HttpProblem>) {
-        if let Ok(mut core) = self.inner.core.lock() {
+        if let Ok(mut core) = self.authority_mutation() {
             if core.generation != generation || core.refresh_owner_generation != Some(generation) {
                 return;
             }
@@ -758,7 +947,7 @@ impl AuthController {
     ) {
         let mut revoke_after = Vec::new();
         {
-            let Ok(mut core) = self.inner.core.lock() else {
+            let Ok(mut core) = self.authority_mutation() else {
                 return;
             };
             if core.generation != generation || core.refresh_owner_generation != Some(generation) {
@@ -784,6 +973,7 @@ impl AuthController {
                             .as_mut()
                             .is_some_and(|store| store.save_active(token.exposed()).is_ok());
                         if !persisted {
+                            retire_notification_owner(&core);
                             if let Some(store) = core.store.as_mut() {
                                 let _ = store.tombstone();
                             }
@@ -820,6 +1010,7 @@ impl AuthController {
                     }
                 }
                 Err(HttpProblem::Unauthorized) => {
+                    retire_notification_owner(&core);
                     let tombstone_ok = tombstone_store(&mut core);
                     clear_account(&mut core);
                     if tombstone_ok {
@@ -834,6 +1025,7 @@ impl AuthController {
                     }
                 }
                 Err(HttpProblem::Forbidden) => {
+                    retire_notification_owner(&core);
                     core.state.status = AuthStatus::Error;
                     core.state.message = Some("This account cannot access Lomi.".into());
                 }
@@ -849,7 +1041,7 @@ impl AuthController {
             revocation_confirmed &= self.revoke_if_possible(token).await;
         }
         if !revoke_after.is_empty() {
-            if let Ok(mut core) = self.inner.core.lock() {
+            if let Ok(mut core) = self.authority_mutation() {
                 if core.generation == generation {
                     core.state.remote_revocation_confirmed = Some(revocation_confirmed);
                 }
@@ -860,9 +1052,10 @@ impl AuthController {
 
     pub async fn sign_out(&self) -> AuthState {
         let (generation, token, tombstone_error, had_session) = {
-            let Ok(mut core) = self.inner.core.lock() else {
+            let Ok(mut core) = self.authority_mutation() else {
                 return self.snapshot();
             };
+            retire_notification_owner(&core);
             let generation = core.next_generation();
             core.attempt = None;
             let token = core.token.take();
@@ -909,7 +1102,7 @@ impl AuthController {
         };
         drop(token);
 
-        if let Ok(mut core) = self.inner.core.lock() {
+        if let Ok(mut core) = self.authority_mutation() {
             if core.generation == generation {
                 core.state.remote_revocation_confirmed = remote_confirmed;
                 if tombstone_error.is_none() {
@@ -949,7 +1142,7 @@ impl AuthController {
     }
 
     pub fn shutdown(&self) {
-        if let Ok(mut core) = self.inner.core.lock() {
+        if let Ok(mut core) = self.authority_mutation() {
             if let Some(stop) = core.session_refresh_stop.take() {
                 let _ = stop.send(true);
             }
@@ -1075,7 +1268,7 @@ impl AuthController {
                     token = Secret::new(renewed);
                 }
                 let revoke_token = token.clone();
-                let activation = if let Ok(mut core) = self.inner.core.lock() {
+                let activation = if let Ok(mut core) = self.authority_mutation() {
                     if !core.current_attempt(generation, attempt_id) {
                         SessionActivation::Stale
                     } else {
@@ -1140,7 +1333,7 @@ impl AuthController {
                     }
                     SessionActivation::StorageFailure => {
                         let revoked = self.revoke_if_possible(&revoke_token).await;
-                        if let Ok(mut core) = self.inner.core.lock() {
+                        if let Ok(mut core) = self.authority_mutation() {
                             if core.generation == generation {
                                 core.state.remote_revocation_confirmed = Some(revoked);
                             }
@@ -1152,7 +1345,7 @@ impl AuthController {
             }
             Err(HttpProblem::Transport | HttpProblem::Temporary | HttpProblem::RateLimited(_)) => {
                 let accepted = {
-                    if let Ok(mut core) = self.inner.core.lock() {
+                    if let Ok(mut core) = self.authority_mutation() {
                         if core.current_attempt(generation, attempt_id) {
                             core.active_attempt_id = None;
                             core.attempt = None;
@@ -1206,7 +1399,7 @@ impl AuthController {
             }
             Err(_) => {
                 let accepted = {
-                    if let Ok(mut core) = self.inner.core.lock() {
+                    if let Ok(mut core) = self.authority_mutation() {
                         if core.current_attempt(generation, attempt_id) {
                             core.active_attempt_id = None;
                             core.attempt = None;
@@ -1289,7 +1482,7 @@ impl AuthController {
     }
 
     fn finish_attempt(&self, generation: u64, attempt_id: &str, status: AuthStatus, message: &str) {
-        if let Ok(mut core) = self.inner.core.lock() {
+        if let Ok(mut core) = self.authority_mutation() {
             if core.current_attempt(generation, attempt_id) {
                 core.active_attempt_id = None;
                 core.attempt = None;
@@ -1305,7 +1498,7 @@ impl AuthController {
     }
 
     fn set_error(&self, status: AuthStatus, message: &str) {
-        if let Ok(mut core) = self.inner.core.lock() {
+        if let Ok(mut core) = self.authority_mutation() {
             core.state.status = status;
             core.state.message = Some(message.into());
         }
@@ -1314,7 +1507,7 @@ impl AuthController {
 
     fn publish(&self) -> AuthState {
         let snapshot = {
-            let Ok(mut core) = self.inner.core.lock() else {
+            let Ok(mut core) = self.authority_mutation() else {
                 return self.snapshot();
             };
             core.state.revision = core.state.revision.wrapping_add(1);
@@ -1339,6 +1532,17 @@ fn tombstone_store(core: &mut Core) -> bool {
     match core.store.as_mut() {
         Some(store) => store.tombstone().is_ok(),
         None => true,
+    }
+}
+
+fn retire_notification_owner(core: &Core) {
+    if let (Some(app), Some(user), Some(session)) = (
+        core.app.as_ref(),
+        core.state.user.as_ref(),
+        core.state.session.as_ref(),
+    ) {
+        // The module fences capture even when its marker cannot be persisted.
+        let _ = crate::push::retire_owner(app, &user.id, &session.id);
     }
 }
 
@@ -1523,6 +1727,256 @@ mod tests {
         core.refresh_owner_generation = None;
         core.token = None;
         assert!(!core.can_refresh_session_automatically());
+    }
+
+    #[test]
+    fn local_notifications_require_retained_verified_owner_and_future_expiry() {
+        let mut core = authorized_core();
+        let original = local_notification_binding(&core).unwrap();
+        core.state.status = AuthStatus::Offline;
+        assert!(local_notification_binding(&core)
+            .unwrap()
+            .same_authority(&original));
+        assert!(remote_binding(&core).is_err());
+        for status in [
+            AuthStatus::Checking,
+            AuthStatus::Authorizing,
+            AuthStatus::Error,
+            AuthStatus::StorageLocked,
+            AuthStatus::SignedOut,
+            AuthStatus::Unavailable,
+        ] {
+            core.state.status = status;
+            assert!(local_notification_binding(&core).is_err());
+        }
+        core.state.status = AuthStatus::Offline;
+        core.active_attempt_id = Some("login-in-flight".into());
+        assert!(local_notification_binding(&core).is_err());
+        core.active_attempt_id = None;
+        core.state.user.as_mut().unwrap().status = "suspended".into();
+        assert!(local_notification_binding(&core).is_err());
+        core.state.user.as_mut().unwrap().status = "active".into();
+        core.state.session.as_mut().unwrap().expires_at =
+            format_timestamp(SystemTime::now() - Duration::from_secs(1));
+        assert!(local_notification_binding(&core).is_err());
+        core = authorized_core();
+        core.token = None;
+        assert!(local_notification_binding(&core).is_err());
+        core = authorized_core();
+        core.state.status = AuthStatus::Offline;
+        core.state.user = None;
+        core.state.session = None;
+        assert!(local_notification_binding(&core).is_err());
+    }
+
+    #[test]
+    fn local_emission_guard_serializes_retirement_before_owner_mutation() {
+        let controller = controller_for_origin("http://127.0.0.1:9".into(), AuthStatus::SignedIn);
+        *controller.inner.core.lock().unwrap() = authorized_core();
+        let guard = LOCAL_NOTIFICATION_EMISSION_GUARD.lock().unwrap();
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let cloned = controller.clone();
+        let retirement = thread::spawn(move || {
+            ready_tx.send(()).unwrap();
+            let mut core = cloned.authority_mutation().unwrap();
+            core.next_generation();
+            clear_account(&mut core);
+            core.state.status = AuthStatus::SignedOut;
+            done_tx.send(()).unwrap();
+        });
+        ready_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(done_rx.try_recv().is_err());
+        assert!(controller.local_notification_binding().is_ok());
+        drop(guard);
+        done_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        retirement.join().unwrap();
+        assert!(controller.local_notification_binding().is_err());
+    }
+
+    #[tokio::test]
+    async fn bound_push_rejects_owner_change_before_http_and_stale_ack_after_http() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let (received_tx, received_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let request = read_complete_http_request(&mut stream);
+            received_tx.send(()).unwrap();
+            release_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+            write_api_response(&mut stream, "200 OK", r#"{"enabled":true}"#);
+            request
+        });
+        let mut controller = controller_for_origin(origin.clone(), AuthStatus::SignedIn);
+        Arc::get_mut(&mut controller.inner)
+            .unwrap()
+            .api
+            .as_mut()
+            .unwrap()
+            .set_test_remote_origin(origin);
+        *controller.inner.core.lock().unwrap() = authorized_core();
+        let owner = controller.remote_binding().unwrap();
+        let mut wrong = owner.clone();
+        wrong.generation += 1;
+        assert_eq!(
+            controller
+                .push_request_bound(
+                    reqwest::Method::POST,
+                    "/v1/remote/native/push/events",
+                    Some(&serde_json::json!({})),
+                    &wrong
+                )
+                .await
+                .unwrap_err()
+                .code,
+            "AUTHORITY_CHANGED"
+        );
+        let cloned = controller.clone();
+        let request = tokio::spawn(async move {
+            cloned
+                .push_request_bound(
+                    reqwest::Method::POST,
+                    "/v1/remote/native/push/events",
+                    Some(&serde_json::json!({"eventKey":"test-only"})),
+                    &owner,
+                )
+                .await
+        });
+        received_rx.await.unwrap();
+        {
+            let mut core = controller.authority_mutation().unwrap();
+            core.next_generation();
+            core.state.user.as_mut().unwrap().id = "user-b".into();
+            core.state.session.as_mut().unwrap().id = "session-b".into();
+        }
+        release_tx.send(()).unwrap();
+        assert_eq!(
+            request.await.unwrap().unwrap_err().code,
+            "AUTHORITY_CHANGED"
+        );
+        assert!(server
+            .join()
+            .unwrap()
+            .contains("authorization: Bearer session-token"));
+    }
+
+    #[tokio::test]
+    async fn denied_push_session_retires_local_authority_but_feature_off_does_not() {
+        for (status, code, retired) in [
+            ("401 Unauthorized", "SESSION_REQUIRED", true),
+            ("403 Forbidden", "ACCOUNT_UNAVAILABLE", true),
+            ("403 Forbidden", "FEATURE_DISABLED", false),
+        ] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let origin = format!("http://{}", listener.local_addr().unwrap());
+            let server = thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                read_complete_http_request(&mut stream);
+                write_api_response(&mut stream, status, &format!(r#"{{"error":"{code}"}}"#));
+            });
+            let mut controller = controller_for_origin(origin.clone(), AuthStatus::SignedIn);
+            Arc::get_mut(&mut controller.inner)
+                .unwrap()
+                .api
+                .as_mut()
+                .unwrap()
+                .set_test_remote_origin(origin);
+            *controller.inner.core.lock().unwrap() = authorized_core();
+            assert_eq!(
+                controller
+                    .push_request(
+                        reqwest::Method::GET,
+                        "/v1/remote/native/push/preferences",
+                        None
+                    )
+                    .await
+                    .unwrap_err()
+                    .code,
+                code
+            );
+            assert_eq!(controller.local_notification_binding().is_err(), retired);
+            server.join().unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn delayed_push_denial_retires_offline_owner_and_preserves_replacements() {
+        for replacement in ["offline", "account", "credential"] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let origin = format!("http://{}", listener.local_addr().unwrap());
+            let (received_tx, received_rx) = tokio::sync::oneshot::channel();
+            let (release_tx, release_rx) = std::sync::mpsc::channel();
+            let server = thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                read_complete_http_request(&mut stream);
+                received_tx.send(()).unwrap();
+                release_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+                write_api_response(
+                    &mut stream,
+                    "401 Unauthorized",
+                    r#"{"error":"SESSION_REQUIRED"}"#,
+                );
+            });
+            let mut controller = controller_for_origin(origin.clone(), AuthStatus::SignedIn);
+            Arc::get_mut(&mut controller.inner)
+                .unwrap()
+                .api
+                .as_mut()
+                .unwrap()
+                .set_test_remote_origin(origin);
+            *controller.inner.core.lock().unwrap() = authorized_core();
+            let cloned = controller.clone();
+            let request = tokio::spawn(async move {
+                cloned
+                    .push_request(
+                        reqwest::Method::GET,
+                        "/v1/remote/native/push/preferences",
+                        None,
+                    )
+                    .await
+            });
+            received_rx.await.unwrap();
+            {
+                let mut core = controller.authority_mutation().unwrap();
+                match replacement {
+                    "offline" => core.state.status = AuthStatus::Offline,
+                    "account" => {
+                        core.next_generation();
+                        core.state.user.as_mut().unwrap().id = "user-b".into();
+                        core.state.session.as_mut().unwrap().id = "session-b".into();
+                    }
+                    _ => core.token = Some(Secret::new("newly-verified-token".into())),
+                }
+            }
+            release_tx.send(()).unwrap();
+            let error = request.await.unwrap().unwrap_err();
+            if replacement == "offline" {
+                assert_eq!(error.code, "SESSION_REQUIRED");
+                assert!(controller.local_notification_binding().is_err());
+                assert!(controller.inner.core.lock().unwrap().token.is_none());
+            } else {
+                assert_eq!(error.code, "AUTHORITY_CHANGED");
+                assert!(controller.local_notification_binding().is_ok());
+                if replacement == "account" {
+                    assert_eq!(controller.snapshot().user.unwrap().id, "user-b");
+                } else {
+                    assert_eq!(
+                        controller
+                            .inner
+                            .core
+                            .lock()
+                            .unwrap()
+                            .token
+                            .as_ref()
+                            .unwrap()
+                            .exposed(),
+                        "newly-verified-token"
+                    );
+                }
+            }
+            server.join().unwrap();
+        }
     }
 
     #[tokio::test]

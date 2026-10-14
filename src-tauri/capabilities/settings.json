@@ -5,6 +5,8 @@
   "webviews": ["settings"],
   "permissions": [
     "dialog:allow-open",
+    "notification:allow-is-permission-granted",
+    "notification:allow-request-permission",
     "clipboard-manager:allow-write-text",
     "core:event:allow-listen",
     "core:event:allow-unlisten",

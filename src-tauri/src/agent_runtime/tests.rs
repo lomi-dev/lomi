@@ -1495,7 +1495,7 @@ fn known_schema_one_upgrade_preserves_exact_private_sqlite_backup() {
     let path = s.root.clone();
     drop(s);
     let db = rusqlite::Connection::open(path.join("runtime.sqlite")).unwrap();
-    db.execute_batch("DROP TABLE native_operations; PRAGMA user_version=1;")
+    db.execute_batch("DROP TABLE native_operations; DROP TABLE notification_admissions; DROP TABLE push_notification_intents; DROP TABLE desktop_notification_intents; PRAGMA user_version=1;")
         .unwrap();
     drop(db);
     let s = Store::open(path.clone()).unwrap();
@@ -1560,7 +1560,7 @@ fn schema_upgrade_reopens_after_durable_backup_before_schema_commit() {
     let path = s.root.clone();
     drop(s);
     let db = rusqlite::Connection::open(path.join("runtime.sqlite")).unwrap();
-    db.execute_batch("DROP TABLE native_operations; PRAGMA user_version=1;")
+    db.execute_batch("DROP TABLE native_operations; DROP TABLE notification_admissions; DROP TABLE push_notification_intents; DROP TABLE desktop_notification_intents; PRAGMA user_version=1;")
         .unwrap();
     super::store::prepare_schema_one_upgrade(&db, &path).unwrap();
     let original = std::fs::read(path.join("schema-1-backup.sqlite")).unwrap();
@@ -1658,7 +1658,7 @@ fn schema_upgrade_preserves_partial_vacuum_stage_and_exclusive_publish_crash_gap
     let path = s.root.clone();
     drop(s);
     let db = rusqlite::Connection::open(path.join("runtime.sqlite")).unwrap();
-    db.execute_batch("DROP TABLE native_operations; PRAGMA user_version=1;")
+    db.execute_batch("DROP TABLE native_operations; DROP TABLE notification_admissions; DROP TABLE push_notification_intents; DROP TABLE desktop_notification_intents; PRAGMA user_version=1;")
         .unwrap();
     super::store::prepare_schema_one_upgrade(&db, &path).unwrap();
     let backup = path.join("schema-1-backup.sqlite");
@@ -1744,7 +1744,7 @@ fn dangling_schema_backup_stage_is_refused_without_writing_its_target() {
     let path = s.root.clone();
     drop(s);
     let db = rusqlite::Connection::open(path.join("runtime.sqlite")).unwrap();
-    db.execute_batch("DROP TABLE native_operations; PRAGMA user_version=1;")
+    db.execute_batch("DROP TABLE native_operations; DROP TABLE notification_admissions; DROP TABLE push_notification_intents; DROP TABLE desktop_notification_intents; PRAGMA user_version=1;")
         .unwrap();
     let outside = path.parent().unwrap().join("must-not-be-created.sqlite");
     symlink(&outside, path.join("schema-1-backup.staged.sqlite")).unwrap();
@@ -1844,4 +1844,105 @@ fn repeated_query_observation_failures_append_all_interleaved_frames_once() {
     }
     assert!(inner.pending_observations.is_empty());
     assert!(inner.pending_event_batches.is_empty());
+}
+
+#[test]
+fn completion_notifications_require_admitted_settled_checkpoint_and_durable_retry() {
+    let (root, mut inner, task) = fixture();
+    let owner = crate::push::ledger::Owner {
+        user_id: "user".into(),
+        session_id: "session".into(),
+        process_id: "process".into(),
+        generation: 1,
+    };
+    inner.store.as_mut().unwrap().notification_capture = crate::push::ledger::Admission {
+        desktop: Some(crate::push::ledger::DesktopStamp {
+            owner: owner.clone(),
+            installation_id: "installation".into(),
+            consent_epoch: 1,
+        }),
+        cloud: Some(crate::push::ledger::CloudStamp {
+            owner,
+            source_id: "source".into(),
+            consent_epoch: 1,
+            source_epoch: 1,
+        }),
+    };
+    let (mut done, _) =
+        prepare_send(&mut inner, &send(&task, "a", "notify-checkpoint"), false).unwrap();
+    done.state = TaskState::Completed;
+    let attempt = &mut done.attempts[0];
+    attempt.state = "completed".into();
+    attempt.effects_state = "settled".into();
+    let mut checkpoint = HistoryCheckpoint {
+        task_id: done.task_id.clone(),
+        attempt_id: attempt.attempt_id.clone(),
+        account_id: attempt.account_id.clone(),
+        auth_revision: attempt.auth_revision,
+        generation: attempt.generation,
+        history_revision: done.history_revision,
+        digest: super::service::history_digest(&done).unwrap(),
+        version: "0.160.0".into(),
+        model: done.model.clone(),
+        cwd_identity: workspace(root.path()).unwrap().1,
+        native_ref: "thread".into(),
+        session_file: None,
+        settled: false,
+    };
+    let store = inner.store.as_mut().unwrap();
+    store.update_task(&done, Some(&checkpoint), None).unwrap();
+    assert!(store
+        .notification_ready(crate::push::ledger::Channel::Desktop)
+        .unwrap()
+        .is_empty());
+    checkpoint.settled = true;
+    store.fail_next_update = true;
+    assert!(store
+        .update_task(
+            &done,
+            Some(&checkpoint),
+            Some(("notify-checkpoint", "settled"))
+        )
+        .is_err());
+    assert!(store
+        .notification_ready(crate::push::ledger::Channel::Cloud)
+        .unwrap()
+        .is_empty());
+    store
+        .update_task(
+            &done,
+            Some(&checkpoint),
+            Some(("notify-checkpoint", "settled")),
+        )
+        .unwrap();
+    store
+        .update_task(
+            &done,
+            Some(&checkpoint),
+            Some(("notify-checkpoint", "settled")),
+        )
+        .unwrap();
+    assert_eq!(
+        store
+            .notification_ready(crate::push::ledger::Channel::Desktop)
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        store
+            .notification_ready(crate::push::ledger::Channel::Cloud)
+            .unwrap()
+            .len(),
+        1
+    );
+    drop(inner);
+    let store = Store::open(root.path().join("owner")).unwrap();
+    assert_eq!(
+        store
+            .notification_ready(crate::push::ledger::Channel::Desktop)
+            .unwrap()
+            .len(),
+        1
+    );
 }

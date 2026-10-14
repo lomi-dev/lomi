@@ -15,6 +15,7 @@ use std::{
 pub(crate) struct Store {
     pub root: PathBuf,
     db: Connection,
+    pub notification_capture: crate::push::ledger::Admission,
     _owner: crate::chat::storage::Owner,
     #[cfg(test)]
     pub(super) fail_next_update: bool,
@@ -126,6 +127,15 @@ impl Store {
             db.execute_batch("BEGIN IMMEDIATE; CREATE TABLE native_operations(id TEXT PRIMARY KEY,record TEXT NOT NULL); PRAGMA user_version=2; COMMIT;").map_err(error)?;
         }
 
+        if version <= 2 {
+            db.execute_batch(&format!(
+                "BEGIN IMMEDIATE; {} PRAGMA user_version=3; COMMIT;",
+                crate::push::ledger::SCHEMA
+            ))
+            .map_err(error)?;
+        }
+        crate::push::ledger::validate(&db)?;
+
         for suffix in ["-wal", "-shm"] {
             let p = root.join(format!("runtime.sqlite{suffix}"));
 
@@ -140,6 +150,7 @@ impl Store {
         let mut result = Self {
             root,
             db,
+            notification_capture: Default::default(),
             _owner: owner,
             #[cfg(test)]
             fail_next_update: false,
@@ -424,6 +435,7 @@ impl Store {
         .map_err(error)?;
 
         if let Some(a) = intention {
+            crate::push::ledger::admit(&tx, &a.attempt_id, &self.notification_capture)?;
             tx.execute(
                 "INSERT INTO outbox VALUES(?1,?2,?3,?4,'pending')",
                 params![
@@ -462,6 +474,26 @@ impl Store {
 
         if let Some(c) = checkpoint {
             tx.execute("INSERT INTO checkpoints VALUES(?1,?2) ON CONFLICT(task_id) DO UPDATE SET record=excluded.record",params![task.task_id,encode(c)?]).map_err(error)?;
+        }
+
+        if task.state == TaskState::Completed {
+            if let Some(c) = checkpoint.filter(|c| {
+                c.settled && c.task_id == task.task_id && c.generation == task.generation
+            }) {
+                if task.attempts.iter().any(|a| {
+                    a.attempt_id == c.attempt_id
+                        && a.generation == c.generation
+                        && a.state == "completed"
+                        && a.effects_state == "settled"
+                }) {
+                    crate::push::ledger::complete(
+                        &tx,
+                        "managed-task",
+                        &task.task_id,
+                        &c.attempt_id,
+                    )?;
+                }
+            }
         }
 
         if let Some((operation, state)) = outbox_state {
@@ -1043,7 +1075,7 @@ fn preflight_named(root: &Path, name: &str) -> Result<(), String> {
         }
         return Ok(());
     }
-    if !matches!(version, 1 | 2) || app != 1280265545 {
+    if !matches!(version, 1..=3) || app != 1280265545 {
         return Err(
             "Unknown Agent runtime schema; storage was preserved without migration.".into(),
         );
@@ -1073,9 +1105,18 @@ fn preflight_named(root: &Path, name: &str) -> Result<(), String> {
         "receipts",
         "tasks",
     ];
-    if version == 2 {
+    if version >= 2 {
         expected_tables.push("native_operations");
         expected_tables.sort();
+    }
+    if version == 3 {
+        expected_tables.extend([
+            "notification_admissions",
+            "push_notification_intents",
+            "desktop_notification_intents",
+        ]);
+        expected_tables.sort();
+        crate::push::ledger::validate(&db)?;
     }
     if tables != expected_tables {
         return Err("Agent runtime schema does not match the owned contract.".into());
@@ -1129,7 +1170,7 @@ fn preflight_named(root: &Path, name: &str) -> Result<(), String> {
         }
     }
 
-    if version == 2 {
+    if version >= 2 {
         let mut stmt = db
             .prepare("PRAGMA table_info(native_operations)")
             .map_err(error)?;
@@ -2286,7 +2327,7 @@ fn initialization_intent(root: &Path) -> Result<serde_json::Value, String> {
     #[cfg(not(unix))]
     let identity = (0u64, 0u64);
     Ok(
-        serde_json::json!({"schema":1,"targetVersion":2,"applicationId":1280265545,"directory":canonical,"identity":identity}),
+        serde_json::json!({"schema":1,"targetVersion":3,"applicationId":1280265545,"directory":canonical,"identity":identity}),
     )
 }
 fn validate_initialization_intent(root: &Path) -> Result<(), String> {
@@ -2307,7 +2348,10 @@ fn validate_initialization_intent(root: &Path) -> Result<(), String> {
     let found: serde_json::Value =
         serde_json::from_slice(&fs::read(&path).map_err(|_| "Cannot read initialization intent.")?)
             .map_err(|_| "Unknown initialization intent was preserved.")?;
-    if found != initialization_intent(root)? {
+    let expected = initialization_intent(root)?;
+    let mut previous = expected.clone();
+    previous["targetVersion"] = serde_json::json!(2);
+    if found != expected && found != previous {
         return Err(
             "Runtime initialization directory identity changed; original bytes were preserved."
                 .into(),
@@ -2321,5 +2365,24 @@ pub(super) fn publish_initialization_intent(root: &Path) -> Result<(), String> {
         validate_initialization_intent(root)
     } else {
         crate::chat::storage::atomic(&path, encode(&initialization_intent(root)?)?.as_bytes())
+    }
+}
+
+impl Store {
+    pub(crate) fn notification_ready(
+        &self,
+        channel: crate::push::ledger::Channel,
+    ) -> Result<Vec<crate::push::ledger::Intent>, String> {
+        crate::push::ledger::ready(&self.db, channel)
+    }
+    pub(crate) fn notification_transition(
+        &self,
+        channel: crate::push::ledger::Channel,
+        intent: &crate::push::ledger::Intent,
+        expected: &str,
+        state: &str,
+        next: u64,
+    ) -> Result<bool, String> {
+        crate::push::ledger::transition(&self.db, channel, intent, expected, state, next)
     }
 }
