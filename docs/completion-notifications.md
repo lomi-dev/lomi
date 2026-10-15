@@ -5,14 +5,14 @@ requests** in the owning SQLite transaction. A turn can independently qualify
 for a local system alert and an Expo Push notification. Both settings default
 to OFF and require a Lomi account; agent-provider accounts do not confer access.
 
-Settings → Account owns the controls. The legacy Terminal notification setting,
-terminal attention signals and notification inbox retain their existing behavior.
+Settings → Notifications owns exactly three switches: “Notify when tasks finish”,
+“Only when the main Lomi window is inactive”, and “Push notifications on my phones”.
+These settings also govern live terminal agent alerts; CLI integration setup remains
+an explicit status-bar action. Local terminal alerts and inbox entries require the
+same account opt-in; the legacy Terminal switch no longer gates either channel.
 The new completion channels do not add inbox entries or invoke commands.
-
-See [local validation results](completion-notifications-validation.md) for the
-executed checks, native build blockers and external acceptance still required.
-The [full retest receipt](completion-notifications-retest.md) records the later
-verification run.
+Phone notifications also forward live agent alerts from ordinary terminal tabs
+as a distinct, generic attention event, described below.
 
 ## Durable sources
 
@@ -62,14 +62,14 @@ claimed entries have an unknown outcome after a crash and are not replayed.
 The existing Tauri Notification plugin remains pinned at 2.4.0. Its desktop Rust
 permission functions report Granted without a real OS permission check and its
 show operation returns before asynchronous OS delivery. `plugin-accepted` means
-an invocation was accepted, **not displayed**. The Settings test is fixed-template,
-login-guarded, rate-limited and uses no HTTP; it bypasses only background-only.
+an invocation was accepted, **not displayed**. Settings provides passive permission
+and account notices without test buttons.
 Settings receives check/request permission capabilities, never arbitrary send.
 No desktop notification Actions or click navigation are guaranteed.
 
 An alert already enqueued can appear after sign-out. Offline server revocation
 cannot be observed immediately; reconnect and Session expiry fence future work.
-Use the system notification settings and an actual test to confirm presentation.
+Use system notification settings and a real task completion to confirm presentation.
 
 ## Phone delivery
 
@@ -83,6 +83,16 @@ Process generation is a fence for current asynchronous work, not durable identit
 After a restart only the same safely restored Session/source may reauthorize
 pending work; a logout marker or a new Session excludes replay. Intents never
 become work for the next account.
+
+The desktop phone switch controls sending from this computer. ON explicitly
+registers or enables its source and, if needed, enables account consent. OFF
+disables only this computer's source and preserves account consent and other
+computers. Checked means account consent and this nonrevoked source are both ON.
+Refresh reads never register a source or opt a computer in. One Settings-only
+native command captures the account binding for every request, uses fresh CAS
+revisions and distinct operation IDs, and reads confirmed state after partial
+failure. Uncertain writes are never automatically retried. Phone receiving is
+managed in the phone app.
 
 The backend snapshots eligible phone installations when accepting an event.
 Turning ON or adding a phone later cannot revive suppressed events. Its worker
@@ -100,31 +110,38 @@ and opens a protected information screen. Managed tasks and Chat currently have
 no Remote projection, so the result remains in desktop. Push never opens a
 terminal, claims Control or sends input.
 
-## Ordinary terminal qualification
+## Ordinary terminal notifications
 
-Ordinary terminal completion remains disabled. OSC 9/777, terminal silence and
-process exit are not completion authorities. Existing legacy hooks retain their
-behavior and do not enroll a terminal into these channels.
+Live terminal alerts can enter the cloud queue as
+`agent.terminal.notification.v1`, with source kind `terminal-notification`.
+This forwards an agent notification; it does not certify successful task
+completion. Both ordinary OSC 9 and configured Claude OSC 777 alerts qualify.
+Codex OSC 9 signals can mean that a response is ready or that the agent needs
+approval. The phone shows the neutral fixed message
+“Agent wymaga uwagi.” Open desktop Lomi to inspect the terminal.
 
-Source verification found a feasible Codex correlation contract for 0.160.0 and
-0.162.1: UserPromptSubmit provides session/turn IDs; the legacy
-`agent-turn-complete` notify argument provides matching thread/turn IDs after
-Stop hooks have finished their continuation decision. Stop alone is insufficient.
-Notify also contains sensitive text that a future adapter must discard.
+The native host requires a live owned terminal session and captures the current
+account, computer-source and cloud consent at signal receipt. A stable alert ID
+deduplicates repeated delivery to the native host. Only opaque IDs and the
+receipt timestamp enter the private durable cloud ledger; terminal context,
+titles, paths, prompts and output never enter the push payload. Existing queue
+limits, expiry, account/session retirement and consent/source epochs still apply.
+Enabling notifications later does not replay the inbox or old terminal output.
+The terminal ledger retains up to 100,000 small receipt records for seven days,
+independently of the 1,000-pending-intent bound. Exhausted receipt capacity reports
+an error. Rejected cloud qualification or storage failure does not prevent the
+existing local inbox/OS delivery, including an alert parsed after terminal exit.
 
-A qualified adapter still requires explicit setup preserving existing hooks,
-per-launch authenticated native IPC, durable admission and live
-completion/approval/cancel/duplicate tests. No such live qualification was run;
-no unqualified ordinary CLI adapter is enabled. Claude 2.1.287 does not have a
-verified documented start/completion join with a stable turn ID.
+Settings → Notifications governs these signals. Its first two switches control
+local OS delivery, including account qualification and main-window background
+policy. The third switch controls phone forwarding independently of the local
+switches. Account phone consent, this computer's source and receiving on the
+phone must all be enabled for phone delivery. Forwarding does not add another local OS
+alert or change CLI configuration. Managed tasks and Chat keep their separate
+settled-completion contracts.
 
-Verified primary references:
-
-- [Codex start schema 0.160.0](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/hooks/src/events/user_prompt_submit.rs)
-- [Codex notify schema 0.160.0](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/hooks/src/legacy_notify.rs)
-- [Codex completion ordering](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/core/src/session/turn.rs)
-- [Claude hooks](https://code.claude.com/docs/en/hooks)
-- [Tauri notifications](https://v2.tauri.app/plugin/notification/)
+Verified ordinary terminal completion remains disabled. OSC 9/777, terminal
+silence and process exit are not completion authorities.
 
 ## Staging and production checklist
 
@@ -137,9 +154,7 @@ secrets. Readiness must pass for API and worker before canary delivery.
 Mobile needs SDK57 `expo-notifications`, a rebuilt native binary and an explicit
 environment-specific real Expo project mapping. Android also requires its matching
 public Firebase config and notification icon. APNs/FCM and Expo enhanced-security
-credentials are provisioned outside these repositories. The existing actual EAS
-ID and owner changes are preserved; that does not qualify provisioning or reuse
-across environments. OTA remains disabled.
+credentials are provisioned outside these repositories. OTA remains disabled.
 
 Test both physical iPhone and Android, signed staging/release builds, foreground,
 background, cold/warm tap, lock screen, denied/provisional permission, two phones,
@@ -147,11 +162,6 @@ rotation, reinstall and account changes. Record tickets/receipts separately from
 visible alerts. Android force-stop and OS Focus restrictions are not delivery
 promises. Test local banners in a packaged macOS application, installed Windows
 application and Linux session with a working notification service.
-
-No live migration, cloud upload, EAS/Firebase/APNs provisioning, deployment,
-publication, Git commit or push is part of this implementation task. Until these
-external acceptance steps pass, the local code and fake-provider tests establish
-pipeline behavior only.
 
 Rollback: close the push gate and stop worker emission. Disable/revoke remains
 available. Keep additive tables and old-client compatibility; never delete task
