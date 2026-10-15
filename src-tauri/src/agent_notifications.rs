@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use tauri::{Emitter, Manager, State, Window};
-use tauri_plugin_notification::NotificationExt;
 
 const EVENTS: [(&str, &str); 3] = [
     ("UserPromptSubmit", "working"),
@@ -192,6 +191,17 @@ pub enum NotificationSource {
 }
 
 impl NotificationSource {
+    fn qualify_cloud(
+        &self,
+        terminals: &crate::terminal::Terminals,
+        session: Option<&str>,
+        id: Option<&str>,
+    ) -> Result<(), String> {
+        // Both source labels are presentation only. Native session ownership is
+        // required even for Claude; renderer-provided attribution grants nothing.
+        terminals.validate_notification_session(session)?;
+        crate::push::terminal::validate_id(id.ok_or("Notification identity is required.")?)
+    }
     fn agent(
         self,
         terminals: &crate::terminal::Terminals,
@@ -212,21 +222,28 @@ pub fn notify_agent(
     context: String,
     source: Option<NotificationSource>,
     session_id: Option<String>,
+    notification_id: Option<String>,
 ) -> Result<bool, String> {
     main_window(&window)?;
-    let preferences = app.state::<crate::terminal_preferences::TerminalPreferencesFile>();
     let terminals = app.state::<crate::terminal::Terminals>();
-    let enabled = crate::terminal_preferences::load_terminal_preferences(
-        window.clone(),
-        app.clone(),
-        preferences,
-    )?
-    .and_then(|data| data.get("agentNotifications").and_then(Value::as_bool))
-    .unwrap_or(true);
     if context.chars().count() > 300 || context.chars().any(char::is_control) {
         return Err("Invalid notification context.".into());
     }
     let source = source.unwrap_or_default();
+    // OSC9/777 signals are attention events, not proof of task completion.
+    // Cloud failures must not suppress local delivery.
+    let forwarded = (|| {
+        source.qualify_cloud(
+            &terminals,
+            session_id.as_deref(),
+            notification_id.as_deref(),
+        )?;
+        crate::push::terminal::observe(
+            &app,
+            session_id.as_deref().unwrap(),
+            notification_id.as_deref().unwrap(),
+        )
+    })();
     let title = match (&source, kind) {
         (NotificationSource::Claude, NotificationKind::Attention) => "Claude Code needs your input",
         (NotificationSource::Claude, NotificationKind::Finished) => {
@@ -235,21 +252,9 @@ pub fn notify_agent(
         (NotificationSource::Terminal, NotificationKind::Attention) => "Agent needs your input",
         (NotificationSource::Terminal, NotificationKind::Finished) => "Agent finished responding",
     };
-    let recorded = if enabled {
-        let agent = source.agent(&terminals, session_id.as_deref());
-        crate::notifications::record(&app, kind, agent, title, &context)
-    } else {
-        Ok(())
-    };
-    let requested = enabled && !window.is_focused().map_err(|error| error.to_string())?;
-    if requested {
-        let _ = app
-            .notification()
-            .builder()
-            .title(title)
-            .body(&context)
-            .show();
-    }
+    let agent = source.agent(&terminals, session_id.as_deref());
+    let (requested, recorded) =
+        crate::push::terminal_local::deliver(&app, &window, kind, agent, title, &context)?;
     #[cfg(feature = "native-smoke")]
     if std::env::var_os("LOMI_NOTIFICATION_SMOKE_DIRECTORY").is_some() {
         let _ = app.emit_to(
@@ -259,6 +264,7 @@ pub fn notify_agent(
         );
     }
     recorded?;
+    forwarded?;
     Ok(requested)
 }
 
@@ -266,6 +272,27 @@ pub fn notify_agent(
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn both_signal_sources_require_native_ownership_for_cloud() {
+        let terminals = crate::terminal::Terminals::default();
+        for source in [NotificationSource::Claude, NotificationSource::Terminal] {
+            assert!(source
+                .qualify_cloud(
+                    &terminals,
+                    None,
+                    Some("12345678-1234-4234-8234-123456789abc")
+                )
+                .is_err());
+            assert!(source
+                .qualify_cloud(
+                    &terminals,
+                    Some("renderer-spoof"),
+                    Some("12345678-1234-4234-8234-123456789abc")
+                )
+                .is_err());
+        }
+    }
 
     #[test]
     fn attributes_known_claude_sources_and_leaves_missing_terminals_unknown() {

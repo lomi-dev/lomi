@@ -51,7 +51,7 @@ interface PushState {
   errorCode: string | null;
 }
 
-function message(reason: unknown): string {
+function message(reason: unknown, phone = false): string {
   const code =
     typeof reason === "object" && reason && "code" in reason
       ? reason.code
@@ -66,6 +66,21 @@ function message(reason: unknown): string {
       return "Phone notifications are not available in this environment yet.";
     case "UPDATE_REQUIRED":
       return "Update Lomi to use phone notifications.";
+    case "NOT_FOUND":
+      return phone
+        ? "The server could not find the phone notification settings. It may need an update to support phone notifications. Try again after the service is updated."
+        : "Notification settings could not be found. Restart Lomi and try again.";
+    case "SERVICE_UNAVAILABLE":
+      return "The notification service is temporarily unavailable. Try again later.";
+    case "TRANSPORT_UNKNOWN":
+      return "Could not reach the notification service. Check your connection and try again.";
+    case "INVALID_RESPONSE":
+      return "The notification service returned an unexpected response. Update Lomi and try again; if this continues, the service may need an update.";
+    case "STORAGE_UNAVAILABLE":
+      return "Lomi could not access notification preferences on this computer. Restart Lomi and try again.";
+    case "ACCOUNT_UNAVAILABLE":
+    case "ACCESS_EXPIRED":
+      return "Your account connection needs attention. Check your Lomi account and sign in again if needed.";
     case "RATE_LIMITED":
       return "Too many requests. Wait a moment and try again.";
     case "SESSION_REQUIRED":
@@ -86,6 +101,7 @@ function useNativeState<
 ) {
   const [state, setState] = useState<T | null>(null);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
   const mounted = useRef(false);
   const current = useRef<T | null>(null);
   const accept = (value: T) => {
@@ -116,7 +132,9 @@ function useNativeState<
           setError("");
         }
       } catch (reason) {
-        if (active) setError(message(reason));
+        if (active) setError(message(reason, command.startsWith("push_")));
+      } finally {
+        if (active) setLoading(false);
       }
     };
     void (async () => {
@@ -132,7 +150,7 @@ function useNativeState<
         await refresh(true);
         if (active && command !== refreshCommand) await refresh();
       } catch (reason) {
-        if (active) setError(message(reason));
+        if (active) setError(message(reason, command.startsWith("push_")));
       }
     })();
     const timer = window.setInterval(() => void refresh(), 10_000);
@@ -145,7 +163,7 @@ function useNativeState<
     // The enclosing account/session key remounts this component on ownership changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accountId, command, event, refreshCommand]);
-  return { state, accept, error, setError, mounted };
+  return { state, accept, error, setError, mounted, loading };
 }
 
 function Toggle({
@@ -203,8 +221,6 @@ export default function NotificationSettings({
   );
   const [localBusy, setLocalBusy] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
-  const [localResult, setLocalResult] = useState("");
-  const [pushResult, setPushResult] = useState("");
   const localPending = useRef(false);
   const pushPending = useRef(false);
   const qualified =
@@ -213,8 +229,12 @@ export default function NotificationSettings({
     !auth.attempt &&
     ["signed-in", "offline"].includes(auth.status);
   const canLocal = native && qualified && !!local.state?.available;
+  const onlineAccount = qualified && auth?.status === "signed-in";
+  const pushError =
+    push.error ||
+    (push.state?.errorCode ? message(push.state.errorCode, true) : "");
   const canCloud =
-    native && auth?.status === "signed-in" && !!push.state?.available;
+    native && onlineAccount && !!push.state?.available && !pushError;
   const canEnableCloud = canCloud && !!push.state?.featureEnabled;
 
   const permission = async (prompt: boolean) => {
@@ -233,37 +253,22 @@ export default function NotificationSettings({
       );
     return granted;
   };
-  const runLocal = async (
-    enabled: boolean,
-    backgroundOnly: boolean,
-    test = false,
-  ) => {
+  const runLocal = async (enabled: boolean, backgroundOnly: boolean) => {
     if (!canLocal || !local.state || localPending.current) return;
     localPending.current = true;
     setLocalBusy(true);
     local.setError("");
-    setLocalResult("");
     try {
-      if (
-        (enabled || test) &&
-        !(await permission(!test && !local.state.preferences.enabled))
-      )
+      if (enabled && !(await permission(!local.state.preferences.enabled)))
         return;
       if (!local.mounted.current) return;
-      if (test) {
-        await api("desktop_notifications_send_test");
-        if (local.mounted.current)
-          setLocalResult(
-            "Test requested. Check for a Lomi alert in your system notifications.",
-          );
-      } else
-        local.accept(
-          await api<LocalState>("desktop_notifications_save_preferences", {
-            expectedRevision: local.state.preferences.revision,
-            enabled,
-            backgroundOnly,
-          }),
-        );
+      local.accept(
+        await api<LocalState>("desktop_notifications_save_preferences", {
+          expectedRevision: local.state.preferences.revision,
+          enabled,
+          backgroundOnly,
+        }),
+      );
     } catch (reason) {
       if (local.mounted.current) {
         local.setError(message(reason));
@@ -280,32 +285,19 @@ export default function NotificationSettings({
       if (local.mounted.current) setLocalBusy(false);
     }
   };
-  const runCloud = async (
-    command: string,
-    args: Record<string, unknown>,
-    test = false,
-  ) => {
+  const runCloud = async (enabled: boolean) => {
     if (!canCloud || pushPending.current) return;
     pushPending.current = true;
     setPushBusy(true);
     push.setError("");
-    setPushResult("");
     try {
-      const result = await api<PushState & { status?: string }>(command, {
-        ...args,
-        operationId: crypto.randomUUID(),
+      const result = await api<PushState>("push_set_current_source_enabled", {
+        enabled,
       });
-      if (!push.mounted.current) return;
-      if (test)
-        setPushResult(
-          result.status === "suppressed"
-            ? "No eligible phone could receive this test."
-            : "Test queued. Check your phone; queue acceptance does not confirm delivery.",
-        );
-      else push.accept(result);
+      if (push.mounted.current) push.accept(result);
     } catch (reason) {
       if (push.mounted.current) {
-        push.setError(message(reason));
+        push.setError(message(reason, true));
         try {
           push.accept(await api<PushState>("push_refresh_state"));
         } catch {
@@ -323,10 +315,7 @@ export default function NotificationSettings({
   const preference = local.state?.preferences;
   return (
     <>
-      <SettingsSection
-        title="System notifications on this computer"
-        description="Get a generic alert when a managed agent turn or Chat response finishes. Your conversation and project details stay private."
-      >
+      <SettingsSection title="On this computer">
         <Toggle
           id="completion-desktop-enabled"
           label="Notify when tasks finish"
@@ -350,13 +339,9 @@ export default function NotificationSettings({
             Sign in to Lomi to enable completion notifications.
           </SettingsNotice>
         )}
-        {qualified && (
+        {local.state?.permissionStatus === "denied" && !local.error && (
           <SettingsNotice role="status">
-            {preference?.enabled
-              ? "Enabled — check receipt with a test. "
-              : "Disabled. "}
-            System permissions and Focus settings can prevent an alert. An
-            already requested alert can appear after sign-out.
+            Notifications are blocked in system settings.
           </SettingsNotice>
         )}
         {local.error && (
@@ -364,60 +349,38 @@ export default function NotificationSettings({
             {local.error}
           </SettingsNotice>
         )}
-        {localResult && (
-          <SettingsNotice role="status">{localResult}</SettingsNotice>
-        )}
-        <button
-          className="button"
-          disabled={!canLocal || !preference?.enabled || localBusy}
-          onClick={() =>
-            void runLocal(true, preference?.backgroundOnly ?? true, true)
-          }
-        >
-          Send test to this computer
-        </button>
       </SettingsSection>
-      <SettingsSection
-        title="Phone notifications"
-        description="Expo Push sends a generic completion alert to your enabled phones. This does not require workspace sharing."
-      >
+      <SettingsSection title="On my phones">
         <Toggle
           id="completion-push-enabled"
           label="Push notifications on my phones"
-          checked={push.state?.preferences.enabled ?? false}
+          checked={
+            !!push.state?.preferences.enabled && !!currentSource?.enabled
+          }
           disabled={
             !canCloud ||
             pushBusy ||
-            (!canEnableCloud && !push.state?.preferences.enabled)
+            (!canEnableCloud &&
+              !(push.state?.preferences.enabled && currentSource?.enabled))
           }
-          change={(enabled) =>
-            void runCloud("push_update_account_preferences", {
-              expectedRevision: push.state?.preferences.revision,
-              enabled,
-            })
-          }
+          change={(enabled) => void runCloud(enabled)}
         />
-        <Toggle
-          id="completion-push-source"
-          label="Send from this computer"
-          checked={currentSource?.enabled ?? false}
-          disabled={
-            !canCloud ||
-            pushBusy ||
-            !currentSource ||
-            (!canEnableCloud && !currentSource.enabled)
-          }
-          change={(enabled) =>
-            void runCloud("push_set_source_enabled", {
-              sourceId: currentSource?.id,
-              expectedRevision: currentSource?.revision,
-              enabled,
-            })
-          }
-        />
-        {!canCloud && (
+        {!onlineAccount && (
           <SettingsNotice>
-            Phone settings require a verified online Lomi account.
+            {auth?.status === "offline" && qualified
+              ? "Reconnect your Lomi account to manage phone notifications."
+              : auth?.status === "checking"
+                ? "Checking your Lomi account before loading phone settings…"
+                : auth?.user
+                  ? "Check your Lomi account connection to manage phone notifications."
+                  : "Sign in to Lomi to manage phone notifications."}
+          </SettingsNotice>
+        )}
+        {onlineAccount && !pushError && !canCloud && (
+          <SettingsNotice role="status">
+            {push.loading
+              ? "Loading phone notification settings…"
+              : "Phone notification settings are unavailable. Try again later."}
           </SettingsNotice>
         )}
         {canCloud && !push.state?.featureEnabled && (
@@ -434,56 +397,11 @@ export default function NotificationSettings({
               Enable receiving in the Lomi app on your phone.
             </SettingsNotice>
           )}
-        {push.error && (
+        {onlineAccount && pushError && (
           <SettingsNotice tone="error" role="alert">
-            {push.error}
+            {pushError}
           </SettingsNotice>
         )}
-        {pushResult && (
-          <SettingsNotice role="status">{pushResult}</SettingsNotice>
-        )}
-        {push.state?.installations
-          .filter((phone) => !phone.retired)
-          .map((phone) => (
-            <SettingRow
-              key={phone.id}
-              label={phone.label || "Phone"}
-              description={`${phone.platform} · ${phone.enabled ? "Receiving enabled" : "Receiving disabled"}`}
-            >
-              <button
-                className="button"
-                disabled={
-                  !canEnableCloud ||
-                  pushBusy ||
-                  !phone.enabled ||
-                  !push.state?.preferences.enabled
-                }
-                aria-label={`Send test to ${phone.label || "phone"}`}
-                onClick={() =>
-                  void runCloud(
-                    "push_send_test",
-                    { installationId: phone.id },
-                    true,
-                  )
-                }
-              >
-                Send test
-              </button>
-              <button
-                className="button"
-                disabled={!canCloud || pushBusy || !phone.enabled}
-                aria-label={`Disable receiving on ${phone.label || "phone"}`}
-                onClick={() =>
-                  void runCloud("push_disable_installation", {
-                    installationId: phone.id,
-                    expectedRevision: phone.revision,
-                  })
-                }
-              >
-                Disable receiving
-              </button>
-            </SettingRow>
-          ))}
       </SettingsSection>
     </>
   );

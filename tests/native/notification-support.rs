@@ -97,9 +97,8 @@ pub fn result(
         "notification-toggle" => {
             app.get_webview("settings").ok_or("Missing settings view")?.eval(format!(r#"(async () => {{
                 const invoke = window.__TAURI_INTERNALS__.invoke;
-                const data = await invoke('load_terminal_preferences');
-                const defaults = (await import('/src/terminal-preferences.ts')).defaultTerminalPreferences;
-                await invoke('save_terminal_preferences', {{data: {{version: 1, ...defaults, ...data, agentNotifications: {data}}}}});
+                const state = await invoke('desktop_notifications_get_state');
+                await invoke('desktop_notifications_save_preferences', {{expectedRevision: state.preferences.revision, enabled: {data}, backgroundOnly: state.preferences.backgroundOnly}});
             }})();"#)).map_err(|error| error.to_string())?;
         }
         "notification-background" => {

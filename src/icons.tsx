@@ -134,6 +134,7 @@ export const WholeWord = product("WholeWord", Lucide.WholeWord);
 export const WrapText = product("WrapText", Lucide.WrapText);
 export const X = product("X", Lucide.X);
 
+export const Bell = Lucide.Bell;
 export const MessageSquare = Lucide.MessageSquare;
 export const Paperclip = Lucide.Paperclip;
 export const Send = Lucide.Send;

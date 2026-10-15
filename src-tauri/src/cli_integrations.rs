@@ -172,7 +172,6 @@ pub async fn enable_cli_integration(
             Feature::Titlebar => cli_titles::enable(process.cli, &current, revision.as_deref())?,
             Feature::Notifications => {
                 crate::cli_notifications::enable(process.cli, &current, revision.as_deref())?;
-                crate::terminal_preferences::enable_notifications(&app)?;
             }
             Feature::Mcp => {
                 let registration = cli_mcp::registration(&app, true)?

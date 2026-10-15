@@ -2,6 +2,31 @@ import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { buffer, mockDesktop } from "./desktop";
 
+const notificationId = expect.stringMatching(
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+);
+
+async function optedInDesktop(page: Page) {
+  await mockDesktop(page, false);
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "test-terminal-notification-policy",
+      JSON.stringify({
+        accountId: "user-a",
+        available: true,
+        preferences: { enabled: true, backgroundOnly: true },
+      }),
+    );
+    localStorage.setItem(
+      "test-terminal-preferences",
+      JSON.stringify({
+        version: 1,
+        agentNotifications: false,
+      }),
+    );
+  });
+}
+
 async function terminal(page: Page) {
   await expect(page.locator(".terminal-host").first()).toHaveCSS(
     "opacity",
@@ -31,11 +56,11 @@ async function notices(page: Page) {
   return page.evaluate(() => (window as any).__nativeTest.agentNotifications);
 }
 
-test("hidden terminals notify once and preferences disable and re-enable alerts across windows", async ({
+test("hidden terminals obey native account policy while ignoring the legacy preference", async ({
   page,
   context,
 }, testInfo) => {
-  await mockDesktop(page, false);
+  await optedInDesktop(page);
   await page.goto("/");
   const first = await terminal(page);
   await page.keyboard.press("Control+Shift+t");
@@ -45,6 +70,7 @@ test("hidden terminals notify once and preferences disable and re-enable alerts 
     .poll(() => notices(page))
     .toEqual([
       {
+        notificationId,
         kind: "finished",
         context: "project · Default · Terminal",
         source: "claude",
@@ -62,26 +88,44 @@ test("hidden terminals notify once and preferences disable and re-enable alerts 
   const settings = await context.newPage();
   await mockDesktop(settings, false);
   await settings.goto("/?window=settings&page=terminal");
-  const toggle = settings.getByRole("switch", {
-    name: "Agent notifications",
-    exact: true,
+  await expect(
+    settings.getByRole("switch", { name: "Agent notifications", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    settings.getByRole("button", { name: "Configure Claude Code…" }),
+  ).toHaveCount(0);
+  await page.evaluate(() => {
+    const policy = JSON.parse(
+      localStorage.getItem("test-terminal-notification-policy")!,
+    );
+    policy.preferences.enabled = false;
+    localStorage.setItem(
+      "test-terminal-notification-policy",
+      JSON.stringify(policy),
+    );
   });
-  await expect(toggle).toBeChecked();
-  await toggle.uncheck();
-  await expect(settings.getByRole("status")).toHaveText("Saved");
   await emit(page, first.sessionId, "attention");
-  await page.evaluate(
-    (id) => (window as any).__nativeTest.emit(id, "\r\nDISABLED_SIGNAL\r\n"),
-    first.sessionId,
-  );
   await expect
-    .poll(() => buffer(page, first.paneId))
-    .toContain("DISABLED_SIGNAL");
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__nativeTest.calls.filter(
+            (c: any) => c.command === "notify_agent",
+          ).length,
+      ),
+    )
+    .toBe(2);
   expect(await notices(page)).toHaveLength(1);
-  await settings.reload();
-  await expect(toggle).not.toBeChecked();
-  await toggle.check();
-  await expect(settings.getByRole("status")).toHaveText("Saved");
+  await page.evaluate(() => {
+    const policy = JSON.parse(
+      localStorage.getItem("test-terminal-notification-policy")!,
+    );
+    policy.preferences.enabled = true;
+    localStorage.setItem(
+      "test-terminal-notification-policy",
+      JSON.stringify(policy),
+    );
+  });
   // A separate runtime has an independent cooldown.
   const second = await terminal(page);
   await emit(page, second.sessionId, "attention");
@@ -128,15 +172,17 @@ test("setup requires explicit consent and re-review after a failed write", async
   page,
   context,
 }, testInfo) => {
-  await mockDesktop(page, false);
+  await optedInDesktop(page);
   await page.goto("/");
   await terminal(page);
   const settings = await context.newPage();
   await mockDesktop(settings, false);
   await settings.goto("/?window=settings&page=terminal");
-  await settings
-    .getByRole("button", { name: "Configure Claude Code…" })
-    .click();
+  await settings.evaluate(async () => {
+    await (window as any).__TAURI_INTERNALS__.invoke(
+      "request_agent_notification_setup",
+    );
+  });
   const dialog = page.getByRole("dialog", {
     name: "Configure Claude Code notifications",
   });
@@ -150,9 +196,11 @@ test("setup requires explicit consent and re-review after a failed write", async
       ),
     ),
   ).toHaveLength(0);
-  await settings
-    .getByRole("button", { name: "Configure Claude Code…" })
-    .click();
+  await settings.evaluate(async () => {
+    await (window as any).__TAURI_INTERNALS__.invoke(
+      "request_agent_notification_setup",
+    );
+  });
   await expect(dialog).toBeVisible();
   await page.evaluate(() => {
     (window as any).__nativeTest.agentNotificationSetupError =
@@ -184,7 +232,7 @@ test("setup requires explicit consent and re-review after a failed write", async
 test("denied system permission keeps inbox notifications and receives no in-app alert", async ({
   page,
 }) => {
-  await mockDesktop(page, false);
+  await optedInDesktop(page);
   await page.goto("/");
   const first = await terminal(page);
   await page.evaluate(() => {
@@ -249,7 +297,7 @@ test("denied system permission keeps inbox notifications and receives no in-app 
 test("notification attribution survives process changes and unknown senders stay generic", async ({
   page,
 }) => {
-  await mockDesktop(page, false);
+  await optedInDesktop(page);
   await page.goto("/");
   const first = await terminal(page);
   await page.evaluate((id) => {
@@ -295,7 +343,7 @@ test("notification attribution survives process changes and unknown senders stay
 test("hidden OSC 9 alerts expose no terminal text and ignore duplicate and progress reports", async ({
   page,
 }) => {
-  await mockDesktop(page, false);
+  await optedInDesktop(page);
   await page.goto("/");
   const first = await terminal(page);
   await page.keyboard.press("Control+Shift+t");
@@ -311,6 +359,7 @@ test("hidden OSC 9 alerts expose no terminal text and ignore duplicate and progr
     .poll(() => notices(page))
     .toEqual([
       {
+        notificationId,
         kind: "attention",
         context: "project · Default · Terminal",
         source: "terminal",
@@ -327,6 +376,7 @@ test("hidden OSC 9 alerts expose no terminal text and ignore duplicate and progr
     {
       command: "notify_agent",
       args: {
+        notificationId,
         kind: "attention",
         context: "project · Default · Terminal",
         source: "terminal",
@@ -363,4 +413,31 @@ test("hidden OSC 9 alerts expose no terminal text and ignore duplicate and progr
   await expect.poll(() => notices(page)).toHaveLength(1);
   expect(JSON.stringify(await notices(page))).not.toContain(privateText);
   expect(await buffer(page, first.paneId)).not.toContain(privateText);
+});
+
+test("signed-out observations reach native policy without recording local alerts", async ({
+  page,
+}) => {
+  await mockDesktop(page, false);
+  await page.goto("/");
+  const first = await terminal(page);
+  await emit(page, first.sessionId);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__nativeTest.calls.filter(
+            (c: any) => c.command === "notify_agent",
+          ).length,
+      ),
+    )
+    .toBe(1);
+  expect(await notices(page)).toHaveLength(0);
+  expect(
+    await page.evaluate(
+      async () =>
+        (await (window as any).__TAURI_INTERNALS__.invoke("load_notifications"))
+          .items,
+    ),
+  ).toHaveLength(0);
 });

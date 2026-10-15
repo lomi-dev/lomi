@@ -306,10 +306,10 @@ test("font choices, collapsed settings, and the CSS preview follow saved appeara
   ).toBeVisible();
   await expect(
     page.getByRole("switch", { name: "Agent notifications", exact: true }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Configure Claude Code…", exact: true }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Reset all", exact: true }),
   ).toBeVisible();

@@ -920,6 +920,27 @@ impl Terminals {
             .collect())
     }
 
+    pub(crate) fn validate_notification_session(&self, id: Option<&str>) -> Result<(), String> {
+        let session = self.get(id.ok_or("A live terminal session is required.")?)?;
+        let closed = session
+            .remote_events
+            .lock()
+            .map_err(|_| "Terminal unavailable.")?;
+        if *closed
+            || session.transport_finished.load(Ordering::SeqCst)
+            || session
+                .flow
+                .lock()
+                .map_err(|_| "Terminal unavailable.")?
+                .closed
+        {
+            return Err("The terminal session is no longer running.".into());
+        }
+        // Membership in the native registry authenticates ownership; CLI names
+        // and renderer labels are never used as notification authority.
+        Ok(())
+    }
+
     pub(crate) fn notification_agent(
         &self,
         session_id: Option<&str>,
@@ -2429,6 +2450,54 @@ mod tests {
         manager.close("owned-close-retry").unwrap();
         assert!(done.load(Ordering::SeqCst));
         assert!(manager.get("owned-close-retry").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn terminal_notification_requires_native_live_session() {
+        let directory = tempfile::tempdir().unwrap();
+        let shells = account_shell_fixture(directory.path());
+        let manager = Terminals::default();
+        let _cleanup = FixtureTerminalCleanup(manager.clone());
+        assert!(manager.validate_notification_session(None).is_err());
+        assert!(manager
+            .validate_notification_session(Some("spoofed-session"))
+            .is_err());
+        manager
+            .start_owned_account(
+                &shells,
+                account_request(directory.path(), "notification-fixture"),
+                Channel::new(|_| Ok(())),
+                Channel::new(|_| Ok(())),
+                OwnedAccountTerminal {
+                    command: account_command(directory.path(), "sleep 60"),
+                    completion: Arc::new(AtomicBool::new(false)),
+                    drain_healthy: Arc::new(AtomicBool::new(false)),
+                },
+            )
+            .unwrap();
+        assert!(manager
+            .validate_notification_session(Some("notification-fixture"))
+            .is_ok());
+        let session = manager.get("notification-fixture").unwrap();
+        *session.remote_events.lock().unwrap() = true;
+        assert!(manager
+            .validate_notification_session(Some("notification-fixture"))
+            .is_err());
+        *session.remote_events.lock().unwrap() = false;
+        session.transport_finished.store(true, Ordering::SeqCst);
+        assert!(manager
+            .validate_notification_session(Some("notification-fixture"))
+            .is_err());
+        manager
+            .sessions
+            .lock()
+            .unwrap()
+            .remove("notification-fixture");
+        session.stop();
+        assert!(manager
+            .validate_notification_session(Some("notification-fixture"))
+            .is_err());
     }
 
     #[cfg(unix)]

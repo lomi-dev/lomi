@@ -281,6 +281,7 @@ impl AuthController {
         local_notification_binding(&*self.inner.core.lock().map_err(|_| "Account unavailable.")?)
     }
 
+    #[cfg(test)]
     pub(crate) async fn push_request(
         &self,
         method: reqwest::Method,

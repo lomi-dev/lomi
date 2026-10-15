@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   createAgentNotificationGate,
+  emitAgentNotification,
+  subscribeAgentNotifications,
   notificationContext,
   parseAgentSignal,
 } from "../src/agent-notifications.ts";
@@ -63,4 +65,34 @@ test("notification context follows panes moved between workspaces and disappears
   next.tabs = [];
   assert.equal(notificationContext(session, id), null);
   assert.equal(notificationContext(undefined, id), null);
+});
+
+test("each signal carries one stable UUID across subscribers and a new UUID for the next signal", () => {
+  const first: string[] = [];
+  const second: string[] = [];
+  const stopFirst = subscribeAgentNotifications((event) =>
+    first.push(event.notificationId),
+  );
+  const stopSecond = subscribeAgentNotifications((event) =>
+    second.push(event.notificationId),
+  );
+  try {
+    const event = {
+      paneId: "pane",
+      sessionId: "session",
+      kind: "attention",
+      source: "terminal",
+    } as const;
+    emitAgentNotification(event);
+    emitAgentNotification({ ...event, source: "claude", kind: "finished" });
+    assert.deepEqual(first, second);
+    assert.match(
+      first[0],
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    assert.notEqual(first[0], first[1]);
+  } finally {
+    stopFirst();
+    stopSecond();
+  }
 });

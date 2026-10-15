@@ -11,6 +11,11 @@
     throw Error("Native notification check timed out");
   };
   try {
+    const notificationState = await invoke("desktop_notifications_get_state");
+    if (!notificationState.available || !notificationState.preferences.enabled)
+      throw Error(
+        "Native notification smoke requires a verified account session with desktop notifications enabled; its legacy isolated signed-out fixture cannot validate delivery.",
+      );
     const { listen } = await import("/node_modules/@tauri-apps/api/event.js");
     await listen("notification-smoke-result", ({ payload }) =>
       notices.push(payload),
@@ -214,8 +219,8 @@
     });
     await wait(
       async () =>
-        (await invoke("load_terminal_preferences"))?.agentNotifications ===
-        false,
+        (await invoke("desktop_notifications_get_state"))?.preferences
+          .enabled === false,
     );
     await pause(100);
     await pause(2100);
@@ -233,8 +238,8 @@
     });
     await wait(
       async () =>
-        (await invoke("load_terminal_preferences"))?.agentNotifications ===
-        true,
+        (await invoke("desktop_notifications_get_state"))?.preferences
+          .enabled === true,
     );
     await pause(2100);
     await signal("finished");
@@ -341,12 +346,26 @@
     document.querySelector('button[aria-label="Close notifications"]').click();
     await wait(() => !document.querySelector(".notification-center"));
     checkpoint = "unknown terminal attribution";
-    await invoke("notify_agent", {
-      kind: "attention",
-      source: "terminal",
-      sessionId: "nonexistent-terminal-session",
-      context: "Unknown terminal source",
-    });
+    const beforeUnknown = notices.length;
+    let cloudQualificationError = "";
+    try {
+      await invoke("notify_agent", {
+        kind: "attention",
+        source: "terminal",
+        sessionId: "nonexistent-terminal-session",
+        notificationId: crypto.randomUUID(),
+        context: "Unknown terminal source",
+      });
+    } catch (error) {
+      cloudQualificationError = String(error);
+    }
+    if (
+      !cloudQualificationError.includes("terminal session is no longer running")
+    )
+      throw Error(
+        "Unknown terminal session was not rejected for cloud forwarding",
+      );
+    await wait(() => notices.length === beforeUnknown + 1);
     const unknownInbox = await invoke("load_notifications");
     if (
       unknownInbox.items.length !== 1 ||
@@ -354,7 +373,7 @@
       unknownInbox.items[0].title !== "Agent needs your input"
     )
       throw Error(
-        "An unknown terminal notification received agent attribution",
+        "Rejected cloud qualification suppressed the local inbox or changed attribution",
       );
     await invoke("dismiss_notification", { id: unknownInbox.items[0].id });
     if (runningTerminal("notification-terminal")?.sessionId !== id)

@@ -670,7 +670,6 @@ export default function Workbench() {
   const agentUsage = useAgentUsage();
   const agentNotifications = useAgentNotifications(
     session,
-    terminalPreferences.ready && terminalPreferences.value.agentNotifications,
     setError,
     setPaneNotice,
   );

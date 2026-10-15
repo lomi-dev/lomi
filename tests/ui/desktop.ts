@@ -538,10 +538,18 @@ export async function mockDesktop(
               );
             };
             if (command === "notify_agent") {
-              const preferences = JSON.parse(
-                localStorage.getItem("test-terminal-preferences") ?? "null",
-              );
-              if (preferences?.agentNotifications === false) return false;
+              const policy =
+                desktop.__completionFixture?.local ??
+                JSON.parse(
+                  localStorage.getItem("test-terminal-notification-policy") ??
+                    "null",
+                );
+              if (
+                !policy?.available ||
+                !policy.accountId ||
+                !policy.preferences.enabled
+              )
+                return false;
               const claude = args.source !== "terminal";
               const agent = claude
                 ? "claude"
@@ -556,7 +564,10 @@ export async function mockDesktop(
                 ...(agent ? { agent } : {}),
               });
               await persist();
-              if (mock.windowFocused || !mock.agentNotificationPermission)
+              if (
+                (policy.preferences.backgroundOnly && mock.windowFocused) ||
+                !mock.agentNotificationPermission
+              )
                 return false;
               mock.agentNotifications.push(args);
               return true;

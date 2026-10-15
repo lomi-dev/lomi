@@ -3,6 +3,8 @@
 //! are acquired only after these locks are released. HTTP never holds them.
 mod dispatch;
 pub(crate) mod ledger;
+pub(crate) mod terminal;
+pub(crate) mod terminal_local;
 use crate::auth::controller::PushRequestError;
 use ledger::{Admission, CloudStamp, DesktopStamp, Owner};
 use serde::{Deserialize, Serialize};
@@ -14,7 +16,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tauri::{AppHandle, Emitter, Manager, State, Window};
-use tauri_plugin_notification::NotificationExt;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -149,15 +150,16 @@ struct Core {
     refresh_generation: u64,
     error: Option<String>,
     denied: bool,
-    tests: Vec<u64>,
 }
 #[derive(Clone)]
 pub struct Push {
+    terminal: Arc<Mutex<Option<terminal::Store>>>,
     inner: Arc<Mutex<Core>>,
 }
 impl Default for Push {
     fn default() -> Self {
         Self {
+            terminal: Arc::new(Mutex::new(None)),
             inner: Arc::new(Mutex::new(Core {
                 path: None,
                 file: File::default(),
@@ -166,7 +168,6 @@ impl Default for Push {
                 refresh_generation: 0,
                 error: None,
                 denied: false,
-                tests: Vec::new(),
             })),
         }
     }
@@ -256,6 +257,14 @@ impl Push {
             std::fs::create_dir_all(&root)
                 .map_err(|_| "Cannot create notification preferences.")?;
             crate::chat::storage::private(&root, true)?;
+            let terminal = terminal::Store::open(
+                &root.join(format!("{namespace}-terminal-notifications.sqlite3")),
+            )
+            .ok();
+            *self
+                .terminal
+                .lock()
+                .map_err(|_| "Notification ledger unavailable.")? = terminal;
             let path = root.join(format!("{namespace}-desktop-notification-preferences.json"));
             crate::chat::storage::reject_link(&path)?;
             let file = if path.exists() {
@@ -386,7 +395,15 @@ impl Push {
         let b = auth
             .remote_binding()
             .map_err(|_| PushRequestError::local("SESSION_REQUIRED"))?;
-        let (installation_id, refresh_generation) = {
+        self.refresh_bound(app, &b).await
+    }
+    async fn refresh_bound(
+        &self,
+        app: &AppHandle,
+        b: &crate::auth::controller::RemoteBinding,
+    ) -> Result<PushState, PushRequestError> {
+        let auth = app.state::<crate::auth::AuthController>();
+        let refresh_generation = {
             let mut c = self.inner.lock().unwrap();
             if c.path.is_none() || c.file.retired_sessions.contains(&b.session_id) {
                 return Err("STORAGE_UNAVAILABLE".into());
@@ -395,23 +412,17 @@ impl Push {
                 .refresh_generation
                 .checked_add(1)
                 .ok_or("Revision exhausted.")?;
-            (c.file.installation_id.clone(), c.refresh_generation)
+            c.refresh_generation
         };
-        let result = async {
-            let (_, p) = auth.push_request_bound(reqwest::Method::GET, "/v1/remote/native/push/preferences", None, &b).await?;
-            let preference: Preference = serde_json::from_value(p).map_err(|_| invalid_response())?;
-            let (_, sources) = auth.push_request_bound(reqwest::Method::GET, "/v1/remote/native/push/sources", None, &b).await?;
-            let mut sources: Vec<Source> = serde_json::from_value(sources["sources"].clone()).map_err(|_| invalid_response())?;
-            if preference.available && preference.enabled && !sources.iter().any(|s| s.current && s.desktop_installation_id == installation_id && !s.revoked) {
-                let (_, response) = auth.push_request_bound(reqwest::Method::POST, "/v1/remote/native/push/sources/register", Some(&json!({"operationId":uuid().map_err(|_| invalid_response())?,"desktopInstallationId":installation_id,"label":"This computer","enabled":true})), &b).await?;
-                let source: Source = serde_json::from_value(response).map_err(|_| invalid_response())?;
-                sources.retain(|s| s.id != source.id); sources.truncate(127); sources.push(source);
+        let result = read_push_views(|method, path, body| {
+            let auth = &*auth;
+            async move {
+                auth.push_request_bound(method, &path, body.as_ref(), b)
+                    .await
+                    .map(|(_, value)| value)
             }
-            let (_, phones) = auth.push_request_bound(reqwest::Method::GET, "/v1/remote/native/push/installations", None, &b).await?;
-            let installations: Vec<Installation> = serde_json::from_value(phones["installations"].clone()).map_err(|_| invalid_response())?;
-            validate_views(&sources, &installations)?;
-            Ok::<_, crate::auth::controller::PushRequestError>((preference,sources,installations))
-        }.await;
+        })
+        .await;
         let _guard = crate::auth::controller::LOCAL_NOTIFICATION_EMISSION_GUARD
             .lock()
             .map_err(|_| "Notification authority unavailable.")?;
@@ -423,8 +434,8 @@ impl Push {
         }
         let mut c = self.inner.lock().unwrap();
         let cache = result.map(|(preferences, sources, installations)| Cache {
-            user_id: b.user_id,
-            session_id: b.session_id,
+            user_id: b.user_id.clone(),
+            session_id: b.session_id.clone(),
             preferences,
             sources,
             installations,
@@ -441,6 +452,42 @@ impl Push {
         self.publish(app);
         Ok(self.state(&auth))
     }
+}
+async fn read_push_views<F, Fut>(
+    mut request: F,
+) -> Result<(Preference, Vec<Source>, Vec<Installation>), PushRequestError>
+where
+    F: FnMut(reqwest::Method, String, Option<Value>) -> Fut,
+    Fut: std::future::Future<Output = Result<Value, PushRequestError>>,
+{
+    let preference = serde_json::from_value(
+        request(
+            reqwest::Method::GET,
+            "/v1/remote/native/push/preferences".into(),
+            None,
+        )
+        .await?,
+    )
+    .map_err(|_| invalid_response())?;
+    let sources = request(
+        reqwest::Method::GET,
+        "/v1/remote/native/push/sources".into(),
+        None,
+    )
+    .await?;
+    let sources: Vec<Source> =
+        serde_json::from_value(sources["sources"].clone()).map_err(|_| invalid_response())?;
+    let installations = request(
+        reqwest::Method::GET,
+        "/v1/remote/native/push/installations".into(),
+        None,
+    )
+    .await?;
+    let installations: Vec<Installation> =
+        serde_json::from_value(installations["installations"].clone())
+            .map_err(|_| invalid_response())?;
+    validate_views(&sources, &installations)?;
+    Ok((preference, sources, installations))
 }
 fn commit_refresh(
     core: &mut Core,
@@ -564,88 +611,110 @@ pub async fn push_refresh_state(
     trusted(&window, false)?;
     push.refresh(&app).await
 }
-async fn mutation(app: &AppHandle, path: &str, body: Value) -> Result<PushState, PushRequestError> {
-    let auth = app.state::<crate::auth::AuthController>();
-    let result = auth
-        .push_request(reqwest::Method::POST, path, Some(&body))
-        .await;
-    let refresh = app.state::<Push>().refresh(app).await;
-    result?;
-    refresh
-}
-#[tauri::command(rename_all = "camelCase")]
-pub async fn push_update_account_preferences(
-    window: Window,
-    app: AppHandle,
-    operation_id: String,
-    expected_revision: u64,
+// The same captured authority is used by every read and write. Requests never
+// retry uncertain mutations; each explicitly requested write gets its own ID.
+async fn set_current_source_enabled<F, Fut>(
+    installation_id: &str,
     enabled: bool,
-) -> Result<PushState, PushRequestError> {
-    trusted(&window, true)?;
-    valid_id(&operation_id)?;
-    mutation(
-        &app,
-        "/v1/remote/native/push/preferences",
-        json!({"operationId":operation_id,"expectedRevision":expected_revision,"enabled":enabled}),
+    mut request: F,
+) -> Result<(), PushRequestError>
+where
+    F: FnMut(reqwest::Method, String, Option<Value>) -> Fut,
+    Fut: std::future::Future<Output = Result<Value, PushRequestError>>,
+{
+    let preference: Preference = serde_json::from_value(
+        request(
+            reqwest::Method::GET,
+            "/v1/remote/native/push/preferences".into(),
+            None,
+        )
+        .await?,
     )
-    .await
-}
-#[tauri::command(rename_all = "camelCase")]
-pub async fn push_set_source_enabled(
-    window: Window,
-    app: AppHandle,
-    source_id: String,
-    operation_id: String,
-    expected_revision: u64,
-    enabled: bool,
-) -> Result<PushState, PushRequestError> {
-    trusted(&window, true)?;
-    valid_id(&source_id)?;
-    valid_id(&operation_id)?;
-    mutation(
-        &app,
-        &format!("/v1/remote/native/push/sources/{source_id}/settings"),
-        json!({"operationId":operation_id,"expectedRevision":expected_revision,"enabled":enabled}),
+    .map_err(|_| invalid_response())?;
+    if enabled && !preference.available {
+        return Err(PushRequestError::local("FEATURE_DISABLED"));
+    }
+    let sources = request(
+        reqwest::Method::GET,
+        "/v1/remote/native/push/sources".into(),
+        None,
     )
-    .await
-}
-#[tauri::command(rename_all = "camelCase")]
-pub async fn push_disable_installation(
-    window: Window,
-    app: AppHandle,
-    installation_id: String,
-    operation_id: String,
-    expected_revision: u64,
-) -> Result<PushState, PushRequestError> {
-    trusted(&window, true)?;
-    valid_id(&installation_id)?;
-    valid_id(&operation_id)?;
-    mutation(
-        &app,
-        &format!("/v1/remote/native/push/installations/{installation_id}/disable"),
-        json!({"operationId":operation_id,"expectedRevision":expected_revision}),
-    )
-    .await
-}
-#[tauri::command(rename_all = "camelCase")]
-pub async fn push_send_test(
-    window: Window,
-    app: AppHandle,
-    installation_id: String,
-    operation_id: String,
-) -> Result<EventReceipt, PushRequestError> {
-    trusted(&window, true)?;
-    valid_id(&installation_id)?;
-    valid_id(&operation_id)?;
-    let (_, value) = app
-        .state::<crate::auth::AuthController>()
-        .push_request(
+    .await?;
+    let sources: Vec<Source> =
+        serde_json::from_value(sources["sources"].clone()).map_err(|_| invalid_response())?;
+    validate_views(&sources, &[])?;
+    let source = sources
+        .iter()
+        .find(|s| s.current && !s.revoked && s.desktop_installation_id == installation_id);
+    if let Some(source) = source {
+        if source.enabled != enabled {
+            valid_id(&source.id)?;
+            request(
+                reqwest::Method::POST,
+                format!("/v1/remote/native/push/sources/{}/settings", source.id),
+                Some(json!({
+                    "operationId": uuid()?, "expectedRevision": source.revision, "enabled": enabled,
+                })),
+            )
+            .await?;
+        }
+    } else if enabled {
+        request(reqwest::Method::POST, "/v1/remote/native/push/sources/register".into(), Some(json!({
+            "operationId": uuid()?, "desktopInstallationId": installation_id, "label": "This computer", "enabled": true,
+        }))).await?;
+    }
+    // OFF belongs only to this computer. Account-wide consent is enabled only
+    // after this computer has explicitly enabled its source.
+    if enabled && !preference.enabled {
+        request(
             reqwest::Method::POST,
-            "/v1/remote/native/push/test",
-            Some(&json!({"operationId":operation_id,"installationId":installation_id})),
+            "/v1/remote/native/push/preferences".into(),
+            Some(json!({
+                "operationId": uuid()?, "expectedRevision": preference.revision, "enabled": true,
+            })),
         )
         .await?;
-    serde_json::from_value(value).map_err(|_| invalid_response())
+    }
+    Ok(())
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn push_set_current_source_enabled(
+    window: Window,
+    app: AppHandle,
+    enabled: bool,
+) -> Result<PushState, PushRequestError> {
+    trusted(&window, true)?;
+    let auth = app.state::<crate::auth::AuthController>();
+    let binding = auth
+        .remote_binding()
+        .map_err(|_| PushRequestError::local("SESSION_REQUIRED"))?;
+    let push = app.state::<Push>();
+    let installation_id = {
+        let c = push
+            .inner
+            .lock()
+            .map_err(|_| PushRequestError::local("STORAGE_UNAVAILABLE"))?;
+        if c.path.is_none() || c.file.retired_sessions.contains(&binding.session_id) {
+            return Err(PushRequestError::local("STORAGE_UNAVAILABLE"));
+        }
+        c.file.installation_id.clone()
+    };
+    let result = set_current_source_enabled(&installation_id, enabled, |method, path, body| {
+        let auth = &*auth;
+        let binding = &binding;
+        async move {
+            auth.push_request_bound(method, &path, body.as_ref(), binding)
+                .await
+                .map(|(_, value)| value)
+        }
+    })
+    .await;
+    // Read back confirmed combined state even after a partially applied change.
+    // A changed account is rejected here too; it can never receive the next step.
+    let refreshed = push.refresh_bound(&app, &binding).await;
+    result?;
+    refreshed
 }
 #[tauri::command(rename_all = "camelCase")]
 pub fn desktop_notifications_get_state(
@@ -706,40 +775,6 @@ pub fn desktop_notifications_report_permission(
     push.publish(&app);
     Ok(push.desktop_state(&app.state::<crate::auth::AuthController>()))
 }
-#[tauri::command(rename_all = "camelCase")]
-pub fn desktop_notifications_send_test(
-    window: Window,
-    app: AppHandle,
-    push: State<'_, Push>,
-) -> Result<Value, String> {
-    trusted(&window, true)?;
-    let _guard = crate::auth::controller::LOCAL_NOTIFICATION_EMISSION_GUARD
-        .lock()
-        .map_err(|_| "Notification authority unavailable.")?;
-    let b = app
-        .state::<crate::auth::AuthController>()
-        .local_notification_binding()?;
-    let mut c = push.inner.lock().unwrap();
-    let p = c.file.accounts.get(&b.user_id).cloned().unwrap_or_default();
-    if c.path.is_none() || !p.enabled || c.denied || c.file.retired_sessions.contains(&b.session_id)
-    {
-        return Err("NOT_ENABLED".into());
-    }
-    let time = ledger::now();
-    c.tests.retain(|t| *t + 60 > time);
-    if c.tests.len() >= 3 {
-        return Err("RATE_LIMITED".into());
-    }
-    c.tests.push(time);
-    app.notification()
-        .builder()
-        .title("Lomi")
-        .body("Test powiadomień Lomi.")
-        .show()
-        .map_err(|_| "PLUGIN_ERROR".to_string())?;
-    Ok(json!({"status":"plugin-accepted"}))
-}
-
 fn save_local_preferences(
     c: &mut Core,
     owner_user_id: &str,
@@ -797,7 +832,152 @@ mod tests {
             refresh_generation: 0,
             error: None,
             denied: false,
-            tests: Vec::new(),
+        }
+    }
+    #[tokio::test]
+    async fn refresh_with_account_enabled_and_missing_source_never_opts_in() {
+        let (preference, sources, _) = read_push_views(|method, path, body| {
+            assert_eq!(method, reqwest::Method::GET);
+            assert!(body.is_none());
+            std::future::ready(Ok(if path.ends_with("preferences") {
+                json!({"enabled":true,"consentEpoch":1,"revision":1,"available":true})
+            } else if path.ends_with("sources") {
+                json!({"sources":[]})
+            } else {
+                json!({"installations":[]})
+            }))
+        })
+        .await
+        .unwrap();
+        assert!(preference.enabled);
+        assert!(sources.is_empty());
+    }
+    #[tokio::test]
+    async fn partial_enable_failure_does_not_retry_source_or_account_writes() {
+        use std::cell::RefCell;
+        let writes = RefCell::new(Vec::new());
+        let result = set_current_source_enabled("computer", true, |method, path, _| {
+            let result = if method == reqwest::Method::GET && path.ends_with("preferences") {
+                Ok(json!({"enabled":false,"consentEpoch":1,"revision":1,"available":true}))
+            } else if method == reqwest::Method::GET {
+                Ok(json!({"sources":[]}))
+            } else {
+                writes.borrow_mut().push(path.clone());
+                if path.ends_with("preferences") {
+                    Err(PushRequestError::local("AUTHORITY_CHANGED"))
+                } else {
+                    Ok(json!({}))
+                }
+            };
+            std::future::ready(result)
+        })
+        .await;
+        assert_eq!(result.unwrap_err().code, "AUTHORITY_CHANGED");
+        assert_eq!(
+            writes.into_inner(),
+            vec![
+                "/v1/remote/native/push/sources/register",
+                "/v1/remote/native/push/preferences"
+            ]
+        );
+    }
+    #[tokio::test]
+    async fn combined_switch_uses_source_scope_cas_and_distinct_operations() {
+        use std::cell::RefCell;
+        for (account_enabled, source_enabled, requested) in [
+            (false, None, true),
+            (true, None, true),
+            (false, Some(false), true),
+            (true, Some(false), true),
+            (true, Some(true), false),
+            (false, Some(true), false),
+        ] {
+            let calls = RefCell::new(Vec::new());
+            set_current_source_enabled("computer", requested, |method, path, body| {
+                calls.borrow_mut().push((method.clone(), path.clone(), body));
+                let value = if method == reqwest::Method::GET && path.ends_with("preferences") {
+                    json!({"enabled":account_enabled,"consentEpoch":7,"revision":12,"available":true})
+                } else if method == reqwest::Method::GET {
+                    json!({"sources":source_enabled.map(|enabled| json!({
+                        "id":"11111111-1111-4111-8111-111111111111", "desktopInstallationId":"computer",
+                        "enabled":enabled,"sourceEpoch":2,"revision":9,"label":"Computer","current":true,"revoked":false
+                    })).into_iter().collect::<Vec<_>>()})
+                } else { json!({}) };
+                std::future::ready(Ok(value))
+            }).await.unwrap();
+            let calls = calls.into_inner();
+            let writes: Vec<_> = calls
+                .iter()
+                .filter(|(method, _, _)| *method == reqwest::Method::POST)
+                .collect();
+            assert_eq!(writes.len(), 1 + usize::from(requested && !account_enabled));
+            assert!(writes[0].1.contains("/sources/"));
+            let body = writes[0].2.as_ref().unwrap();
+            assert_eq!(body["enabled"], requested);
+            if source_enabled.is_some() {
+                assert_eq!(body["expectedRevision"], 9);
+            } else {
+                assert_eq!(body["desktopInstallationId"], "computer");
+            }
+            if writes.len() == 2 {
+                assert!(writes[1].1.ends_with("/preferences"));
+                let second = writes[1].2.as_ref().unwrap();
+                assert_eq!(second["expectedRevision"], 12);
+                assert_eq!(second["enabled"], true);
+                assert_ne!(body["operationId"], second["operationId"]);
+            }
+        }
+    }
+    #[tokio::test]
+    async fn combined_switch_stops_on_uncertain_source_or_changed_authority() {
+        use std::cell::RefCell;
+        for code in [
+            "TRANSPORT_UNKNOWN",
+            "AUTHORITY_CHANGED",
+            "REVISION_CONFLICT",
+        ] {
+            let writes = RefCell::new(Vec::new());
+            let result = set_current_source_enabled("computer", true, |method, path, _| {
+                let result = if method == reqwest::Method::GET && path.ends_with("preferences") {
+                    Ok(json!({"enabled":false,"consentEpoch":1,"revision":1,"available":true}))
+                } else if method == reqwest::Method::GET {
+                    Ok(json!({"sources":[]}))
+                } else {
+                    writes.borrow_mut().push(path);
+                    Err(PushRequestError::local(code))
+                };
+                std::future::ready(result)
+            })
+            .await;
+            assert_eq!(result.unwrap_err().code, code);
+            assert_eq!(
+                writes.into_inner(),
+                vec!["/v1/remote/native/push/sources/register"]
+            );
+        }
+    }
+    #[tokio::test]
+    async fn off_with_no_source_is_read_only_and_unavailable_feature_cannot_opt_in() {
+        use std::cell::Cell;
+        for enabled in [false, true] {
+            let reads = Cell::new(0);
+            let result = set_current_source_enabled("computer", enabled, |method, path, _| {
+                assert_eq!(method, reqwest::Method::GET);
+                reads.set(reads.get() + 1);
+                std::future::ready(Ok(if path.ends_with("preferences") {
+                    json!({"enabled":true,"consentEpoch":1,"revision":1,"available":false})
+                } else {
+                    json!({"sources":[]})
+                }))
+            })
+            .await;
+            if enabled {
+                assert_eq!(result.unwrap_err().code, "FEATURE_DISABLED");
+                assert_eq!(reads.get(), 1);
+            } else {
+                result.unwrap();
+                assert_eq!(reads.get(), 2);
+            }
         }
     }
     #[test]

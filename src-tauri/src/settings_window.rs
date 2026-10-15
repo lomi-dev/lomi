@@ -112,6 +112,7 @@ pub async fn open_settings(
         !matches!(
             page,
             "keybinds"
+                | "notifications"
                 | "themes"
                 | "plugins"
                 | "terminal"

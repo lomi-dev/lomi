@@ -10,7 +10,6 @@ import {
 } from "../settings-ui";
 import { authStatusLabel, newestAuthState, unavailableState } from "./model";
 import type { AuthState } from "./model";
-import NotificationSettings from "./NotificationSettings";
 import "./styles.css";
 
 type AuthCommand =
@@ -313,12 +312,6 @@ export default function AccountSettingsPage() {
             </button>
           </div>
         </SettingsSection>
-      )}
-      {native && ready && (
-        <NotificationSettings
-          key={`${state?.user?.id ?? "signed-out"}:${state?.session?.id ?? "none"}:${status}`}
-          auth={state}
-        />
       )}
       {native && ready && status !== "unavailable" && (
         <SettingsSection

@@ -43,6 +43,7 @@ export function createAgentNotificationGate() {
 }
 
 export interface AgentNotification {
+  notificationId: string;
   paneId: string;
   sessionId: string;
   kind: "attention" | "finished";
@@ -57,6 +58,9 @@ export function subscribeAgentNotifications(
     listeners.delete(listener);
   };
 }
-export function emitAgentNotification(event: AgentNotification) {
-  for (const listener of listeners) listener(event);
+export function emitAgentNotification(
+  event: Omit<AgentNotification, "notificationId">,
+) {
+  const notification = { ...event, notificationId: crypto.randomUUID() };
+  for (const listener of listeners) listener(notification);
 }

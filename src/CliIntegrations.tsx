@@ -7,7 +7,6 @@ import {
 import { X } from "lucide-react";
 import { api, errorMessage, native } from "./api";
 import type { TerminalContext, TitleProcess } from "./terminal-runtime";
-import { useTerminalPreferences } from "./TerminalPreferencesProvider";
 
 import { cliNames } from "./cli-agents";
 export { cliNames } from "./cli-agents";
@@ -43,7 +42,6 @@ export function useCliIntegrations(
   onError: (message: string) => void,
   onConfigured: (message: string) => void,
 ) {
-  const preferences = useTerminalPreferences();
   const [offers, setOffers] = useState<Offer[]>([]);
   const [permission, setPermission] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -167,8 +165,7 @@ export function useCliIntegrations(
       (feature) =>
         !dismissed.current.has(dismissalKey(offer.cli, feature.feature)) &&
         (!feature.configured ||
-          (feature.feature === "notifications" &&
-            (!permission || !preferences.value.agentNotifications))),
+          (feature.feature === "notifications" && !permission)),
     );
   const candidates = offers.filter(
     (offer) => offer.issue || missing(offer).length,
@@ -200,7 +197,6 @@ export function useCliIntegrations(
         path: feature.path,
         revision: feature.revision,
       });
-      await preferences.reload();
       onConfigured(message);
     } catch (error) {
       onError(errorMessage(error));

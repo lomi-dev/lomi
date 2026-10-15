@@ -9,7 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import Select from "./Select";
 import { RotateCcw } from "./icons";
-import { api, errorMessage, native, windows } from "./api";
+import { errorMessage, windows } from "./api";
 import { useTerminalPreferences } from "./TerminalPreferencesProvider";
 import {
   defaultTerminalPreferences,
@@ -35,7 +35,6 @@ function fontChoice(fontFamily?: string): FontChoice {
 
 const labels: Record<string, string> = {
   alwaysShowTitles: "Always show terminal titles",
-  agentNotifications: "Agent notifications",
   windowsShell: "Default shell",
   powershell: "PowerShell",
   cmd: "CMD",
@@ -79,7 +78,6 @@ const labels: Record<string, string> = {
 };
 const help: Record<string, string> = {
   alwaysShowTitles: "When off, hold Control to reveal a title.",
-  agentNotifications: "Claude Code alerts while Lomi is in the background.",
   windowsShell: "Applies to new terminals.",
   fontSize: "In pixels.",
   lineHeight: "1–3 × font size.",
@@ -612,47 +610,6 @@ export default function TerminalSettingsPage() {
               : undefined
           }
         />
-        <Setting
-          name="agentNotifications"
-          value={preferences.value.agentNotifications}
-          disabled={disabled}
-          resetKind="behavior"
-          change={(value) =>
-            void persist({
-              ...preferences.value,
-              agentNotifications: Boolean(value),
-            })
-          }
-          reset={
-            preferences.value.agentNotifications
-              ? undefined
-              : () =>
-                  void persist({
-                    ...preferences.value,
-                    agentNotifications: true,
-                  })
-          }
-        />
-        <SettingRow
-          label="Claude Code setup"
-          description="Lomi asks before changing Claude Code settings."
-        >
-          <button
-            type="button"
-            className="button"
-            disabled={
-              disabled || !native || !preferences.value.agentNotifications
-            }
-            onClick={() => {
-              setError("");
-              void api("request_agent_notification_setup").catch((error) =>
-                setError(errorMessage(error)),
-              );
-            }}
-          >
-            Configure Claude Code…
-          </button>
-        </SettingRow>
       </SettingsSection>
 
       <details className="settings-disclosure">

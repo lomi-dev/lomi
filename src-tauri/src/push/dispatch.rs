@@ -15,9 +15,21 @@ use tauri_plugin_notification::NotificationExt;
 enum Source {
     Runtime,
     Chat,
+    Terminal,
 }
 fn rows(app: &AppHandle, source: Source, channel: Channel) -> Result<Vec<Intent>, String> {
     match source {
+        Source::Terminal => {
+            let push = app.state::<Push>();
+            let owner = push
+                .terminal
+                .lock()
+                .map_err(|_| "Terminal notification ledger unavailable.")?;
+            owner
+                .as_ref()
+                .map(|s| s.ready(channel))
+                .unwrap_or_else(|| Ok(Vec::new()))
+        }
         Source::Runtime => {
             let runtime = app.state::<crate::agent_runtime::AgentRuntime>();
             let owner = runtime
@@ -54,6 +66,17 @@ fn cas(
     next: u64,
 ) -> Result<bool, String> {
     match source {
+        Source::Terminal => {
+            let push = app.state::<Push>();
+            let owner = push
+                .terminal
+                .lock()
+                .map_err(|_| "Terminal notification ledger unavailable.")?;
+            owner
+                .as_ref()
+                .ok_or("Terminal notification ledger unavailable.")?
+                .transition(channel, intent, expected, state, next)
+        }
         Source::Runtime => {
             let runtime = app.state::<crate::agent_runtime::AgentRuntime>();
             let owner = runtime
@@ -266,6 +289,13 @@ fn cloud_eligibility(app: &AppHandle, intent: &Intent) -> Eligibility {
     else {
         return Eligibility::Wait;
     };
+    cloud_policy(cache, stamp, &c.file.installation_id)
+}
+fn cloud_policy(
+    cache: &super::Cache,
+    stamp: &ledger::CloudStamp,
+    installation: &str,
+) -> Eligibility {
     if !cache.preferences.available
         || !cache.preferences.enabled
         || cache.preferences.consent_epoch != stamp.consent_epoch
@@ -278,11 +308,13 @@ fn cloud_eligibility(app: &AppHandle, intent: &Intent) -> Eligibility {
             && !s.revoked
             && s.source_epoch == stamp.source_epoch
             && s.current
+            && s.desktop_installation_id == installation
     }) {
         return Eligibility::Suppress("SOURCE_CHANGED");
     }
     Eligibility::Allow
 }
+
 fn retry_delay(count: u32, key: &str, retry_after: Option<u64>) -> u64 {
     let base = match count {
         0 => 1,
@@ -358,7 +390,7 @@ async fn cloud(
     let timestamp = chrono::DateTime::from_timestamp(intent.completed_at as i64, 0)
         .map(|d| d.to_rfc3339_opts(chrono::SecondsFormat::Millis, true))
         .unwrap_or_default();
-    let payload = serde_json::json!({"schemaVersion":1,"eventKey":intent.key,"sourceId":stamp.source_id,"type":"agent.task.completed.v1","sourceKind":intent.source_kind,"logicalTaskId":intent.logical_task_id,"turnId":intent.turn_id,"completedAt":timestamp,"consentEpoch":stamp.consent_epoch,"sourceEpoch":stamp.source_epoch,"target":null});
+    let payload = serde_json::json!({"schemaVersion":1,"eventKey":intent.key,"sourceId":stamp.source_id,"type":event_type(&intent),"sourceKind":intent.source_kind,"logicalTaskId":intent.logical_task_id,"turnId":intent.turn_id,"completedAt":timestamp,"consentEpoch":stamp.consent_epoch,"sourceEpoch":stamp.source_epoch,"target":null});
     let result = auth
         .push_request_bound(
             reqwest::Method::POST,
@@ -401,6 +433,13 @@ async fn cloud(
     };
     let _ = cas(app, source, Channel::Cloud, &intent, "pending", state, next);
 }
+fn event_type(intent: &Intent) -> &'static str {
+    if intent.source_kind == "terminal-notification" {
+        "agent.terminal.notification.v1"
+    } else {
+        "agent.task.completed.v1"
+    }
+}
 pub(super) fn start(app: AppHandle) {
     // Local alerts have their own consumer and never wait for HTTP/cache
     // refresh or a cloud queue. There is exactly one cloud dispatcher.
@@ -439,7 +478,7 @@ pub(super) fn start(app: AppHandle) {
                 app.state::<Push>().publish(&app);
                 authority = current;
             }
-            for source in [Source::Runtime, Source::Chat] {
+            for source in [Source::Runtime, Source::Chat, Source::Terminal] {
                 if let Ok(intents) = rows(&app, source, Channel::Cloud) {
                     for intent in intents.into_iter().take(2) {
                         cloud(&app, source, intent, &mut checking).await;
@@ -620,6 +659,62 @@ mod tests {
         p.background_only = false;
         assert_eq!(local_policy(&p, 1, false, Some(true)), Eligibility::Allow);
         assert_eq!(local_policy(&p, 1, false, None), Eligibility::Allow);
+    }
+    #[test]
+    fn terminal_type_and_captured_consent_source_are_explicit() {
+        let (_, mut intent) = intent_fixture();
+        assert_eq!(event_type(&intent), "agent.task.completed.v1");
+        intent.source_kind = "managed-task".into();
+        assert_eq!(event_type(&intent), "agent.task.completed.v1");
+        intent.source_kind = "terminal-notification".into();
+        assert_eq!(event_type(&intent), "agent.terminal.notification.v1");
+        let stamp = ledger::CloudStamp {
+            owner: intent.admission.desktop.unwrap().owner,
+            source_id: "source".into(),
+            consent_epoch: 3,
+            source_epoch: 4,
+        };
+        let mut cache = super::super::Cache {
+            user_id: "u".into(),
+            session_id: "s".into(),
+            preferences: super::super::Preference {
+                available: true,
+                enabled: true,
+                consent_epoch: 3,
+                revision: 1,
+            },
+            sources: vec![super::super::Source {
+                id: "source".into(),
+                desktop_installation_id: "installation".into(),
+                enabled: true,
+                source_epoch: 4,
+                revision: 1,
+                label: String::new(),
+                current: true,
+                revoked: false,
+            }],
+            installations: vec![],
+        };
+        assert_eq!(
+            cloud_policy(&cache, &stamp, "installation"),
+            Eligibility::Allow
+        );
+        cache.preferences.consent_epoch += 1;
+        assert_eq!(
+            cloud_policy(&cache, &stamp, "installation"),
+            Eligibility::Suppress("CONSENT_CHANGED")
+        );
+        cache.preferences.consent_epoch = 3;
+        cache.sources[0].source_epoch += 1;
+        assert_eq!(
+            cloud_policy(&cache, &stamp, "installation"),
+            Eligibility::Suppress("SOURCE_CHANGED")
+        );
+        cache.sources[0].source_epoch = 4;
+        assert_eq!(
+            cloud_policy(&cache, &stamp, "other-installation"),
+            Eligibility::Suppress("SOURCE_CHANGED")
+        );
     }
     #[test]
     fn errors_retry_only_transport_rate_limit_and_server_errors() {

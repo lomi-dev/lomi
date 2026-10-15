@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
+  Bell,
   MessageSquare,
   Monitor,
   Info,
@@ -39,6 +40,9 @@ import {
   SettingsSection,
 } from "./settings-ui";
 
+const NotificationSettingsPage = lazy(
+  () => import("./auth/NotificationSettingsPage"),
+);
 const RemoteSettingsPage = lazy(() => import("./RemoteSettingsPage"));
 const AccountSettingsPage = lazy(() => import("./auth/AccountSettingsPage"));
 const AndroidSettingsPage = lazy(() => import("./android/AndroidSettingsPage"));
@@ -55,7 +59,8 @@ export default function SettingsWindow() {
   const remoteAvailable = canShareRemotely(auth.state);
   const [page, setPage] = useState(() => {
     const requested = new URLSearchParams(window.location.search).get("page");
-    return requested === "remote" ||
+    return requested === "notifications" ||
+      requested === "remote" ||
       requested === "account" ||
       requested === "android" ||
       requested === "agent-control" ||
@@ -69,7 +74,10 @@ export default function SettingsWindow() {
   });
   const preferences = useKeybindings();
   useProtectedTheme(
-    page === "agent-control" || page === "account" || page === "remote",
+    page === "agent-control" ||
+      page === "account" ||
+      page === "remote" ||
+      page === "notifications",
   );
   const [listening, setListening] = useState(!native);
   const [recording, setRecording] = useState<ActionId | null>(null);
@@ -86,6 +94,7 @@ export default function SettingsWindow() {
       if (
         current &&
         [
+          "notifications",
           "remote",
           "account",
           "android",
@@ -204,6 +213,14 @@ export default function SettingsWindow() {
           </button>
           <button
             className="settings-nav-item"
+            aria-current={page === "notifications" ? "page" : undefined}
+            onClick={() => setPage("notifications")}
+          >
+            <Bell size={16} aria-hidden="true" />
+            Notifications
+          </button>
+          <button
+            className="settings-nav-item"
             aria-current={page === "terminal" ? "page" : undefined}
             onClick={() => setPage("terminal")}
           >
@@ -279,7 +296,11 @@ export default function SettingsWindow() {
             About
           </button>
         </nav>
-        {page === "remote" ? (
+        {page === "notifications" ? (
+          <Suspense fallback={<SettingsLoading title="Notifications" />}>
+            <NotificationSettingsPage />
+          </Suspense>
+        ) : page === "remote" ? (
           <Suspense fallback={<SettingsLoading title="Remote" />}>
             <RemoteSettingsPage available={remoteAvailable} />
           </Suspense>

@@ -22,12 +22,11 @@ interface NotificationSetup {
 
 export function useAgentNotifications(
   session: Session | undefined,
-  enabled: boolean,
   onError: (message: string) => void,
   onConfigured: (message: string) => void,
 ) {
-  const current = useRef({ session, enabled, onError });
-  current.current = { session, enabled, onError };
+  const current = useRef({ session, onError });
+  current.current = { session, onError };
   const [setup, setSetup] = useState<NotificationSetup>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -40,14 +39,12 @@ export function useAgentNotifications(
     let alive = true;
     const pending = new Set<string>();
     const unsubscribe = subscribeAgentNotifications((event) => {
-      if (!current.current.enabled) return;
       const key = `${event.sessionId}:${event.kind}`;
       if (pending.has(key)) return;
       pending.add(key);
       void (async () => {
         if (
           !alive ||
-          !current.current.enabled ||
           runningTerminal(event.paneId)?.sessionId !== event.sessionId
         )
           return;
@@ -61,6 +58,7 @@ export function useAgentNotifications(
           context,
           source: event.source,
           sessionId: event.sessionId,
+          notificationId: event.notificationId,
         });
       })()
         .catch((error) => {
@@ -172,7 +170,7 @@ export function useAgentNotifications(
             <p>
               This configures local Claude Code sessions using this file. Start
               a new Claude Code session afterward. You can turn alerts off in
-              Settings → Terminal.
+              Settings → Notifications.
             </p>
           </div>
           {error && (
