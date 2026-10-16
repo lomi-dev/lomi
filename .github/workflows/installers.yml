@@ -100,7 +100,7 @@ jobs:
       - name: Test Windows instance ownership
         if: runner.os == 'Windows' && inputs.packages_run_id == ''
         run: |
-          cargo test --release --manifest-path src-tauri/Cargo.toml --locked --lib windows_instance::
+          cargo test --release --manifest-path src-tauri/Cargo.toml --locked --test windows_instance
       - name: Qualify Windows installers
         if: runner.os == 'Windows'
         shell: pwsh
