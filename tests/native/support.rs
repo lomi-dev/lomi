@@ -56,7 +56,7 @@ pub fn page(webview: &tauri::Webview, payload: &tauri::webview::PageLoadPayload<
         theme_smoke::page(webview, payload);
         return;
     }
-    if webview.label() != "settings"
+    if webview.label() != "main"
         || !matches!(payload.event(), tauri::webview::PageLoadEvent::Finished)
     {
         return;
@@ -83,7 +83,7 @@ pub fn plugin_smoke_result(
     stage: String,
     data: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
-    if !matches!(window.label(), "main" | "settings") {
+    if window.label() != "main" {
         return Err("Unknown test caller.".into());
     }
     if std::env::var_os("LOMI_AGENT_RUNTIME_SMOKE_DIRECTORY").is_some() {
@@ -162,8 +162,8 @@ pub fn plugin_smoke_result(
                 r#"(async()=>{{try{{const invoke=window.__TAURI_INTERNALS__.invoke;const entry={};await invoke('enable_plugin',{{id:entry.id,expected:entry.revision}});await invoke('plugin_smoke_result',{{stage:'enabled',data:entry}});}}catch(error){{await window.__TAURI_INTERNALS__.invoke('plugin_smoke_result',{{stage:'failed',data:String(error)}});}}}})();"#,
                 serde_json::to_string(&data).unwrap()
             );
-            app.get_webview("settings")
-                .ok_or("Missing settings view")?
+            app.get_webview("main")
+                .ok_or("Missing main settings host")?
                 .eval(&script)
                 .map_err(|e| e.to_string())
         }
@@ -176,9 +176,9 @@ pub fn plugin_smoke_result(
             ))
             .map_err(|e| e.to_string()),
         "theme-ready"=>app.get_webview("main").ok_or("Missing main view")?.eval(include_str!("workbench-smoke.js")).map_err(|e|e.to_string()),
-        "check-settings"=>app.get_webview("settings").ok_or("Missing settings")?.eval(entry_script(r#"(async()=>{const invoke=window.__TAURI_INTERNALS__.invoke;try{for(let i=0;i<150;i++){if(getComputedStyle(document.documentElement).getPropertyValue('--radius-control').trim()==='11px'&&document.documentElement.dataset.appearance==='light'&&document.documentElement.dataset.themeSourceRevision===SMOKE_ENTRY){await invoke('plugin_smoke_result',{stage:'settings-synced',data:{appearance:document.documentElement.dataset.appearance,radius:'11px',sourceRevision:document.documentElement.dataset.themeSourceRevision}});return;}await new Promise(r=>setTimeout(r,100));}throw Error('Settings did not follow the theme watch');}catch(error){await invoke('plugin_smoke_result',{stage:'failed',data:String(error)});}})();"#, &data)).map_err(|e|e.to_string()),
+        "check-settings"=>app.get_webview("main").ok_or("Missing settings")?.eval(entry_script(r#"(async()=>{const invoke=window.__TAURI_INTERNALS__.invoke;try{for(let i=0;i<150;i++){if(getComputedStyle(document.documentElement).getPropertyValue('--radius-control').trim()==='11px'&&document.documentElement.dataset.appearance==='light'&&document.documentElement.dataset.themeSourceRevision===SMOKE_ENTRY){await invoke('plugin_smoke_result',{stage:'settings-synced',data:{appearance:document.documentElement.dataset.appearance,radius:'11px',sourceRevision:document.documentElement.dataset.themeSourceRevision}});return;}await new Promise(r=>setTimeout(r,100));}throw Error('Settings did not follow the theme watch');}catch(error){await invoke('plugin_smoke_result',{stage:'failed',data:String(error)});}})();"#, &data)).map_err(|e|e.to_string()),
         "settings-synced"=>app.get_webview("main").ok_or("Missing main view")?.eval(format!("globalThis.__lomiSmokeSettings={}",serde_json::to_string(&data).unwrap())).map_err(|e|e.to_string()),
-        "workbench-ready"=>app.get_webview("settings").ok_or("Missing settings")?.eval(r#"(async()=>{const invoke=window.__TAURI_INTERNALS__.invoke;try{const id=await invoke('duplicate_theme',{id:null});await invoke('save_theme_preferences',{data:{version:1,active:id,appearance:'dark'}});await invoke('plugin_smoke_result',{stage:'theme-ready',data:{id}});}catch(error){await invoke('plugin_smoke_result',{stage:'failed',data:String(error)});}})();"#).map_err(|e|e.to_string()),
+        "workbench-ready"=>app.get_webview("main").ok_or("Missing settings")?.eval(r#"(async()=>{const invoke=window.__TAURI_INTERNALS__.invoke;try{const id=await invoke('duplicate_theme',{id:null});await invoke('save_theme_preferences',{data:{version:1,active:id,appearance:'dark'}});await invoke('plugin_smoke_result',{stage:'theme-ready',data:{id}});}catch(error){await invoke('plugin_smoke_result',{stage:'failed',data:String(error)});}})();"#).map_err(|e|e.to_string()),
         "passed" | "failed" => {
             let path =
                 std::env::var("LOMI_PLUGIN_SMOKE_REPORT").map_err(|e| e.to_string())?;

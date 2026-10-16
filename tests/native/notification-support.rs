@@ -26,9 +26,11 @@ pub fn result(
             window.set_focus().map_err(|error| error.to_string())?;
         }
         "notification-settings" => {
-            let window = app
-                .get_window("settings")
-                .ok_or("Missing settings window")?;
+            app.get_webview("main")
+                .ok_or("Missing main view")?
+                .eval("window.__TAURI_INTERNALS__.invoke('open_settings',{page:'notifications'})")
+                .map_err(|error| error.to_string())?;
+            let window = app.get_window("main").ok_or("Missing main settings host")?;
             window.show().map_err(|error| error.to_string())?;
             window.set_focus().map_err(|error| error.to_string())?;
         }
@@ -95,7 +97,7 @@ pub fn result(
                 .map_err(|error| error.to_string())?;
         }
         "notification-toggle" => {
-            app.get_webview("settings").ok_or("Missing settings view")?.eval(format!(r#"(async () => {{
+            app.get_webview("main").ok_or("Missing main settings host")?.eval(format!(r#"(async () => {{
                 const invoke = window.__TAURI_INTERNALS__.invoke;
                 const state = await invoke('desktop_notifications_get_state');
                 await invoke('desktop_notifications_save_preferences', {{expectedRevision: state.preferences.revision, enabled: {data}, backgroundOnly: state.preferences.backgroundOnly}});

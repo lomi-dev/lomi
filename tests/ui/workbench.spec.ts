@@ -262,7 +262,7 @@ test("settings loads keybindings without starting terminal sessions", async ({
   expect(
     await page.evaluate(() =>
       (window as any).__nativeTest.calls.some((call: any) =>
-        ["app_info", "start_terminal"].includes(call.command),
+        ["start_terminal"].includes(call.command),
       ),
     ),
   ).toBe(false);

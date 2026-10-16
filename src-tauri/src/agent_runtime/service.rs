@@ -176,15 +176,13 @@ impl AgentRuntime {
 
     pub(crate) fn changed(&self, app: &AppHandle, task_id: Option<&str>) {
         if let Ok(revision) = self.with(app, |inner| inner.store.as_ref().unwrap().revision()) {
-            for label in ["main", "settings"] {
-                let _ = app.emit_to(
-                    tauri::EventTarget::webview(label),
-                    "agent-runtime-changed",
-                    json!({
-                    "revision":revision,"taskId":task_id}
-                    ),
-                );
-            }
+            let _ = app.emit_to(
+                tauri::EventTarget::webview("main"),
+                "agent-runtime-changed",
+                json!({
+                "revision":revision,"taskId":task_id}
+                ),
+            );
         }
     }
 

@@ -4,10 +4,7 @@ import { errorMessage, native } from "./api";
 import { useKeybindings } from "./KeybindingsProvider";
 import { actionForEvent, isZoomAction } from "./keybindings";
 
-const storageKey =
-  new URLSearchParams(window.location.search).get("window") === "settings"
-    ? "lomi.zoom.settings"
-    : "lomi.zoom.main";
+const storageKey = "lomi.zoom.main";
 let percentage = 100;
 try {
   const saved = Number(localStorage.getItem(storageKey));

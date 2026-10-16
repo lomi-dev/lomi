@@ -201,8 +201,11 @@ pub(super) async fn qualify(
         .as_str()
         .ok_or("Missing apply operation")?;
     let refused=javascript(main,&format!("try{{await window.__TAURI_INTERNALS__.invoke('agent_control_decide_android_management',{{operationId:{},revision:{},approve:true,accepted:[],confirmation:null}});return false;}}catch{{return true;}}",json!(op),plan["revision"])).await?;
-    require(refused == true, "Main can approve Android provider terms")?;
-    checks.push("main caller cannot approve");
+    require(
+        refused == true,
+        "Android provider terms approved without accepting exact licenses",
+    )?;
+    checks.push("exact license acceptance required before approval");
     wait_for(settings,"Boolean(document.querySelector('section[aria-label=\"Android setup and device requests\"] article'))").await?;
     require(evaluate(settings,"[...document.querySelectorAll('button')].find(b=>b.textContent==='Approve Android operation').disabled").await?==true,"Provider approval was enabled without accepting terms")?;
     evaluate(settings,"document.querySelector('section[aria-label=\"Android setup and device requests\"]').scrollIntoView({block:'start'});true").await?;

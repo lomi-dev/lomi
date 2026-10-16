@@ -407,9 +407,7 @@ pub(super) async fn qualify(
     let claim_id = data(&claim)["operationId"]
         .as_str()
         .ok_or("Missing claim ID")?;
-    let settings = app
-        .get_webview("settings")
-        .ok_or("Missing terminal Settings")?;
+    let settings = app.get_webview("main").ok_or("Missing terminal Settings")?;
     wait_for(
         &settings,
         "document.body.textContent.includes('Terminal input requests')",

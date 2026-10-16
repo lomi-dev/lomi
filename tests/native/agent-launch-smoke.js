@@ -157,7 +157,7 @@
       after.launches !== before.launches
     )
       throw Error("Switching tabs restarted an agent.");
-    phase = "settings caller denial";
+    phase = "settings main-host compatibility";
     await invoke("plugin_smoke_result", {
       stage: "check-settings",
       data: {

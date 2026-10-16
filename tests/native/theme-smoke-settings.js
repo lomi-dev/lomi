@@ -1,7 +1,9 @@
 (async () => {
   const invoke = window.__TAURI_INTERNALS__.invoke;
   const directory = SMOKE_DIRECTORY;
+  const bundledThemeSource = SMOKE_THEME_SOURCE;
   try {
+    await invoke("open_settings", { page: "themes" });
     const { parseThemeText } = await import("/src/theme/format.ts");
     const { exportVSCodeThemes } = await import("/src/theme/vscode-export.ts");
     const ids = await invoke("import_vscode_themes", {
@@ -32,6 +34,7 @@
     const builtinIds = await invoke("import_vscode_themes", {
       path: directory + "/vscode-defaults",
     });
+    if (!builtinIds.length) throw Error("No VS Code theme fixtures imported");
     for (const id of builtinIds)
       parseThemeText((await invoke("load_theme", { id })).raw);
     const iconVsix = [];
@@ -72,7 +75,13 @@
     });
     await invoke("plugin_smoke_result", {
       stage: "theme-exported",
-      data: { directory, vsix, iconVsix, bundledThemes: builtinIds.length },
+      data: {
+        directory,
+        vsix,
+        iconVsix,
+        bundledThemes: builtinIds.length,
+        bundledThemeSource,
+      },
     });
   } catch (error) {
     await invoke("plugin_smoke_result", {

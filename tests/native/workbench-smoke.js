@@ -70,7 +70,9 @@
       globalThis.__lomiSmokeSettings.sourceRevision !==
       document.documentElement.dataset.themeSourceRevision
     )
-      throw Error("Windows have different theme source revisions");
+      throw Error(
+        "Settings and workbench have different theme source revisions",
+      );
     phase = "native browser load";
     document
       .querySelector('[data-tab-id="native-browser"] [role="tab"]')

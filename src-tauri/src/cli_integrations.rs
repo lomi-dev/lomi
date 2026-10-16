@@ -209,7 +209,7 @@ pub struct McpClientStatus {
 }
 
 fn settings(window: &Window) -> Result<(), String> {
-    if window.label() == "settings" {
+    if window.label() == "main" {
         Ok(())
     } else {
         Err("MCP client installation requires Settings.".into())

@@ -114,8 +114,8 @@ pub struct Catalog {
     themes: Vec<Entry>,
 }
 
-fn authorize(label: &str, write: bool) -> Result<(), String> {
-    if label == "settings" || (!write && label == "main") {
+fn authorize(label: &str, _write: bool) -> Result<(), String> {
+    if label == "main" {
         Ok(())
     } else {
         Err("This theme operation is not available in this window.".into())
@@ -1561,9 +1561,10 @@ mod tests {
             assert!(read_preferences(&path).unwrap_err().contains("left intact"));
             assert_eq!(fs::read_to_string(&path).unwrap(), value);
         }
-        assert!(authorize("main", true).is_err());
+        assert!(authorize("main", true).is_ok());
         assert!(authorize("main", false).is_ok());
-        assert!(authorize("settings", true).is_ok());
+        assert!(authorize("settings", true).is_err());
+        assert!(authorize("browser-main", true).is_err());
         assert!(authorize("other", false).is_err());
     }
 

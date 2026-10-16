@@ -105,7 +105,7 @@ click('Set up Android');return true;
 }
 
 const review = control(
-  "settings",
+  "main",
   `
 await wait(()=>document.querySelector('.android-settings-page'));
 ${
@@ -129,7 +129,7 @@ const licenses = review.terms.map(({ id, text }) => {
 });
 if (!licenses.length) throw Error("The UI did not show provider terms");
 const started = control(
-  "settings",
+  "main",
   `
 for(const section of document.querySelectorAll('.android-license'))section.querySelector('input').click();
 await sleep(100);click('Install selected components');
@@ -140,7 +140,7 @@ const samples = [];
 const deadline = Date.now() + 600000;
 let after;
 while (Date.now() < deadline) {
-  after = control("settings", "return await invoke('android_state');");
+  after = control("main", "return await invoke('android_state');");
   samples.push({ at: new Date().toISOString(), ...after.operation });
   console.log(JSON.stringify(samples.at(-1)));
   await writeFile(

@@ -337,7 +337,6 @@ test("installed external ESM stays inert until trust, opens once, persists state
 });
 test("dirty plugin views stop disable on cancel and failed save, then retain their descriptor after uninstall", async ({
   page,
-  context,
 }) => {
   await mockDesktop(page);
   await packageRoutes(page);
@@ -374,10 +373,12 @@ test("dirty plugin views stop disable on cancel and failed save, then retain the
       },
     });
   });
-  const settings = await context.newPage();
-  await mockDesktop(settings);
-  await settings.goto("/?window=settings");
-  await settings.getByRole("button", { name: "Plugins", exact: true }).click();
+  const settings = page;
+  await page.evaluate(() =>
+    (window as any).__TAURI_INTERNALS__.invoke("open_settings", {
+      page: "plugins",
+    }),
+  );
   await settings
     .getByRole("switch", { name: "Enable Workspace context" })
     .click();
@@ -387,9 +388,11 @@ test("dirty plugin views stop disable on cancel and failed save, then retain the
   await expect(guard).toContainText("Plugin draft");
   await guard.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(settings.getByRole("alert")).toContainText("canceled");
+  await page.getByRole("tab", { name: /^Workspace context/ }).click();
   await expect(
     page.getByRole("heading", { name: "Workspace context" }),
   ).toBeVisible();
+  await page.getByRole("tab", { name: "Settings", exact: true }).click();
   await settings
     .getByRole("button", { name: "Uninstall", exact: true })
     .click();
@@ -402,6 +405,9 @@ test("dirty plugin views stop disable on cancel and failed save, then retain the
   ).toBeDisabled();
   await guard.getByRole("button", { name: "Discard changes" }).click();
   await expect(settings.getByText("No plugins installed.")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Close Settings", exact: true })
+    .click();
   await expect(
     page.getByRole("heading", { name: "Plugin view unavailable" }),
   ).toBeVisible();

@@ -92,21 +92,17 @@ fn main() {
     let handle = app.handle().clone();
     thread::spawn(move || {
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            // Create after the event loop starts, as with the preloaded settings window.
-            for label in ["main", "settings"] {
-                let position = if label == "main" {
-                    let config = handle
-                        .config()
-                        .app
-                        .windows
-                        .iter()
-                        .find(|window| window.label == label)
-                        .unwrap();
-                    let inset = config.traffic_light_position.as_ref().unwrap();
-                    LogicalPosition::new(inset.x, inset.y)
-                } else {
-                    traffic_lights::SETTINGS_POSITION
-                };
+            // Create the main native window after the event loop starts.
+            for label in ["main"] {
+                let config = handle
+                    .config()
+                    .app
+                    .windows
+                    .iter()
+                    .find(|window| window.label == label)
+                    .unwrap();
+                let inset = config.traffic_light_position.as_ref().unwrap();
+                let position = LogicalPosition::new(inset.x, inset.y);
                 let window = WebviewWindowBuilder::new(
                     &handle,
                     label,

@@ -347,7 +347,7 @@ export function compileTheme(
   rule(":root", tokens);
   const layout = theme.layout;
   if (layout?.tabs && layout.tabs !== "inline") {
-    const titlebar = ".app-shell:not(.settings-window) > .titlebar";
+    const titlebar = ".app-shell > .titlebar";
     rule(`${titlebar}:has(.tab-bar)`, {
       height: "auto",
       "min-height": "var(--titlebar-height)",

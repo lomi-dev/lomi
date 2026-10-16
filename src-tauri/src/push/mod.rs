@@ -202,8 +202,8 @@ fn valid_id(id: &str) -> Result<(), String> {
     }
     Ok(())
 }
-fn trusted(window: &Window, mutation: bool) -> Result<(), String> {
-    if window.label() == "settings" || (!mutation && window.label() == "main") {
+fn trusted(window: &Window, _mutation: bool) -> Result<(), String> {
+    if window.label() == "main" {
         Ok(())
     } else {
         Err("Notifications are available only in trusted Lomi windows; management requires Settings.".into())
@@ -377,18 +377,16 @@ impl Push {
         let auth = app.state::<crate::auth::AuthController>();
         let desktop = self.desktop_state(&auth);
         let cloud = self.state(&auth);
-        for label in ["main", "settings"] {
-            let _ = app.emit_to(
-                tauri::EventTarget::webview(label),
-                "desktop-notifications-state-changed",
-                &desktop,
-            );
-            let _ = app.emit_to(
-                tauri::EventTarget::webview(label),
-                "push-state-changed",
-                &cloud,
-            );
-        }
+        let _ = app.emit_to(
+            tauri::EventTarget::webview("main"),
+            "desktop-notifications-state-changed",
+            &desktop,
+        );
+        let _ = app.emit_to(
+            tauri::EventTarget::webview("main"),
+            "push-state-changed",
+            &cloud,
+        );
     }
     pub async fn refresh(&self, app: &AppHandle) -> Result<PushState, PushRequestError> {
         let auth = app.state::<crate::auth::AuthController>();

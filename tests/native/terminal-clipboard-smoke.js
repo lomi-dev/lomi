@@ -118,7 +118,7 @@
       runtime.send("\x04");
       await pause(500);
     }
-    checkpoint = "settings isolation";
+    checkpoint = "settings tab navigation";
     await invoke("plugin_smoke_result", {
       stage: "clipboard-settings",
       data: runtime.sessionId,

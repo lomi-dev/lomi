@@ -1276,7 +1276,7 @@ export default function AgentControlPairing({
             Allow opening Settings sections
           </label>
           <p className="settings-help">
-            This may focus the Settings window. Reading and changing preferences
+            This may focus the Settings tab. Reading and changing preferences
             require separate permissions.
           </p>
         </div>

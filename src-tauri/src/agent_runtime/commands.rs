@@ -11,7 +11,7 @@ use std::sync::atomic::Ordering;
 use tauri::{AppHandle, Manager, State, Window};
 
 fn trusted(w: &Window) -> Result<(), String> {
-    if matches!(w.label(), "main" | "settings") {
+    if w.label() == "main" {
         Ok(())
     } else {
         Err("Agent runtime commands require a trusted application view.".into())

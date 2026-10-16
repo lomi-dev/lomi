@@ -20,6 +20,7 @@ import {
   Plus,
   Terminal,
   Puzzle,
+  Settings,
   X,
 } from "./icons";
 import type { Tab, TabCloseAction, TabDropSide } from "./model";
@@ -29,6 +30,7 @@ import { IconButton } from "./ui";
 import TabContextMenu from "./TabContextMenu";
 import type { TabMenuAnchor } from "./TabContextMenu";
 import ContextMenu from "./ContextMenu";
+import { SETTINGS_TAB_ID } from "./useSettingsTab";
 
 import {
   chatActivity,
@@ -53,6 +55,54 @@ interface Props {
   onMerge: (id: string, targetId: string, side: TabDropSide) => void;
   mergeContainer: RefObject<HTMLDivElement | null>;
   modified?: ReadonlySet<string>;
+  settings?: SettingsTabControl;
+}
+
+export interface SettingsTabControl {
+  opened: boolean;
+  active: boolean;
+  onSelect: () => void;
+  onClose: () => void;
+}
+
+export function SettingsTabButton({
+  active,
+  onSelect,
+  onClose,
+  onNavigate,
+}: Omit<SettingsTabControl, "opened"> & {
+  onNavigate?: (event: React.KeyboardEvent) => void;
+}) {
+  return (
+    <div
+      className={`tab${active ? " active-tab" : ""}`}
+      data-tab-id={SETTINGS_TAB_ID}
+      role="presentation"
+    >
+      <button
+        id={`tab-${SETTINGS_TAB_ID}`}
+        role="tab"
+        aria-selected={active}
+        aria-controls={`panel-${SETTINGS_TAB_ID}`}
+        tabIndex={active ? 0 : -1}
+        draggable={false}
+        onClick={onSelect}
+        onKeyDown={onNavigate}
+      >
+        <Settings size={14} aria-hidden="true" />
+        <span>Settings</span>
+      </button>
+      <button
+        className="tab-close"
+        tabIndex={active ? 0 : -1}
+        aria-label="Close Settings"
+        title="Close Settings"
+        onClick={onClose}
+      >
+        <X size={13} iconId="tab-close" />
+      </button>
+    </div>
+  );
 }
 
 export default function TabBar({
@@ -72,7 +122,13 @@ export default function TabBar({
   onMerge,
   mergeContainer,
   modified = new Set<string>(),
+  settings,
 }: Props) {
+  const selectedId = settings?.active ? SETTINGS_TAB_ID : activeTabId;
+  const navigationIds = [
+    ...tabs.map((tab) => tab.id),
+    ...(settings?.opened ? [SETTINGS_TAB_ID] : []),
+  ];
   useSyncExternalStore(subscribeChatActivity, chatActivityRevision);
   const activity = (tab: Tab) =>
     (tab.type === "terminal" ? layoutPanes(tab.layout) : [tab])
@@ -119,11 +175,33 @@ export default function TabBar({
     const observer = new ResizeObserver(revealActive);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [activeTabId, tabs.length, updateScroll]);
+  }, [selectedId, tabs.length, settings?.opened, updateScroll]);
 
   const focusTab = (id: string) => {
-    onSelect(id);
+    if (id === SETTINGS_TAB_ID) settings?.onSelect();
+    else onSelect(id);
     requestAnimationFrame(() => document.getElementById(`tab-${id}`)?.focus());
+  };
+  const navigate = (event: React.KeyboardEvent, id: string) => {
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)
+      return;
+    const index = navigationIds.indexOf(id);
+    const next =
+      event.key === "Home"
+        ? navigationIds[0]
+        : event.key === "End"
+          ? navigationIds.at(-1)
+          : event.key === "ArrowLeft" || event.key === "ArrowRight"
+            ? navigationIds[
+                (index +
+                  (event.key === "ArrowLeft" ? -1 : 1) +
+                  navigationIds.length) %
+                  navigationIds.length
+              ]
+            : undefined;
+    if (!next) return;
+    event.preventDefault();
+    focusTab(next);
   };
   const scrollTabs = (direction: number) => {
     const element = strip.current;
@@ -169,9 +247,9 @@ export default function TabBar({
             }
           }}
         >
-          {tabs.map((tab, index) => (
+          {tabs.map((tab) => (
             <div
-              className={`tab${tab.id === activeTabId ? " active-tab" : ""}`}
+              className={`tab${tab.id === selectedId ? " active-tab" : ""}`}
               key={tab.id}
               data-tab-id={tab.id}
               role="presentation"
@@ -188,11 +266,11 @@ export default function TabBar({
               <button
                 id={`tab-${tab.id}`}
                 role="tab"
-                aria-selected={tab.id === activeTabId}
+                aria-selected={tab.id === selectedId}
                 aria-controls={`panel-${tab.id}`}
                 aria-haspopup="menu"
                 aria-expanded={contextMenu?.id === tab.id}
-                tabIndex={tab.id === activeTabId ? 0 : -1}
+                tabIndex={tab.id === selectedId ? 0 : -1}
                 draggable={false}
                 onPointerDown={(event) => {
                   dismissMenu();
@@ -239,20 +317,7 @@ export default function TabBar({
                     event.shiftKey
                   )
                     return;
-                  let next: Tab;
-                  if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-                    next =
-                      tabs[
-                        (index +
-                          (event.key === "ArrowLeft" ? -1 : 1) +
-                          tabs.length) %
-                          tabs.length
-                      ];
-                  } else if (event.key === "Home") next = tabs[0];
-                  else if (event.key === "End") next = tabs[tabs.length - 1];
-                  else return;
-                  event.preventDefault();
-                  focusTab(next.id);
+                  navigate(event, tab.id);
                 }}
               >
                 {tab.type === "commit" ? (
@@ -303,7 +368,7 @@ export default function TabBar({
               </button>
               <button
                 className="tab-close"
-                tabIndex={tab.id === activeTabId ? 0 : -1}
+                tabIndex={tab.id === selectedId ? 0 : -1}
                 aria-label={`Close ${tabTitle(tab)}`}
                 title={`Close ${tabTitle(tab)}`}
                 onClick={() => onClose(tab.id)}
@@ -312,6 +377,14 @@ export default function TabBar({
               </button>
             </div>
           ))}
+          {settings?.opened && (
+            <SettingsTabButton
+              active={settings.active}
+              onSelect={settings.onSelect}
+              onClose={settings.onClose}
+              onNavigate={(event) => navigate(event, SETTINGS_TAB_ID)}
+            />
+          )}
           <IconButton
             title={newTabTitle}
             aria-haspopup="menu"

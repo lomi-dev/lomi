@@ -3655,6 +3655,25 @@ svg {
   font-size: var(--font-size-12);
   padding-left: var(--space-10);
 }
+.settings-tab-container {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.settings-tab-container[hidden],
+.work-area[data-settings-hidden],
+.statusbar[data-settings-hidden] {
+  display: none;
+}
+.settings-panel {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
 .settings-layout {
   padding: var(--settings-layout-padding);
   gap: var(--settings-gap);

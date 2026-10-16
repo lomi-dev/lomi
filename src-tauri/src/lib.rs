@@ -115,7 +115,7 @@ fn app_info(window: Window, shells: State<'_, terminal::Shells>) -> Result<AppIn
 
 #[tauri::command]
 fn show_ready_window(window: Window, background: [u8; 3]) -> Result<bool, String> {
-    if !matches!(window.label(), "main" | "settings") {
+    if window.label() != "main" {
         return Err("Unknown application window.".into());
     }
     let visible = window.is_visible().map_err(|error| error.to_string())?;
@@ -139,9 +139,6 @@ fn show_ready_window(window: Window, background: [u8; 3]) -> Result<bool, String
             )))
             .map_err(|error| error.to_string())?;
     }
-    if window.label() == "settings" {
-        return settings_window::ready(&window);
-    }
     if !visible {
         window.show().map_err(|error| error.to_string())?;
         window.set_focus().map_err(|error| error.to_string())?;
@@ -156,7 +153,7 @@ fn show_ready_window(window: Window, background: [u8; 3]) -> Result<bool, String
 
 #[tauri::command]
 fn finish_window_startup(window: Window) -> Result<(), String> {
-    if !matches!(window.label(), "main" | "settings") {
+    if window.label() != "main" {
         return Err("Unknown application window.".into());
     }
     #[cfg(target_os = "linux")]
@@ -223,7 +220,7 @@ pub fn run() {
         .manage(terminal_preferences::TerminalPreferencesFile::default())
         .manage(themes::Themes::default())
         .manage(plugins::Plugins::default())
-        .manage(settings_window::SettingsWindow::default())
+        .manage(settings_window::SettingsTabs::default())
         .on_window_event(|window, event| {
             if window.label() == "main" {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -232,7 +229,6 @@ pub fn run() {
                     let _ = window.hide();
                 }
             }
-            settings_window::on_window_event(window, event);
             android::commands::window_event(window, event);
         })
         .on_page_load(|_view, _payload| {
@@ -263,13 +259,12 @@ pub fn run() {
             });
             #[cfg(feature = "chat-probe")]
             app.manage(chat_probe::Probe::default());
-            let handle = app.handle().clone();
             #[cfg(all(
                 feature = "remote-visual-probe",
                 target_os = "macos",
                 target_arch = "aarch64"
             ))]
-            remote_browser_capture_probe::start(handle.clone());
+            remote_browser_capture_probe::start(app.handle().clone());
             #[cfg(all(feature = "mcp-probe", target_os = "macos"))]
             mcp_browser_probe::start(app.handle().clone());
             #[cfg(all(feature = "mcp-probe", target_os = "macos"))]
@@ -280,13 +275,6 @@ pub fn run() {
             android_probe::watch_native_control(app.handle().clone());
             #[cfg(feature = "android-probe")]
             android_product::watch(app.handle().clone());
-            // Load settings alongside the workspace so its first click can
-            // reuse the prepared view. Window creation stays off the GUI thread.
-            tauri::async_runtime::spawn(async move {
-                if let Err(error) = settings_window::prepare(&handle).await {
-                    eprintln!("Cannot prepare settings window: {error}");
-                }
-            });
             #[cfg(feature = "remote-probe")]
             remote_probe::start(app.handle().clone());
             #[cfg(not(target_os = "macos"))]
@@ -512,6 +500,7 @@ pub fn run() {
                 show_ready_window,
                 finish_window_startup,
                 settings_window::open_settings,
+                settings_window::settings_tab_ready,
                 files::list_directory,
                 files::watch::watch_explorer_directories,
                 files::search::search_project,

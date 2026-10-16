@@ -27,7 +27,7 @@
       }
     ],
     "security": {
-      "capabilities": ["default", "settings", "browser", "updater"],
+      "capabilities": ["default", "browser", "updater"],
       "csp": "default-src 'self'; script-src 'self' plugin: http://plugin.localhost https://plugin.localhost; connect-src 'self' ipc: http://ipc.localhost; style-src 'self' plugin: http://plugin.localhost https://plugin.localhost 'unsafe-inline' theme: http://theme.localhost https://theme.localhost; img-src 'self' plugin: http://plugin.localhost https://plugin.localhost data: https://avatars.githubusercontent.com theme: http://theme.localhost https://theme.localhost; font-src 'self' plugin: http://plugin.localhost https://plugin.localhost theme: http://theme.localhost https://theme.localhost; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
       "devCsp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost ws://127.0.0.1:1420; script-src 'self' 'unsafe-inline' plugin: http://plugin.localhost https://plugin.localhost; style-src 'self' plugin: http://plugin.localhost https://plugin.localhost 'unsafe-inline' theme: http://theme.localhost https://theme.localhost; img-src 'self' plugin: http://plugin.localhost https://plugin.localhost data: https://avatars.githubusercontent.com theme: http://theme.localhost https://theme.localhost; font-src 'self' plugin: http://plugin.localhost https://plugin.localhost theme: http://theme.localhost https://theme.localhost; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
     }

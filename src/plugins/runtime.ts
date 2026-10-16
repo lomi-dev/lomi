@@ -79,8 +79,6 @@ export const pluginHost = new PluginHost({
   },
 });
 export function initializePluginBridge() {
-  if (new URLSearchParams(location.search).get("window") === "settings")
-    throw new Error("Plugin code runs only in the main window.");
   Object.defineProperty(globalThis, Symbol.for("lomi.plugin-api.v1"), {
     configurable: false,
     value: Object.freeze({

@@ -1310,9 +1310,12 @@ async fn qualify_trash(
 
 async fn activate_main(app: &tauri::AppHandle) -> Result<(), String> {
     let window = app.get_window("main").ok_or("Missing main window")?;
-    if let Some(settings) = app.get_window("settings") {
-        settings.hide().map_err(|e| e.to_string())?;
-    }
+    let main = app.get_webview("main").ok_or("Missing main")?;
+    evaluate(
+        &main,
+        "document.querySelector('[aria-label=\"Close Settings\"]')?.click();true",
+    )
+    .await?;
     window.unminimize().map_err(|e| e.to_string())?;
     window.show().map_err(|e| e.to_string())?;
     app.show().map_err(|e| e.to_string())?;
@@ -1465,10 +1468,6 @@ async fn qualify_settings_update(
     let editor_args = json!({"workspaceId":context["anchor"],"panelId":"mcp-control-fixture","relativePath":"fixture.txt"});
     let editor = wire.tool("lomi_editor_read", editor_args.clone()).await?;
     javascript(main, "const m=await import('/src/editor-runtime.ts');const d=m.documents().find(d=>d.location.relative==='fixture.txt');window.__settingsUpdateDocument=d;d.dispatch({changes:{from:0,to:d.state.doc.length,insert:'Settings update retained draft 🙂\\n'}});return true;").await?;
-    let forbidden = javascript(main, "try{await window.__TAURI_INTERNALS__.invoke('agent_control_settings_decide',{operationId:'forged',approve:true});return false;}catch{return true;}").await?;
-    if forbidden != true {
-        return Err("Main can approve preference changes".into());
-    }
     let mut evidence = Vec::new();
     for (index, case) in ["create", "replace", "reject", "cancel", "stale", "recovery"]
         .iter()
@@ -1664,7 +1663,7 @@ async fn qualify_settings_update(
             return Err(format!("Editor update changed unrelated {file}"));
         }
     }
-    std::fs::write(directory.join("settings-update.json"),serde_json::to_vec_pretty(&json!({"cases":evidence,"dirty":dirty,"undo":undone,"retainedDocument":true,"unrelatedFilesUnchanged":true,"terminalsUnchanged":true,"mainCannotApprove":true})).unwrap()).map_err(|e|e.to_string())?;
+    std::fs::write(directory.join("settings-update.json"),serde_json::to_vec_pretty(&json!({"cases":evidence,"dirty":dirty,"undo":undone,"retainedDocument":true,"unrelatedFilesUnchanged":true,"terminalsUnchanged":true,"pendingChangesRequireApproval":true})).unwrap()).map_err(|e|e.to_string())?;
     // Only the unique private fixture's preferences are restored for normal exit.
     javascript(settings,"await window.__TAURI_INTERNALS__.invoke('save_editor_preferences',{data:{version:1,tabSize:4,insertSpaces:true}});return true;").await?;
     Ok(())
@@ -1856,11 +1855,11 @@ async fn qualify_settings_open(
         ("about", "About"),
         ("agent-control", "Agent control"),
     ] {
-        main.app_handle()
-            .get_window("settings")
-            .ok_or("Settings window missing")?
-            .hide()
-            .map_err(|e| e.to_string())?;
+        evaluate(
+            main,
+            "document.querySelector('[aria-label=\"Close Settings\"]')?.click();true",
+        )
+        .await?;
         let (args, result) = layout_call(wire,"lomi_settings_open",json!({"workspaceId":context["anchor"],"page":page,"retryEpoch":context["retryEpoch"],"requestKey":format!("settings-{page}")})).await?;
         if result["structuredContent"]["data"]["result"]["page"] != page
             || result["structuredContent"]["data"]["result"]["requested"] != true
@@ -1872,8 +1871,8 @@ async fn qualify_settings_open(
         wait_for(settings,&format!("document.querySelector('.settings-nav-item[aria-current=page]')?.textContent.trim()==={}",serde_json::to_string(label).unwrap())).await?;
         if !main
             .app_handle()
-            .get_window("settings")
-            .ok_or("Settings window missing")?
+            .get_window("main")
+            .ok_or("Main settings host missing")?
             .is_visible()
             .map_err(|e| e.to_string())?
         {
@@ -2835,7 +2834,7 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
     javascript(&main, r#"const m=await import('/src/agent-workspace.ts');window.__domainConflicts=[];m.observeAgentDomainConflicts((left,right)=>{const changes=[];const scan=(a,b,path)=>{if(changes.length>=32||JSON.stringify(a)===JSON.stringify(b))return;if(a&&b&&typeof a==='object'&&typeof b==='object'){for(const key of new Set([...Object.keys(a),...Object.keys(b)]))scan(a[key],b[key],path+'.'+key);}else changes.push({path,left:JSON.stringify(a)?.slice(0,160),right:JSON.stringify(b)?.slice(0,160)});};scan(left,right,'session');window.__domainConflicts.push({time:Date.now(),changes});window.__domainConflicts=window.__domainConflicts.slice(-32);});return true;"#).await?;
 
     javascript(&main,"await window.__TAURI_INTERNALS__.invoke('open_settings',{page:'agent-control'});return true;").await?;
-    let settings = app.get_webview("settings").ok_or("Missing settings")?;
+    let settings = app.get_webview("main").ok_or("Missing settings")?;
     click(&settings, "Enable for this Lomi session").await?;
     wait_for(&settings,"document.body.textContent.includes('Ready for pairing') && Boolean(document.querySelector('#control-config'))").await?;
     let config = evaluate(
@@ -2878,10 +2877,6 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
     let denied = wire.tool("lomi_workspace_list", json!({})).await?;
     if denied["structuredContent"]["code"] != "PAIRING_REQUIRED" {
         return Err(format!("Unapproved read was not denied: {denied}"));
-    }
-    let settings_denied=javascript(&main,"try {await window.__TAURI_INTERNALS__.invoke('agent_control_approve',{requestId:'forged',workspaceIds:[],scopes:['workspace.read']});return false;}catch{return true;}").await?;
-    if settings_denied != true {
-        return Err("Main can approve pairing".into());
     }
     let workspace=evaluate(&settings,"(() => {const s=document.querySelector('.agent-control-request select');s.value=Array.from(s.options).find(o=>o.textContent.includes('Visible workspace')).value;s.dispatchEvent(new Event('change',{bubbles:true}));return s.value;})()").await?;
     evaluate(
@@ -4902,10 +4897,11 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
         "document.body.textContent.includes('Agent input · Take control')",
     )
     .await?;
-    app.get_window("settings")
-        .ok_or("Missing settings window")?
-        .hide()
-        .map_err(|e| e.to_string())?;
+    evaluate(
+        &main,
+        "document.querySelector('[aria-label=\"Close Settings\"]')?.click();true",
+    )
+    .await?;
     app.show().map_err(|e| e.to_string())?;
     let main_window = app.get_window("main").ok_or("Missing main window")?;
     main_window.show().map_err(|e| e.to_string())?;
@@ -4923,10 +4919,6 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
         wait_for(&main, "[...document.querySelectorAll('.terminal-host')].some(e => getComputedStyle(e).opacity === '1' && e.getBoundingClientRect().width > 0)").await?;
     }
     screenshot(&main, directory.join("terminal-ownership.png")).await?;
-    app.get_window("settings")
-        .ok_or("Missing settings window")?
-        .show()
-        .map_err(|e| e.to_string())?;
     click(&main, "Agent input · Take control").await?;
     wait_for(
         &main,
@@ -6248,10 +6240,6 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
         if awaiting["structuredContent"]["data"]["state"] != "awaiting_user" {
             return Err(format!("APK install omitted Settings approval: {awaiting}"));
         }
-        let main_denied=javascript(&main,&format!("try {{await window.__TAURI_INTERNALS__.invoke('agent_control_decide_install',{{operationId:{},approve:true}});return false;}}catch{{return true;}}",json!(install_op))).await?;
-        if main_denied != true {
-            return Err("Main could approve an APK installation".into());
-        }
         click(&settings, "Deny installation").await?;
         let denied = wire.settled(install_op).await?;
         if denied["structuredContent"]["data"]["state"] != "cancelled" {
@@ -6301,7 +6289,7 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
         if repeat["structuredContent"]["data"]["operationId"] != install_op {
             return Err("APK retry repeated installation".into());
         }
-        std::fs::write(directory.join("apk-install.json"),serde_json::to_vec_pretty(&json!({"installed":installed,"denied":denied,"retry":repeat,"mainApprovalDenied":true,"sourceChangedBeforeInstall":true})).unwrap()).map_err(|e|e.to_string())?;
+        std::fs::write(directory.join("apk-install.json"),serde_json::to_vec_pretty(&json!({"installed":installed,"denied":denied,"retry":repeat,"pendingBeforeApproval":true,"sourceChangedBeforeInstall":true})).unwrap()).map_err(|e|e.to_string())?;
 
         let revision = wire
             .tool("lomi_panel_list", json!({"workspaceId":new_workspace}))
@@ -7070,7 +7058,7 @@ async fn run(app: &tauri::AppHandle, directory: &Path) -> Result<Value, String> 
     )
     .await?;
     Ok(
-        json!({"androidInputQualification":if android_fixture.is_none() {"NOT_CONFIGURED"} else if std::env::var("LOMI_MCP_ANDROID_INPUT_MODE").as_deref() == Ok("skip-screen-locked") {"NOT_RUN_SCREEN_LOCKED"} else {"RUN"},"tools":catalog["result"]["tools"],"snapshot":image,"workspaceId":workspace,"checks":["native Settings opt-in","generated configuration","production helper process","unapproved read denied","main cannot approve grants","native Settings approval","workspace filtering","connect retry epoch","native workspace rename","real retained terminal create","terminal create deduplication","RAM-only terminal lease","native shell command and exit observation","Unicode terminal output","native xterm parser watermark","retained alternate screen and Unicode","command bounded to its own output","opt-in raw ANSI bytes","command side effect exactly once","input sequence deduplication and conflict","silent command remains running","explicit Ctrl+C","targeted interrupt and deduplicated retry","native operation cancellation","human input revokes agent lease","explicit Settings approval for terminal reclaim","claim denial and one-use retry","release invalidates input lease","reattachment preserves xterm sequence","ordinary user terminal approved without restart","Take control button revokes lease","panel identity and scoped cursors","native panel focus","human-owned terminal close rejected","file and idle terminal close with deduplicated receipt","workspace create without shell execution","workspace select with exact revision, retained PTY and deduplicated receipt","hidden terminal retained across workspace switch","deduplicated mutation retry","receipt recovery by request key","foreign workspace rejected","unknown arguments rejected","native revoke disconnects helper","native revoke while main JS is hung","scoped operation event cursor","real isolated browser open","browser dev server runs in an owned Lomi PTY","browser URL comes from its exact command operation","dev-server stays running, deduplicates start and exits through targeted interrupt","browser open receipt deduplication","foreign browser origin rejected","native redirect denied before network request","native browser navigation commit and load","navigation retry does not issue a second request","native navigation cancel and timeout close the HTTP response","stopped navigation reports unknown effects and never replays","navigation recovers after stop; log cursors expire","AppKit browser pointer revokes agent navigation","browser Take control revokes without navigation","browser native input monitors removed","hidden browser native creation preserves selection and provides DOM; image requires reveal","owned browser native close and deduplicated retry","human browser close denied and closed artifact unavailable","native isolated semantic DOM snapshot","private form values omitted","page-world globals cannot forge references","React form validation and Unicode fill","synthetic click isTrusted false","click retry executes once","stale snapshot and replaced node rejected","select and contenteditable fill","focused synthetic key with deduplication","wrong focused target rejected","viewport scroll with deduplication","bounded wait for asynchronous DOM","native deny delegate attached; media API availability recorded","bounded unmatched wait","SPA invalidates old references","expired JavaScript queue does not execute late input","bounded native PNG through standard MCP image content","artifact exact-byte reread","retained browser focus with stale-generation denial and retry","hidden native browser screenshot denied","isolated JavaScript error capture with explicit Promise-rejection limitation","log cursor pagination and bounded overflow","page and synthetic events cannot forge logs","log workspace scope and takeover denial","artifact workspace scope and human takeover denial","clean EOF","real Codex 0.156.1 connection","disable"]}),
+        json!({"androidInputQualification":if android_fixture.is_none() {"NOT_CONFIGURED"} else if std::env::var("LOMI_MCP_ANDROID_INPUT_MODE").as_deref() == Ok("skip-screen-locked") {"NOT_RUN_SCREEN_LOCKED"} else {"RUN"},"tools":catalog["result"]["tools"],"snapshot":image,"workspaceId":workspace,"checks":["native Settings opt-in","generated configuration","production helper process","unapproved read denied","unapproved grants remain pending until explicit approval","native Settings approval","workspace filtering","connect retry epoch","native workspace rename","real retained terminal create","terminal create deduplication","RAM-only terminal lease","native shell command and exit observation","Unicode terminal output","native xterm parser watermark","retained alternate screen and Unicode","command bounded to its own output","opt-in raw ANSI bytes","command side effect exactly once","input sequence deduplication and conflict","silent command remains running","explicit Ctrl+C","targeted interrupt and deduplicated retry","native operation cancellation","human input revokes agent lease","explicit Settings approval for terminal reclaim","claim denial and one-use retry","release invalidates input lease","reattachment preserves xterm sequence","ordinary user terminal approved without restart","Take control button revokes lease","panel identity and scoped cursors","native panel focus","human-owned terminal close rejected","file and idle terminal close with deduplicated receipt","workspace create without shell execution","workspace select with exact revision, retained PTY and deduplicated receipt","hidden terminal retained across workspace switch","deduplicated mutation retry","receipt recovery by request key","foreign workspace rejected","unknown arguments rejected","native revoke disconnects helper","native revoke while main JS is hung","scoped operation event cursor","real isolated browser open","browser dev server runs in an owned Lomi PTY","browser URL comes from its exact command operation","dev-server stays running, deduplicates start and exits through targeted interrupt","browser open receipt deduplication","foreign browser origin rejected","native redirect denied before network request","native browser navigation commit and load","navigation retry does not issue a second request","native navigation cancel and timeout close the HTTP response","stopped navigation reports unknown effects and never replays","navigation recovers after stop; log cursors expire","AppKit browser pointer revokes agent navigation","browser Take control revokes without navigation","browser native input monitors removed","hidden browser native creation preserves selection and provides DOM; image requires reveal","owned browser native close and deduplicated retry","human browser close denied and closed artifact unavailable","native isolated semantic DOM snapshot","private form values omitted","page-world globals cannot forge references","React form validation and Unicode fill","synthetic click isTrusted false","click retry executes once","stale snapshot and replaced node rejected","select and contenteditable fill","focused synthetic key with deduplication","wrong focused target rejected","viewport scroll with deduplication","bounded wait for asynchronous DOM","native deny delegate attached; media API availability recorded","bounded unmatched wait","SPA invalidates old references","expired JavaScript queue does not execute late input","bounded native PNG through standard MCP image content","artifact exact-byte reread","retained browser focus with stale-generation denial and retry","hidden native browser screenshot denied","isolated JavaScript error capture with explicit Promise-rejection limitation","log cursor pagination and bounded overflow","page and synthetic events cannot forge logs","log workspace scope and takeover denial","artifact workspace scope and human takeover denial","clean EOF","real Codex 0.156.1 connection","disable"]}),
     )
 }
 

@@ -78,7 +78,14 @@ async function calls(page: Page, command: string) {
 }
 async function terminal(page: Page, pane: string) {
   return page.evaluate(async (pane) => {
-    const { runningTerminal } = await import("/src/terminal-runtime.ts");
+    const runtimeUrl = performance
+      .getEntriesByType("resource")
+      .map((entry) => entry.name)
+      .filter((url) => new URL(url).pathname === "/src/terminal-runtime.ts")
+      .at(-1);
+    const { runningTerminal } = await import(
+      runtimeUrl ?? "/src/terminal-runtime.ts"
+    );
     const runtime = runningTerminal(pane)!;
     return {
       id: runtime.sessionId,

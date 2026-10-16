@@ -1517,13 +1517,11 @@ impl AuthController {
             (snapshot, app)
         };
         if let Some(app) = snapshot.1 {
-            for label in ["main", "settings"] {
-                let _ = app.emit_to(
-                    EventTarget::webview(label),
-                    STATE_CHANGED_EVENT,
-                    &snapshot.0,
-                );
-            }
+            let _ = app.emit_to(
+                EventTarget::webview("main"),
+                STATE_CHANGED_EVENT,
+                &snapshot.0,
+            );
         }
         snapshot.0
     }

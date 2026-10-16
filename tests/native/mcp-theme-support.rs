@@ -269,10 +269,12 @@ async fn qualify_protected_controls(
     )
     .map_err(|e| e.to_string())?;
     let id = javascript(settings, &format!("const id=await window.__TAURI_INTERNALS__.invoke('import_theme',{{path:{}}});await window.__TAURI_INTERNALS__.invoke('save_theme_preferences',{{data:{{version:1,active:id}}}});return id;", json!(source.to_string_lossy()))).await?;
-    for view in [main, settings] {
+    for view in [main] {
         wait_for(view, &format!("document.documentElement.dataset.theme === {} && !!document.querySelector('link[data-theme-layer=css]')", id)).await?;
     }
+    click(settings, "Themes").await?;
     wait_for(main, "getComputedStyle(document.body).opacity==='0'").await?;
+    javascript(settings, "await window.__TAURI_INTERNALS__.invoke('open_settings',{page:'agent-control'});return true;").await?;
     let visible = "getComputedStyle(document.body).opacity==='1' && Array.from(document.querySelectorAll('button')).some(b=>b.getClientRects().length && getComputedStyle(b).display!=='none')";
     wait_for(settings, visible).await?;
     let path = main
@@ -282,13 +284,15 @@ async fn qualify_protected_controls(
         .map_err(|e| e.to_string())?
         .join("theme-settings.json");
     let selected_bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+    click(settings, "Themes").await?;
+    wait_for(main, "getComputedStyle(document.body).opacity==='0'").await?;
     javascript(main, "const fixture=await import('/tests/ui/protected-theme-fixture.tsx');fixture.mountProtectedModal();return true;").await?;
     wait_for(
         main,
         &format!("({visible}) && !!document.querySelector('dialog[open]')"),
     )
     .await?;
-    for view in [main, settings] {
+    for view in [main] {
         evaluate(
             view,
             "window.__protectedThemeLayer=document.querySelector('[data-theme-layer=tokens]');true",
@@ -298,7 +302,7 @@ async fn qualify_protected_controls(
     main.app_handle()
         .emit("theme-changed", ())
         .map_err(|e| e.to_string())?;
-    for view in [main, settings] {
+    for view in [main] {
         wait_for(
             view,
             "document.querySelector('[data-theme-layer=tokens]')!==window.__protectedThemeLayer",
@@ -373,7 +377,7 @@ async fn qualify_protected_controls(
     {
         return Err(format!("Theme protection restore: {settled}"));
     }
-    for view in [main, settings] {
+    for view in [main] {
         wait_for(
             view,
             &format!("({visible}) && document.documentElement.dataset.theme==='lomi'"),

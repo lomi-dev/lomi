@@ -71,7 +71,7 @@ return {completed:true,generation:original.generation,paneIds,initial,restored,h
 control("minimize", { action: "minimize" });
 try {
   control("hidden", {
-    window: "settings",
+    window: "main",
     script: `
 const deviceId=${JSON.stringify(deviceId)};
 await wait(async()=>!(await invoke('android_state')).streams.some(s=>s.phase==='streaming'));

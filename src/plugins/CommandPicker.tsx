@@ -10,16 +10,31 @@ export default function CommandPicker({
   onClose,
   onBuiltin,
   onError,
+  settingsActive = false,
 }: {
   onClose: () => void;
   onBuiltin: (id: ActionId) => void;
   onError: (error: string) => void;
+  settingsActive?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const { actions } = useKeybindings();
   const { catalog } = usePlugins();
   const context = pluginHost.context;
   const builtinAvailable = (id: ActionId) => {
+    if (settingsActive) {
+      if (
+        id === "openSettings" ||
+        id === "closeTab" ||
+        id === "closeTerminal" ||
+        isZoomAction(id)
+      )
+        return true;
+      return (
+        !!context.workspaceName &&
+        ["newTab", "nextTab", "previousTab"].includes(id)
+      );
+    }
     if (id === "openSettings" || id === "toggleWorkspaces" || isZoomAction(id))
       return true;
     if (!context.workspaceName) return false;

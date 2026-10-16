@@ -196,7 +196,7 @@ fn check_native_input(window: &Window) -> Result<(), String> {
 #[cfg(target_os = "macos")]
 pub(super) async fn webkit_processes(app: &tauri::AppHandle) -> Result<serde_json::Value, String> {
     let mut result = serde_json::Map::new();
-    for label in ["main", "settings"] {
+    for label in ["main"] {
         let Some(webview) = app.get_webview(label) else {
             continue;
         };
@@ -445,9 +445,12 @@ pub async fn android_probe_control(
             Ok(serde_json::json!({"width":width,"height":height}))
         }
         "present" => {
-            if let Some(settings) = window.app_handle().get_window("settings") {
-                settings.hide().map_err(|e| e.to_string())?;
-            }
+            window
+                .app_handle()
+                .get_webview("main")
+                .ok_or("Missing main settings host")?
+                .eval("document.querySelector('[aria-label=\"Close Settings\"]')?.click()")
+                .map_err(|e| e.to_string())?;
             window.show().map_err(|e| e.to_string())?;
             window
                 .set_title("Android native transport probe")

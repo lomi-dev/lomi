@@ -303,10 +303,8 @@ pub fn load_terminal_preferences(
     app: tauri::AppHandle,
     state: State<'_, TerminalPreferencesFile>,
 ) -> Result<Option<TerminalPreferences>, String> {
-    if !matches!(window.label(), "main" | "settings") {
-        return Err(
-            "Terminal settings are only available in the main and settings windows.".into(),
-        );
+    if window.label() != "main" {
+        return Err("Terminal settings are only available in the main window.".into());
     }
     let _guard = state.0.lock().map_err(|error| error.to_string())?;
     read(
@@ -324,8 +322,8 @@ pub fn save_terminal_preferences(
     state: State<'_, TerminalPreferencesFile>,
     data: TerminalPreferences,
 ) -> Result<(), String> {
-    if window.label() != "settings" {
-        return Err("Terminal preferences can only be changed in the settings window.".into());
+    if window.label() != "main" {
+        return Err("Terminal preferences can only be changed in Settings.".into());
     }
     let _guard = state.0.lock().map_err(|error| error.to_string())?;
     let directory = app

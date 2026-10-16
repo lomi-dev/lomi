@@ -50,7 +50,7 @@ pub fn watch(app: tauri::AppHandle) {
                 continue;
             }
             let label = value["window"].as_str().unwrap_or("main");
-            if !matches!(label, "main" | "settings") {
+            if label != "main" {
                 continue;
             }
             if let Some(action) = value["action"].as_str() {
@@ -87,13 +87,6 @@ async fn control(
     let window = app.get_window(label).ok_or("Missing product test window")?;
     match action {
         "present" | "move-to-current-space" => {
-            for other in ["main", "settings"] {
-                if other != label {
-                    if let Some(other) = app.get_window(other) {
-                        other.hide().map_err(|e| e.to_string())?;
-                    }
-                }
-            }
             window.unminimize().map_err(|e| e.to_string())?;
             window.show().map_err(|e| e.to_string())?;
             window.set_always_on_top(true).map_err(|e| e.to_string())?;

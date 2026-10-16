@@ -70,9 +70,7 @@ pub(super) async fn qualify(
             target["panelId"].as_str().ok_or("Missing upload panel")?
         ))
         .ok_or("Missing upload browser")?;
-    let settings = app
-        .get_webview("settings")
-        .ok_or("Missing upload Settings")?;
+    let settings = app.get_webview("main").ok_or("Missing upload Settings")?;
     wait_for(&browser,"document.title==='Upload fixture'&&!!document.querySelector('iframe').contentDocument?.querySelector('input')").await?;
     evaluate(&browser,"(()=>{for(const w of [window,document.querySelector('iframe').contentWindow]){w.DataTransfer=function(){throw Error('page replacement')};w.File=function(){throw Error('page replacement')};}return true;})()").await?;
     let mut checks = vec![

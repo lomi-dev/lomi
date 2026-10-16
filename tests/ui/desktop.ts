@@ -22,7 +22,7 @@ const initialSession = {
 export async function mockDesktop(
   page: Page,
   repository = true,
-  saved: unknown = initialSession,
+  saved?: unknown,
   gitHistory?: MockGitHistory,
   editorFiles: Record<
     string,
@@ -35,7 +35,15 @@ export async function mockDesktop(
   } = {},
 ) {
   await page.addInitScript(
-    ({ repository, saved, gitHistory, editorFiles, platform, agents }) => {
+    ({
+      repository,
+      saved,
+      defaultSession,
+      gitHistory,
+      editorFiles,
+      platform,
+      agents,
+    }) => {
       Object.defineProperty(navigator, "platform", {
         configurable: true,
         value:
@@ -83,6 +91,11 @@ export async function mockDesktop(
           "plugin:notification|request_permission",
         );
       desktop.__nativeTest = {
+        settingsRequest: null as {
+          revision: number;
+          page: string | null;
+        } | null,
+        settingsRevision: 0,
         update: null,
         updateInstruction: platform === "linux" ? "yay -Syu lomi-bin" : null,
         updateCheckError: "",
@@ -227,27 +240,18 @@ export async function mockDesktop(
       };
       window.addEventListener("storage", (event) => {
         if (event.key === "test-plugins") void emitEvent("plugins-changed");
-        if (
-          event.key === "test-plugin-request" &&
-          !location.search.includes("settings")
-        )
+        if (event.key === "test-plugin-request")
           void emitEvent("plugin-close-request", JSON.parse(event.newValue!));
         if (event.key === "test-plugin-finished")
           void emitEvent(
             "plugin-operation-finished",
             JSON.parse(event.newValue!),
           );
-        if (
-          event.key === "test-update-check" &&
-          !location.search.includes("settings")
-        )
+        if (event.key === "test-update-check")
           void emitEvent("check-for-updates");
         if (event.key === "test-terminal-preferences")
           void emitEvent("terminal-preferences-changed");
-        if (
-          event.key === "test-agent-notification-setup" &&
-          !location.search.includes("settings")
-        )
+        if (event.key === "test-agent-notification-setup")
           void emitEvent("agent-notification-setup");
         if (event.key === "test-editor-preferences")
           void emitEvent("editor-preferences-changed");
@@ -266,10 +270,10 @@ export async function mockDesktop(
         },
         metadata: {
           currentWindow: {
-            label: location.search.includes("settings") ? "settings" : "main",
+            label: "main",
           },
           currentWebview: {
-            label: location.search.includes("settings") ? "settings" : "main",
+            label: "main",
           },
         },
         transformCallback(callback: (value: unknown) => void) {
@@ -904,9 +908,27 @@ export async function mockDesktop(
                 },
               ],
             };
+          if (command === "settings_tab_ready")
+            return desktop.__nativeTest.settingsRequest;
+          if (command === "open_settings") {
+            const mock = desktop.__nativeTest;
+            mock.settingsRequest = {
+              revision: ++mock.settingsRevision,
+              page: args.page ?? null,
+            };
+            await emitEvent("settings-tab-requested", mock.settingsRequest);
+            return;
+          }
           if (command === "load_session")
             return JSON.parse(
-              localStorage.getItem("test-session") ?? JSON.stringify(saved),
+              localStorage.getItem("test-session") ??
+                JSON.stringify(
+                  saved === undefined
+                    ? location.search.includes("settings")
+                      ? null
+                      : defaultSession
+                    : saved,
+                ),
             );
           if (command === "load_keybindings")
             return JSON.parse(
@@ -985,8 +1007,6 @@ export async function mockDesktop(
             return;
           }
           if (command === "prepare_plugin") {
-            if (location.search.includes("settings"))
-              throw new Error("Wrong caller");
             const entry = JSON.parse(
               localStorage.getItem("test-plugins") ?? "[]",
             ).find((e: any) => e.id === args.id);
@@ -1567,7 +1587,6 @@ export async function mockDesktop(
               "acknowledge_terminal",
               "close_terminal",
               "reset_terminals",
-              "open_settings",
               "finish_window_startup",
               "plugin:event|unlisten",
               "plugin:window|set_title",
@@ -1583,7 +1602,15 @@ export async function mockDesktop(
         },
       };
     },
-    { repository, saved, gitHistory, editorFiles, platform, agents },
+    {
+      repository,
+      saved,
+      defaultSession: initialSession,
+      gitHistory,
+      editorFiles,
+      platform,
+      agents,
+    },
   );
 }
 

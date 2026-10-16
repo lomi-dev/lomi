@@ -90,8 +90,8 @@ pub fn result(
             }
         }
         "clipboard-settings" => {
-            app.get_webview("settings").ok_or("Missing settings")?.eval(format!(
-                r#"(async()=>{{let denied=false;try{{await window.__TAURI_INTERNALS__.invoke('paste_terminal_clipboard',{{id:{data}}});}}catch{{denied=true;}}await window.__TAURI_INTERNALS__.invoke('plugin_smoke_result',{{stage:denied?'passed':'failed',data:denied?'Native PNG and text clipboard, Cmd+V, AppKit Paste, PTY and settings isolation passed':'Settings read the clipboard'}});}})();"#
+            app.get_webview("main").ok_or("Missing settings")?.eval(format!(
+                r#"(async()=>{{const invoke=window.__TAURI_INTERNALS__.invoke;try{{await invoke('open_settings',{{page:'keybinds'}});await invoke('plugin_smoke_result',{{stage:'passed',data:'Native PNG and text clipboard, Cmd+V, AppKit Paste, PTY and Settings tab navigation passed'}});}}catch(error){{await invoke('plugin_smoke_result',{{stage:'failed',data:String(error)}});}}}})();"#
             )).map_err(|e| e.to_string())?;
         }
         "passed" | "failed" => {

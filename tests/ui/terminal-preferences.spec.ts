@@ -19,7 +19,14 @@ async function field(page: Page, label: string, value: string) {
 }
 async function options(page: Page, id: string) {
   return page.evaluate(async (id) => {
-    const { runningTerminal } = await import("/src/terminal-runtime.ts");
+    const runtimeUrl = performance
+      .getEntriesByType("resource")
+      .map((entry) => entry.name)
+      .filter((url) => new URL(url).pathname === "/src/terminal-runtime.ts")
+      .at(-1);
+    const { runningTerminal } = await import(
+      runtimeUrl ?? "/src/terminal-runtime.ts"
+    );
     const runtime = runningTerminal(id);
     if (!runtime) return null;
     const { fontSize, fontFamily, scrollback, cursorStyle, theme } =
@@ -220,23 +227,26 @@ test("settings update visible and hidden terminals without restarting PTYs and s
 
 test("appearance overrides survive theme changes and resetting follows the active theme", async ({
   page,
-  context,
 }) => {
-  await settingsPage(page);
+  await mockDesktop(page, false);
+  await page.goto("/");
+  await expect(page.locator(".terminal-host")).toHaveCSS("opacity", "1");
+  const id = (await page
+    .locator("[data-pane-id]")
+    .getAttribute("data-pane-id"))!;
+  await page.evaluate(() =>
+    (window as any).__TAURI_INTERNALS__.invoke("open_settings", {
+      page: "terminal",
+    }),
+  );
   await field(page, "Font size", "20");
   await page.getByText("Customize colors", { exact: true }).click();
   await page
     .getByText("ANSI palette and search colors", { exact: true })
     .click();
   await field(page, "Red", "#ff1234");
-  const main = await context.newPage();
-  await mockDesktop(main, false);
-  await main.goto("/");
-  await expect(main.locator(".terminal-host")).toHaveCSS("opacity", "1");
-  const id = (await main
-    .locator("[data-pane-id]")
-    .getAttribute("data-pane-id"))!;
-  for (const target of [page, main])
+  const main = page;
+  for (const target of [page])
     await target.evaluate(async () => {
       localStorage.setItem(
         "test-theme-manifests",

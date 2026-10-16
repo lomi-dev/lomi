@@ -1,4 +1,11 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   Bell,
   MessageSquare,
@@ -12,15 +19,10 @@ import {
   ShieldCheck,
   X,
 } from "./icons";
-import { listen } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import ChatSettingsPage from "./chat/ChatSettingsPage";
 import AboutSettingsPage from "./AboutSettingsPage";
-import PluginsPage from "./plugins/PluginsPage";
-import ThemesPage from "./ThemesPage";
 import TerminalSettingsPage from "./TerminalSettingsPage";
-import { IconButton, WindowControls } from "./ui";
-import { errorMessage, macOS, native } from "./api";
+import { IconButton } from "./ui";
+import { errorMessage } from "./api";
 import {
   bindingConflict,
   formatShortcut,
@@ -28,9 +30,9 @@ import {
 } from "./keybindings";
 import type { ActionId, Keybindings } from "./keybindings";
 import { useKeybindings } from "./KeybindingsProvider";
-import ReadyWindow from "./ReadyWindow";
-import { useWindowZoom } from "./useWindowZoom";
 import { useProtectedTheme } from "./useProtectedTheme";
+import { defaultSettingsPage } from "./settings-pages";
+import type { SettingsPageId } from "./settings-pages";
 import { canShareRemotely } from "./auth/model";
 import { useAuthState } from "./auth/useAuthState";
 import {
@@ -40,6 +42,9 @@ import {
   SettingsSection,
 } from "./settings-ui";
 
+const ChatSettingsPage = lazy(() => import("./chat/ChatSettingsPage"));
+const PluginsPage = lazy(() => import("./plugins/PluginsPage"));
+const ThemesPage = lazy(() => import("./ThemesPage"));
 const NotificationSettingsPage = lazy(
   () => import("./auth/NotificationSettingsPage"),
 );
@@ -54,106 +59,58 @@ function SettingsLoading({ title }: { title: string }) {
   return <SettingsPage title={title} status="Loading…" />;
 }
 
-export default function SettingsWindow() {
+export interface SettingsPanelProps {
+  active: boolean;
+  requestedPage: SettingsPageId | null;
+  requestRevision: number;
+}
+
+export default function SettingsPanel({
+  active,
+  requestedPage,
+  requestRevision,
+}: SettingsPanelProps) {
   const auth = useAuthState();
   const remoteAvailable = canShareRemotely(auth.state);
-  const [page, setPage] = useState(() => {
-    const requested = new URLSearchParams(window.location.search).get("page");
-    return requested === "notifications" ||
-      requested === "remote" ||
-      requested === "account" ||
-      requested === "android" ||
-      requested === "agent-control" ||
-      requested === "chat-ai" ||
-      requested === "plugins" ||
-      requested === "themes" ||
-      requested === "terminal" ||
-      requested === "about"
-      ? requested
-      : "keybinds";
-  });
+  const [page, setPage] = useState<SettingsPageId>(
+    requestedPage ?? defaultSettingsPage,
+  );
   const preferences = useKeybindings();
   useProtectedTheme(
-    page === "agent-control" ||
-      page === "account" ||
-      page === "remote" ||
-      page === "notifications",
+    active &&
+      (page === "agent-control" ||
+        page === "account" ||
+        page === "remote" ||
+        page === "notifications"),
   );
-  const [listening, setListening] = useState(!native);
   const [recording, setRecording] = useState<ActionId | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  useWindowZoom(setError);
   const [status, setStatus] = useState("");
   const busyRef = useRef(false);
   const recordingButton = useRef<HTMLButtonElement>(null);
+  const navigation = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    setRecording(null);
+    if (requestedPage !== null) setPage(requestedPage);
+  }, [requestedPage, requestRevision]);
+  useLayoutEffect(() => {
+    if (!active) setRecording(null);
+  }, [active]);
+  useLayoutEffect(() => {
+    if (active && !document.querySelector("dialog[open]"))
+      navigation.current
+        ?.querySelector<HTMLButtonElement>('[aria-current="page"]')
+        ?.focus({ preventScroll: true });
+  }, [active, page, requestRevision]);
   useEffect(() => {
-    if (!native) return;
-    let current = true;
-    const unlisten = listen<string>("settings-page-changed", ({ payload }) => {
-      if (
-        current &&
-        [
-          "notifications",
-          "remote",
-          "account",
-          "android",
-          "agent-control",
-          "chat-ai",
-          "keybinds",
-          "themes",
-          "terminal",
-          "about",
-          "plugins",
-        ].includes(payload)
-      ) {
-        setRecording(null);
-        setPage(payload);
-      }
-    });
-    void unlisten
-      .then(() => {
-        if (current) setListening(true);
-      })
-      .catch((error) => {
-        if (current) {
-          setError(errorMessage(error));
-          setListening(true);
-        }
-      });
     const blurred = () => setRecording(null);
     window.addEventListener("blur", blurred);
-    return () => {
-      current = false;
-      window.removeEventListener("blur", blurred);
-      void unlisten.then((stop) => stop()).catch(() => {});
-    };
+    return () => window.removeEventListener("blur", blurred);
   }, []);
   useEffect(() => {
-    recordingButton.current?.focus();
-  }, [recording]);
-  useEffect(() => {
-    if (!native || !macOS || recording) return;
-    const close = (event: KeyboardEvent) => {
-      if (
-        event.code !== "KeyW" ||
-        !event.metaKey ||
-        event.ctrlKey ||
-        event.altKey ||
-        event.shiftKey ||
-        event.isComposing ||
-        event.defaultPrevented ||
-        document.querySelector("dialog[open]")
-      )
-        return;
-      event.preventDefault();
-      void getCurrentWindow()
-        .close()
-        .catch((error) => setError(errorMessage(error)));
-    };
-    window.addEventListener("keydown", close);
-    return () => window.removeEventListener("keydown", close);
-  }, [recording]);
+    if (active) recordingButton.current?.focus();
+  }, [active, recording]);
 
   const persist = async (
     bindings: Keybindings,
@@ -192,17 +149,13 @@ export default function SettingsWindow() {
     void persist({ ...preferences.bindings, [id]: shortcut });
   };
   return (
-    <div className="app-shell settings-window">
-      {listening && <ReadyWindow />}
-      <header className="titlebar" data-tauri-drag-region>
-        <span className="settings-title" data-tauri-drag-region>
-          Settings
-        </span>
-        <div className="titlebar-space" data-tauri-drag-region />
-        <WindowControls onError={setError} />
-      </header>
+    <div className="settings-panel">
       <div className="settings-layout">
-        <nav className="settings-navigation" aria-label="Settings pages">
+        <nav
+          ref={navigation}
+          className="settings-navigation"
+          aria-label="Settings pages"
+        >
           <button
             className="settings-nav-item"
             aria-current={page === "keybinds" ? "page" : undefined}
@@ -310,14 +263,16 @@ export default function SettingsWindow() {
           </Suspense>
         ) : page === "agent-control" ? (
           <Suspense fallback={<SettingsLoading title="Agent control" />}>
-            <AgentControlSettingsPage />
+            <AgentControlSettingsPage active={active} />
           </Suspense>
         ) : page === "android" ? (
           <Suspense fallback={<SettingsLoading title="Android" />}>
             <AndroidSettingsPage />
           </Suspense>
         ) : page === "chat-ai" ? (
-          <ChatSettingsPage />
+          <Suspense fallback={<SettingsLoading title="Chat AI" />}>
+            <ChatSettingsPage />
+          </Suspense>
         ) : page === "about" ? (
           <AboutSettingsPage
             error={error}
@@ -325,11 +280,15 @@ export default function SettingsWindow() {
             onClearError={() => setError("")}
           />
         ) : page === "plugins" ? (
-          <PluginsPage />
+          <Suspense fallback={<SettingsLoading title="Plugins" />}>
+            <PluginsPage />
+          </Suspense>
         ) : page === "terminal" ? (
           <TerminalSettingsPage />
         ) : page === "themes" ? (
-          <ThemesPage />
+          <Suspense fallback={<SettingsLoading title="Themes" />}>
+            <ThemesPage />
+          </Suspense>
         ) : (
           <SettingsPage
             title="Keybinds"

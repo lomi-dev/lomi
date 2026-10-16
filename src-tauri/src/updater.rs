@@ -96,7 +96,7 @@ pub fn update_environment(window: Window) -> Result<UpdateEnvironment, String> {
 
 #[tauri::command]
 pub fn request_update_check(window: Window, app: tauri::AppHandle) -> Result<(), String> {
-    if window.label() != "settings" {
+    if window.label() != "main" {
         return Err("Update checks can only be requested from settings.".into());
     }
     let main = app.get_window("main").ok_or("The workspace is not open.")?;

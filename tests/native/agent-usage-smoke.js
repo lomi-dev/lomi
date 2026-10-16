@@ -519,7 +519,7 @@
         .join("\n")
         .includes("USAGE_NATIVE_OK"),
     );
-    checkpoint = "Settings isolation";
+    checkpoint = "Settings main-host compatibility";
     await invoke("open_settings", { page: "agent-control" });
     await pause(1000);
     await invoke("plugin_smoke_result", {

@@ -75,7 +75,8 @@ node tests/native/android-product-control.mjs \
 JSON
 ```
 
-`window` is `main` or `settings`. Optional `processId` restricts an instruction
+`window` is `main`, including when the Settings tab is active. Optional
+`processId` restricts an instruction
 to one fixture process during the second-instance test; otherwise never run two
 product drivers against the same instruction directory. The bounded script receives `invoke`, `click`,
 `sleep` and `wait` helpers. Native actions `present`, `hide`, `minimize`, `resize`

@@ -83,7 +83,7 @@ impl AuthState {
 }
 
 fn trusted_account_window(window: &Window) -> Result<(), String> {
-    if matches!(window.label(), "main" | "settings") {
+    if window.label() == "main" {
         Ok(())
     } else {
         Err("Account access is available only to Lomi application windows.".into())
@@ -91,7 +91,7 @@ fn trusted_account_window(window: &Window) -> Result<(), String> {
 }
 
 fn settings_window(window: &Window) -> Result<(), String> {
-    if window.label() == "settings" {
+    if window.label() == "main" {
         Ok(())
     } else {
         Err("Account management is available only in Settings.".into())

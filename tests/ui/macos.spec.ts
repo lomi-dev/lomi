@@ -167,7 +167,7 @@ test("macOS Explorer uses Cmd+D for duplicate without splitting the terminal and
   await rename.press("Escape");
 });
 
-test("hidden settings cancel shortcut recording before being reused", async ({
+test("Settings cancels shortcut recording on blur before closing its tab", async ({
   page,
 }) => {
   await mockDesktop(page, true, undefined, undefined, {}, "macos");
@@ -189,10 +189,13 @@ test("hidden settings cancel shortcut recording before being reused", async ({
         ),
       ),
     )
-    .toBe(true);
+    .toBe(false);
+  await expect(
+    page.getByRole("tab", { name: "Settings", exact: true }),
+  ).toHaveCount(0);
 });
 
-test("Cmd+W closes macOS settings while shortcut recording keeps the key", async ({
+test("Cmd+W closes the Settings tab while shortcut recording keeps the key", async ({
   page,
 }) => {
   await mockDesktop(page, true, undefined, undefined, {}, "macos");
@@ -214,7 +217,10 @@ test("Cmd+W closes macOS settings while shortcut recording keeps the key", async
   expect(await closed()).toBe(0);
   await recorder.press("Escape");
   await page.keyboard.press("Meta+w");
-  await expect.poll(closed).toBe(1);
+  await expect(
+    page.getByRole("tab", { name: "Settings", exact: true }),
+  ).toHaveCount(0);
+  expect(await closed()).toBe(0);
 });
 
 for (const settings of [false, true]) {

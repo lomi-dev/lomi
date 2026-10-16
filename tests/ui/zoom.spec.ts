@@ -218,17 +218,14 @@ test("zoom preserves editor text, selection, undo and a modal's input", async ({
   await expect(name).toBeFocused();
 });
 
-test("settings records zoom keys and updates main-window bindings without changing its zoom", async ({
+test("Settings records zoom keys and applies bindings to the same main window", async ({
   page,
-  context,
 }) => {
   await mockDesktop(page, false, undefined, undefined, {}, "macos");
   await page.goto("/");
   await expect(page.locator(".xterm-screen")).toBeVisible();
-  const settings = await context.newPage();
-  await mockDesktop(settings, false, null, undefined, {}, "macos");
-  await settings.goto("/?window=settings");
-  const recorder = settings.getByRole("button", {
+  await page.keyboard.press("Meta+Comma");
+  const recorder = page.getByRole("button", {
     name: "Shortcut for Zoom out",
     exact: true,
   });
@@ -236,32 +233,28 @@ test("settings records zoom keys and updates main-window bindings without changi
   await recorder.click();
   await recorder.press("Meta+Minus");
   await expect(recorder).toHaveText("Cmd+-");
-  expect(await zoom(settings)).toBe(1);
+  expect(await zoom(page)).toBe(1);
   await recorder.click();
   await recorder.press("Meta+j");
   await expect(recorder).toHaveText("Cmd+J");
-  await expect
-    .poll(() =>
-      page.evaluate(async () => {
-        const native = (window as any).__nativeTest;
-        return native.calls.filter(
-          (call: any) => call.command === "load_keybindings",
-        ).length;
-      }),
-    )
-    .toBeGreaterThan(1);
+  await page
+    .getByRole("button", { name: "Close Settings", exact: true })
+    .click();
   await page.locator(".xterm-helper-textarea").focus();
   await page.keyboard.press("Meta+j");
   await expect.poll(() => zoom(page)).toBe(0.9);
   await page.keyboard.press("Meta+Minus");
   expect(await zoom(page)).toBe(0.9);
-  await settings.locator("h1").click();
-  await settings.keyboard.press("Meta+Equal");
-  await expect.poll(() => zoom(settings)).toBe(1.1);
-  expect(await zoom(page)).toBe(0.9);
-  await settings.reload();
-  await expect.poll(() => zoom(settings)).toBe(1.1);
+  await page.keyboard.press("Meta+Comma");
   await expect(recorder).toHaveText("Cmd+J");
+  await page.getByRole("heading", { name: "Keybinds", exact: true }).click();
+  await page.keyboard.press("Meta+Equal");
+  await expect.poll(() => zoom(page)).toBe(1);
+  expect(
+    await page.evaluate(() => localStorage.getItem("lomi.zoom.main")),
+  ).toBe("100");
+  expect(await commands(page, "start_terminal")).toHaveLength(1);
+  expect(await commands(page, "close_terminal")).toHaveLength(0);
 });
 
 test("queued zoom shortcuts respect limits, composition and native failures", async ({

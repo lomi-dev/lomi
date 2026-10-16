@@ -122,8 +122,14 @@
             stage: "notification-settings",
             data: null,
           });
-          await wait(() => !document.hasFocus());
+          await wait(
+            () =>
+              document
+                .querySelector('[data-tab-id="settings"] [role="tab"]')
+                ?.getAttribute("aria-selected") === "true",
+          );
         } else {
+          document.querySelector('[aria-label="Close Settings"]')?.click();
           runtime.terminal.focus();
         }
         await invoke("plugin_smoke_result", {
@@ -445,7 +451,7 @@
           "storage failures preserve inbox and still request system alerts",
           "native notification request in background",
           "duplicate suppression",
-          "settings-window toggle applied live",
+          "Settings tab toggle applied live",
           "PTY retained after preference changes",
         ],
         notices,

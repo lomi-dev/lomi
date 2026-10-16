@@ -495,10 +495,10 @@ test("notification controls are exclusive to Notifications and accessible by key
   ).toBeVisible();
   await expect(page.getByRole("switch")).toHaveCount(0);
   await page.evaluate(async () =>
-    (window as any).__nativeTest.emitEvent(
-      "settings-page-changed",
-      "notifications",
-    ),
+    (window as any).__nativeTest.emitEvent("settings-tab-requested", {
+      revision: 1,
+      page: "notifications",
+    }),
   );
   await expect(
     page.getByRole("heading", { name: "Notifications", exact: true }),

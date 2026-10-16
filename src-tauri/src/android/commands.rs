@@ -14,7 +14,7 @@ use std::{collections::BTreeMap, sync::Arc};
 use tauri::{Emitter, Manager, State, Window};
 
 fn read_window(window: &Window) -> Result<(), String> {
-    if matches!(window.label(), "main" | "settings") {
+    if window.label() == "main" {
         Ok(())
     } else {
         Err("Android commands are available only to the application views".into())
@@ -22,7 +22,7 @@ fn read_window(window: &Window) -> Result<(), String> {
 }
 
 fn settings_window(window: &Window) -> Result<(), String> {
-    if window.label() == "settings" {
+    if window.label() == "main" {
         Ok(())
     } else {
         Err("Only Android settings may change managed components and devices".into())
@@ -42,13 +42,11 @@ pub(super) fn backend(window: &Window, state: &Android) -> Result<Arc<AndroidMan
     let manager = state.get(root)?;
     let app = window.app_handle().clone();
     manager.set_emitter(move |event| {
-        for label in ["main", "settings"] {
-            let _ = app.emit_to(
-                tauri::EventTarget::webview(label),
-                "android-changed",
-                &event,
-            );
-        }
+        let _ = app.emit_to(
+            tauri::EventTarget::webview("main"),
+            "android-changed",
+            &event,
+        );
     });
     Ok(manager)
 }
@@ -65,7 +63,7 @@ pub fn android_prepare_setup(
     window
         .app_handle()
         .emit_to(
-            tauri::EventTarget::webview("settings"),
+            tauri::EventTarget::webview("main"),
             "android-setup-changed",
             &context,
         )

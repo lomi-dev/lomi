@@ -145,7 +145,7 @@ pub fn request_agent_notification_setup(
     window: Window,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
-    if window.label() != "settings" {
+    if window.label() != "main" {
         return Err("Notification setup can only be requested from settings.".into());
     }
     let main = app.get_window("main").ok_or("The workspace is not open.")?;

@@ -48,6 +48,7 @@ import {
   lazy,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useId,
   useRef,
   useState,
@@ -150,7 +151,8 @@ import SplitView from "./SplitView";
 import { usePaneMotion } from "./pane-motion";
 import { usePointerFocus } from "./usePointerFocus";
 import { useWindowZoom, changeWindowZoom } from "./useWindowZoom";
-import TabBar from "./TabBar";
+import TabBar, { SettingsTabButton } from "./TabBar";
+import { SETTINGS_TAB_ID, useSettingsTab } from "./useSettingsTab";
 import FileEditorStatus from "./FileEditorStatus";
 import { useKeybindings } from "./KeybindingsProvider";
 import { useTerminalPreferences } from "./TerminalPreferencesProvider";
@@ -247,7 +249,10 @@ function initialize() {
   })());
 }
 
+const SettingsPanel = lazy(() => import("./SettingsPanel"));
+
 export default function Workbench() {
+  const settings = useSettingsTab();
   const [sourceControlState] = useState(() => new SourceControlState());
   const closeGuard = useCloseGuard();
   const gitApproval = useAgentGitApproval();
@@ -327,6 +332,22 @@ export default function Workbench() {
         previousSelection.workspace.id === nextSelection.workspace.id;
       const sameTab =
         sameWorkspace && previousSelection?.tab.id === nextSelection?.tab.id;
+      const previousTabRemains =
+        !previousSelection ||
+        next?.projects.some((project) =>
+          project.workspaces.some(
+            (workspace) =>
+              workspace.id === previousSelection.workspace.id &&
+              workspace.tabs.some((tab) => tab.id === previousSelection.tab.id),
+          ),
+        );
+      if (
+        previous &&
+        previousTabRemains &&
+        (previousSelection?.workspace.id !== nextSelection?.workspace.id ||
+          previousSelection?.tab.id !== nextSelection?.tab.id)
+      )
+        settings.leave();
       const motion =
         sameTab && previous && next
           ? animate
@@ -338,7 +359,7 @@ export default function Workbench() {
           : false;
       renderPaneLayout(() => renderSession(next), motion, !sameTab);
     },
-    [renderPaneLayout],
+    [renderPaneLayout, settings.leave],
   );
   useAgentControlBridge(
     session,
@@ -498,7 +519,7 @@ export default function Workbench() {
       )
         throw new Error("TARGET_BUSY");
       const container = terminalLayout.current;
-      return container?.isConnected
+      return !settings.activeRef.current && container?.isConnected
         ? { width: container.clientWidth, height: container.clientHeight }
         : null;
     },
@@ -525,17 +546,21 @@ export default function Workbench() {
   const hostContext = {
     projectPath: selected?.project.path ?? null,
     workspaceName: selected?.workspace.name ?? null,
-    activePanelId: selected ? (activePanel(selected.tab)?.id ?? null) : null,
-    viewType: selected
-      ? ((activePanel(selected.tab)?.type === "plugin"
-          ? (activePanel(selected.tab) as import("./model").PluginPanel)
-              .viewType
-          : activePanel(selected.tab)?.type) ?? null)
-      : null,
+    activePanelId:
+      !settings.active && selected
+        ? (activePanel(selected.tab)?.id ?? null)
+        : null,
+    viewType:
+      !settings.active && selected
+        ? ((activePanel(selected.tab)?.type === "plugin"
+            ? (activePanel(selected.tab) as import("./model").PluginPanel)
+                .viewType
+            : activePanel(selected.tab)?.type) ?? null)
+        : null,
     appearance: theme.snapshot.appearance,
     themeRevision: theme.snapshot.sourceRevision,
   };
-  if (focusedSidebar) {
+  if (focusedSidebar && !settings.active) {
     hostContext.activePanelId = focusedSidebar.id;
     hostContext.viewType = focusedSidebar.viewType;
   }
@@ -586,6 +611,7 @@ export default function Workbench() {
             : [...(w.pluginSidebars ?? []), panel],
         }));
         setSession(moveSidebar(next, viewType as SidebarPanel, side));
+        settings.leave();
         return panel.id;
       }
       const existing =
@@ -630,6 +656,7 @@ export default function Workbench() {
           };
         }),
       );
+      settings.leave();
       return panel.id;
     };
     if (session) pluginHost.start();
@@ -642,7 +669,7 @@ export default function Workbench() {
       new Set(session ? pluginPanels(session).map((panel) => panel.id) : []),
     );
     pluginHost.theme(theme.snapshot.revision, theme.snapshot.appearance);
-  }, [session, theme.snapshot, focusedPlugin]);
+  }, [session, theme.snapshot, focusedPlugin, settings.active, settings.leave]);
   const [error, setErrorState] = useState("");
   const setError = useCallback((message: string) => {
     setErrorState(message);
@@ -673,7 +700,7 @@ export default function Workbench() {
     if (body) void reportAppNotification({ body, kind: "info" });
   }, []);
   const cliIntegrations = useCliIntegrations(
-    selected ? activePanel(selected.tab)?.id : undefined,
+    !settings.active && selected ? activePanel(selected.tab)?.id : undefined,
     setError,
     setPaneNotice,
   );
@@ -698,7 +725,7 @@ export default function Workbench() {
     shellProfileId: string;
   } | null>(null);
   usePointerFocus(
-    preferences.focusFollowsPointer && !terminalOverview,
+    preferences.focusFollowsPointer && !terminalOverview && !settings.active,
     terminalLayout,
   );
   const savingEnabled = useRef(false);
@@ -786,12 +813,15 @@ export default function Workbench() {
           );
       },
       session: () => currentSession.current,
-      commit: (update) =>
-        setSession((state) => (state ? update(state) : state)),
+      commit: (update) => {
+        setSession((state) => (state ? update(state) : state));
+        // Setup can fill the already-selected Android placeholder in place.
+        settings.leave();
+      },
       blocked: () =>
         closing.current || updater.busy.current || fileOperationBusy.current,
     });
-  }, [setSession]);
+  }, [setSession, settings.leave]);
   useEffect(() => {
     if (!native) return;
     const listener = listen<OpenIntent>(
@@ -1451,6 +1481,58 @@ export default function Workbench() {
     setProjectMenuOpen(false);
     void api("open_settings").catch((error) => setError(errorMessage(error)));
   };
+  const closeSettings = settings.close;
+  const previousSettingsActive = useRef(settings.active);
+  useLayoutEffect(() => {
+    const returning = previousSettingsActive.current && !settings.active;
+    previousSettingsActive.current = settings.active;
+    window.dispatchEvent(new Event("resize"));
+    if (settings.active) {
+      setProjectMenuOpen(false);
+      setDocking(null);
+      return;
+    }
+    if (!returning) return;
+    const frame = requestAnimationFrame(() => {
+      if (document.querySelector("dialog[open]")) return;
+      // Tablist arrow navigation deliberately keeps focus on the chosen tab.
+      if (
+        document.activeElement instanceof HTMLElement &&
+        document.activeElement.matches('[role="tab"][aria-selected="true"]') &&
+        document.activeElement.getClientRects().length
+      )
+        return;
+      const selection =
+        currentSession.current && active(currentSession.current);
+      const panel = selection && activePanel(selection.tab);
+      const stage = terminalStage.current;
+      const id = panel && CSS.escape(panel.id);
+      const container =
+        selection?.tab.type === "terminal" && id
+          ? stage?.querySelector<HTMLElement>(
+              `[data-pane-id="${id}"], [data-file-pane-id="${id}"], [data-browser-pane-id="${id}"], [data-chat-pane-id="${id}"], [data-android-pane-id="${id}"], [data-plugin-pane-id="${id}"]`,
+            )
+          : stage;
+      const target = [
+        ...(container?.querySelectorAll<HTMLElement>(
+          '.terminal-overview, .xterm-helper-textarea, .cm-content, [data-chat-input], [data-android-input], [data-plugin-focus], .browser-toolbar input[aria-label="Web address"]',
+        ) ?? []),
+      ].find((element) => element.getClientRects().length);
+      (
+        target ??
+        document.querySelector<HTMLElement>(
+          '[role="tab"][aria-selected="true"], .welcome-action',
+        )
+      )?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [
+    settings.active,
+    settings.requestRevision,
+    info,
+    preferences.ready,
+    terminalPreferences.ready,
+  ]);
   useEffect(() => {
     if (!session || !info || !preferences.ready || !terminalPreferences.ready)
       return;
@@ -1464,6 +1546,7 @@ export default function Workbench() {
         return;
       }
       if (action === "runCommand") {
+        if (settings.activeRef.current) return;
         document
           .querySelector<HTMLButtonElement>(
             ".terminal-pane.is-active .composer-run:not(:disabled)",
@@ -1478,6 +1561,30 @@ export default function Workbench() {
       setProjectMenuOpen(false);
       if (action === "openSettings") {
         openSettings();
+        return;
+      }
+      if (settings.activeRef.current) {
+        if (action === "closeTab" || action === "closeTerminal")
+          closeSettings();
+        else if (
+          (action === "nextTab" || action === "previousTab") &&
+          selected
+        ) {
+          const target =
+            action === "nextTab"
+              ? selected.workspace.tabs[0]
+              : selected.workspace.tabs.at(-1)!;
+          settings.leave();
+          change((state) =>
+            updateWorkspace(state, selected.workspace.id, (workspace) => ({
+              ...workspace,
+              activeTabId: target.id,
+            })),
+          );
+        } else if (action === "newTab" && selected) {
+          settings.leave();
+          addTab();
+        }
         return;
       }
       if (action === "toggleWorkspaces") {
@@ -1590,15 +1697,23 @@ export default function Workbench() {
           break;
         case "nextTab":
         case "previousTab": {
+          const ids = [
+            ...workspace.tabs.map((tab) => tab.id),
+            ...(settings.opened ? [SETTINGS_TAB_ID] : []),
+          ];
           const index =
-            (workspace.tabs.findIndex((candidate) => candidate.id === tab.id) +
+            (ids.indexOf(tab.id) +
               (action === "previousTab" ? -1 : 1) +
-              workspace.tabs.length) %
-            workspace.tabs.length;
+              ids.length) %
+            ids.length;
+          if (ids[index] === SETTINGS_TAB_ID) {
+            settings.select();
+            break;
+          }
           change((state) =>
             updateWorkspace(state, workspace.id, (workspace) => ({
               ...workspace,
-              activeTabId: workspace.tabs[index].id,
+              activeTabId: ids[index],
             })),
           );
           break;
@@ -1627,8 +1742,21 @@ export default function Workbench() {
           (event.key === "F2" && !event.ctrlKey && !event.metaKey));
       if (explorerFileShortcut) return;
       const action = actionForEvent(event, bindings);
+      const settingsAction =
+        settings.activeRef.current &&
+        [
+          "closeTerminal",
+          "closeTab",
+          "nextTab",
+          "previousTab",
+          "openSettings",
+          "newTab",
+          "commandPicker",
+        ].includes(action ?? "");
       if (
         event.defaultPrevented ||
+        (event.target instanceof Element &&
+          event.target.closest(".shortcut-recorder.recording")) ||
         document.querySelector("dialog[open]") ||
         (event.target instanceof Element &&
           event.target.closest(
@@ -1641,6 +1769,7 @@ export default function Workbench() {
           ) &&
           !action?.includes(".") &&
           !inEditor &&
+          !settingsAction &&
           !(
             panel?.type === "chat" &&
             [
@@ -1657,6 +1786,13 @@ export default function Workbench() {
             event.target instanceof Element &&
             event.target.closest(".terminal-pane")
           ))
+      )
+        return;
+      if (
+        settings.activeRef.current &&
+        !settingsAction &&
+        !action?.includes(".") &&
+        !isZoomAction(action)
       )
         return;
       if (!action || action === "runCommand" || isZoomAction(action)) return;
@@ -1720,6 +1856,7 @@ export default function Workbench() {
         return;
       if (
         !selected &&
+        !settingsAction &&
         action !== "commandPicker" &&
         action !== "openSettings" &&
         action !== "toggleWorkspaces"
@@ -1915,6 +2052,30 @@ export default function Workbench() {
     />
   );
   const notice = <AgentControlStartup />;
+  const settingsPanel = settings.mounted ? (
+    <main
+      className="settings-tab-container"
+      id={`panel-${SETTINGS_TAB_ID}`}
+      role="tabpanel"
+      aria-labelledby={`tab-${SETTINGS_TAB_ID}`}
+      hidden={!settings.active}
+      inert={!settings.active}
+    >
+      <Suspense
+        fallback={
+          <div className="empty-message" role="status">
+            Opening settings…
+          </div>
+        }
+      >
+        <SettingsPanel
+          active={settings.active}
+          requestedPage={settings.page}
+          requestRevision={settings.requestRevision}
+        />
+      </Suspense>
+    </main>
+  ) : null;
   const sidebarOpen = (panel: SidebarPanel) =>
     session.sidebarSides[panel] === "left"
       ? session.sidebar === panel
@@ -2046,6 +2207,24 @@ export default function Workbench() {
           <div className="app-shell">
             <header className="titlebar" data-tauri-drag-region>
               {projectPicker}
+              {settings.opened && (
+                <div className="tab-bar">
+                  <div className="tab-viewport">
+                    <div
+                      className="tab-strip"
+                      role="tablist"
+                      aria-label="Application tabs"
+                      data-tauri-drag-region
+                    >
+                      <SettingsTabButton
+                        active={settings.active}
+                        onSelect={settings.select}
+                        onClose={closeSettings}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="titlebar-space" data-tauri-drag-region />
               {agentUsage.bar}
               <TitlebarAccount
@@ -2056,7 +2235,14 @@ export default function Workbench() {
               <WindowControls onError={setError} />
             </header>
             {notice}
-            <div className="work-area" ref={workArea}>
+            {settingsPanel}
+            <div
+              className="work-area"
+              ref={workArea}
+              data-settings-hidden={settings.active || undefined}
+              inert={settings.active}
+              aria-hidden={settings.active || undefined}
+            >
               {workspacePanel}
               <Welcome
                 busy={browsing}
@@ -2064,7 +2250,10 @@ export default function Workbench() {
                 onNewFile={() => void browse("file")}
               />
             </div>
-            <footer className="statusbar">
+            <footer
+              className="statusbar"
+              data-settings-hidden={settings.active || undefined}
+            >
               {workspaceToggle}
               <Slot name="statusbar" />
               {cliIntegrations.bar}
@@ -2075,6 +2264,7 @@ export default function Workbench() {
             )}
             {commandPicker && (
               <CommandPicker
+                settingsActive={settings.active}
                 onClose={() => setCommandPicker(false)}
                 onBuiltin={(id) => {
                   setCommandPicker(false);
@@ -2557,6 +2747,12 @@ export default function Workbench() {
                 )
               }
               activeTabId={tab.id}
+              settings={{
+                opened: settings.opened,
+                active: settings.active,
+                onSelect: settings.select,
+                onClose: closeSettings,
+              }}
               newTabTitle={shortcutTitle("New tab", bindings.newTab)}
               onNew={() => addTab()}
               onNewChat={() => void addChat()}
@@ -2591,7 +2787,10 @@ export default function Workbench() {
                   }));
                 })
               }
-              onSelect={selectTab}
+              onSelect={(id) => {
+                settings.leave();
+                selectTab(id);
+              }}
               onClose={closeTab}
               mergeContainer={terminalLayout}
               onMove={(id, beforeId) =>
@@ -2602,6 +2801,7 @@ export default function Workbench() {
                 )
               }
               onMerge={(id, targetId, side) => {
+                if (settings.activeRef.current) return;
                 const container = terminalLayout.current;
                 if (!container) return;
                 change(
@@ -2642,7 +2842,14 @@ export default function Workbench() {
             <WindowControls onError={setError} />
           </header>
           {notice}
-          <div className="work-area" ref={workArea}>
+          {settingsPanel}
+          <div
+            className="work-area"
+            ref={workArea}
+            data-settings-hidden={settings.active || undefined}
+            inert={settings.active}
+            aria-hidden={settings.active || undefined}
+          >
             {workspacePanel}
             {pluginSidebars}
             {sidebarPanels.filter(sidebarOpen).map((panel) => {
@@ -2949,7 +3156,10 @@ export default function Workbench() {
               )}
             </main>
           </div>
-          <footer className="statusbar">
+          <footer
+            className="statusbar"
+            data-settings-hidden={settings.active || undefined}
+          >
             {workspaceToggle}
             {sidebarPanels.map((panel) => (
               <div
@@ -3161,6 +3371,7 @@ export default function Workbench() {
           )}
           {commandPicker && (
             <CommandPicker
+              settingsActive={settings.active}
               onClose={() => setCommandPicker(false)}
               onBuiltin={(id) => {
                 setCommandPicker(false);

@@ -1,0 +1,13 @@
+{
+  "name": "Native Fixture Dark",
+  "colors": {
+    "editor.background": "#18202a",
+    "editor.foreground": "#e6e8eb",
+    "terminal.ansiBlue": "#7289da"
+  },
+  "tokenColors": [
+    { "scope": "keyword", "settings": { "foreground": "#b294ff" } }
+  ],
+  "semanticHighlighting": true,
+  "semanticTokenColors": { "variable": "#e6e8eb" }
+}

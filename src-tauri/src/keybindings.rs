@@ -256,8 +256,8 @@ pub fn load_keybindings(
     app: tauri::AppHandle,
     state: State<'_, KeybindingsFile>,
 ) -> Result<Option<serde_json::Value>, String> {
-    if !matches!(window.label(), "main" | "settings") {
-        return Err("Keybindings are only available in the main and settings windows.".into());
+    if window.label() != "main" {
+        return Err("Keybindings are only available in the main window.".into());
     }
     let _guard = state.0.lock().map_err(|error| error.to_string())?;
     read(
@@ -275,8 +275,8 @@ pub fn save_keybindings(
     state: State<'_, KeybindingsFile>,
     data: Keybindings,
 ) -> Result<(), String> {
-    if window.label() != "settings" {
-        return Err("Keybindings can only be changed in the settings window.".into());
+    if window.label() != "main" {
+        return Err("Keybindings can only be changed in Settings.".into());
     }
     let _guard = state.0.lock().map_err(|error| error.to_string())?;
     let directory = app

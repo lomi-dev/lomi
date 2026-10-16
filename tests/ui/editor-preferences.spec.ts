@@ -57,7 +57,10 @@ test("removed Editor settings routes fall back to Keybinds", async ({
       .getByRole("button", { name: "Editor", exact: true }),
   ).toHaveCount(0);
   await page.evaluate(() =>
-    (window as any).__nativeTest.emitEvent("settings-page-changed", "editor"),
+    (window as any).__nativeTest.emitEvent("settings-tab-requested", {
+      revision: 1,
+      page: "editor",
+    }),
   );
   await expect(page.getByRole("heading", { name: "Keybinds" })).toBeVisible();
 });

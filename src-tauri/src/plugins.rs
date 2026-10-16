@@ -147,8 +147,8 @@ pub struct Catalog {
     safe_mode: bool,
 }
 
-fn authorize(label: &str, write: bool) -> Result<(), String> {
-    if label == "settings" || (!write && label == "main") {
+fn authorize(label: &str, _write: bool) -> Result<(), String> {
+    if label == "main" {
         Ok(())
     } else {
         Err("This plugin operation is not available in this window.".into())
@@ -1076,8 +1076,9 @@ mod tests {
     #[test]
     fn rejects_caller_traversal_symlinks_missing_entries_and_oversized_packages() {
         assert!(authorize("browser-1", false).is_err());
-        assert!(authorize("main", true).is_err());
-        assert!(authorize("settings", true).is_ok());
+        assert!(authorize("main", true).is_ok());
+        assert!(authorize("settings", true).is_err());
+        assert!(authorize("browser-main", true).is_err());
         for path in [
             "../a", "/a", "a//b", "C:/a", "a\\b", "a%2fb", "a?b", "aux.txt", "a/COM1", "a/.",
             "a/b ",
@@ -1214,7 +1215,7 @@ pub fn report_plugin_status(
         }
     }
     state.inner.lock().map_err(|e| e.to_string())?.statuses = statuses;
-    app.emit_to("settings", "plugins-status-changed", ())
+    app.emit_to("main", "plugins-status-changed", ())
         .map_err(|e| e.to_string())
 }
 

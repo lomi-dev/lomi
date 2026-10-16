@@ -30,8 +30,6 @@ export function PluginsProvider({ children }: { children: ReactNode }) {
   const [catalog, setCatalog] = useState(empty);
   const [error, setError] = useState("");
   const revision = useRef(0);
-  const settings =
-    new URLSearchParams(location.search).get("window") === "settings";
   const reload = useCallback(async () => {
     if (!native) return;
     const request = ++revision.current;
@@ -40,69 +38,69 @@ export function PluginsProvider({ children }: { children: ReactNode }) {
       if (request !== revision.current) return;
       setCatalog(value);
       setError("");
-      if (!settings) await pluginHost.discover(value);
+      await pluginHost.discover(value);
     } catch (error) {
       if (request === revision.current) setError(errorMessage(error));
     }
-  }, [settings]);
+  }, []);
   useEffect(() => {
-    if (!settings && !bridgeReady) {
+    if (!bridgeReady) {
       initializePluginBridge();
       bridgeReady = true;
     }
     if (!native) return;
     let active = true;
     const changes = listen("plugins-changed", () => void reload());
-    const statusChanges = settings
-      ? listen("plugins-status-changed", () => void reload())
-      : Promise.resolve(() => {});
     let timer: ReturnType<typeof setTimeout> | undefined;
     let previous = "";
-    const stopStatus = settings
-      ? () => {}
-      : pluginHost.subscribe(() => {
-          clearTimeout(timer);
-          timer = setTimeout(() => {
-            const statuses = Object.fromEntries(
-              [...pluginHost.statuses].map(([id, status]) => [
-                id,
-                { ...status, error: status.error.slice(0, 4096) },
-              ]),
-            );
-            const serialized = JSON.stringify(statuses);
-            if (serialized !== previous) {
-              previous = serialized;
-              void api("report_plugin_status", { statuses }).catch((error) => {
-                if (active) setError(errorMessage(error));
-              });
-            }
-          }, 50);
-        });
-    const requests = settings
-      ? Promise.resolve(() => {})
-      : listen<{ token: string; id: string }>(
-          "plugin-close-request",
-          ({ payload }) => {
-            void (async () => {
-              let approved = false;
-              try {
-                approved = await confirmPluginClose(payload.id);
-                await api("finish_plugin_removal", {
-                  token: payload.token,
-                  approved,
-                });
-                if (approved) await pluginHost.deactivate(payload.id);
-              } catch (error) {
-                setError(errorMessage(error));
-                await api("finish_plugin_removal", {
-                  token: payload.token,
-                  approved: false,
-                }).catch(() => {});
-              }
-            })();
-          },
+    const stopStatus = pluginHost.subscribe(() => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const statuses = Object.fromEntries(
+          [...pluginHost.statuses].map(([id, status]) => [
+            id,
+            { ...status, error: status.error.slice(0, 4096) },
+          ]),
         );
-    void Promise.all([changes, requests, statusChanges])
+        const serialized = JSON.stringify(statuses);
+        setCatalog((current) => ({
+          ...current,
+          entries: current.entries.map((entry) => ({
+            ...entry,
+            status: statuses[entry.id] ?? null,
+          })),
+        }));
+        if (serialized !== previous) {
+          previous = serialized;
+          void api("report_plugin_status", { statuses }).catch((error) => {
+            if (active) setError(errorMessage(error));
+          });
+        }
+      }, 50);
+    });
+    const requests = listen<{ token: string; id: string }>(
+      "plugin-close-request",
+      ({ payload }) => {
+        void (async () => {
+          let approved = false;
+          try {
+            approved = await confirmPluginClose(payload.id);
+            await api("finish_plugin_removal", {
+              token: payload.token,
+              approved,
+            });
+            if (approved) await pluginHost.deactivate(payload.id);
+          } catch (error) {
+            setError(errorMessage(error));
+            await api("finish_plugin_removal", {
+              token: payload.token,
+              approved: false,
+            }).catch(() => {});
+          }
+        })();
+      },
+    );
+    void Promise.all([changes, requests])
       .then(() => {
         if (active) void reload();
       })
@@ -112,13 +110,12 @@ export function PluginsProvider({ children }: { children: ReactNode }) {
       active = false;
       clearTimeout(timer);
       stopStatus();
-      void statusChanges.then((stop) => stop()).catch(() => {});
       ++revision.current;
       window.removeEventListener("focus", reload);
       void changes.then((stop) => stop()).catch(() => {});
       void requests.then((stop) => stop()).catch(() => {});
     };
-  }, [reload, settings]);
+  }, [reload]);
   return (
     <Context.Provider value={{ catalog, error, reload }}>
       {children}

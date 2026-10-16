@@ -99,7 +99,7 @@ pub struct AgentTicket {
 }
 
 pub fn trusted_app_view(view: &str, window: &str) -> bool {
-    matches!(view, "main" | "settings") && view == window
+    view == "main" && window == "main"
 }
 
 fn label(id: &str) -> Result<String, String> {
@@ -1155,9 +1155,10 @@ mod tests {
             assert!(address(url).is_ok(), "{url}");
         }
         assert!(trusted_app_view("main", "main"));
-        assert!(trusted_app_view("settings", "settings"));
+        assert!(!trusted_app_view("settings", "settings"));
         assert!(!trusted_app_view("browser-main", "main"));
         assert!(!trusted_app_view("settings", "main"));
+        assert!(!trusted_app_view("main", "settings"));
         assert!(label("../main").is_err());
     }
 }

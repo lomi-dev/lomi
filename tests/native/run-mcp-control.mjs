@@ -752,7 +752,7 @@ try {
       editor.cases?.length !== 6 ||
       !editor.retainedDocument ||
       !editor.unrelatedFilesUnchanged ||
-      !editor.mainCannotApprove
+      !editor.pendingChangesRequireApproval
     )
       throw Error("Editor preference regression returned incomplete evidence");
   } else if (
@@ -769,7 +769,7 @@ try {
       !proof.retainedDocument ||
       !proof.unrelatedFilesUnchanged ||
       !proof.terminalsUnchanged ||
-      !proof.mainCannotApprove
+      !proof.pendingChangesRequireApproval
     )
       throw Error("Settings update fixture returned incomplete evidence");
   } else if (

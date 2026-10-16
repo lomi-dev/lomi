@@ -55,20 +55,18 @@ fn main(window: &Window) -> Result<(), String> {
     crate::files::main_window(window)
 }
 fn settings(window: &Window) -> Result<(), String> {
-    if window.label() == "settings" {
+    if window.label() == "main" {
         Ok(())
     } else {
         Err("Only Settings may change AI connections or run connection tests.".into())
     }
 }
 fn changed(app: &tauri::AppHandle) {
-    for label in ["main", "settings"] {
-        let _ = app.emit_to(
-            tauri::EventTarget::webview(label),
-            "chat-preferences-changed",
-            (),
-        );
-    }
+    let _ = app.emit_to(
+        tauri::EventTarget::webview("main"),
+        "chat-preferences-changed",
+        (),
+    );
 }
 
 #[derive(Deserialize)]
@@ -308,7 +306,7 @@ pub async fn chat_preferences(
     app: tauri::AppHandle,
     state: State<'_, Chats>,
 ) -> Result<Preferences, String> {
-    if !matches!(window.label(), "main" | "settings") {
+    if window.label() != "main" {
         return Err("Unknown application view.".into());
     }
     let backend = state.backend(&app)?;

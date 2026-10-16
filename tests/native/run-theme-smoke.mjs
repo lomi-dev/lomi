@@ -1,4 +1,11 @@
-import { mkdtemp, mkdir, cp, readFile, writeFile } from "node:fs/promises";
+import {
+  access,
+  mkdtemp,
+  mkdir,
+  cp,
+  readFile,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir, homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawn } from "node:child_process";
@@ -69,16 +76,35 @@ await writeFile(
     semanticTokenColors: { variable: "#fedcba" },
   }),
 );
-await cp(
-  process.argv[2] ??
-    "/Applications/Visual Studio Code.app/Contents/Resources/app/extensions/theme-defaults",
-  join(directory, "vscode-defaults"),
-  { recursive: true },
-);
+let themeSource = process.argv[2];
+let themeSourceKind = "supplied-vscode";
+if (!themeSource) {
+  themeSource =
+    "/Applications/Visual Studio Code.app/Contents/Resources/app/extensions/theme-defaults";
+  themeSourceKind = "installed-vscode";
+  try {
+    await access(themeSource);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    themeSource = join(root, "tests/native/fixtures/theme-defaults");
+    themeSourceKind = "owned-fixture";
+  }
+}
+await cp(themeSource, join(directory, "vscode-defaults"), { recursive: true });
 const config = join(directory, "config.json");
-await writeFile(config, JSON.stringify({ identifier }));
+await writeFile(
+  config,
+  JSON.stringify({
+    identifier,
+    build: {
+      beforeDevCommand:
+        "pnpm ai:prepare && pnpm --filter @lomi-dev/remote-terminal-runtime build && pnpm dev --port 1449 --strictPort",
+      devUrl: "http://127.0.0.1:1449",
+    },
+  }),
+);
 console.log(
-  `Native theme artifacts: ${directory}\nIsolated application data: ${appData}`,
+  `Native theme artifacts: ${directory}\nIsolated application data: ${appData}\nVS Code theme source (${themeSourceKind}): ${themeSource}`,
 );
 const child = spawn(
   "pnpm",
@@ -93,7 +119,11 @@ const child = spawn(
   ],
   {
     cwd: root,
-    env: { ...process.env, LOMI_THEME_SMOKE_DIRECTORY: directory },
+    env: {
+      ...process.env,
+      LOMI_THEME_SMOKE_DIRECTORY: directory,
+      LOMI_THEME_SMOKE_SOURCE: themeSourceKind,
+    },
     detached: true,
     stdio: ["ignore", "pipe", "pipe"],
   },
@@ -105,7 +135,7 @@ for (const stream of [child.stdout, child.stderr])
     process.stdout.write(chunk);
   });
 try {
-  const deadline = Date.now() + 180000;
+  const deadline = Date.now() + 600000;
   let result;
   while (!result && Date.now() < deadline) {
     try {
@@ -130,7 +160,8 @@ try {
   try {
     process.kill(-child.pid, "SIGTERM");
   } catch (error) {
-    if (error.code !== "ESRCH") throw error;
+    if (error.code !== "ESRCH" && error.code !== "EPERM") throw error;
+    if (error.code === "EPERM") child.kill("SIGTERM");
   }
   await writeFile(join(directory, "native.log"), log);
 }

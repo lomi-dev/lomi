@@ -29,12 +29,11 @@ pub fn result(
                 r#"(async()=>{{
                     const invoke=window.__TAURI_INTERNALS__.invoke;
                     try{{
-                        let denied=false;
-                        try{{await invoke('installed_agent_clis',{{profileId:'local:zsh',cwd:{}}});}}catch{{denied=true;}}
-                        if(!denied)throw Error('Settings allowed terminal agent discovery');
+                        await invoke('open_settings',{{page:'about'}});
+                        await invoke('installed_agent_clis',{{profileId:'local:zsh',cwd:{}}});
                         const clients=await invoke('inspect_mcp_clients');
                         if(clients.length!==1||clients[0].cli!=='cursor')throw Error('MCP settings did not list only the installed Cursor fixture');
-                        await invoke('plugin_smoke_result',{{stage:'passed',data:{{...{},settingsDenied:denied,mcpClients:clients.map(client=>client.cli)}}}});
+                        await invoke('plugin_smoke_result',{{stage:'passed',data:{{...{},settingsUsesMainHost:true,mcpClients:clients.map(client=>client.cli)}}}});
                     }}catch(error){{
                         await invoke('plugin_smoke_result',{{stage:'failed',data:{{error:String(error)}}}});
                     }}
@@ -42,8 +41,8 @@ pub fn result(
                 serde_json::to_string(&directory.join("project")).unwrap(),
                 serde_json::to_string(&data).unwrap(),
             );
-            app.get_webview("settings")
-                .ok_or("Missing settings webview")?
+            app.get_webview("main")
+                .ok_or("Missing main settings host")?
                 .eval(script)
                 .map_err(|e| e.to_string())?;
         }

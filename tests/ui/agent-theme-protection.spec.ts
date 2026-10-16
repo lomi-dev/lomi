@@ -1,10 +1,16 @@
 import { expect, test } from "@playwright/test";
 import { mockDesktop } from "./desktop";
+import { newProject, newSession } from "../../src/model";
 
 test("package styles cannot hide Agent control or modal ancestors, including a late theme commit", async ({
   page,
 }) => {
-  await mockDesktop(page, true);
+  const project = newProject("/project", "local:bash");
+  await mockDesktop(page, true, {
+    ...newSession(),
+    projects: [project],
+    activeProjectId: project.id,
+  });
   await page.addInitScript(() => {
     const desktop = window as any;
     const invoke = desktop.__TAURI_INTERNALS__.invoke;
@@ -19,7 +25,12 @@ test("package styles cannot hide Agent control or modal ancestors, including a l
   ).toBeVisible();
   const install = () =>
     page.evaluate(async () => {
-      const runtime = await import("/src/theme/runtime.ts" as string);
+      const runtimeUrl = performance
+        .getEntriesByType("resource")
+        .map((entry) => entry.name)
+        .filter((url) => new URL(url).pathname === "/src/theme/runtime.ts")
+        .at(-1);
+      const runtime = await import(runtimeUrl ?? "/src/theme/runtime.ts");
       const format = await import("/src/theme/format.ts" as string);
       const bundle = {
         id: "hostile-style-fixture",
@@ -55,6 +66,13 @@ test("package styles cannot hide Agent control or modal ancestors, including a l
       exact: true,
     }),
   ).toBeVisible();
+  await page.keyboard.press("Control+PageDown");
+  await expect.poll(opacity).toBe("0");
+  await page.keyboard.press("Control+PageUp");
+  await expect.poll(opacity).toBe("1");
+  await expect(
+    page.getByRole("heading", { name: "Agent control", exact: true }),
+  ).toBeVisible();
   await install();
   await expect.poll(opacity).toBe("1");
   await page.getByRole("button", { name: "Themes", exact: true }).click();
@@ -89,10 +107,10 @@ test("package styles cannot hide Agent control or modal ancestors, including a l
   await page.getByRole("button", { name: "Reject fixture action" }).click();
   await expect.poll(opacity).toBe("0");
   await page.evaluate(() =>
-    (window as any).__nativeTest.emitEvent(
-      "settings-page-changed",
-      "agent-control",
-    ),
+    (window as any).__nativeTest.emitEvent("settings-tab-requested", {
+      revision: 1,
+      page: "agent-control",
+    }),
   );
   await expect(
     page.getByRole("heading", { name: "Agent control", exact: true }),

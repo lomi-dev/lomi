@@ -66,7 +66,11 @@ export function useTabDrag(props: Props) {
       ) {
         const candidates = [
           ...strip.current!.querySelectorAll<HTMLElement>("[data-tab-id]"),
-        ].filter((element) => element.dataset.tabId !== tab.id);
+        ].filter(
+          (element) =>
+            element.dataset.tabId !== tab.id &&
+            tabs.some((candidate) => candidate.id === element.dataset.tabId),
+        );
         const before = candidates.find((element) => {
           const rect = element.getBoundingClientRect();
           return x < rect.left + rect.width / 2;

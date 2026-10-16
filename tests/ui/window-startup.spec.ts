@@ -1,121 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { mockDesktop } from "./desktop";
 
-test("preloaded settings keep their startup background until first shown", async ({
-  page,
-}) => {
-  await mockDesktop(page, false);
-  await page.addInitScript(() => {
-    const desktop = window as any;
-    const invoke = desktop.__TAURI_INTERNALS__.invoke;
-    desktop.__TAURI_INTERNALS__.invoke = async (
-      command: string,
-      args: unknown,
-    ) => {
-      const result = await invoke(command, args);
-      return command === "show_ready_window" ? false : result;
-    };
-  });
-  await page.goto("/?window=settings");
-  const calls = (command: string) =>
-    page.evaluate(
-      (command) =>
-        (window as any).__nativeTest.calls.filter(
-          (call: any) => call.command === command,
-        ).length,
-      command,
-    );
-  await expect.poll(() => calls("show_ready_window")).toBe(1);
-  expect(await calls("finish_window_startup")).toBe(0);
-  await page.evaluate(() =>
-    (window as any).__nativeTest.emitEvent("tauri://focus"),
-  );
-  await expect.poll(() => calls("finish_window_startup")).toBe(1);
-  await page.evaluate(() =>
-    (window as any).__nativeTest.emitEvent("tauri://focus"),
-  );
-  await page.evaluate(
-    () => new Promise((resolve) => requestAnimationFrame(resolve)),
-  );
-  expect(await calls("finish_window_startup")).toBe(1);
-});
-
-test("settings become ready only after subscribing to requested pages", async ({
-  page,
-}) => {
-  await mockDesktop(page, false);
-  await page.addInitScript(() => {
-    const desktop = window as any;
-    const pending = new Promise<void>((resolve) => {
-      desktop.__subscribeSettings = resolve;
-    });
-    const invoke = desktop.__TAURI_INTERNALS__.invoke;
-    desktop.__TAURI_INTERNALS__.invoke = async (command: string, args: any) => {
-      if (
-        command === "plugin:event|listen" &&
-        args.event === "settings-page-changed"
-      )
-        await pending;
-      return invoke(command, args);
-    };
-  });
-  await page.goto("/?window=settings");
-  await expect(page.getByRole("heading", { name: "Keybinds" })).toBeVisible();
-  const ready = () =>
-    page.evaluate(() =>
-      (window as any).__nativeTest.calls.filter(
-        (call: any) => call.command === "show_ready_window",
-      ),
-    );
-  expect(await ready()).toHaveLength(0);
-  await page.evaluate(() => (window as any).__subscribeSettings());
-  await expect.poll(ready).toHaveLength(1);
-  await page.evaluate(() =>
-    (window as any).__nativeTest.emitEvent("settings-page-changed", "terminal"),
-  );
-  await expect(page.getByRole("heading", { name: "Terminal" })).toBeVisible();
-});
-
-test("settings handle a first focus before the preload reply arrives", async ({
-  page,
-}) => {
-  await mockDesktop(page, false);
-  await page.addInitScript(() => {
-    const desktop = window as any;
-    const pending = new Promise<void>((resolve) => {
-      desktop.__releaseReady = resolve;
-    });
-    const invoke = desktop.__TAURI_INTERNALS__.invoke;
-    desktop.__TAURI_INTERNALS__.invoke = async (
-      command: string,
-      args: unknown,
-    ) => {
-      const result = await invoke(command, args);
-      if (command === "show_ready_window") {
-        await pending;
-        return false;
-      }
-      return result;
-    };
-  });
-  await page.goto("/?window=settings");
-  const calls = (command: string) =>
-    page.evaluate(
-      (command) =>
-        (window as any).__nativeTest.calls.filter(
-          (call: any) => call.command === command,
-        ).length,
-      command,
-    );
-  await expect.poll(() => calls("show_ready_window")).toBe(1);
-  await page.evaluate(() =>
-    (window as any).__nativeTest.emitEvent("tauri://focus"),
-  );
-  expect(await calls("finish_window_startup")).toBe(0);
-  await page.evaluate(() => (window as any).__releaseReady());
-  await expect.poll(() => calls("finish_window_startup")).toBe(1);
-});
-
 for (const settings of [false, true]) {
   for (const appearance of ["light", "dark"] as const) {
     test(`${settings ? "settings" : "main"} waits for its ${appearance} theme and view before showing`, async ({
@@ -150,7 +35,7 @@ for (const settings of [false, true]) {
               background: shell && getComputedStyle(shell).backgroundColor,
               nativeBackground: args.background,
               appearance: document.documentElement.dataset.appearance,
-              settings: shell?.classList.contains("settings-window"),
+              window: desktop.__TAURI_INTERNALS__.metadata.currentWindow.label,
             });
           }
           return invoke(command, args);
@@ -161,14 +46,11 @@ for (const settings of [false, true]) {
         release = resolve;
       });
       let requested = false;
-      await page.route(
-        settings ? "**/src/SettingsWindow.tsx*" : "**/src/Workbench.tsx*",
-        async (route) => {
-          requested = true;
-          await pending;
-          await route.continue();
-        },
-      );
+      await page.route("**/src/Workbench.tsx*", async (route) => {
+        requested = true;
+        await pending;
+        await route.continue();
+      });
       const shown = () => page.evaluate(() => (window as any).__startup.shown);
       try {
         await page.goto(settings ? "/?window=settings" : "/");
@@ -189,9 +71,17 @@ for (const settings of [false, true]) {
           nativeBackground:
             appearance === "light" ? [247, 248, 243] : [16, 17, 20],
           appearance,
-          settings,
+          window: "main",
         },
       ]);
+      if (settings) {
+        await expect(
+          page.getByRole("tab", { name: "Settings", exact: true }),
+        ).toHaveAttribute("aria-selected", "true");
+        await expect(
+          page.getByRole("navigation", { name: "Settings pages" }),
+        ).toBeVisible();
+      }
       await page.screenshot({ path: testInfo.outputPath("first-window.png") });
     });
   }

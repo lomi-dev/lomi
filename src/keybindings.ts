@@ -194,7 +194,7 @@ export const actions = [
   {
     id: "openSettings",
     label: "Open settings",
-    description: "Open the settings window.",
+    description: "Open the Settings tab.",
     group: "Workspace",
     shortcut: "Ctrl+Comma",
   },

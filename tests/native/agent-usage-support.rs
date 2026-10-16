@@ -119,11 +119,11 @@ pub fn result(
         }
         "usage-settings" => {
             let script = format!(
-                r#"(async()=>{{const invoke=window.__TAURI_INTERNALS__.invoke;const data={};let denied=false;try{{await invoke('inspect_cli_usage',{{targets:[],force:false}});}}catch{{denied=true;}}const report=denied?data:{{...data,offlineSmoke:'failed',settingsDenied:false}};await invoke('plugin_smoke_result',{{stage:denied?'passed':'failed',data:report}});}})();"#,
+                r#"(async()=>{{const invoke=window.__TAURI_INTERNALS__.invoke;const data={};try{{await invoke('inspect_cli_usage',{{targets:[],force:false}});await invoke('plugin_smoke_result',{{stage:'passed',data:{{...data,settingsUsesMainHost:true}}}});}}catch(error){{await invoke('plugin_smoke_result',{{stage:'failed',data:{{...data,error:String(error)}}}});}}}})();"#,
                 serde_json::to_string(&data).unwrap(),
             );
-            app.get_webview("settings")
-                .ok_or("Missing settings webview")?
+            app.get_webview("main")
+                .ok_or("Missing main settings host")?
                 .eval(script)
                 .map_err(|error| error.to_string())?;
         }

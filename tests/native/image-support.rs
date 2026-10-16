@@ -21,11 +21,11 @@ pub fn result(
     let directory = std::env::var("LOMI_IMAGE_SMOKE_DIRECTORY").map_err(|e| e.to_string())?;
     if stage == "image-settings" {
         let script = format!(
-            r#"(async()=>{{const invoke=window.__TAURI_INTERNALS__.invoke;let denied=false;try{{await invoke('read_image_file',{{root:{},relative:'picture.png'}});}}catch{{denied=true;}}await invoke('plugin_smoke_result',{{stage:denied?'passed':'failed',data:denied?'Native image reads, rendering, zoom, errors and settings isolation passed':'Settings could read project images'}});}})();"#,
+            r#"(async()=>{{const invoke=window.__TAURI_INTERNALS__.invoke;try{{await invoke('read_image_file',{{root:{},relative:'picture.png'}});await invoke('plugin_smoke_result',{{stage:'passed',data:'Native image reads, rendering, zoom, errors and Settings main-host compatibility passed'}});}}catch(error){{await invoke('plugin_smoke_result',{{stage:'failed',data:String(error)}});}}}})();"#,
             serde_json::to_string(&std::path::Path::new(&directory).join("project")).unwrap()
         );
-        app.get_webview("settings")
-            .ok_or("Missing settings webview")?
+        app.get_webview("main")
+            .ok_or("Missing main settings host")?
             .eval(script)
             .map_err(|e| e.to_string())?;
     } else if matches!(stage, "passed" | "failed") {

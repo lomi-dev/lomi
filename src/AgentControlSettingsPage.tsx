@@ -190,7 +190,11 @@ function TerminalPreferenceChanges({
   );
 }
 
-export default function AgentControlSettingsPage() {
+export default function AgentControlSettingsPage({
+  active = true,
+}: {
+  active?: boolean;
+}) {
   const [state, setState] = useState<ControlState>();
   const [startupState, setStartupState] = useState<ControlStartupState>();
   const [error, setError] = useState("");
@@ -199,7 +203,6 @@ export default function AgentControlSettingsPage() {
   const [busy, setBusy] = useState(false);
   const [startupBusy, setStartupBusy] = useState(false);
   const [yoloConfirmationOpen, setYoloConfirmationOpen] = useState(false);
-  const [visible, setVisible] = useState(true);
   const [activeTab, setActiveTab] = useState<AgentControlTab>("connect");
   const yoloCancelButton = useRef<HTMLButtonElement>(null);
   const yoloSwitch = useRef<HTMLInputElement>(null);
@@ -217,15 +220,6 @@ export default function AgentControlSettingsPage() {
       yoloSwitch.current?.focus();
     }
   }, [startupBusy, yoloConfirmationOpen]);
-  useEffect(() => {
-    if (!native) return;
-    const stop = listen<boolean>("settings-visibility", ({ payload }) =>
-      setVisible(payload),
-    );
-    return () => {
-      void stop.then((unlisten) => unlisten()).catch(() => {});
-    };
-  }, []);
   const acceptControlState = useCallback((next: ControlState) => {
     setState(next);
     if (!initialControlSnapshotSeen.current) {
@@ -285,7 +279,7 @@ export default function AgentControlSettingsPage() {
     };
   }, [applyStartupState, refresh, refreshStartup]);
   useEffect(() => {
-    if (!native || !visible) return;
+    if (!native || !active) return;
     let alive = true;
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
@@ -302,7 +296,7 @@ export default function AgentControlSettingsPage() {
       alive = false;
       clearTimeout(timer);
     };
-  }, [acceptControlState, enabled, visible]);
+  }, [acceptControlState, enabled, active]);
   const run = async (
     action: () => Promise<unknown>,
     message: string | ((result: unknown) => string) = "",

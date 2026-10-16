@@ -1,0 +1,22 @@
+{
+  "name": "lomi-native-theme-fixture",
+  "publisher": "lomi-test",
+  "version": "1.0.0",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "contributes": {
+    "themes": [
+      {
+        "label": "Native Fixture Dark",
+        "uiTheme": "vs-dark",
+        "path": "dark.json"
+      },
+      {
+        "label": "Native Fixture Light",
+        "uiTheme": "vs",
+        "path": "light.json"
+      }
+    ]
+  }
+}

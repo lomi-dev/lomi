@@ -115,15 +115,7 @@ async fn run(app: &tauri::AppHandle, root: &std::path::Path) -> Result<(), Strin
     }
     let id = terminal.ok_or("Real workbench PTY did not start.")?;
     app.state::<Remote>().probe_enable(app).await?;
-    let mut settings = None;
-    for _ in 0..100 {
-        if let Some(w) = app.get_window("settings") {
-            settings = Some(w);
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
-    let settings = settings.ok_or("Settings did not initialize.")?;
+    let settings = app.get_window("main").ok_or("Missing main Settings host")?;
 
     let initial = if std::env::var("LOMI_REMOTE_PROBE_MANUAL").as_deref() == Ok("1") {
         "unset HISTFILE; printf 'LOMI_NATIVE_REMOTE_READY\\n'\n"

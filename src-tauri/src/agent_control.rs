@@ -50,7 +50,7 @@ pub struct ControlState {
     helper_path: Option<String>,
 }
 fn settings(window: &Window) -> Result<(), String> {
-    if window.label() == "settings" {
+    if window.label() == "main" {
         Ok(())
     } else {
         Err("Agent control permissions require Settings.".into())
@@ -132,7 +132,7 @@ pub async fn agent_control_startup_state(
     app: tauri::AppHandle,
     state: State<'_, Control>,
 ) -> Result<ControlStartupState, String> {
-    if !matches!(window.label(), "main" | "settings") {
+    if window.label() != "main" {
         return Err("Agent control startup state is unavailable in this window.".into());
     }
     let _transition = state.transition.lock().await;
@@ -1092,7 +1092,7 @@ pub async fn agent_control_reject(
 }
 #[tauri::command]
 pub fn agent_control_revoke(window: Window, app: tauri::AppHandle) -> Result<(), String> {
-    if !matches!(window.label(), "main" | "settings") {
+    if window.label() != "main" {
         return Err(unavailable());
     }
     revoke(&app);
@@ -1108,7 +1108,7 @@ pub fn revoke(app: &tauri::AppHandle) {
         }
     }
     crate::browser::refresh_control_state(app);
-    let _ = app.emit_to("settings", "agent-control-changed", ());
+    let _ = app.emit_to("main", "agent-control-changed", ());
 }
 
 pub async fn shutdown(app: &tauri::AppHandle) {

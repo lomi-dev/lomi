@@ -11,7 +11,7 @@ file, diff, and commit tabs do not own shells. There is no hardcoded tab count l
 The current milestone includes project selection, workspaces, tabs, a file
 explorer, CodeMirror file editing, conditional Git Source Control, native terminals with splits and
 background streaming, session restoration, and configurable shortcuts in the
-separate settings window's Keybinds page. Add further product functionality only
+Settings tab's Keybinds page. Add further product functionality only
 when requested. Do not infer a detailed ADE feature set from the project name
 or acronym.
 
@@ -31,6 +31,12 @@ or acronym.
   editor buffers, and running PTYs; moved terminal panes may override the tab's default shell profile, including after restoration.
   Keep terminal operations scoped to
   terminal tabs and preserve compatibility with saved tabs without a type.
+- `src/useSettingsTab.ts` owns the single application-level Settings utility tab,
+  available with or without a project. It does not enter the persisted workspace
+  model or allocate a shell. `src/SettingsPanel.tsx` uses the main view's shared
+  preference providers; inactive views retain their drafts and runtimes. Closing
+  Settings returns to the workspace or Welcome. Native settings requests target
+  main with revisioned events and a subscribe-before-ready backlog handoff.
 - `src/Workbench.tsx` coordinates projects, workspaces, tabs, and persistence.
   Workspaces, Explorer, and Source Control have independently assigned sidebar sides; opposite
   sides can stay open together. `src/Sidebar.tsx` resizes them, and
@@ -59,8 +65,9 @@ or acronym.
   registries, placeholders and Settings management. `@lomi-dev/plugin-sdk` from the separate
   `lomi-dev/plugin-sdk` repository is the external author contract. The host
   imports its installed pure exports; do not reintroduce SDK source copies.
-  `pnpm sdk:verify` checks the Rust fixture snapshot against that dependency. Only main imports executable ESM through the plugin
-  protocol; settings reads metadata and approves immutable revision trust.
+  `pnpm sdk:verify` checks the Rust fixture snapshot against that dependency. Main
+  imports executable ESM through the plugin protocol; the Settings tab manages
+  metadata and approves immutable revision trust in the same trusted view.
   `src-tauri/src/plugins.rs` serializes bounded installs/removals and checks
   caller, path containment, content identity and close approvals. Themes supplied
   by packages are data-only, available without code, immutable, and duplicable.
@@ -126,7 +133,7 @@ or acronym.
   and native authenticated connection; preserve Agent control pairing, grants,
   cancellation and revocation. Never execute commands in the AI process or
   accept webview-supplied tool catalogs, endpoints or credentials during generation.
-  Settings alone changes connections/keys or runs paid tests. Browser child
+  The Settings UI changes connections/keys or runs paid tests. Browser child
   views remain excluded by the global trusted-app caller check.
 - Chat credentials use keyring 3.6.3 or explicitly chosen session-only memory.
   Journal credential IDs before mutation, preserve committed revisions and
@@ -140,8 +147,9 @@ or acronym.
   bounded data converter only. Reconfigure CodeMirror compartments and retained
   xterm instances from final computed tokens; never reset editor history or PTYs.
 - `src/keybindings.ts` defines shortcut actions, defaults, and validation;
-  `src/KeybindingsProvider.tsx` synchronizes them between native windows.
-  `src/SettingsWindow.tsx` edits them on the Keybinds page.
+  `src/KeybindingsProvider.tsx` shares them across the main view.
+  `src/SettingsPanel.tsx` edits them on the Keybinds page. Shortcut recording
+  bypasses workspace command capture; close/cycle commands include Settings.
   The same preferences persist the optional focus-follows-pointer mode.
   `src/usePointerFocus.ts` focuses panels for typing, paste, and shortcuts;
   preserve dialogs, ordinary form fields, dragging, and input composition.
@@ -236,8 +244,8 @@ or acronym.
 - `src-tauri/src/android/` owns SDK/AVD files, private Java, processes, ports,
   credentials, versioned preferences/devices and one interprocess directory lock.
   Its empty application state performs no Android filesystem scans, timers or
-  process startup. Management requires Settings; runtime/input requires main;
-  reads and Stop allow either trusted application webview. Use `Window` and retain
+  process startup. Settings exposes management, while runtime/input uses the
+  workspace; all commands require the trusted main webview. Use `Window` and retain
   the global caller guard excluding browser children. Paths and process identity
   are always resolved natively from device IDs.
 - Android installation uses the pinned direct CLI with `--no-metrics`, isolated
@@ -302,14 +310,14 @@ or acronym.
   updates and regenerate the artifact manifest after rebuilding the APK.
   Preserve the byte-sensitive Git attributes for IME sources, protobuf and
   provider licenses; Windows line-ending conversion must not change their hashes.
-  Settings sends expiring, acknowledged open intents to main; closed setup targets
+  Settings sends expiring, acknowledged open intents to the workbench; closed setup targets
   are not recreated or redirected into another workspace.
 - `src/application-close.ts` is shared by window close, updater installation and
   plugin restart: block new Android starts/mutations, finish existing guards, save
   the current session, settle the installer and stop owned phones before exit.
   Errors or cancellation release preparation after operations settle, preserving
   the directory lock and descriptors. Native Exit cleanup is only an emergency
-  fallback. Closing Settings does not cancel consciously started installation.
+  fallback. Closing the Settings tab does not cancel consciously started installation.
 - Android Stage 0 and the integrated product passed
   on the recorded Apple M3/macOS ARM64 host, including a thirty-minute shared-view
   trial after framebuffer optimization. Qualification uses 720x1280, Host GPU and
@@ -406,10 +414,12 @@ or acronym.
 - Persist shortcuts separately in `keybindings.json`, apply changes across
   windows without restarting terminals, and preserve invalid settings until
   explicit recovery. Prevent conflicting shortcut assignments.
-- Keep project, editor, Git, and terminal commands restricted to the main window.
-  Settings may manage keybindings, editor preferences, terminal preferences, and theme packages, listen for updates, and
-  use its own window controls. Only settings may write these preferences or
-  import/create theme packages; both windows may read and apply themes.
+- Keep project, editor, Git, terminal and settings commands restricted to the
+  trusted main webview, excluding native browser children even though they share
+  its window. Settings writes and explicit approval controls now run in main;
+  preserve broker permits, revisions, expiry and explicit consent. Selecting a
+  tab never grants authority or approves a pending operation. Settings does not
+  own native window controls or a separate zoom setting.
 - Git mutations must follow an explicit UI action. Preserve the user's identity
   and exact commit text; never silently stage, commit, push, or add attribution.
 

@@ -1312,7 +1312,7 @@ pub(super) fn uuid_bytes(text: &str) -> Result<[u8; 16], String> {
 }
 
 fn settings(window: &Window) -> Result<(), String> {
-    if window.label() == "settings" {
+    if window.label() == "main" {
         Ok(())
     } else {
         Err("Remote management is available only in Settings.".into())
@@ -1320,7 +1320,7 @@ fn settings(window: &Window) -> Result<(), String> {
 }
 #[tauri::command]
 pub fn remote_get_state(window: Window, remote: State<'_, Remote>) -> Result<RemoteState, String> {
-    if !matches!(window.label(), "main" | "settings") {
+    if window.label() != "main" {
         return Err("Untrusted Remote caller.".into());
     }
     Ok(remote.state())
@@ -1340,7 +1340,7 @@ pub async fn remote_resume(
     window: Window,
     remote: State<'_, Remote>,
 ) -> Result<RemoteState, String> {
-    if !matches!(window.label(), "main" | "settings") {
+    if window.label() != "main" {
         return Err("Untrusted Remote caller.".into());
     }
     remote.enable(window.app_handle(), true).await?;
@@ -1348,7 +1348,7 @@ pub async fn remote_resume(
 }
 #[tauri::command]
 pub fn remote_note_activity(window: Window, terminals: State<'_, Terminals>) -> Result<(), String> {
-    if !matches!(window.label(), "main" | "settings") {
+    if window.label() != "main" {
         return Err("Untrusted Remote caller.".into());
     }
     terminals.activity.record();
@@ -1464,7 +1464,7 @@ pub fn hide_main_window(window: Window) -> Result<(), String> {
 }
 #[tauri::command]
 pub fn request_quit(window: Window) -> Result<(), String> {
-    if !matches!(window.label(), "main" | "settings") {
+    if window.label() != "main" {
         return Err("Untrusted caller.".into());
     }
     window.app_handle().exit(0);
