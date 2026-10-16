@@ -346,6 +346,12 @@ or acronym.
 - `src-tauri/src/main.rs` contains a startup workaround for WebKitGTK's Wayland
   Error 71 on NVIDIA. Keep it scoped to that environment, preserve explicit user
   overrides, and set the process environment before Tauri starts GUI threads.
+- On Windows, closing the main window runs the shared guarded quit flow. macOS
+  and Linux retain close-to-background behavior. `windows_instance.rs` elects
+  one GUI process per application identifier and Windows session before native
+  services start; subsequent launches reopen it once the frontend is ready.
+  Headless CLI entry points remain independent. Release ownership after Exit
+  cleanup so Tauri can start a replacement process during restart.
 - `src-tauri/src/macos/traffic_lights.rs` caches weak native window references.
   Do not query or clone Tauri window dispatchers on every main-loop iteration:
   doing so can wake that same loop and consume a CPU core while idle. Remove

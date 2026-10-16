@@ -97,6 +97,10 @@ jobs:
       - name: Qualify macOS disk image
         if: runner.os == 'macOS'
         run: bash scripts/qualify-installers-macos.sh
+      - name: Test Windows instance ownership
+        if: runner.os == 'Windows' && inputs.packages_run_id == ''
+        run: |
+          cargo test --release --manifest-path src-tauri/Cargo.toml --locked --lib windows_instance::
       - name: Qualify Windows installers
         if: runner.os == 'Windows'
         shell: pwsh

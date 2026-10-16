@@ -80,6 +80,8 @@ mod terminal;
 mod terminal_preferences;
 mod themes;
 mod updater;
+#[cfg(windows)]
+mod windows_instance;
 
 use tauri::{Manager, State, Window};
 
@@ -144,6 +146,11 @@ fn show_ready_window(window: Window, background: [u8; 3]) -> Result<bool, String
         window.show().map_err(|error| error.to_string())?;
         window.set_focus().map_err(|error| error.to_string())?;
     }
+    #[cfg(windows)]
+    window
+        .state::<windows_instance::Instance>()
+        .listen(window.app_handle())
+        .map_err(|error| error.to_string())?;
     Ok(true)
 }
 
@@ -166,7 +173,17 @@ fn finish_window_startup(window: Window) -> Result<(), String> {
 }
 
 pub fn run() {
+    let context = tauri::generate_context!();
+    #[cfg(windows)]
+    let instance = match windows_instance::Instance::acquire(&context.config().identifier)
+        .expect("failed to acquire the Lomi application instance")
+    {
+        Some(instance) => instance,
+        None => return,
+    };
     let builder = tauri::Builder::default();
+    #[cfg(windows)]
+    let builder = builder.manage(instance);
     // Install the guarded Quit action before Tauri can create its default macOS menu.
     #[cfg(target_os = "macos")]
     let builder = builder
@@ -211,6 +228,7 @@ pub fn run() {
             if window.label() == "main" {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
+                    #[cfg(not(windows))]
                     let _ = window.hide();
                 }
             }
@@ -582,7 +600,7 @@ pub fn run() {
             ];
             handler(invoke)
         })
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("failed to build Lomi");
     app.run(|app, event| {
         #[cfg(target_os = "macos")]
@@ -614,6 +632,8 @@ pub fn run() {
             app.state::<android_probe::Probe>().cleanup();
             app.state::<chat::commands::Chats>().stop();
             app.state::<terminal::Terminals>().stop_all();
+            #[cfg(windows)]
+            app.state::<windows_instance::Instance>().release();
         }
         if let tauri::RunEvent::WindowEvent {
             label,

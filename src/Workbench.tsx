@@ -1023,14 +1023,9 @@ export default function Workbench() {
   useEffect(() => {
     if (!info) return;
     let current = true;
-    const closed = getCurrentWindow().onCloseRequested(async (event) => {
-      event.preventDefault();
-      await api("hide_main_window").catch((error) =>
-        setError(errorMessage(error)),
-      );
-    });
-    const unlisten = listen("lomi-quit-requested", async () => {
-      if (closing.current || updater.busy.current) return;
+    const quit = async () => {
+      if (closing.current || fileOperationBusy.current || updater.busy.current)
+        return;
       closing.current = true;
       let release: ReleaseClosePreparation | null = null;
       let destroyed = false;
@@ -1047,7 +1042,17 @@ export default function Workbench() {
         }
         if (!destroyed) closing.current = false;
       }
+    };
+    const closed = getCurrentWindow().onCloseRequested(async (event) => {
+      event.preventDefault();
+      if (info.platform === "windows") await quit();
+      else {
+        await api("hide_main_window").catch((error) =>
+          setError(errorMessage(error)),
+        );
+      }
     });
+    const unlisten = listen("lomi-quit-requested", quit);
     void unlisten
       .then((stop) => {
         if (!current) stop();
