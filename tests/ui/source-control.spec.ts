@@ -1,3 +1,7 @@
+import {
+  expectRecordedNotification,
+  dismissRecordedNotification,
+} from "./application-notification-helpers";
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import type { GitChange, GitFileDiff } from "../../src/api";
@@ -307,18 +311,14 @@ test("fetch and pull run explicitly, report progress and errors, and refresh his
     state.remoteError = "Cannot fast-forward: branches have diverged.";
     state.releaseRemote();
   });
-  await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toContainText(
-    "Cannot fast-forward",
-  );
+  await expectRecordedNotification(page, "Cannot fast-forward");
   await expect(fetch).toBeEnabled();
   await expect(page.getByText("Pull complete.", { exact: true })).toHaveCount(
     0,
   );
   await page.getByRole("tab", { name: /^Changes/ }).click();
   await expect(draft).toHaveValue("Keep this commit draft");
-  await page
-    .getByRole("button", { name: "Dismiss message", exact: true })
-    .click();
+  await dismissRecordedNotification(page, "Cannot fast-forward");
   await page.evaluate(() => {
     const state = (window as any).__sourceControlTest;
     state.holdRemote = false;
@@ -1033,16 +1033,12 @@ test("source control preserves an exact commit draft after failed Git actions", 
   await page
     .getByRole("checkbox", { name: "Stage README.md", exact: true })
     .click();
-  await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toContainText(
-    "Cannot update the index",
-  );
+  await expectRecordedNotification(page, "Cannot update the index");
   await expect(
     page.getByRole("checkbox", { name: "Stage README.md", exact: true }),
   ).not.toBeChecked();
   await expect(input).toHaveValue(draft);
-  await page
-    .getByRole("button", { name: "Dismiss message", exact: true })
-    .click();
+  await dismissRecordedNotification(page, "Cannot update the index");
   await page.evaluate(() => {
     (window as any).__sourceControlTest.failStage = false;
     (window as any).__sourceControlTest.failCommit = true;
@@ -1051,17 +1047,13 @@ test("source control preserves an exact commit draft after failed Git actions", 
     .getByRole("checkbox", { name: "Stage README.md", exact: true })
     .click();
   await commit.click();
-  await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toContainText(
-    "Commit hook rejected the message",
-  );
+  await expectRecordedNotification(page, "Commit hook rejected the message");
   await expect(input).toHaveValue(draft);
   await expect(commit).toBeEnabled();
   await page.evaluate(() => {
     (window as any).__sourceControlTest.failCommit = false;
   });
-  await page
-    .getByRole("button", { name: "Dismiss message", exact: true })
-    .click();
+  await dismissRecordedNotification(page, "Commit hook rejected the message");
   await commit.click();
   await expect(
     page.getByText("Working tree clean.", { exact: true }),

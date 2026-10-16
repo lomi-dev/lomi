@@ -225,6 +225,9 @@ pub fn notify_agent(
     notification_id: Option<String>,
 ) -> Result<bool, String> {
     main_window(&window)?;
+    if matches!(kind, NotificationKind::Info) {
+        return Err("Info notifications are reserved for application events.".into());
+    }
     let terminals = app.state::<crate::terminal::Terminals>();
     if context.chars().count() > 300 || context.chars().any(char::is_control) {
         return Err("Invalid notification context.".into());
@@ -251,6 +254,7 @@ pub fn notify_agent(
         }
         (NotificationSource::Terminal, NotificationKind::Attention) => "Agent needs your input",
         (NotificationSource::Terminal, NotificationKind::Finished) => "Agent finished responding",
+        (_, NotificationKind::Info) => unreachable!("Info was rejected before delivery"),
     };
     let agent = source.agent(&terminals, session_id.as_deref());
     let (requested, recorded) =

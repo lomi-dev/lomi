@@ -184,6 +184,7 @@ export async function mockDesktop(
         })(),
         agentControlStartupCalls: [] as { enabled: boolean }[],
         failAgentControlStartupSave: false,
+        failAgentControlStartupLoad: false,
         agentControlStartupSaveError: "Disk is full",
         agentControlStartupSaveDelay: 0,
         failAgentControlStartupSettingSave: false,
@@ -284,6 +285,8 @@ export async function mockDesktop(
           if (command === "agent_control_ui_register") return null;
           if (command === "agent_control_startup_state") {
             const mock = desktop.__nativeTest;
+            if (mock.failAgentControlStartupLoad)
+              throw new Error("MCP startup state is unavailable");
             await mock.emitEvent(
               "agent-control-startup-changed",
               mock.agentControlStartup,
@@ -516,6 +519,7 @@ export async function mockDesktop(
           if (
             [
               "load_notifications",
+              "record_app_notification",
               "mark_notifications_read",
               "dismiss_notification",
               "clear_read_notifications",
@@ -537,6 +541,18 @@ export async function mockDesktop(
                 structuredClone(mock.notifications),
               );
             };
+            if (command === "record_app_notification") {
+              mock.notifications.items.unshift({
+                id: `notification-${mock.notifications.revision + 1}`,
+                kind: args.kind,
+                source: args.source,
+                title: args.title,
+                body: args.body,
+                createdAt: Date.now(),
+                read: false,
+                ...(args.action ? { action: args.action } : {}),
+              });
+            }
             if (command === "notify_agent") {
               const policy =
                 desktop.__completionFixture?.local ??

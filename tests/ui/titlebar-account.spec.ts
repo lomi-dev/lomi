@@ -1,3 +1,4 @@
+import { expectRecordedNotification } from "./application-notification-helpers";
 import { expect, test, type Page } from "@playwright/test";
 import { unavailableState, type AuthState } from "../../src/auth/model";
 import { mockDesktop } from "./desktop";
@@ -276,10 +277,12 @@ test("locked account menu exposes explicit sign-out before a new remembered logi
     path: testInfo.outputPath("locked-account-menu.png"),
   });
   await menu.getByRole("menuitem", { name: "Sign out", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText(
+  await expectRecordedNotification(
+    page,
     "System key store cleanup will be retried.",
   );
-  await expect(page.getByRole("alert")).toContainText(
+  await expectRecordedNotification(
+    page,
     "The server could not confirm that its session was revoked.",
   );
   await page.getByRole("button", { name: "Sign In", exact: true }).click();
@@ -322,10 +325,18 @@ test("failed sign-out from a locked menu reports failure and preserves recovery"
     .getByRole("button", { name: "Open account menu", exact: true })
     .click();
   await page.getByRole("menuitem", { name: "Sign out", exact: true }).click();
-  const alert = page.getByRole("alert");
-  await expect(alert).toContainText("Could not safely persist local sign-out.");
-  await expect(alert).toContainText("The server could not confirm");
-  await expect(alert).not.toContainText("Signed out on this device.");
+  await expectRecordedNotification(
+    page,
+    "Could not safely persist local sign-out.",
+  );
+  await expectRecordedNotification(page, "The server could not confirm");
+  expect(
+    await page.evaluate(() =>
+      (window as any).__nativeTest.notifications.items
+        .map((item: any) => item.body)
+        .join("\n"),
+    ),
+  ).not.toContain("Signed out on this device.");
   await page.getByRole("button", { name: "Sign In", exact: true }).click();
   await expect
     .poll(() => accountSettingsCalls(page))
@@ -862,7 +873,8 @@ test("Manage account uses the native portal action and reports launch failures",
   });
   await account.click();
   await page.getByRole("menuitem", { name: "Manage account" }).click();
-  await expect(page.getByRole("alert")).toContainText(
+  await expectRecordedNotification(
+    page,
     "The account portal could not be opened.",
   );
   await expect(account).toBeEnabled();
@@ -898,8 +910,6 @@ for (const offline of [false, true]) {
       ),
     ).toBe(1);
     if (offline)
-      await expect(page.getByRole("alert")).toContainText(
-        "server could not confirm",
-      );
+      await expectRecordedNotification(page, "server could not confirm");
   });
 }

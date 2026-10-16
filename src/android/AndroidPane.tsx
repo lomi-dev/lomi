@@ -24,8 +24,12 @@ import ContextMenu from "../ContextMenu";
 import PhonePicker from "./PhonePicker";
 import PhoneStartup from "./PhoneStartup";
 import { previewSize } from "./frame";
-import { androidRuntime, openAndroidSettings } from "./service";
-import { refreshAndroid, useAndroid } from "./state";
+import {
+  androidRuntime,
+  openAndroidSettings,
+  reportAndroidError,
+} from "./service";
+import { useAndroid } from "./state";
 import {
   enqueueInput,
   focusInput,
@@ -67,7 +71,6 @@ export default function AndroidPane({
   const focus = useRef(onFocus);
   focus.current = onFocus;
   const [runtime, setRuntime] = useState<Runtime>();
-  const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [details, setDetails] = useState(false);
@@ -104,7 +107,8 @@ export default function AndroidPane({
       status?.phase === "booting" ||
       (launchPending && !status?.processAlive && !transportError));
   const running = status?.phase === "running" && !stopping;
-  const connecting = running && (!stream || stream.phase === "connecting");
+  const connecting =
+    running && !transportError && (!stream || stream.phase === "connecting");
   useEffect(() => {
     let current = true;
     void androidRuntime().then((value) => {
@@ -135,16 +139,15 @@ export default function AndroidPane({
     if (snapshot.devices?.devices.some((device) => device.id === id))
       void runtime
         .choose(tab.id, id)
-        .catch((error) => setError(errorMessage(error)));
+        .catch((error) => reportAndroidError(errorMessage(error)));
   }, [tab.deviceId, tab.id, snapshot?.preferences?.defaultDeviceId, runtime]);
   const act = async (action: () => Promise<unknown>) => {
     if (busy) return;
     setBusy(true);
-    setError("");
     try {
       await action();
     } catch (error) {
-      setError(errorMessage(error));
+      reportAndroidError(errorMessage(error));
     } finally {
       setBusy(false);
     }
@@ -181,14 +184,11 @@ export default function AndroidPane({
       await openAndroidSettings(tab.id);
     });
   const title = device?.name ?? "Android";
-  const issue =
-    error || state.error || transportError || (!launchPending && status?.error);
   const stopPhone = () => {
     if (!device || stopping) return;
-    setError("");
     void androidRuntime()
       .then((runtime) => runtime.stop(device.id))
-      .catch((reason) => setError(errorMessage(reason)));
+      .catch((reason) => reportAndroidError(errorMessage(reason)));
   };
   const ready =
     snapshot?.toolchainReady &&
@@ -284,29 +284,12 @@ export default function AndroidPane({
           </button>
         </div>
       </aside>
-      {issue && (
-        <div className="android-pane-error" role="alert">
-          <span>{issue}</span>
-          <button
-            className="text-button"
-            onClick={() => {
-              setError("");
-              if (running && tab.deviceId) runtime?.reconnect(tab.deviceId);
-              else void act(refreshAndroid);
-            }}
-          >
-            {running ? "Reconnect" : "Refresh"}
-          </button>
-          <button className="text-button" onClick={setup}>
-            Android settings
-          </button>
-        </div>
-      )}
       <div
         className={`android-viewport${zoom === "fit" ? " is-fit" : " is-actual"}`}
         ref={host}
       >
         {(!running ||
+          !!transportError ||
           overview ||
           !stream ||
           stream.phase === "connecting" ||

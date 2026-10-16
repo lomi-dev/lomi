@@ -1,3 +1,4 @@
+import { expectRecordedNotification } from "./application-notification-helpers";
 import { expect, test } from "@playwright/test";
 import { mockDesktop } from "./desktop";
 
@@ -53,9 +54,7 @@ test("first-run acceptance saves the startup choice", async ({ page }) => {
       ),
     )
     .toEqual([{ enabled: true }]);
-  await expect(page.getByRole("alert")).toContainText(
-    "The saved choice is still enabled",
-  );
+  await expectRecordedNotification(page, "The saved choice is still enabled");
 
   await page.reload();
   await expect(
@@ -63,9 +62,7 @@ test("first-run acceptance saves the startup choice", async ({ page }) => {
       name: "Start the MCP server automatically?",
     }),
   ).toHaveCount(0);
-  await expect(page.getByRole("alert")).toContainText(
-    "Automatic MCP startup is enabled",
-  );
+  await expectRecordedNotification(page, "Automatic MCP startup is enabled");
   await expect
     .poll(() =>
       page.evaluate(

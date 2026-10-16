@@ -1,3 +1,8 @@
+import {
+  expectRecordedNotification,
+  openNotifications,
+  notificationInbox,
+} from "./application-notification-helpers";
 import { test, expect } from "@playwright/test";
 import { mockDesktop, buffer } from "./desktop";
 
@@ -277,9 +282,13 @@ test("an unsupported saved session is preserved until recovery is chosen", async
     future,
   );
   await page.goto("/");
-  await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toContainText(
-    "unsupported format",
-  );
+  await expectRecordedNotification(page, "unsupported format");
+  await expect(
+    page.getByRole("button", {
+      name: "Save current layout instead",
+      exact: true,
+    }),
+  ).toHaveCount(0);
   await page
     .getByRole("button", { name: "Open Recent Project", exact: true })
     .click();
@@ -299,7 +308,8 @@ test("an unsupported saved session is preserved until recovery is chosen", async
         ).length,
     ),
   ).toBe(0);
-  await page
+  await openNotifications(page);
+  await notificationInbox(page)
     .getByRole("button", { name: "Save current layout instead", exact: true })
     .click();
   await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toHaveCount(
@@ -330,9 +340,7 @@ test("quitting flushes the latest layout and a failed save keeps the window open
     (window as any).__TAURI_INTERNALS__.invoke("request_quit"),
   );
   // A pending autosave can report the same storage error after the close flush.
-  await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toContainText(
-    "Disk is full",
-  );
+  await expectRecordedNotification(page, "Disk is full");
   expect(
     await page.evaluate(() =>
       (window as any).__nativeTest.calls.some(

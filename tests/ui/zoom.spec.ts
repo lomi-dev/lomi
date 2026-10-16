@@ -1,3 +1,4 @@
+import { expectRecordedNotification } from "./application-notification-helpers";
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { newProject, newSession, newTab } from "../../src/model";
@@ -318,9 +319,7 @@ test("queued zoom shortcuts respect limits, composition and native failures", as
   });
   expect(await zoom(page)).toBe(1);
   await page.keyboard.press("Control+Minus");
-  await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toContainText(
-    "Could not change zoom",
-  );
+  await expectRecordedNotification(page, "Could not change zoom");
   expect(await zoom(page)).toBe(1);
   expect(
     await page.evaluate(() => localStorage.getItem("lomi.zoom.main")),

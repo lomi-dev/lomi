@@ -1,3 +1,4 @@
+import { expectRecordedNotification } from "./application-notification-helpers";
 import { expect, test } from "@playwright/test";
 import { mockDesktop } from "./desktop";
 import { active, addWorkspace, newSession, openFileTab } from "../../src/model";
@@ -311,10 +312,8 @@ test("a native agent startup error is visible and does not trigger a duplicate s
   await dialog.getByRole("button", { name: "Launch agents" }).click();
 
   await expect(dialog).toHaveCount(0);
-  const startupError = page.getByRole("alert").filter({
-    hasText: "1 of 4 agents could not start",
-  });
-  await expect(startupError).toContainText(
+  await expectRecordedNotification(
+    page,
     "1 of 4 agents could not start. Agent CLI failed to start",
   );
   const cliRequests = () =>
@@ -327,9 +326,11 @@ test("a native agent startup error is visible and does not trigger a duplicate s
   await expect.poll(async () => (await cliRequests()).length).toBe(4);
   await page.getByRole("tab", { name: "Terminal", exact: true }).click();
   await page.getByRole("tab", { name: "Cursor CLI", exact: true }).click();
-  for (const panel of await page.locator(".terminal-pane").all())
+  const visiblePanels = page.locator(".terminal-pane:visible");
+  await expect(visiblePanels).toHaveCount(4);
+  for (const panel of await visiblePanels.all())
     await panel.click({ position: { x: 10, y: 10 } });
-  await expect(startupError).toContainText("1 of 4 agents could not start");
+  await expectRecordedNotification(page, "1 of 4 agents could not start");
   expect((await cliRequests()).length).toBe(4);
 });
 

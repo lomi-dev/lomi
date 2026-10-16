@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { api, errorMessage, native } from "../api";
 import { parseDevices, parsePreferences } from "./types";
+import { reportAndroidError } from "./service";
 import type {
   Changed,
   Progress,
@@ -37,7 +38,30 @@ const streamEvents = new Map<
 >();
 let progressEvent: { sequence: number; value: Progress } | undefined;
 function publish(next: State) {
+  const previous = state;
   state = next;
+  if (native && getCurrentWebview().label === "main") {
+    if (next.error && next.error !== previous.error)
+      reportAndroidError(next.error);
+    for (const status of next.snapshot?.statuses ?? [])
+      if (
+        status.error &&
+        status.error !==
+          previous.snapshot?.statuses.find(
+            (value) => value.deviceId === status.deviceId,
+          )?.error
+      )
+        reportAndroidError(status.error);
+    for (const stream of next.snapshot?.streams ?? [])
+      if (
+        stream.error &&
+        stream.error !==
+          previous.snapshot?.streams.find(
+            (value) => value.deviceId === stream.deviceId,
+          )?.error
+      )
+        reportAndroidError(stream.error);
+  }
   for (const listener of subscribers) listener();
 }
 

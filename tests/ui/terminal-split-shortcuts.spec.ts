@@ -1,3 +1,4 @@
+import { expectRecordedNotification } from "./application-notification-helpers";
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { newPane, newProject, newSession, splitPane } from "../../src/model";
@@ -120,7 +121,7 @@ test("a hovered terminal without room does not split the larger active terminal"
   const originalBounds = await first.boundingBox();
   const hoveredBounds = await hovered.boundingBox();
   await page.keyboard.press("Control+d");
-  await expect(page.locator(".pane-limit-notice")).toContainText("No room");
+  await expectRecordedNotification(page, "No room");
   await expect(page.locator("[data-pane-id]")).toHaveCount(2);
   for (const [key, value] of Object.entries((await first.boundingBox())!))
     expect(

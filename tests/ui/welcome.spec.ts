@@ -1,3 +1,4 @@
+import { expectRecordedNotification } from "./application-notification-helpers";
 import { expect, test } from "@playwright/test";
 import { newFileTab, newProject, newSession } from "../../src/model";
 import { mockDesktop } from "./desktop";
@@ -183,7 +184,7 @@ for (const action of ["Open folder or repository", "Create a new file"]) {
       native.directoryError = "Cannot open directory: folder not found";
     });
     await button.press("Enter");
-    await expect(page.getByRole("alert")).toContainText("folder not found");
+    await expectRecordedNotification(page, "folder not found");
     await expect(button).toHaveAttribute("aria-disabled", "false");
     await expect(button).toBeFocused();
     expect(
@@ -248,9 +249,7 @@ test("welcome prevents overlapping folder pickers and recovers from dialog error
       "Could not open the folder picker",
     ),
   );
-  await expect(page.getByRole("alert")).toContainText(
-    "Could not open the folder picker",
-  );
+  await expectRecordedNotification(page, "Could not open the folder picker");
   await expect(openFolder).toHaveAttribute("aria-disabled", "false");
   await expect(openFolder).toBeFocused();
 });

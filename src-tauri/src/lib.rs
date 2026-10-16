@@ -592,6 +592,7 @@ pub fn run() {
                 agent_notifications::enable_agent_notifications,
                 agent_notifications::notify_agent,
                 notifications::load_notifications,
+                notifications::record_app_notification,
                 notifications::mark_notifications_read,
                 notifications::dismiss_notification,
                 notifications::clear_read_notifications,

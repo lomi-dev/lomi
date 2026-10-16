@@ -2,6 +2,10 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { mockDesktop } from "./desktop";
 import { mockAndroid } from "./android-mock";
 import {
+  expectRecordedNotification,
+  openNotifications,
+} from "./application-notification-helpers";
+import {
   newAndroidTab,
   newProject,
   newSession,
@@ -339,13 +343,96 @@ test("shared views coalesce pending startup and preserve a real failure for retr
     fixture.failStart(new Error("Android boot timed out"));
     fixture.failStop = true;
   });
-  await expect(page.getByRole("alert")).toContainText("Android boot timed out");
+  await expectRecordedNotification(page, "Android boot timed out");
+  await expect(page.locator(".android-pane-error")).toHaveCount(0);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  expect(
+    await page.evaluate(() =>
+      (window as any).__nativeTest.notifications.items.filter(
+        (item: any) => item.body === "Android boot timed out",
+      ),
+    ),
+  ).toHaveLength(1);
   await page.getByRole("button", { name: "Retry Stop" }).click();
-  await expect(page.getByRole("alert")).toContainText("Phone is still running");
+  await expectRecordedNotification(page, "Phone is still running");
   await expect(page.getByRole("button", { name: "Retry Stop" })).toBeEnabled();
   expect(
     await page.evaluate(() => (window as any).__androidTest.startRequests),
   ).toBe(1);
+  const inbox = await openNotifications(page);
+  const failure = inbox
+    .locator(".notification-item")
+    .filter({ hasText: "Android boot timed out" });
+  await expect(failure).toContainText("Notification from Android");
+  await failure
+    .getByRole("button", { name: "Android settings", exact: true })
+    .click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__nativeTest.calls
+            .filter((call: any) => call.command === "open_settings")
+            .at(-1)?.args.page,
+      ),
+    )
+    .toBe("android");
+});
+
+test("transport failure enters the inbox and reconnect remains available for a hidden stream", async ({
+  page,
+}) => {
+  await mockDesktop(page, false);
+  await mockAndroid(page, true);
+  await page.goto("/");
+  await openAndroid(page);
+  const canvas = page.locator(".android-viewport canvas");
+  await expect(canvas).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__nativeTest.calls.filter(
+            (call: any) => call.command === "android_ack_frame",
+          ).length,
+      ),
+    )
+    .toBeGreaterThan(0);
+  const before = await page.evaluate(() => ({
+    starts: (window as any).__androidTest.startRequests,
+    stops: (window as any).__androidTest.stops,
+    subscriptions: (window as any).__androidTest.subscribers,
+  }));
+  await canvas.evaluate((element) =>
+    element.dispatchEvent(new Event("webglcontextlost", { cancelable: true })),
+  );
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__androidTest.live.size))
+    .toBe(0);
+  await page.evaluate(async () => {
+    const fixture = (window as any).__androidTest;
+    const value = { ...fixture.state.streams[0], phase: "hidden", error: null };
+    fixture.state.streams = [value];
+    await (window as any).__nativeTest.emitEvent("android-changed", {
+      kind: "stream",
+      value,
+    });
+  });
+  await expectRecordedNotification(page, "Android graphics context was lost");
+  await expect(page.locator(".android-pane-error")).toHaveCount(0);
+  await page.getByRole("button", { name: "Reconnect", exact: true }).click();
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__androidTest.subscribers))
+    .toBeGreaterThan(before.subscriptions);
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__androidTest.live.size))
+    .toBe(1);
+  expect(
+    await page.evaluate(() => ({
+      starts: (window as any).__androidTest.startRequests,
+      stops: (window as any).__androidTest.stops,
+    })),
+  ).toEqual({ starts: before.starts, stops: before.stops });
 });
 
 test("Alt-drag on the Android screen keeps its mirrored two-finger gesture", async ({

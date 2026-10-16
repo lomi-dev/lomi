@@ -190,6 +190,11 @@ or acronym.
   Subscribe before loading and accept only current revisioned snapshots. Agent
   notification preferences gate recording and delivery; focused-window events
   still enter the inbox, while system alerts are requested in the background.
+  Application, Android and MCP operational alerts use the same persistent inbox,
+  independently of agent preferences or sign-in. They never create workspace
+  toasts or Android error banners. Recovery and settings actions live in inbox
+  entries; session recovery still requires an explicit successful save before
+  autosaving resumes. Form validation and approval dialogs keep local feedback.
 - `src/AgentUsage.tsx` observes the existing terminal-context stream and shows
   each active CLI provider's icon and remaining account quota beside the
   titlebar account/settings control. Show one summary per provider using its

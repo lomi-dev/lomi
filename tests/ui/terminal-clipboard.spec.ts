@@ -1,3 +1,4 @@
+import { expectRecordedNotification } from "./application-notification-helpers";
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { mockDesktop } from "./desktop";
@@ -170,7 +171,8 @@ test("a failed clipboard read reports the error and releases later input", async
   await page.evaluate(() =>
     (window as any).__failClipboard("Cannot save clipboard image: disk full"),
   );
-  await expect(page.getByRole("alert")).toContainText(
+  await expectRecordedNotification(
+    page,
     "Cannot save clipboard image: disk full",
   );
   await expect.poll(() => input(page)).toBe("still typing");

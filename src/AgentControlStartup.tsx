@@ -3,13 +3,16 @@ import { listen } from "@tauri-apps/api/event";
 import { api, errorMessage, native } from "./api";
 import type { ControlStartupState } from "./agent-control-startup";
 import { Modal } from "./ui";
-import { AppToast } from "./AppToast";
+import {
+  registerNotificationAction,
+  reportAppNotification,
+} from "./app-notifications";
 
 export default function AgentControlStartup() {
   const [state, setState] = useState<ControlStartupState>();
   const [loadError, setLoadError] = useState("");
-  const [dismissedLoadError, setDismissedLoadError] = useState("");
-  const [dismissedStartupError, setDismissedStartupError] = useState("");
+  const reportedLoadError = useRef("");
+  const reportedStartupError = useRef("");
   const [saveError, setSaveError] = useState("");
   const [saving, setSaving] = useState(false);
   const [dismissed, setDismissed] = useState(false);
@@ -135,38 +138,39 @@ export default function AgentControlStartup() {
           : `Could not load the saved automatic MCP startup choice: ${startupError}`
       : "";
   useEffect(() => {
-    if (!loadError) setDismissedLoadError("");
+    if (loadError && loadError !== reportedLoadError.current)
+      void reportAppNotification(
+        {
+          source: "mcp",
+          body: `Could not load automatic MCP startup settings: ${loadError}`,
+          action: "retry-mcp-startup",
+        },
+        { deduplicate: false },
+      );
+    reportedLoadError.current = loadError;
   }, [loadError]);
   useEffect(() => {
-    if (!startupMessage) setDismissedStartupError("");
+    if (startupMessage && startupMessage !== reportedStartupError.current)
+      void reportAppNotification(
+        {
+          source: "mcp",
+          body: startupMessage,
+          action: "open-agent-control-settings",
+        },
+        { deduplicate: false },
+      );
+    reportedStartupError.current = startupMessage;
   }, [startupMessage]);
+  useEffect(
+    () =>
+      registerNotificationAction("retry-mcp-startup", {
+        label: "Retry",
+        run: refresh,
+      }),
+    [refresh],
+  );
   return (
     <>
-      {loadError && loadError !== dismissedLoadError && (
-        <AppToast
-          className="notice"
-          tone="error"
-          dismissLabel="Dismiss MCP startup message"
-          onDismiss={() => setDismissedLoadError(loadError)}
-          action={
-            <button className="text-button" onClick={() => void refresh()}>
-              Retry
-            </button>
-          }
-        >
-          Could not load automatic MCP startup settings: {loadError}
-        </AppToast>
-      )}
-      {startupMessage && startupMessage !== dismissedStartupError && (
-        <AppToast
-          className="notice"
-          tone="error"
-          dismissLabel="Dismiss MCP startup message"
-          onDismiss={() => setDismissedStartupError(startupMessage)}
-        >
-          {startupMessage}
-        </AppToast>
-      )}
       {eligible && readyToPrompt && (
         <Modal
           protectTheme

@@ -1,3 +1,4 @@
+import { expectRecordedNotification } from "./application-notification-helpers";
 import { test, expect } from "@playwright/test";
 import { newProject, newSession } from "../../src/model";
 import { mockDesktop, buffer } from "./desktop";
@@ -211,9 +212,7 @@ test("an unavailable recent folder leaves the current project and history intact
   });
   await page.locator(".project-switcher").click();
   await page.getByRole("menuitem", { name: "missing", exact: true }).click();
-  await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toContainText(
-    "Cannot open directory",
-  );
+  await expectRecordedNotification(page, "Cannot open directory");
   await expect(page.locator(".project-switcher")).toHaveText("lomi");
   await expect(page.locator("[data-pane-id]")).toHaveAttribute(
     "data-pane-id",

@@ -35,6 +35,7 @@ import { pluginPanels, updatePluginPanel, newId } from "./model";
 import Select from "./Select";
 import {
   configureAndroid,
+  reportAndroidError,
   receiveAndroidOpen,
   retainAndroid,
   stopLastAndroidViews,
@@ -132,7 +133,10 @@ import {
 import type { TerminalContext } from "./terminal-runtime";
 import { dropPaths, nativePositionToClient, terminalAt } from "./file-drag";
 import { Modal, WindowControls } from "./ui";
-import { AppToast, ToastViewport } from "./AppToast";
+import {
+  registerNotificationAction,
+  reportAppNotification,
+} from "./app-notifications";
 import { useAgentUsage } from "./AgentUsage";
 import Explorer from "./Explorer";
 import ProjectSwitcher from "./ProjectSwitcher";
@@ -639,7 +643,11 @@ export default function Workbench() {
     );
     pluginHost.theme(theme.snapshot.revision, theme.snapshot.appearance);
   }, [session, theme.snapshot, focusedPlugin]);
-  const [error, setError] = useState("");
+  const [error, setErrorState] = useState("");
+  const setError = useCallback((message: string) => {
+    setErrorState(message);
+    if (message) void reportAppNotification({ body: message });
+  }, []);
   const [diffRevision, setDiffRevision] = useState(0);
   useWindowZoom(setError);
   const [restoreError, setRestoreError] = useState("");
@@ -661,7 +669,9 @@ export default function Workbench() {
       }),
     [setSession],
   );
-  const [paneNotice, setPaneNotice] = useState("");
+  const setPaneNotice = useCallback((body: string) => {
+    if (body) void reportAppNotification({ body, kind: "info" });
+  }, []);
   const cliIntegrations = useCliIntegrations(
     selected ? activePanel(selected.tab)?.id : undefined,
     setError,
@@ -775,7 +785,6 @@ export default function Workbench() {
             state ? updateAndroid(state, id, change) : state,
           );
       },
-      error: setError,
       session: () => currentSession.current,
       commit: (update) =>
         setSession((state) => (state ? update(state) : state)),
@@ -789,7 +798,7 @@ export default function Workbench() {
       "android-open-request",
       ({ payload }) => {
         void receiveAndroidOpen(payload).catch((error) =>
-          setError(errorMessage(error)),
+          reportAndroidError(errorMessage(error)),
         );
       },
     );
@@ -1003,7 +1012,31 @@ export default function Workbench() {
     }, 400);
     autosaveTimer.current = timer;
     return () => clearTimeout(timer);
-  }, [session, autosavePaused]);
+  }, [session, autosavePaused, restoreError]);
+  const recoveringSession = useRef(false);
+  useEffect(() => {
+    if (!restoreError) return;
+    void reportAppNotification({
+      title: "Session recovery required",
+      body: restoreError,
+      action: "recover-session",
+    });
+    return registerNotificationAction("recover-session", {
+      label: "Save current layout instead",
+      run: async () => {
+        const latest = currentSession.current;
+        if (!latest || recoveringSession.current) return;
+        recoveringSession.current = true;
+        try {
+          await saveSession(captureEditorPositions(latest), true);
+          savingEnabled.current = true;
+          setRestoreError("");
+        } finally {
+          recoveringSession.current = false;
+        }
+      },
+    });
+  }, [restoreError]);
   useEffect(() => {
     if (!info) return;
     const timer = setInterval(() => {
@@ -1728,10 +1761,27 @@ export default function Workbench() {
   if (!session || !info || !preferences.ready || !terminalPreferences.ready)
     return (
       <div className="app-shell">
+        {error && (
+          <header className="titlebar">
+            <span>Lomi</span>
+            <TitlebarAccount
+              onError={setError}
+              onOpenSettings={() =>
+                void api("open_settings").catch((reason) =>
+                  setError(errorMessage(reason)),
+                )
+              }
+            />
+          </header>
+        )}
         <main className="empty-message">
           <Layers size={28} />
           <h1>Lomi</h1>
-          <p>{error || "Restoring your workspace…"}</p>
+          <p>
+            {error
+              ? "Could not restore your workspace. See Notifications for details."
+              : "Restoring your workspace…"}
+          </p>
           {error && (
             <button
               className="button"
@@ -1864,52 +1914,7 @@ export default function Workbench() {
       onBrowse={() => void browse()}
     />
   );
-  const notice = (
-    <ToastViewport>
-      {restoreError && (
-        <AppToast
-          tone="error"
-          action={
-            <button
-              type="button"
-              className="text-button"
-              onClick={() => {
-                savingEnabled.current = true;
-                setRestoreError("");
-                void saveSession(session, true).catch((error) =>
-                  setError(errorMessage(error)),
-                );
-              }}
-            >
-              Save current layout instead
-            </button>
-          }
-        >
-          {restoreError}
-        </AppToast>
-      )}
-      {error && (
-        <AppToast
-          className="notice"
-          tone="error"
-          onDismiss={() => setError("")}
-        >
-          {error}
-        </AppToast>
-      )}
-      {paneNotice && (
-        <AppToast
-          className="pane-limit-notice"
-          duration={5000}
-          dismissLabel="Dismiss panel limit"
-          onDismiss={() => setPaneNotice("")}
-        >
-          {paneNotice}
-        </AppToast>
-      )}
-      <AgentControlStartup />
-    </ToastViewport>
-  );
+  const notice = <AgentControlStartup />;
   const sidebarOpen = (panel: SidebarPanel) =>
     session.sidebarSides[panel] === "left"
       ? session.sidebar === panel

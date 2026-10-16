@@ -23,6 +23,24 @@ pub struct Notifications(pub Mutex<()>);
 pub enum NotificationKind {
     Attention,
     Finished,
+    Info,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ApplicationNotificationSource {
+    App,
+    Android,
+    Mcp,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ApplicationNotificationAction {
+    RecoverSession,
+    RetryMcpStartup,
+    OpenAgentControlSettings,
+    OpenAndroidSettings,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -32,6 +50,10 @@ pub struct Notification {
     kind: NotificationKind,
     #[serde(default)]
     agent: Option<TitleCli>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    source: Option<ApplicationNotificationSource>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    action: Option<ApplicationNotificationAction>,
     title: String,
     body: String,
     created_at: u64,
@@ -76,7 +98,7 @@ impl Snapshot {
                     || !ids.insert(&item.id)
                     || item.title.is_empty()
                     || !valid_text(&item.title, 100)
-                    || !valid_text(&item.body, 300)
+                    || !valid_text(&item.body, if item.source.is_some() { 4000 } else { 300 })
                     || item.created_at > MAX_TIMESTAMP
             })
         {
@@ -200,8 +222,15 @@ fn read(path: &Path) -> Result<Snapshot, String> {
 
 // The caller holds Notifications' mutex through both persistence and publication.
 fn update(path: &Path, change: impl FnOnce(&mut Snapshot) -> bool) -> Result<Snapshot, String> {
+    try_update(path, |snapshot| Ok(change(snapshot)))
+}
+
+fn try_update(
+    path: &Path,
+    change: impl FnOnce(&mut Snapshot) -> Result<bool, String>,
+) -> Result<Snapshot, String> {
     let mut snapshot = read(path)?;
-    if change(&mut snapshot) {
+    if change(&mut snapshot)? {
         snapshot.revision = snapshot
             .revision
             .checked_add(1)
@@ -245,23 +274,99 @@ fn append(
     body: &str,
     now: u64,
 ) -> Result<Snapshot, String> {
-    update(path, |snapshot| {
-        let created_at = now.max(snapshot.items.first().map_or(0, |item| item.created_at));
-        snapshot.items.insert(
-            0,
-            Notification {
-                id: format!("notification-{}", snapshot.revision + 1),
-                kind,
-                agent,
-                title: title.into(),
-                body: body.into(),
-                created_at,
-                read: false,
-            },
-        );
+    append_item(
+        path,
+        Notification {
+            id: String::new(),
+            kind,
+            agent,
+            source: None,
+            action: None,
+            title: title.into(),
+            body: body.into(),
+            created_at: now,
+            read: false,
+        },
+    )
+}
+
+fn append_item(path: &Path, mut item: Notification) -> Result<Snapshot, String> {
+    if item.title.is_empty()
+        || !valid_text(&item.title, 100)
+        || !valid_text(&item.body, if item.source.is_some() { 4000 } else { 300 })
+        || item.created_at > MAX_TIMESTAMP
+    {
+        return Err("Invalid notification text or timestamp.".into());
+    }
+    try_update(path, |snapshot| {
+        let revision = snapshot
+            .revision
+            .checked_add(1)
+            .filter(|revision| *revision <= MAX_INTEGER)
+            .ok_or("Notification revision limit reached.")?;
+        item.id = format!("notification-{revision}");
+        item.created_at = item
+            .created_at
+            .max(snapshot.items.first().map_or(0, |item| item.created_at));
+        snapshot.items.insert(0, item);
         snapshot.items.truncate(MAX_ITEMS);
-        true
+        // Match write_json's pretty serialization, including the next revision.
+        while serde_json::to_vec_pretty(&Stored {
+            version: 2,
+            revision,
+            items: snapshot.items.clone(),
+        })
+        .map_err(|error| error.to_string())?
+        .len()
+            > LIMIT
+        {
+            if snapshot.items.len() <= 1 {
+                return Err("The notification exceeds the inbox size limit.".into());
+            }
+            snapshot.items.pop();
+        }
+        Ok(true)
     })
+}
+
+fn timestamp() -> Result<u64, String> {
+    let now = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map_err(|error| error.to_string())?
+        .as_millis();
+    u64::try_from(now).map_err(|_| "Invalid notification timestamp.".into())
+}
+
+#[tauri::command]
+pub fn record_app_notification(
+    window: Window,
+    app: tauri::AppHandle,
+    kind: NotificationKind,
+    source: ApplicationNotificationSource,
+    title: String,
+    body: String,
+    action: Option<ApplicationNotificationAction>,
+) -> Result<Snapshot, String> {
+    crate::files::main_window(&window)?;
+    let state = app.state::<Notifications>();
+    let _guard = state.0.lock().map_err(|error| error.to_string())?;
+    let snapshot = append_item(
+        &path(&app)?,
+        Notification {
+            id: String::new(),
+            kind,
+            agent: None,
+            source: Some(source),
+            action,
+            title,
+            body,
+            created_at: timestamp()?,
+            read: false,
+        },
+    )?;
+    // A failed event must not turn a committed append into a retriable error.
+    let _ = app.emit_to("main", "notifications-changed", &snapshot);
+    Ok(snapshot)
 }
 
 pub(crate) fn record(
@@ -273,12 +378,10 @@ pub(crate) fn record(
 ) -> Result<(), String> {
     let state = app.state::<Notifications>();
     let _guard = state.0.lock().map_err(|error| error.to_string())?;
-    let now = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .map_err(|error| error.to_string())?
-        .as_millis();
-    let now = u64::try_from(now).map_err(|_| "Invalid notification timestamp.")?;
-    publish(app, append(&path(app)?, kind, agent, title, body, now)?)?;
+    publish(
+        app,
+        append(&path(app)?, kind, agent, title, body, timestamp()?)?,
+    )?;
     Ok(())
 }
 
@@ -383,6 +486,143 @@ pub fn clear_notifications(
 mod tests {
     use super::*;
 
+    fn app_item(body: &str) -> Notification {
+        Notification {
+            id: String::new(),
+            kind: NotificationKind::Info,
+            agent: None,
+            source: Some(ApplicationNotificationSource::App),
+            action: None,
+            title: "Application event".into(),
+            body: body.into(),
+            created_at: 1,
+            read: false,
+        }
+    }
+
+    #[test]
+    fn roundtrips_application_metadata_and_info_in_version_two() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notifications.json");
+        for (source, action, source_json, action_json) in [
+            (
+                ApplicationNotificationSource::App,
+                ApplicationNotificationAction::RecoverSession,
+                "app",
+                "recover-session",
+            ),
+            (
+                ApplicationNotificationSource::Android,
+                ApplicationNotificationAction::OpenAndroidSettings,
+                "android",
+                "open-android-settings",
+            ),
+            (
+                ApplicationNotificationSource::Mcp,
+                ApplicationNotificationAction::RetryMcpStartup,
+                "mcp",
+                "retry-mcp-startup",
+            ),
+            (
+                ApplicationNotificationSource::App,
+                ApplicationNotificationAction::OpenAgentControlSettings,
+                "app",
+                "open-agent-control-settings",
+            ),
+        ] {
+            let mut item = app_item(&"🦀".repeat(4000));
+            item.title = "🦀".repeat(100);
+            item.source = Some(source);
+            item.action = Some(action);
+            append_item(&path, item).unwrap();
+            let loaded = read(&path).unwrap();
+            assert_eq!(loaded.items[0].source, Some(source));
+            assert_eq!(loaded.items[0].action, Some(action));
+            assert_eq!(loaded.items[0].body.chars().count(), 4000);
+            let data: serde_json::Value =
+                serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+            assert_eq!(data["version"], 2);
+            assert_eq!(data["items"][0]["kind"], "info");
+            assert_eq!(data["items"][0]["source"], source_json);
+            assert_eq!(data["items"][0]["action"], action_json);
+        }
+        append_item(&path, app_item("")).unwrap();
+        append(&path, NotificationKind::Finished, None, "Agent", "", 2).unwrap();
+        let data: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert!(data["items"][0].get("source").is_none());
+        assert!(data["items"][0].get("action").is_none());
+        assert!(data["items"][1].get("action").is_none());
+    }
+
+    #[test]
+    fn rejects_invalid_application_text_without_changing_history() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notifications.json");
+        append_item(&path, app_item("Original")).unwrap();
+        let before = fs::read(&path).unwrap();
+        for (title, body) in [
+            (String::new(), "Body".into()),
+            ("a".repeat(101), "Body".into()),
+            ("Title".into(), "a".repeat(4001)),
+            ("Bad\nTitle".into(), "Body".into()),
+            ("Title".into(), "Bad\tBody".into()),
+            ("Title".into(), "Bad\u{0085}Body".into()),
+        ] {
+            let mut item = app_item(&body);
+            item.title = title;
+            assert!(append_item(&path, item).is_err());
+            assert_eq!(fs::read(&path).unwrap(), before);
+        }
+        assert!(append(
+            &path,
+            NotificationKind::Attention,
+            None,
+            "Agent",
+            &"a".repeat(301),
+            2
+        )
+        .is_err());
+        assert_eq!(fs::read(&path).unwrap(), before);
+    }
+
+    #[test]
+    fn application_append_prunes_oldest_by_serialized_bytes_without_truncation() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notifications.json");
+        let body = "🦀".repeat(4000);
+        for time in 1..=40 {
+            let mut item = app_item(&body);
+            item.created_at = time;
+            append_item(&path, item).unwrap();
+            assert!(fs::metadata(&path).unwrap().len() <= LIMIT as u64);
+        }
+        let snapshot = read(&path).unwrap();
+        assert_eq!(snapshot.revision, 40);
+        assert!(snapshot.items.len() < 40);
+        assert!(snapshot.items.iter().all(|item| item.body == body));
+        assert_eq!(snapshot.items[0].id, "notification-40");
+        assert_eq!(
+            snapshot.items.last().unwrap().created_at,
+            41 - snapshot.items.len() as u64
+        );
+    }
+
+    #[test]
+    fn application_append_preserves_corrupt_files_and_invalid_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notifications.json");
+        for data in [
+            "broken".into(),
+            " ".repeat(LIMIT + 1),
+            r#"{"version":2,"revision":1,"items":[{"id":"notification-1","kind":"info","source":"unknown","title":"Event","body":"","createdAt":1,"read":false}]}"#.into(),
+            r#"{"version":2,"revision":1,"items":[{"id":"notification-1","kind":"info","source":"app","action":"run-shell","title":"Event","body":"","createdAt":1,"read":false}]}"#.into(),
+        ] {
+            fs::write(&path, &data).unwrap();
+            assert!(append_item(&path, app_item("New event")).is_err());
+            assert_eq!(fs::read_to_string(&path).unwrap(), data);
+        }
+    }
+
     #[test]
     fn retired_notifications_migrate_with_exact_backup_and_keep_surviving_items() {
         let dir = tempfile::tempdir().unwrap();
@@ -463,6 +703,8 @@ mod tests {
         fs::write(&path, legacy).unwrap();
         let snapshot = read(&path).unwrap();
         assert_eq!(snapshot.items[0].agent, None);
+        assert_eq!(snapshot.items[0].source, None);
+        assert_eq!(snapshot.items[0].action, None);
         assert_eq!(fs::read_to_string(&path).unwrap(), legacy);
         append(
             &path,

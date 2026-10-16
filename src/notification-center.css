@@ -138,6 +138,10 @@
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
+.notification-center .notification-item-action {
+  margin: 0 38px var(--space-8) 60px;
+  color: var(--color-accent-text);
+}
 .notification-item[data-unread] .notification-agent::before {
   content: "";
   position: absolute;

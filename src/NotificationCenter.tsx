@@ -4,6 +4,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import type { RefObject } from "react";
 import { createPortal } from "react-dom";
@@ -11,6 +12,9 @@ import {
   Bell,
   CircleAlert,
   CircleCheck,
+  Info,
+  Smartphone,
+  Plug,
   Terminal,
   Trash2,
   X,
@@ -22,15 +26,33 @@ import {
   newestNotificationSnapshot,
   notificationAgent,
   notificationRelativeTime,
+  notificationKindLabel,
   notificationSource,
   subscribeNotificationErrors,
   unreadNotificationCount,
 } from "./notifications";
 import type { NotificationSnapshot } from "./notifications";
 import { CliAgentIcon } from "./CliAgentIcon";
+import {
+  notificationAction,
+  clearUnsavedApplicationNotifications,
+  dismissUnsavedApplicationNotification,
+  hasPendingApplicationNotifications,
+  notificationActionsRevision,
+  reportAppNotification,
+  retryApplicationNotifications,
+  subscribeApplicationNotifications,
+  subscribeNotificationActions,
+  subscribeUnsavedApplicationNotifications,
+  unsavedApplicationNotifications,
+} from "./app-notifications";
 import "./notification-center.css";
 
 export function useNotifications() {
+  const unsaved = useSyncExternalStore(
+    subscribeUnsavedApplicationNotifications,
+    unsavedApplicationNotifications,
+  );
   const [snapshot, setSnapshot] = useState<NotificationSnapshot | null>(null);
   const current = useRef<NotificationSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -52,7 +74,9 @@ export function useNotifications() {
       errorVersion.current++;
       setError(message);
     });
+    const stopApplications = subscribeApplicationNotifications(accept);
     const startedErrorVersion = ++errorVersion.current;
+    const retrying = attempt > 0 && pending.current;
     if (native)
       void (async () => {
         try {
@@ -67,6 +91,7 @@ export function useNotifications() {
             return;
           }
           stop = unlisten;
+          if (attempt > 0) await retryApplicationNotifications();
           const incoming =
             await api<NotificationSnapshot>("load_notifications");
           if (active) {
@@ -79,6 +104,11 @@ export function useNotifications() {
         } catch (failure) {
           if (active && errorVersion.current === startedErrorVersion)
             setError(`Could not load notifications: ${errorMessage(failure)}`);
+        } finally {
+          if (retrying && active) {
+            pending.current = false;
+            setBusy(false);
+          }
         }
       })();
     return () => {
@@ -86,11 +116,12 @@ export function useNotifications() {
       mounted.current = false;
       stop?.();
       stopErrors();
+      stopApplications();
     };
   }, [accept, attempt]);
 
   const mutate = async (command: string, args?: Record<string, unknown>) => {
-    if (!native || pending.current) return;
+    if (!native || pending.current) return false;
     pending.current = true;
     setBusy(true);
     const startedErrorVersion = ++errorVersion.current;
@@ -98,14 +129,19 @@ export function useNotifications() {
       const incoming = await api<NotificationSnapshot>(command, args);
       if (mounted.current) {
         accept(incoming);
-        if (errorVersion.current === startedErrorVersion) {
+        if (
+          errorVersion.current === startedErrorVersion &&
+          !hasPendingApplicationNotifications()
+        ) {
           setError(null);
           clearNotificationError();
         }
       }
+      return true;
     } catch (failure) {
       if (mounted.current && errorVersion.current === startedErrorVersion)
         setError(`Could not update notifications: ${errorMessage(failure)}`);
+      return false;
     } finally {
       pending.current = false;
       if (mounted.current) setBusy(false);
@@ -113,14 +149,35 @@ export function useNotifications() {
   };
   return {
     snapshot,
+    unsaved,
     error,
     busy,
-    unread: unreadNotificationCount(snapshot),
-    retry: () => setAttempt((value) => value + 1),
+    unread: unreadNotificationCount(snapshot) + unsaved.length,
+    retry: () => {
+      if (pending.current) return;
+      if (hasPendingApplicationNotifications()) {
+        pending.current = true;
+        setBusy(true);
+      }
+      setAttempt((value) => value + 1);
+    },
     markRead: (ids: string[]) =>
       void mutate("mark_notifications_read", { ids }),
-    dismiss: (id: string) => void mutate("dismiss_notification", { id }),
-    clearAll: () => void mutate("clear_notifications"),
+    dismiss: (id: string) => {
+      if (pending.current) return;
+      if (id.startsWith("unsaved-")) dismissUnsavedApplicationNotification(id);
+      else void mutate("dismiss_notification", { id });
+    },
+    clearAll: async () => {
+      const startedErrorVersion = errorVersion.current;
+      if (await mutate("clear_notifications")) {
+        if (errorVersion.current === startedErrorVersion + 1) {
+          clearUnsavedApplicationNotifications();
+          setError(null);
+          clearNotificationError();
+        }
+      }
+    },
   };
 }
 
@@ -138,13 +195,46 @@ export default function NotificationCenter({
   const closeButton = useRef<HTMLButtonElement>(null);
   const [position, setPosition] = useState({ left: 8, top: 8 });
   const [now, setNow] = useState(Date.now);
+  useSyncExternalStore(
+    subscribeNotificationActions,
+    notificationActionsRevision,
+  );
+  const [actionBusy, setActionBusy] = useState(false);
+  const actionPending = useRef(false);
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
-  const { snapshot, error, busy, unread, retry, markRead, dismiss, clearAll } =
-    notifications;
-  const items = snapshot?.items ?? [];
+  const {
+    snapshot,
+    unsaved,
+    error,
+    busy,
+    unread,
+    retry,
+    markRead,
+    dismiss,
+    clearAll,
+  } = notifications;
+  const items = [...unsaved, ...(snapshot?.items ?? [])];
+  const recovery = notificationAction("recover-session");
+  const runAction = (
+    action: NonNullable<ReturnType<typeof notificationAction>>,
+    source: "app" | "android" | "mcp" = "app",
+  ) => {
+    if (actionPending.current) return;
+    actionPending.current = true;
+    setActionBusy(true);
+    void Promise.resolve()
+      .then(() => action.run())
+      .catch((reason) =>
+        reportAppNotification({ body: errorMessage(reason), source }),
+      )
+      .finally(() => {
+        actionPending.current = false;
+        setActionBusy(false);
+      });
+  };
   const close = useCallback(
     (restoreFocus: boolean) => {
       onClose();
@@ -169,7 +259,7 @@ export default function NotificationCenter({
         Math.min(anchor.bottom + 6, innerHeight - bounds.height - 8),
       ),
     });
-  }, [trigger, snapshot, error]);
+  }, [trigger, snapshot, error, unsaved]);
   useLayoutEffect(() => {
     closeButton.current?.focus({ preventScroll: true });
   }, []);
@@ -178,7 +268,7 @@ export default function NotificationCenter({
   useLayoutEffect(() => {
     if (document.activeElement === document.body)
       closeButton.current?.focus({ preventScroll: true });
-  }, [snapshot, busy]);
+  }, [snapshot, busy, unsaved]);
   useEffect(() => {
     const outside = (event: Event) => {
       const target = event.target as Node;
@@ -274,45 +364,58 @@ export default function NotificationCenter({
                   ? "Notifications unavailable"
                   : "Loading notifications…"}
             </strong>
-            <span>Agent updates will appear here.</span>
+            <span>Application and agent updates will appear here.</span>
           </div>
         )}
         {items.map((item) => {
           const agent = notificationAgent(item);
+          const notSaved = item.id.startsWith("unsaved-");
           const date = new Date(item.createdAt);
           const validDate = Number.isFinite(date.getTime());
+          const action = item.action
+            ? notificationAction(item.action)
+            : undefined;
+          const SourceIcon =
+            item.source === "android"
+              ? Smartphone
+              : item.source === "mcp"
+                ? Plug
+                : item.source === "app"
+                  ? Bell
+                  : Terminal;
           return (
             <article
               className="notification-item"
               key={item.id}
               data-unread={!item.read || undefined}
+              data-unsaved={notSaved || undefined}
             >
               <button
                 type="button"
                 className="notification-item-open"
                 disabled={busy}
                 aria-label={`${item.title}${item.read ? "" : ", unread"}`}
-                aria-description={`${notificationSource(item)}. ${item.kind === "attention" ? "Needs attention" : "Finished"}. ${notificationRelativeTime(item.createdAt, now)}. ${item.body}`}
+                aria-description={`${notificationSource(item)}. ${notificationKindLabel(item)}. ${notificationRelativeTime(item.createdAt, now)}. ${item.body}`}
                 title={item.body}
                 onClick={() => {
-                  if (!item.read) markRead([item.id]);
+                  if (!item.read && !notSaved) markRead([item.id]);
                 }}
               >
                 <span className="notification-agent">
                   {agent ? (
                     <CliAgentIcon cli={agent} />
                   ) : (
-                    <Terminal size={23} aria-hidden="true" />
+                    <SourceIcon size={23} aria-hidden="true" />
                   )}
                   <span
                     className="notification-kind"
                     data-kind={item.kind}
-                    aria-label={
-                      item.kind === "attention" ? "Needs attention" : "Finished"
-                    }
+                    aria-label={notificationKindLabel(item)}
                   >
                     {item.kind === "attention" ? (
                       <CircleAlert size={13} aria-hidden="true" />
+                    ) : item.kind === "info" ? (
+                      <Info size={13} aria-hidden="true" />
                     ) : (
                       <CircleCheck size={13} aria-hidden="true" />
                     )}
@@ -327,11 +430,22 @@ export default function NotificationCenter({
                 </time>
                 <span className="notification-source">
                   {notificationSource(item)}
+                  {notSaved && <span> · Not saved yet</span>}
                   {item.body && (
                     <span className="notification-context"> · {item.body}</span>
                   )}
                 </span>
               </button>
+              {action && (
+                <button
+                  type="button"
+                  className="notification-item-action"
+                  disabled={busy || actionBusy}
+                  onClick={() => runAction(action, item.source ?? "app")}
+                >
+                  {action.label}
+                </button>
+              )}
               <button
                 type="button"
                 className="notification-item-dismiss notification-icon-button"
@@ -347,6 +461,19 @@ export default function NotificationCenter({
         })}
       </div>
       <div className="notification-center-footer">
+        {recovery &&
+          !items.some((item) => item.action === "recover-session") && (
+            <>
+              <span>Session recovery required</span>
+              <button
+                type="button"
+                disabled={busy || actionBusy}
+                onClick={() => runAction(recovery)}
+              >
+                {recovery.label}
+              </button>
+            </>
+          )}
         <button
           type="button"
           disabled={busy || !items.length}

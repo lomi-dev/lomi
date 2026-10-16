@@ -1,3 +1,4 @@
+import { expectRecordedNotification } from "./application-notification-helpers";
 import { expect, test, type Page } from "@playwright/test";
 import { buffer, mockDesktop } from "./desktop";
 import { mockChats } from "./chat-mock";
@@ -174,12 +175,10 @@ test("a failed Android stop keeps the current workspace and allows another close
       "Phone is still stopping. Retry Stop.";
     void (window as any).__nativeTest.emitEvent("lomi-quit-requested");
   });
-  await expect(
-    page.getByText(
-      "Could not close the window: Phone is still stopping. Retry Stop.",
-      { exact: true },
-    ),
-  ).toBeVisible();
+  await expectRecordedNotification(
+    page,
+    "Could not close the window: Phone is still stopping. Retry Stop.",
+  );
   await expect(
     page.getByRole("dialog", { name: "Preparing to close" }),
   ).toHaveCount(0);
@@ -351,9 +350,10 @@ test("a failed final session save releases runtime admission without draining ru
     mock.failSave = true;
     void mock.emitEvent("lomi-quit-requested");
   });
-  await expect(
-    page.getByText("Could not close the window: Disk is full", { exact: true }),
-  ).toBeVisible();
+  await expectRecordedNotification(
+    page,
+    "Could not close the window: Disk is full",
+  );
   const failed = await actions(page);
   expect(failed).toContain("runtime:freeze");
   expect(failed).toContain("runtime:resume");

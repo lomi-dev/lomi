@@ -8,6 +8,7 @@ import {
   type Session,
 } from "../model";
 import { api } from "../api";
+import { reportAppNotification } from "../app-notifications";
 
 let retained: AndroidTab[] = [];
 let runtime: typeof import("./runtime") | undefined;
@@ -18,7 +19,6 @@ let handlers:
         id: string,
         change: Partial<Pick<AndroidTab, "deviceId" | "title">>,
       ) => void;
-      error: (message: string) => void;
       session: () => Session | undefined;
       commit: (update: (session: Session) => Session) => void;
       blocked: () => boolean;
@@ -35,7 +35,12 @@ export function changeAndroid(
   handlers?.change(id, change);
 }
 export function reportAndroidError(message: string) {
-  handlers?.error(message);
+  if (message)
+    void reportAppNotification({
+      source: "android",
+      body: message,
+      action: "open-android-settings",
+    });
 }
 export function retainAndroid(session?: Session) {
   retained = androidTabs(session);
@@ -191,7 +196,7 @@ export async function receiveAndroidOpen(intent: OpenIntent) {
       };
     });
     void (restarting ?? module.start(device.id)).catch((error) =>
-      handlers?.error(String(error)),
+      reportAndroidError(String(error)),
     );
   } catch (error) {
     failure = error instanceof Error ? error.message : String(error);

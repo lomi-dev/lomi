@@ -1,3 +1,4 @@
+import { expectRecordedNotification } from "./application-notification-helpers";
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import {
@@ -87,7 +88,7 @@ test("a queued shortcut burst respects panel dimensions and never reaches the PT
       );
   });
   await expectUsablePanels(page, 2);
-  await expect(page.locator(".pane-limit-notice")).toContainText("No room");
+  await expectRecordedNotification(page, "No room");
   await expect
     .poll(async () => (await calls(page, "start_terminal")).length)
     .toBe(2);

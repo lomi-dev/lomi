@@ -83,6 +83,7 @@ export function runtimeError(id: string) {
   return errors.get(id) ?? "";
 }
 function error(id: string, message: string) {
+  if (message && errors.get(id) !== message) reportAndroidError(message);
   errors.set(id, message);
   notify();
 }

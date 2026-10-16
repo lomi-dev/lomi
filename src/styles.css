@@ -4637,23 +4637,6 @@ svg {
     display: none;
   }
 }
-.android-pane-error {
-  grid-column: 1;
-  grid-row: 1;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-8);
-  padding: var(--space-8);
-  background: var(--color-surface);
-  color: var(--color-error);
-  font-size: var(--font-size-11);
-  position: relative;
-  z-index: 1;
-}
-.android-pane-error > span {
-  flex: 1 1 180px;
-  overflow-wrap: anywhere;
-}
 .keybindings-error {
   display: flex;
   flex-wrap: wrap;

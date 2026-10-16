@@ -5,6 +5,7 @@ import {
   notificationBadge,
   notificationAgent,
   notificationSource,
+  notificationKindLabel,
   notificationRelativeTime,
   unreadNotificationCount,
   reportNotificationError,
@@ -128,4 +129,35 @@ test("relative notification times cross minute, hour and day boundaries and tole
     assert.equal(notificationRelativeTime(now - age, now), expected);
   assert.equal(notificationRelativeTime(NaN, now), "Unknown time");
   assert.equal(notificationRelativeTime(0, Infinity), "Unknown time");
+});
+
+test("application sources override legacy title inference and describe informational events", () => {
+  const item = {
+    id: "notification-1",
+    kind: "info" as const,
+    title: "Claude Code needs your input",
+    body: "Application message",
+    createdAt: 0,
+    read: false,
+  };
+  for (const [source, label] of [
+    ["app", "Lomi"],
+    ["android", "Android"],
+    ["mcp", "MCP"],
+  ] as const) {
+    assert.equal(
+      notificationSource({ ...item, source }),
+      `Notification from ${label}`,
+    );
+    assert.equal(notificationAgent({ ...item, source }), null);
+  }
+  assert.equal(notificationKindLabel(item), "Information");
+  assert.equal(
+    notificationKindLabel({ ...item, kind: "attention" }),
+    "Needs attention",
+  );
+  assert.equal(
+    notificationKindLabel({ ...item, kind: "finished" }),
+    "Finished",
+  );
 });

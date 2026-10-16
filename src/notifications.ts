@@ -3,15 +3,25 @@ import type { CliAgent } from "./cli-agents.ts";
 
 export interface InboxNotification {
   id: string;
-  kind: "attention" | "finished";
+  kind: "attention" | "finished" | "info";
   title: string;
   body: string;
   createdAt: number;
   read: boolean;
   agent?: CliAgent | null;
+  source?: ApplicationNotificationSource | null;
+  action?: ApplicationNotificationAction | null;
 }
 
+export type ApplicationNotificationSource = "app" | "android" | "mcp";
+export type ApplicationNotificationAction =
+  | "recover-session"
+  | "retry-mcp-startup"
+  | "open-agent-control-settings"
+  | "open-android-settings";
+
 export function notificationAgent(item: InboxNotification): CliAgent | null {
+  if (item.source) return null;
   if (item.agent != null)
     return Object.hasOwn(cliNames, item.agent) ? item.agent : null;
   if (
@@ -23,8 +33,18 @@ export function notificationAgent(item: InboxNotification): CliAgent | null {
 }
 
 export function notificationSource(item: InboxNotification) {
+  if (item.source)
+    return `Notification from ${{ app: "Lomi", android: "Android", mcp: "MCP" }[item.source]}`;
   const agent = notificationAgent(item);
   return `Notification from ${agent ? cliNames[agent] : "terminal"}`;
+}
+
+export function notificationKindLabel(item: InboxNotification) {
+  return item.kind === "attention"
+    ? "Needs attention"
+    : item.kind === "info"
+      ? "Information"
+      : "Finished";
 }
 
 export function notificationRelativeTime(createdAt: number, now = Date.now()) {

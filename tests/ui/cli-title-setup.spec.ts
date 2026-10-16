@@ -1,3 +1,4 @@
+import { expectRecordedNotification } from "./application-notification-helpers";
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { mockDesktop } from "./desktop";
@@ -254,7 +255,7 @@ test("requires a fresh click after a configuration conflict refreshes the revisi
   });
 
   await group.getByRole("button", { name: "Enable Codex titlebar" }).click();
-  await expect(page.getByRole("alert")).toContainText("configuration changed");
+  await expectRecordedNotification(page, "configuration changed");
   await expect(
     group.getByRole("button", { name: "Enable Codex titlebar" }),
   ).toBeVisible();
