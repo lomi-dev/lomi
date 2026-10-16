@@ -14,6 +14,7 @@ use std::{
         Arc, Condvar, Mutex,
     },
     thread,
+    time::{Duration, Instant},
 };
 use tauri::{
     ipc::{Channel, Response},
@@ -23,10 +24,7 @@ use tauri::{
 #[cfg(unix)]
 use lomi_control_core::{terminal::TerminalControl, terminal_io};
 #[cfg(unix)]
-use std::{
-    os::fd::BorrowedFd,
-    time::{Duration, Instant},
-};
+use std::os::fd::BorrowedFd;
 
 const HIGH_WATER: usize = 128 * 1024;
 
