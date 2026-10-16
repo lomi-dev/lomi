@@ -12,11 +12,13 @@ publish = false
 members = [".", "crates/lomi-control-protocol", "crates/lomi-control-core", "crates/lomi-mcp", "crates/lomi-remote-crypto"]
 default-members = ["."]
 resolver = "2"
-exclude = ["crates/lomi-remote-crypto/vendor/snow", "vendor/glib"]
+exclude = ["crates/lomi-remote-crypto/vendor/snow", "vendor/glib", "vendor/tao"]
 
 [patch.crates-io]
 # GTK 0.18 requires glib 0.18; retain the compatible upstream security backport.
 glib = { path = "vendor/glib" }
+# Preserve AppKit exception propagation through the native event callbacks.
+tao = { path = "vendor/tao" }
 
 [lib]
 # A distinct library name avoids a Windows artifact name collision with the binary.
@@ -38,6 +40,10 @@ mcp-probe = ["objc2-app-kit/NSGraphicsContext"]
 [[example]]
 name = "macos-traffic-lights"
 path = "../tests/native/macos-traffic-lights.rs"
+
+[[example]]
+name = "macos-keyboard-exception"
+path = "../tests/native/macos-keyboard-exception.rs"
 
 [build-dependencies]
 protoc-bin-vendored = { version = "3.2.0" }
@@ -113,5 +119,6 @@ objc2-web-kit = { version = "=0.3.2", default-features = false, features = ["std
 block2 = { version = "=0.6.2" }
 
 [target.'cfg(target_os = "macos")'.dev-dependencies]
-objc2-app-kit = { version = "0.3", default-features = false, features = ["NSBitmapImageRep", "NSImageRep"] }
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSData", "NSDictionary", "NSString"] }
+objc2 = { version = "0.6", features = ["exception"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["NSBitmapImageRep", "NSImageRep", "NSGraphics", "NSGraphicsContext"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSData", "NSDictionary", "NSString", "NSException", "NSObjCRuntime"] }
