@@ -12,11 +12,57 @@ function Run-Installer($file, $arguments) {
 
 Add-Type @'
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Text;
 public static class LomiInstallerWindow {
+    private delegate bool EnumWindowCallback(IntPtr window, IntPtr parameter);
+    [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowCallback callback, IntPtr parameter);
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)] private static extern int GetWindowTextW(IntPtr window, StringBuilder title, int capacity);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)] private static extern int GetWindowTextLengthW(IntPtr window);
+    [DllImport("user32.dll", ExactSpelling = true, SetLastError = true)] public static extern bool PostMessageW(IntPtr window, uint message, UIntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr window, int command);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr window);
+
+    private static List<IntPtr> ProcessWindows(uint processId) {
+        var windows = new List<IntPtr>();
+        EnumWindows((window, parameter) => {
+            uint owner;
+            GetWindowThreadProcessId(window, out owner);
+            if (owner == processId) windows.Add(window);
+            return true;
+        }, IntPtr.Zero);
+        return windows;
+    }
+
+    public static string Title(IntPtr window) {
+        var title = new StringBuilder(GetWindowTextLengthW(window) + 1);
+        GetWindowTextW(window, title, title.Capacity);
+        return title.ToString();
+    }
+
+    public static IntPtr MainWindow(uint processId) {
+        foreach (var window in ProcessWindows(processId)) {
+            if (!IsWindowVisible(window)) continue;
+            var title = Title(window);
+            if (title == "Settings — Lomi") continue;
+            if (title == "Lomi" || title.EndsWith(" — Lomi", StringComparison.Ordinal)) return window;
+        }
+        return IntPtr.Zero;
+    }
+
+    public static string Describe(IntPtr window) {
+        return String.Format("HWND 0x{0:X}, title '{1}', visible={2}, minimized={3}",
+            window.ToInt64(), Title(window), IsWindowVisible(window), IsIconic(window));
+    }
+
+    public static string DescribeProcess(uint processId) {
+        var windows = new List<string>();
+        foreach (var window in ProcessWindows(processId)) windows.Add(Describe(window));
+        return String.Join("; ", windows);
+    }
 }
 '@
 
@@ -25,10 +71,11 @@ function Wait-AppWindow($process, $format) {
     do {
         $process.Refresh()
         if ($process.HasExited) { throw "Installed $format app exited before showing a window" }
-        if ($process.MainWindowHandle -ne 0) { return $process.MainWindowHandle }
+        $window = [LomiInstallerWindow]::MainWindow($process.Id)
+        if ($window -ne [IntPtr]::Zero) { return $window }
         Start-Sleep -Milliseconds 200
     } while ((Get-Date) -lt $deadline)
-    throw "Installed $format app did not show its window"
+    throw "Installed $format app did not show its titled main window: $([LomiInstallerWindow]::DescribeProcess($process.Id))"
 }
 
 function Assert-DuplicateExit($process, $format) {
@@ -44,14 +91,16 @@ function Assert-Restored($process, $window, $format) {
         if ([LomiInstallerWindow]::IsWindowVisible($window) -and -not [LomiInstallerWindow]::IsIconic($window)) { return }
         Start-Sleep -Milliseconds 200
     } while ((Get-Date) -lt $deadline)
-    throw "$format duplicate launch did not restore the primary window"
+    throw "$format duplicate launch did not restore the primary window: $([LomiInstallerWindow]::Describe($window))"
 }
 
-function Close-App($process, $format) {
+function Close-App($process, $window, $format) {
     # Let asynchronous frontend initialization attach its close/save guards.
     Start-Sleep -Seconds 2
-    if (-not $process.CloseMainWindow()) { throw "$format app did not accept its window close request" }
-    if (-not $process.WaitForExit(30000)) { throw "$format window close left process $($process.Id) running after 30 seconds" }
+    if (-not [LomiInstallerWindow]::PostMessageW($window, 0x0010, [UIntPtr]::Zero, [IntPtr]::Zero)) {
+        throw "$format WM_CLOSE failed (Win32 error $([Runtime.InteropServices.Marshal]::GetLastWin32Error())): $([LomiInstallerWindow]::Describe($window))"
+    }
+    if (-not $process.WaitForExit(30000)) { throw "$format window close left process $($process.Id) running after 30 seconds: $([LomiInstallerWindow]::Describe($window))" }
     if ($process.ExitCode -ne 0) { throw "$format app exited with code $($process.ExitCode) after window close" }
 }
 
@@ -94,11 +143,11 @@ foreach ($format in @('nsis', 'msi')) {
         Assert-DuplicateExit $duplicate $format
         $window = Wait-AppWindow $app $format
         Assert-Restored $app $window $format
-        $app.MainWindowTitle | Set-Content "installer-results/$format-window.txt"
+        [LomiInstallerWindow]::Describe($window) | Set-Content "installer-results/$format-window.txt"
         "$format startup burst: primary PID $($app.Id), duplicate PID $($duplicate.Id) exited successfully." | Add-Content installer-results/windows.txt
 
         $null = [LomiInstallerWindow]::ShowWindow($window, 6)
-        if (-not [LomiInstallerWindow]::IsIconic($window)) { throw "$format primary window did not minimize" }
+        if (-not [LomiInstallerWindow]::IsIconic($window)) { throw "$format primary window did not minimize: $([LomiInstallerWindow]::Describe($window))" }
         $duplicate = Start-Process -FilePath $exe -PassThru
         $processes.Add($duplicate)
         Assert-DuplicateExit $duplicate $format
@@ -110,22 +159,22 @@ foreach ($format in @('nsis', 'msi')) {
         New-Item -ItemType Directory -Force $copyDirectory | Out-Null
         $copy = Join-Path $copyDirectory 'lomi.exe'
         Copy-Item $exe $copy -Force
-        $null = [LomiInstallerWindow]::ShowWindow($window, 0)
-        if ([LomiInstallerWindow]::IsWindowVisible($window)) { throw "$format primary window did not hide" }
+        $null = [LomiInstallerWindow]::ShowWindow($window, 6)
+        if (-not [LomiInstallerWindow]::IsIconic($window)) { throw "$format primary window did not minimize before copied-executable launch: $([LomiInstallerWindow]::Describe($window))" }
         $duplicate = Start-Process -FilePath $copy -PassThru
         $processes.Add($duplicate)
         Assert-DuplicateExit $duplicate $format
         Assert-Restored $app $window $format
-        "$format copied executable launch exited successfully and restored hidden primary PID $($app.Id) from a different executable path." | Add-Content installer-results/windows.txt
+        "$format copied executable launch exited successfully and restored minimized primary PID $($app.Id) from a different executable path." | Add-Content installer-results/windows.txt
 
-        Close-App $app $format
+        Close-App $app $window $format
         $previousId = $app.Id
         "$format window close exited primary PID $previousId successfully within 30 seconds." | Add-Content installer-results/windows.txt
         $app = Start-Process -FilePath $exe -PassThru
         $processes.Add($app)
         $window = Wait-AppWindow $app $format
         Assert-Restored $app $window $format
-        Close-App $app $format
+        Close-App $app $window $format
         "$format reopened a fresh process (PID $($app.Id), previous PID $previousId), displayed its window, and exited successfully on close within 30 seconds." | Add-Content installer-results/windows.txt
     } finally {
         foreach ($process in $processes) {
