@@ -137,6 +137,16 @@ fn read(path: &Path) -> Result<Snapshot, String> {
         }
         let mut value: serde_json::Value =
             serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
+        let version: u32 = serde_json::from_value(
+            value
+                .get("version")
+                .cloned()
+                .ok_or("Invalid notification inbox.")?,
+        )
+        .map_err(|error| error.to_string())?;
+        if !matches!(version, 1 | 2) {
+            return Err("Unsupported notification inbox version.".into());
+        }
         let mut retired = HashSet::new();
         for item in value
             .get_mut("items")
@@ -158,9 +168,6 @@ fn read(path: &Path) -> Result<Snapshot, String> {
             }
         }
         let data: Stored = serde_json::from_value(value).map_err(|error| error.to_string())?;
-        if !matches!(data.version, 1 | 2) {
-            return Err("Unsupported notification inbox version.".into());
-        }
         let mut snapshot = Snapshot {
             revision: data.revision,
             items: data.items,
@@ -552,6 +559,111 @@ mod tests {
         assert!(data["items"][0].get("source").is_none());
         assert!(data["items"][0].get("action").is_none());
         assert!(data["items"][1].get("action").is_none());
+    }
+
+    #[test]
+    fn existing_mixed_inbox_preserves_application_metadata_across_agent_updates() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notifications.json");
+        let mut application = serde_json::json!({
+            "id": "notification-2", "kind": "info", "agent": null,
+            "source": "mcp", "action": "retry-mcp-startup",
+            "title": "MCP startup failed", "body": "Detail ".repeat(100),
+            "createdAt": 2, "read": false
+        });
+        let fixture = serde_json::json!({
+            "version": 2, "revision": 2, "items": [
+                {
+                    "id": "notification-1", "kind": "finished", "agent": "codex",
+                    "title": "Agent finished", "body": "Project", "createdAt": 1,
+                    "read": false
+                },
+                application.clone()
+            ]
+        });
+        let bytes = serde_json::to_vec_pretty(&fixture).unwrap();
+        fs::write(&path, &bytes).unwrap();
+        let loaded = read(&path).unwrap();
+        assert_eq!(loaded.revision, 2);
+        assert_eq!(loaded.items.len(), 2);
+        assert_eq!(serde_json::to_value(&loaded.items[0]).unwrap(), application);
+        assert_eq!(loaded.items[1].agent, Some(TitleCli::Codex));
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+
+        let appended = append(
+            &path,
+            NotificationKind::Attention,
+            Some(TitleCli::Claude),
+            "Input needed",
+            "Project",
+            3,
+        )
+        .unwrap();
+        assert_eq!(appended.revision, 3);
+        assert_eq!(appended.items.len(), 3);
+        assert_eq!(
+            serde_json::to_value(&read(&path).unwrap().items[1]).unwrap(),
+            application
+        );
+
+        let marked = update(&path, |snapshot| {
+            mark_read(snapshot, &["notification-2".into()])
+        })
+        .unwrap();
+        application["read"] = serde_json::json!(true);
+        assert_eq!(marked.revision, 4);
+        assert_eq!(
+            serde_json::to_value(&read(&path).unwrap().items[1]).unwrap(),
+            application
+        );
+
+        let dismissed = update(&path, |snapshot| {
+            let before = snapshot.items.len();
+            snapshot.items.retain(|item| item.id != "notification-1");
+            snapshot.items.len() != before
+        })
+        .unwrap();
+        assert_eq!(dismissed.revision, 5);
+        assert_eq!(dismissed.items.len(), 2);
+        let saved: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(saved["version"], 2);
+        assert_eq!(saved["items"][1], application);
+        assert_eq!(
+            serde_json::to_value(&read(&path).unwrap().items[1]).unwrap(),
+            application
+        );
+    }
+
+    #[test]
+    fn future_metadata_reports_unsupported_version_without_changing_history() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notifications.json");
+        let fixture = serde_json::json!({
+            "version": 3, "revision": 1, "futureEnvelope": { "format": "next" },
+            "items": [{
+                "id": "notification-1", "kind": "future-kind", "agent": "goose",
+                "source": "future-source", "action": "future-action",
+                "futureMetadata": { "retry": true }, "title": "Future notification",
+                "body": "Details", "createdAt": 1, "read": false
+            }]
+        });
+        let bytes = serde_json::to_vec_pretty(&fixture).unwrap();
+        fs::write(&path, &bytes).unwrap();
+        let error = read(&path).err().unwrap();
+        assert!(
+            error.contains("Unsupported notification inbox version."),
+            "{error}"
+        );
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        let error = append(&path, NotificationKind::Attention, None, "Input", "", 2)
+            .err()
+            .unwrap();
+        assert!(
+            error.contains("Unsupported notification inbox version."),
+            "{error}"
+        );
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
     }
 
     #[test]
