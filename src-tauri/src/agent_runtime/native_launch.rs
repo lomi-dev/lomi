@@ -35,7 +35,7 @@ pub(crate) type Stdout = std::process::ChildStdout;
 #[cfg(not(target_os = "macos"))]
 pub(crate) type Stderr = std::process::ChildStderr;
 
-pub(crate) struct Child {
+pub(super) struct Child {
     outcome: Option<ExitStatus>,
     retired: bool,
     #[cfg(target_os = "macos")]
