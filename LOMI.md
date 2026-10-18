@@ -111,7 +111,9 @@ or acronym.
   view close; close fences survive the other guards. Legacy migration is a
   bounded data reader with private archives, WAL-aware backups and explicit
   publication/rollback. It never invokes legacy execution or credential cleanup.
-  See `docs/cli-account-capabilities.json` for capability contracts and evidence.
+  `src-tauri/src/agent_runtime/service.rs` (`capabilities()`) and
+  `src-tauri/src/agent_runtime/native_accounts.rs` (`available()`) define
+  capabilities and CLI/platform qualification.
   The old Text/Coding/Gateway execution modes are retired; independent Chat AI
   API connections remain available.
 - `src-tauri/src/chat/` owns SQLite WAL/FULL history, branches, draft revisions,
