@@ -2,7 +2,12 @@ import { cliNames, type CliAgent } from "./cli-agents.ts";
 import type { TerminalContext, TitleProcess } from "./terminal-runtime";
 
 export type AgentUsageStatus =
-  "ready" | "unauthenticated" | "unsupported" | "error" | "rate-limited";
+  | "ready"
+  | "unauthenticated"
+  | "unsupported"
+  | "error"
+  | "rate-limited"
+  | "keychain-access-required";
 
 export interface AgentUsageWindow {
   label: string;

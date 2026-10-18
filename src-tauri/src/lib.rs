@@ -41,6 +41,10 @@ mod cli_notifications;
 mod cli_titles;
 mod cli_usage;
 mod credential_store;
+
+pub fn cursor_usage_keychain_authorization_entry() -> Option<i32> {
+    credential_store::cursor_authorization_entry()
+}
 #[cfg(all(feature = "mcp-probe", target_os = "macos"))]
 #[path = "../../tests/native/mcp-browser-support.rs"]
 mod mcp_browser_probe;
@@ -576,6 +580,7 @@ pub fn run() {
                 terminal::terminal_contexts,
                 cli_titles::inspect_cli_titles,
                 cli_usage::inspect_cli_usage,
+                cli_usage::authorize_cursor_usage_keychain,
                 agent_notifications::request_agent_notification_setup,
                 agent_notifications::inspect_agent_notifications,
                 agent_notifications::enable_agent_notifications,

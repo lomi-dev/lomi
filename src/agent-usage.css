@@ -171,7 +171,8 @@
   white-space: nowrap;
 }
 
-.agent-usage-status[data-stale="true"] {
+.agent-usage-status[data-stale="true"],
+.agent-usage-status[data-attention="true"] {
   color: var(--color-warning);
 }
 
@@ -332,4 +333,12 @@
   .agent-usage-refresh {
     transition: none;
   }
+}
+
+.agent-usage-keychain {
+  margin-top: var(--space-6);
+}
+
+.agent-usage-keychain .menu-item {
+  width: 100%;
 }

@@ -156,6 +156,8 @@ function entryStatus(
         now - entry.updatedAt > staleAfterMs;
       return stale ? "Out of date · showing saved values" : "Current";
     }
+    case "keychain-access-required":
+      return "Keychain access needed";
     case "unauthenticated":
       return "Account not connected";
     case "unsupported":
@@ -178,6 +180,8 @@ function entryDescription(entry: AgentUsageEntry | null) {
       return entry.windows.length
         ? ""
         : "No quota windows are currently available.";
+    case "keychain-access-required":
+      return "Allow Lomi to read Cursor’s saved account from macOS Keychain.";
     case "unauthenticated":
       return "Sign in to this CLI account to view usage.";
     case "unsupported":
@@ -217,6 +221,12 @@ export function useAgentUsage() {
   const inFlight = useRef<InFlightRequest | null>(null);
   const pending = useRef<PendingRefresh>({ requested: false, force: false });
   const alive = useRef(false);
+  const authorization = useRef<AgentUsageTarget | null>(null);
+  const [authorizing, setAuthorizing] = useState<AgentUsageTarget | null>(null);
+  const [authorizationError, setAuthorizationError] = useState<{
+    target: AgentUsageTarget;
+    message: string;
+  } | null>(null);
   const refreshRef = useRef<(force?: boolean) => Promise<void>>(() =>
     Promise.resolve(),
   );
@@ -230,6 +240,12 @@ export function useAgentUsage() {
     const currentTargets = agentUsageTargets(contexts.current);
     if (!native || currentTargets.length === 0) {
       setChecking(false);
+      return Promise.resolve();
+    }
+
+    if (authorization.current) {
+      pending.current.requested = true;
+      pending.current.force ||= force;
       return Promise.resolve();
     }
 
@@ -299,6 +315,58 @@ export function useAgentUsage() {
   }, []);
   refreshRef.current = refresh;
 
+  const authorize = useCallback(async (target: AgentUsageTarget) => {
+    if (
+      !native ||
+      authorization.current ||
+      target.process.cli !== "cursor" ||
+      !agentUsageTargets(contexts.current).some((current) =>
+        sameProcess(current, target),
+      )
+    )
+      return;
+    authorization.current = target;
+    setAuthorizing(target);
+    setAuthorizationError(null);
+    // Invalidate passive reads started before the intentional permission request.
+    const requestEpoch = ++epoch.current;
+    const requestSignature = signature.current;
+    const isCurrent = () =>
+      alive.current &&
+      epoch.current === requestEpoch &&
+      signature.current === requestSignature;
+    try {
+      const result = await api<UsageReply>("authorize_cursor_usage_keychain", {
+        target,
+      });
+      if (isCurrent()) {
+        const accepted = result.entries.filter((entry) =>
+          sameProcess(target, entry),
+        );
+        setEntries((current) => [
+          ...current.filter((entry) => !sameProcess(target, entry)),
+          ...accepted,
+        ]);
+        setRequestFailed(false);
+        setNow(Date.now());
+      }
+    } catch {
+      if (isCurrent())
+        setAuthorizationError({
+          target,
+          message: "The Keychain access request could not finish. Try again.",
+        });
+    } finally {
+      authorization.current = null;
+      if (alive.current) {
+        setAuthorizing(null);
+        pending.current = { requested: false, force: false };
+        // Check the latest processes using the normal native reader; helper completion is not a grant.
+        void refreshRef.current(true);
+      }
+    }
+  }, []);
+
   const observe = useCallback((next: Record<string, TerminalContext>) => {
     contexts.current = next;
     const nextTargets = agentUsageTargets(next);
@@ -308,6 +376,7 @@ export function useAgentUsage() {
     signature.current = nextSignature;
     epoch.current += 1;
     setTargets(nextTargets);
+    setAuthorizationError(null);
     setEntries((current) =>
       current.filter((entry) =>
         nextTargets.some((target) => sameProcess(target, entry)),
@@ -356,6 +425,9 @@ export function useAgentUsage() {
       checking={checking}
       requestFailed={requestFailed}
       now={now}
+      authorizing={authorizing}
+      authorizationError={authorizationError}
+      onAuthorize={authorize}
       onOpen={() => void refreshRef.current(false)}
       onRefresh={() => void refreshRef.current(true)}
     />
@@ -370,6 +442,9 @@ function AgentUsageBar({
   checking,
   requestFailed,
   now,
+  authorizing,
+  authorizationError,
+  onAuthorize,
   onOpen,
   onRefresh,
 }: {
@@ -378,6 +453,9 @@ function AgentUsageBar({
   checking: boolean;
   requestFailed: boolean;
   now: number;
+  authorizing: AgentUsageTarget | null;
+  authorizationError: { target: AgentUsageTarget; message: string } | null;
+  onAuthorize: (target: AgentUsageTarget) => Promise<void>;
   onOpen: () => void;
   onRefresh: () => void;
 }) {
@@ -477,7 +555,7 @@ function AgentUsageBar({
         ? below
         : Math.max(8, triggerBounds.top - menuBounds.height - 6);
     setPosition({ left, top });
-  }, [entries, open, targets]);
+  }, [entries, open, targets, authorizing, authorizationError]);
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -592,13 +670,26 @@ function AgentUsageBar({
               if (event.key === "Tab") {
                 event.preventDefault();
                 event.stopPropagation();
-                if (event.target === agentList.current)
-                  refreshButton.current?.focus({ preventScroll: true });
-                else agentList.current?.focus({ preventScroll: true });
+                const controls = [
+                  agentList.current,
+                  ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
+                    'button[role="menuitem"]:not(:disabled)',
+                  ),
+                ].filter(
+                  (element): element is HTMLDivElement | HTMLButtonElement =>
+                    element !== null,
+                );
+                const index = controls.indexOf(
+                  document.activeElement as HTMLButtonElement,
+                );
+                controls[
+                  (index + (event.shiftKey ? -1 : 1) + controls.length) %
+                    controls.length
+                ]?.focus({ preventScroll: true });
                 return;
               }
               if (
-                agentList.current?.contains(event.target as Node) &&
+                event.target === agentList.current &&
                 [
                   "ArrowUp",
                   "ArrowDown",
@@ -667,6 +758,10 @@ function AgentUsageBar({
                       <span
                         className="agent-usage-status"
                         data-stale={stale || undefined}
+                        data-attention={
+                          entry?.status === "keychain-access-required" ||
+                          undefined
+                        }
                       >
                         {stale && <CircleAlert size={12} aria-hidden="true" />}
                         {statusText}
@@ -678,6 +773,45 @@ function AgentUsageBar({
                     {message && (
                       <p className="agent-usage-description">{message}</p>
                     )}
+                    {target.process.cli === "cursor" &&
+                      entry?.status === "keychain-access-required" && (
+                        <div className="agent-usage-keychain">
+                          <button
+                            type="button"
+                            role="menuitem"
+                            tabIndex={-1}
+                            className="menu-item"
+                            disabled={authorizing !== null}
+                            aria-busy={
+                              Boolean(
+                                authorizing && sameProcess(authorizing, entry),
+                              ) || undefined
+                            }
+                            onClick={() =>
+                              void onAuthorize({
+                                id: entry.id,
+                                process: entry.process,
+                              })
+                            }
+                          >
+                            {authorizing && sameProcess(authorizing, entry)
+                              ? "Waiting for macOS…"
+                              : "Allow Keychain access…"}
+                          </button>
+                          <p className="agent-usage-description">
+                            Choose Always Allow in the macOS dialog for future
+                            checks.
+                          </p>
+                          <p className="agent-usage-description" role="status">
+                            {authorizing && sameProcess(authorizing, entry)
+                              ? "Waiting for macOS…"
+                              : authorizationError &&
+                                  sameProcess(authorizationError.target, entry)
+                                ? authorizationError.message
+                                : ""}
+                          </p>
+                        </div>
+                      )}
                     {entry?.windows.length ? (
                       <div className="agent-usage-windows">
                         {entry.windows.map((window, windowIndex) => (

@@ -218,6 +218,11 @@ or acronym.
   with an explicit availability status. `src-tauri/src/cli_usage.rs` owns
   availability and qualification checks; `tests/native/run-agent-usage-smoke.mjs`
   exercises the native readers.
+- On macOS, passive CLI credential reads keep Keychain interaction disabled.
+  Cursor Keychain authorization requires an explicit action in the main view
+  and runs in a bounded child process of the same Lomi executable. Keep secrets
+  out of helper arguments, output and IPC. After authorization, verify access
+  through the parent's silent reader before reporting successful usage.
 - `src-tauri/src/shell.rs` discovers shell environments and quotes dropped paths;
   `src-tauri/shell/` contains integration hooks. Do not edit user shell profiles.
 - `src-tauri/src/files.rs` handles file access and session saving;

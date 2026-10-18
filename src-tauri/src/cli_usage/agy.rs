@@ -80,7 +80,7 @@ pub(super) fn prepare(paths: &UsageProcessPaths) -> Result<Context, FetchFailure
                 "Antigravity CLI settings could not be read safely.",
             ),
             AuthReadError::Unsupported(message) => failure(UsageStatus::Unsupported, message),
-            AuthReadError::Error(_) => failure(
+            AuthReadError::Error(_) | AuthReadError::KeychainAccessRequired => failure(
                 UsageStatus::Error,
                 "Antigravity CLI settings could not be read safely.",
             ),

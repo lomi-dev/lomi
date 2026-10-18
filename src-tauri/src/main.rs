@@ -2,6 +2,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
+    if let Some(code) = lomi_lib::cursor_usage_keychain_authorization_entry() {
+        std::process::exit(code);
+    }
     #[cfg(target_os = "macos")]
     if let Some(code) = lomi_lib::agent_runtime_host_worker_entry() {
         std::process::exit(code);

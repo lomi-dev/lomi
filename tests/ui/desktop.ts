@@ -166,6 +166,10 @@ export async function mockDesktop(
         cliUsageEntries: [] as any[],
         cliUsageCalls: [] as { targets: any[]; force: boolean }[],
         cliUsageDelay: 0,
+        cliUsageAuthorizationCalls: [] as any[],
+        cliUsageAuthorizationDelay: 0,
+        cliUsageAuthorizationError: "",
+        cliUsageAuthorizationEntries: null as any[] | null,
         cliUsageError: "",
         mcpClients: [] as any[],
         mcpInstallErrors: {} as Record<string, string>,
@@ -1437,19 +1441,33 @@ export async function mockDesktop(
           }
           if (command === "inspect_cli_titles")
             return desktop.__nativeTest.cliTitleSetup;
+          if (command === "authorize_cursor_usage_keychain") {
+            const mock = desktop.__nativeTest;
+            mock.cliUsageAuthorizationCalls.push(structuredClone(args.target));
+            const entries = structuredClone(
+              mock.cliUsageAuthorizationEntries ?? [],
+            );
+            await new Promise((resolve) =>
+              setTimeout(resolve, mock.cliUsageAuthorizationDelay),
+            );
+            if (mock.cliUsageAuthorizationError)
+              throw new Error(mock.cliUsageAuthorizationError);
+            return { entries };
+          }
           if (command === "inspect_cli_usage") {
             const mock = desktop.__nativeTest;
             mock.cliUsageCalls.push({
               targets: structuredClone(args.targets),
               force: args.force,
             });
+            const usageEntries = structuredClone(mock.cliUsageEntries);
             if (mock.cliUsageDelay)
               await new Promise((resolve) =>
                 setTimeout(resolve, mock.cliUsageDelay),
               );
             if (mock.cliUsageError) throw new Error(mock.cliUsageError);
             return {
-              entries: mock.cliUsageEntries
+              entries: usageEntries
                 .filter((entry: any) =>
                   args.targets.some(
                     (target: any) =>

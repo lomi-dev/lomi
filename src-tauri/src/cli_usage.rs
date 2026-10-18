@@ -35,6 +35,7 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 pub struct CliUsage {
     cache: Mutex<UsageCache>,
     network_slots: Arc<Semaphore>,
+    cursor_authorization: Semaphore,
     client: OnceLock<reqwest::Client>,
 }
 
@@ -43,6 +44,7 @@ impl Default for CliUsage {
         Self {
             cache: Mutex::new(UsageCache::default()),
             network_slots: Arc::new(Semaphore::new(4)),
+            cursor_authorization: Semaphore::new(1),
             client: OnceLock::new(),
         }
     }
@@ -74,6 +76,7 @@ enum ProfileQuotaError {
 enum UsageStatus {
     Ready,
     Unauthenticated,
+    KeychainAccessRequired,
     Unsupported,
     Error,
     RateLimited,
@@ -104,7 +107,7 @@ struct UsageEntry {
     source: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageTarget {
     id: String,
@@ -136,6 +139,83 @@ pub async fn inspect_cli_usage(
     })
     .await;
     Ok(UsageResponse { entries })
+}
+
+const CURSOR_KEYCHAIN_GUIDANCE: &str =
+    "macOS needs your permission for Lomi to read Cursor's saved sign-in.";
+
+#[tauri::command]
+pub async fn authorize_cursor_usage_keychain(
+    window: Window,
+    terminals: State<'_, Terminals>,
+    state: State<'_, CliUsage>,
+    target: UsageTarget,
+) -> Result<UsageResponse, String> {
+    main_window(&window)?;
+    let _permit = state
+        .cursor_authorization
+        .try_acquire()
+        .map_err(|_| "A Keychain access request is already in progress.")?;
+    validate_cursor_authorization_target(terminals.inner(), &target).await?;
+    #[cfg(target_os = "macos")]
+    {
+        let initial = inspect_target(terminals.inner(), state.inner(), target.clone(), true).await;
+        if initial.status != UsageStatus::KeychainAccessRequired {
+            return Ok(UsageResponse {
+                entries: vec![initial],
+            });
+        }
+        let helper = crate::credential_store::authorize_cursor().await;
+        // A changed process/environment must not inherit the authorization result.
+        validate_cursor_authorization_target(terminals.inner(), &target).await?;
+        // Even a successful helper can mean Allow Once. Only the normal no-UI
+        // reader determines whether the app now has persistent access.
+        let entry = inspect_target(terminals.inner(), state.inner(), target, true).await;
+        if entry.status == UsageStatus::KeychainAccessRequired {
+            if let Err(message) = helper {
+                return Err(message.to_owned());
+            }
+        }
+        Ok(UsageResponse {
+            entries: vec![entry],
+        })
+    }
+    #[cfg(not(target_os = "macos"))]
+    Err("Cursor Keychain access is available only on macOS.".to_owned())
+}
+
+async fn validate_cursor_authorization_target(
+    terminals: &Terminals,
+    target: &UsageTarget,
+) -> Result<(), String> {
+    terminals.check_title_process(&target.id, target.process)?;
+    let process = target.process;
+    if process.cli != TitleCli::Cursor {
+        return Err("Keychain access can only be requested for a running Cursor CLI.".to_owned());
+    }
+    let paths =
+        tauri::async_runtime::spawn_blocking(move || cli_titles::usage_process_paths(process))
+            .await
+            .map_err(|_| "Cannot safely inspect Cursor's native account environment.")?
+            .map_err(|_| "Cannot safely inspect Cursor's native account environment.")?;
+    terminals.check_title_process(&target.id, process)?;
+    if !cursor_keychain_authorization_eligible(process.cli, &paths) {
+        return Err(
+            "This Cursor process does not use the default macOS Keychain account.".to_owned(),
+        );
+    }
+    Ok(())
+}
+
+fn cursor_keychain_authorization_eligible(cli: TitleCli, paths: &UsageProcessPaths) -> bool {
+    cfg!(target_os = "macos")
+        && cli == TitleCli::Cursor
+        && !paths.has_auth_argument_override
+        && !paths.has_cursor_api_key
+        && !paths.has_cursor_custom_backend
+        && !paths.has_cursor_custom_config_dir
+        && cursor_store(paths) == CursorStore::Default
+        && process_home_matches(paths)
 }
 
 async fn map_bounded_ordered<I, F, Fut, R>(items: I, map: F) -> Vec<R>
@@ -917,6 +997,7 @@ enum NativeCredentialResult {
 #[derive(Debug)]
 enum AuthReadError {
     Missing,
+    KeychainAccessRequired,
     Unsupported(&'static str),
     Error(&'static str),
 }
@@ -961,14 +1042,13 @@ fn native_namespace(
             "cursor-override".to_owned()
         }
         TitleCli::Cursor if paths.has_cursor_custom_config_dir => "cursor-custom-config".to_owned(),
-        TitleCli::Cursor => match paths.cursor_credential_store.as_deref() {
-            Some("file") => format!("cursor-file-{}", cursor_config_scope(paths)),
-            Some("memory") => format!("cursor-memory-{}", cursor_config_scope(paths)),
-            Some(_) => format!("cursor-unknown-store-{}", cursor_config_scope(paths)),
-            None if cfg!(target_os = "macos") => {
+        TitleCli::Cursor => match cursor_store(paths) {
+            CursorStore::File => format!("cursor-file-{}", cursor_config_scope(paths)),
+            CursorStore::Memory => format!("cursor-memory-{}", cursor_config_scope(paths)),
+            CursorStore::Default if cfg!(target_os = "macos") => {
                 format!("cursor-keychain-{}", cursor_config_scope(paths))
             }
-            None => format!("cursor-file-{}", cursor_config_scope(paths)),
+            CursorStore::Default => format!("cursor-file-{}", cursor_config_scope(paths)),
         },
         TitleCli::Kimi => format!("kimi-{}", kimi_config_scope(paths)?),
         _ => "unsupported".to_owned(),
@@ -1056,6 +1136,11 @@ fn resolve_native_credentials(
             namespace,
             status: UsageStatus::Unauthenticated,
             message: unauthenticated_message(cli),
+        },
+        Err(AuthReadError::KeychainAccessRequired) => NativeCredentialResult::Status {
+            namespace,
+            status: UsageStatus::KeychainAccessRequired,
+            message: CURSOR_KEYCHAIN_GUIDANCE,
         },
         Err(AuthReadError::Unsupported(message)) => NativeCredentialResult::Status {
             namespace,
@@ -1286,7 +1371,17 @@ fn read_codex_keyring(directory: &Path) -> Result<Option<Value>, AuthReadError> 
 }
 
 fn read_native_keychain(service: &str, account: &str) -> Result<Option<String>, AuthReadError> {
-    match crate::credential_store::get_password(service, account, MAX_CREDENTIAL_BYTES) {
+    decode_native_keychain(crate::credential_store::get_password(
+        service,
+        account,
+        MAX_CREDENTIAL_BYTES,
+    ))
+}
+
+fn decode_native_keychain(
+    result: keyring::Result<String>,
+) -> Result<Option<String>, AuthReadError> {
+    match result {
         Ok(secret) if secret.len() <= MAX_CREDENTIAL_BYTES => {
             #[cfg(target_os = "macos")]
             {
@@ -1398,6 +1493,43 @@ fn claude_keychain_account(paths: &UsageProcessPaths) -> String {
         .to_owned()
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CursorStore {
+    Default,
+    File,
+    Memory,
+}
+
+fn cursor_store(paths: &UsageProcessPaths) -> CursorStore {
+    match paths.cursor_credential_store.as_deref() {
+        Some("file") => CursorStore::File,
+        Some("memory") => CursorStore::Memory,
+        _ => CursorStore::Default,
+    }
+}
+
+fn read_cursor_keychain() -> Result<Option<String>, AuthReadError> {
+    let result = crate::credential_store::get_password(
+        crate::credential_store::CURSOR_SERVICE,
+        crate::credential_store::CURSOR_ACCOUNT,
+        MAX_CREDENTIAL_BYTES,
+    );
+    decode_cursor_keychain(result)
+}
+
+fn decode_cursor_keychain(
+    result: keyring::Result<String>,
+) -> Result<Option<String>, AuthReadError> {
+    if result
+        .as_ref()
+        .err()
+        .is_some_and(crate::credential_store::is_keychain_permission_denied)
+    {
+        return Err(AuthReadError::KeychainAccessRequired);
+    }
+    decode_native_keychain(result)
+}
+
 fn resolve_cursor(
     paths: &UsageProcessPaths,
     namespace: &UsageNamespace,
@@ -1415,24 +1547,13 @@ fn resolve_cursor(
             "Cursor uses a custom configuration directory, so Lomi cannot match its saved account safely.",
         ));
     }
-    let store = paths
-        .cursor_credential_store
-        .as_deref()
-        .map(str::to_ascii_lowercase);
-    if store.as_deref() == Some("memory") {
+    let store = cursor_store(paths);
+    if store == CursorStore::Memory {
         return Err(AuthReadError::Unsupported(
             "Cursor uses session-only credentials that Lomi cannot read for account usage.",
         ));
     }
-    if store
-        .as_deref()
-        .is_some_and(|store| !matches!(store, "file" | "memory"))
-    {
-        return Err(AuthReadError::Unsupported(
-            "Cursor uses an unsupported credential store for account usage.",
-        ));
-    }
-    let use_file = store.as_deref() == Some("file") || !cfg!(target_os = "macos");
+    let use_file = store == CursorStore::File || !cfg!(target_os = "macos");
     let token = if use_file {
         let document = read_optional_json(&namespace.directory.join("auth.json"))?;
         let Some(document) = document else {
@@ -1459,7 +1580,7 @@ fn resolve_cursor(
                 "Cursor uses the current macOS keychain with a custom process home, so Lomi cannot match the right account safely.",
             ));
         }
-        let Some(token) = read_native_keychain("cursor-access-token", "cursor-user")? else {
+        let Some(token) = read_cursor_keychain()? else {
             return Ok(None);
         };
         token
@@ -3133,6 +3254,129 @@ key = "oauth/kimi-code"
 provider = "managed:kimi-code"
 model = "k3"
 "#
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn cursor_permission_status_is_specific_to_native_access_denial() {
+        use security_framework::base::Error;
+        for code in [-25293, -25308] {
+            assert!(matches!(
+                decode_cursor_keychain(Err(keyring::Error::PlatformFailure(Box::new(
+                    Error::from_code(code)
+                )))),
+                Err(AuthReadError::KeychainAccessRequired)
+            ));
+            assert!(matches!(
+                decode_native_keychain(Err(keyring::Error::PlatformFailure(Box::new(
+                    Error::from_code(code)
+                )))),
+                Err(AuthReadError::Error(_))
+            ));
+        }
+        assert!(matches!(
+            decode_cursor_keychain(Err(keyring::Error::NoEntry)),
+            Ok(None)
+        ));
+        assert!(matches!(
+            decode_cursor_keychain(Err(keyring::Error::TooLong("fixture".into(), 1))),
+            Err(AuthReadError::Error(_))
+        ));
+        assert!(matches!(
+            decode_cursor_keychain(Err(keyring::Error::NoStorageAccess(Box::new(
+                std::io::Error::other("busy")
+            )))),
+            Err(AuthReadError::Error(_))
+        ));
+        assert_eq!(
+            serde_json::to_value(UsageStatus::KeychainAccessRequired).unwrap(),
+            "keychain-access-required"
+        );
+    }
+
+    #[test]
+    fn cursor_store_matches_exact_installed_cli_selection() {
+        for (value, expected) in [
+            (None, CursorStore::Default),
+            (Some("file"), CursorStore::File),
+            (Some("memory"), CursorStore::Memory),
+            (Some("FILE"), CursorStore::Default),
+            (Some("Memory"), CursorStore::Default),
+            (Some("unknown"), CursorStore::Default),
+            (Some(""), CursorStore::Default),
+        ] {
+            let paths = UsageProcessPaths {
+                cursor_credential_store: value.map(str::to_owned),
+                home: std::env::var_os("HOME").map(PathBuf::from),
+                ..UsageProcessPaths::default()
+            };
+            assert_eq!(cursor_store(&paths), expected);
+            {
+                let namespace = native_namespace(TitleCli::Cursor, &paths).unwrap();
+                let prefix = match expected {
+                    CursorStore::Memory => "cursor-memory-",
+                    CursorStore::File => "cursor-file-",
+                    CursorStore::Default if cfg!(target_os = "macos") => "cursor-keychain-",
+                    CursorStore::Default => "cursor-file-",
+                };
+                assert!(namespace.store.starts_with(prefix));
+            }
+        }
+    }
+
+    #[test]
+    fn cursor_authorization_rejects_other_processes_and_credential_overrides() {
+        let paths = UsageProcessPaths {
+            home: std::env::var_os("HOME").map(PathBuf::from),
+            ..UsageProcessPaths::default()
+        };
+        assert_eq!(
+            cursor_keychain_authorization_eligible(TitleCli::Cursor, &paths),
+            cfg!(target_os = "macos")
+        );
+        assert!(!cursor_keychain_authorization_eligible(
+            TitleCli::Claude,
+            &paths
+        ));
+        for changed in [
+            UsageProcessPaths {
+                has_auth_argument_override: true,
+                ..paths.clone()
+            },
+            UsageProcessPaths {
+                has_cursor_api_key: true,
+                ..paths.clone()
+            },
+            UsageProcessPaths {
+                has_cursor_custom_backend: true,
+                ..paths.clone()
+            },
+            UsageProcessPaths {
+                has_cursor_custom_config_dir: true,
+                ..paths.clone()
+            },
+            UsageProcessPaths {
+                cursor_credential_store: Some("file".into()),
+                ..paths.clone()
+            },
+            UsageProcessPaths {
+                cursor_credential_store: Some("memory".into()),
+                ..paths.clone()
+            },
+            UsageProcessPaths {
+                home: Some(PathBuf::from("/lomi-invalid-home")),
+                ..paths.clone()
+            },
+            UsageProcessPaths {
+                home: None,
+                ..paths.clone()
+            },
+        ] {
+            assert!(!cursor_keychain_authorization_eligible(
+                TitleCli::Cursor,
+                &changed
+            ));
+        }
     }
 
     fn kimi_test_paths(home: &Path) -> UsageProcessPaths {

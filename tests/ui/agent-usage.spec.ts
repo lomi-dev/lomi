@@ -1066,3 +1066,203 @@ test("account rows keep a good snapshot through duplicate failure and representa
   await expect(menu.getByRole("group")).toHaveCount(2);
   await expect(menu.getByRole("progressbar")).toHaveCount(2);
 });
+
+const cursorDenied = (id = "cursor-session", pid = 901) =>
+  entry(id, "cursor", pid, [], {
+    status: "keychain-access-required",
+    updatedAt: null,
+  });
+
+async function setupCursorKeychain(page: Page) {
+  await mockDesktop(page, false);
+  await page.goto("/");
+  await expect(page.locator(".xterm-screen")).toBeVisible();
+  await setUsage(page, { "cursor-session": context("cursor", 901) }, [
+    cursorDenied(),
+  ]);
+  const trigger = page.locator(".agent-usage-trigger");
+  await expect(trigger).toContainText("—");
+  await trigger.click();
+  const menu = page.locator(".agent-usage-menu");
+  await expect(menu).toContainText("Keychain access needed");
+  return {
+    trigger,
+    menu,
+    allow: menu.getByRole("menuitem", { name: "Allow Keychain access…" }),
+  };
+}
+
+async function authorizationCalls(page: Page) {
+  return page.evaluate(
+    () => (window as any).__nativeTest.cliUsageAuthorizationCalls,
+  );
+}
+
+test("Cursor Keychain authorization is explicit and keyboard accessible", async ({
+  page,
+}) => {
+  const { trigger, menu, allow } = await setupCursorKeychain(page);
+  await page.clock.install();
+  await menu.getByRole("menuitem", { name: "Refresh", exact: true }).click();
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await page.clock.runFor(16_000);
+  expect(await authorizationCalls(page)).toEqual([]);
+  await expect(allow).toBeEnabled();
+  await page.keyboard.press("Home");
+  await expect(allow).toBeFocused();
+  await page.evaluate(() => {
+    const native = (window as any).__nativeTest;
+    native.cliUsageAuthorizationDelay = 600;
+    native.cliUsageAuthorizationEntries = native.cliUsageEntries;
+  });
+  await page.keyboard.press("Enter");
+  await expect(
+    menu.getByRole("menuitem", { name: "Waiting for macOS…" }),
+  ).toBeDisabled();
+  expect(await authorizationCalls(page)).toHaveLength(1);
+  await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+  await expect(menu).toHaveCount(0);
+  await trigger.click();
+  const waiting = menu.getByRole("menuitem", { name: "Waiting for macOS…" });
+  await expect(waiting).toBeDisabled();
+  await waiting.evaluate((button: HTMLButtonElement) => button.click());
+  expect(await authorizationCalls(page)).toHaveLength(1);
+  await setUsage(page, { "cursor-session": context("cursor", 901) }, [
+    entry("cursor-session", "cursor", 901, [quota("Monthly", 72)]),
+  ]);
+  await page.clock.runFor(1000);
+  await expectProviderValue(trigger, "cursor", "72%");
+  await expect(allow).toHaveCount(0);
+  expect((await usageCalls(page)).at(-1).force).toBe(true);
+});
+
+test("cancelled Cursor authorization stays recoverable and does not expose native errors", async ({
+  page,
+}) => {
+  const { menu, allow } = await setupCursorKeychain(page);
+  await page.evaluate(() => {
+    (window as any).__nativeTest.cliUsageAuthorizationError =
+      "secret native error";
+  });
+  await allow.click();
+  await expect(menu.getByRole("status")).toContainText(
+    "The Keychain access request could not finish. Try again.",
+  );
+  await expect(menu).not.toContainText("secret native error");
+  await expect(allow).toBeEnabled();
+  await page.evaluate(() => {
+    (window as any).__nativeTest.cliUsageAuthorizationError = "";
+  });
+  await allow.click();
+  await expect
+    .poll(async () => (await authorizationCalls(page)).length)
+    .toBe(2);
+  await expect(allow).toBeEnabled();
+  await expect(menu).toContainText("Keychain access needed");
+});
+
+test("Cursor authorization ignores results for a replaced process", async ({
+  page,
+}) => {
+  const { trigger, menu, allow } = await setupCursorKeychain(page);
+  await page.evaluate(
+    (entries) => {
+      const native = (window as any).__nativeTest;
+      native.cliUsageAuthorizationDelay = 700;
+      native.cliUsageAuthorizationEntries = entries;
+    },
+    [entry("cursor-session", "cursor", 901, [quota("Old account", 3)])],
+  );
+  await allow.click();
+  await setUsage(page, { "cursor-session": context("cursor", 902) }, [
+    cursorDenied("cursor-session", 902),
+  ]);
+  await expect(
+    menu.getByRole("menuitem", { name: "Waiting for macOS…" }),
+  ).toHaveCount(0);
+  await expect(allow).toBeEnabled();
+  await expect(menu).not.toContainText("Old account");
+  await expectProviderValue(trigger, "cursor", "—");
+  await allow.click();
+  await expect
+    .poll(async () => (await authorizationCalls(page)).length)
+    .toBe(2);
+  expect((await authorizationCalls(page))[1].process.pid).toBe(902);
+});
+
+test("Cursor Keychain recovery fits narrow and desktop menus in both appearances", async ({
+  page,
+}) => {
+  const { trigger, menu } = await setupCursorKeychain(page);
+  for (const width of [360, 800]) {
+    for (const colorScheme of ["light", "dark"] as const) {
+      if (await menu.isVisible()) await page.keyboard.press("Escape");
+      await page.setViewportSize({ width, height: 600 });
+      await page.emulateMedia({ colorScheme });
+      await expect
+        .poll(() =>
+          page.evaluate(() => document.documentElement.dataset.appearance),
+        )
+        .toBe(colorScheme);
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
+      await trigger.click();
+      await expect(
+        menu.getByRole("menuitem", { name: "Allow Keychain access…" }),
+      ).toBeVisible();
+      const bounds = await menu.boundingBox();
+      expect(bounds!.x).toBeGreaterThanOrEqual(8);
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width - 8);
+      await page.screenshot({
+        path: `/tmp/lomi-cursor-keychain-${width}-${colorScheme}.png`,
+      });
+    }
+  }
+});
+
+test("Cursor grant recovery ignores an older passive read and disables other grants", async ({
+  page,
+}) => {
+  const { menu, allow, trigger } = await setupCursorKeychain(page);
+  const contexts = {
+    "cursor-session": context("cursor", 901),
+    "other-cursor": context("cursor", 903),
+  };
+  await setUsage(page, contexts, [
+    cursorDenied(),
+    cursorDenied("other-cursor", 903),
+  ]);
+  await expect(
+    menu.getByRole("menuitem", { name: "Allow Keychain access…" }),
+  ).toHaveCount(2);
+  await page.evaluate(() => {
+    const native = (window as any).__nativeTest;
+    native.cliUsageDelay = 700;
+    native.cliUsageAuthorizationDelay = 100;
+  });
+  const before = (await usageCalls(page)).length;
+  await menu.getByRole("menuitem", { name: "Refresh", exact: true }).click();
+  await expect
+    .poll(async () => (await usageCalls(page)).length)
+    .toBe(before + 1);
+  await allow.first().click();
+  await expect(
+    menu.getByRole("menuitem", { name: "Allow Keychain access…" }),
+  ).toBeDisabled();
+  const ready = entry("cursor-session", "cursor", 901, [quota("Monthly", 64)]);
+  await page.evaluate((ready) => {
+    const native = (window as any).__nativeTest;
+    native.cliUsageEntries = [
+      ready,
+      ...native.cliUsageEntries.filter((value: any) => value.id !== ready.id),
+    ];
+    native.cliUsageAuthorizationEntries = [ready];
+  }, ready);
+  await expectProviderValue(trigger, "cursor", "64%");
+  await expect(menu.getByRole("progressbar")).toHaveAttribute("value", "64");
+  expect(await authorizationCalls(page)).toHaveLength(1);
+});
