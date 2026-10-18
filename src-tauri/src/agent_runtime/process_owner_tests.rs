@@ -8,6 +8,63 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[test]
+fn resolved_client_still_requires_trusted_executable_identity() {
+    use crate::{cli_catalog::TitleCli, shell, terminal::Shells};
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = tempfile::tempdir().unwrap();
+    let bin = root.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    let client = bin.join("kimi");
+    let launched = root.path().join("launched");
+    fs::write(
+        &client,
+        format!(
+            "#!/bin/sh\nprintf launched > {}\n",
+            shell::quote(launched.to_str().unwrap(), "sh").unwrap()
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(&client, fs::Permissions::from_mode(0o700)).unwrap();
+    let wrapper = root.path().join("shell");
+    fs::write(
+        &wrapper,
+        format!(
+            "#!/bin/sh\nexport PATH={}\nexec /bin/sh \"$@\"\n",
+            shell::quote(bin.to_str().unwrap(), "sh").unwrap()
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(&wrapper, fs::Permissions::from_mode(0o700)).unwrap();
+    let profile = shell::Profile {
+        id: "test:sh".into(),
+        name: "sh".into(),
+        kind: "sh".into(),
+        program: wrapper.to_str().unwrap().into(),
+        distro: None,
+        home: root.path().to_str().unwrap().into(),
+    };
+    let shells = Shells {
+        profiles: vec![profile],
+        integration: root.path().join("integration"),
+    };
+    shell::prepare(&shells.integration).unwrap();
+    let profile = super::process_owner::shell_profile(&shells, "test:sh").unwrap();
+    let program = super::process_owner::resolve(
+        &shells,
+        profile,
+        root.path().to_str().unwrap(),
+        TitleCli::Kimi,
+    )
+    .unwrap();
+    assert_eq!(program, client.canonicalize().unwrap());
+    assert!(super::process_owner::executable(&program).is_ok());
+    fs::set_permissions(&client, fs::Permissions::from_mode(0o722)).unwrap();
+    assert!(super::process_owner::executable(&program).is_err());
+    assert!(!launched.exists());
+}
+
 fn fixture(script: &str) -> (tempfile::TempDir, OwnedChild) {
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("owned-process.sh");

@@ -14,6 +14,16 @@ pub(crate) fn shell_profile<'a>(shells: &'a Shells, id: &str) -> Result<&'a Shel
     Ok(profile)
 }
 
+#[cfg(any(test, not(target_os = "macos")))]
+pub(super) fn resolve(
+    shells: &Shells,
+    shell: &ShellProfile,
+    cwd: &str,
+    cli: crate::cli_catalog::TitleCli,
+) -> Result<PathBuf, String> {
+    Ok(crate::cli_launch::resolve_cli(shell, cwd, &shells.integration, cli)?.program)
+}
+
 fn terminate(child: &mut Child) {
     #[cfg(unix)]
     {
