@@ -427,7 +427,7 @@ impl Push {
         let current = auth
             .remote_binding()
             .map_err(|_| PushRequestError::local("SESSION_REQUIRED"))?;
-        if !current.same_authority(&b) {
+        if !current.same_authority(b) {
             return Err("SESSION_REQUIRED".into());
         }
         let mut c = self.inner.lock().unwrap();

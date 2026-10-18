@@ -24,8 +24,12 @@ process.stdin.on("data", (chunk) => {
     if (i < 0) break;
     const raw = pending.subarray(0, i);
     pending = pending.subarray(i + 1);
-    if (raw.length > MAX_LINE || ++queued > 128 ||
-        (queuedBytes += raw.length) > MAX_QUEUED_BYTES) return stop();
+    if (
+      raw.length > MAX_LINE ||
+      ++queued > 128 ||
+      (queuedBytes += raw.length) > MAX_QUEUED_BYTES
+    )
+      return stop();
     queue = queue
       .then(async () => {
         if (closed) return;

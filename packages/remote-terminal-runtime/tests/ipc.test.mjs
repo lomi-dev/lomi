@@ -91,26 +91,93 @@ test("oversized private IPC fails closed without exposing request bytes", async 
 });
 
 test("native restore accepts bounded large checkpoints and preserves suffix parser", async () => {
-  const original = helper(), restored = helper();
+  const original = helper(),
+    restored = helper();
   try {
     const base = { sessionId, epoch };
-    assert.equal((await original.request({ ...base, id: 1, op: "create", seq: 0, cols: 500, rows: 24 })).ok, true);
-    await original.request({ ...base, id: 2, op: "write", seq: 1, data: Buffer.from("before\x1b[3").toString("base64") });
-    const snapshot = (await original.request({ ...base, id: 3, op: "snapshot", seq: 1 })).result;
-    const request = { ...base, id: 1, op: "restore", seq: snapshot.throughSeq,
-      cols: snapshot.cols, rows: snapshot.rows, state: snapshot.state, suffix: snapshot.suffix };
+    assert.equal(
+      (
+        await original.request({
+          ...base,
+          id: 1,
+          op: "create",
+          seq: 0,
+          cols: 500,
+          rows: 24,
+        })
+      ).ok,
+      true,
+    );
+    await original.request({
+      ...base,
+      id: 2,
+      op: "write",
+      seq: 1,
+      data: Buffer.from("before\x1b[3").toString("base64"),
+    });
+    const snapshot = (
+      await original.request({ ...base, id: 3, op: "snapshot", seq: 1 })
+    ).result;
+    const request = {
+      ...base,
+      id: 1,
+      op: "restore",
+      seq: snapshot.throughSeq,
+      cols: snapshot.cols,
+      rows: snapshot.rows,
+      state: snapshot.state,
+      suffix: snapshot.suffix,
+    };
     assert.ok(Buffer.byteLength(JSON.stringify(request)) > 32768);
     assert.equal((await restored.request(request)).ok, true);
     for (const h of [original, restored]) {
-      assert.equal((await h.request({ ...base, id: 4, op: "resize", seq: 2, cols: 80, rows: 24 })).ok, true);
-      assert.equal((await h.request({ ...base, id: 5, op: "write", seq: 3, data: Buffer.from("1mRED").toString("base64") })).ok, true);
+      assert.equal(
+        (
+          await h.request({
+            ...base,
+            id: 4,
+            op: "resize",
+            seq: 2,
+            cols: 80,
+            rows: 24,
+          })
+        ).ok,
+        true,
+      );
+      assert.equal(
+        (
+          await h.request({
+            ...base,
+            id: 5,
+            op: "write",
+            seq: 3,
+            data: Buffer.from("1mRED").toString("base64"),
+          })
+        ).ok,
+        true,
+      );
     }
-    assert.deepEqual((await original.request({ ...base, id: 6, op: "snapshot", seq: 3 })).result,
-      (await restored.request({ ...base, id: 6, op: "snapshot", seq: 3 })).result);
-    assert.equal((await restored.request({ ...base, id: 7, op: "write", seq: 4,
-      data: Buffer.alloc(16385).toString("base64") })).error, "INVALID_DATA");
+    assert.deepEqual(
+      (await original.request({ ...base, id: 6, op: "snapshot", seq: 3 }))
+        .result,
+      (await restored.request({ ...base, id: 6, op: "snapshot", seq: 3 }))
+        .result,
+    );
+    assert.equal(
+      (
+        await restored.request({
+          ...base,
+          id: 7,
+          op: "write",
+          seq: 4,
+          data: Buffer.alloc(16385).toString("base64"),
+        })
+      ).error,
+      "INVALID_DATA",
+    );
   } finally {
-    original.child.kill(); restored.child.kill();
+    original.child.kill();
+    restored.child.kill();
   }
 });
 
@@ -118,8 +185,35 @@ test("invalid native restore does not consume a session slot", async () => {
   const h = helper();
   try {
     const base = { sessionId, epoch };
-    assert.equal((await h.request({ ...base, id: 1, op: "restore", seq: 7, cols: 20, rows: 5,
-      state: {}, suffix: "" })).ok, false);
-    assert.equal((await h.request({ ...base, id: 2, op: "create", seq: 0, cols: 20, rows: 5 })).ok, true);
-  } finally { h.child.kill(); }
+    assert.equal(
+      (
+        await h.request({
+          ...base,
+          id: 1,
+          op: "restore",
+          seq: 7,
+          cols: 20,
+          rows: 5,
+          state: {},
+          suffix: "",
+        })
+      ).ok,
+      false,
+    );
+    assert.equal(
+      (
+        await h.request({
+          ...base,
+          id: 2,
+          op: "create",
+          seq: 0,
+          cols: 20,
+          rows: 5,
+        })
+      ).ok,
+      true,
+    );
+  } finally {
+    h.child.kill();
+  }
 });

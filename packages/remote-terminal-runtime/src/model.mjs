@@ -50,7 +50,9 @@ export class TerminalModels {
       !UUID.test(req.sessionId) ||
       !UUID.test(req.epoch) ||
       !validSeq(req.seq) ||
-      !["create", "restore", "write", "resize", "snapshot", "drop"].includes(req.op)
+      !["create", "restore", "write", "resize", "snapshot", "drop"].includes(
+        req.op,
+      )
     )
       throw new Error("INVALID_REQUEST");
     const allowed = [
@@ -67,7 +69,11 @@ export class TerminalModels {
       throw new Error("INVALID_REQUEST");
     const old = this.sessions.get(req.sessionId);
     if (["create", "restore"].includes(req.op)) {
-      if (old || this.sessions.size >= 32 || (req.op === "create" && req.seq !== 0))
+      if (
+        old ||
+        this.sessions.size >= 32 ||
+        (req.op === "create" && req.seq !== 0)
+      )
         throw new Error("SESSION_LIMIT");
       dims(req.cols, req.rows);
       const term = new headless.Terminal({
@@ -94,12 +100,19 @@ export class TerminalModels {
       try {
         if (req.op === "restore") {
           validateSnapshot(req.state);
-          if (req.state.cols !== req.cols || req.state.rows !== req.rows ||
-              typeof req.suffix !== "string" || req.suffix.length > Math.ceil(MAX_SUFFIX / 3) * 4 ||
-              !/^[A-Za-z0-9+/]*={0,2}$/.test(req.suffix))
+          if (
+            req.state.cols !== req.cols ||
+            req.state.rows !== req.rows ||
+            typeof req.suffix !== "string" ||
+            req.suffix.length > Math.ceil(MAX_SUFFIX / 3) * 4 ||
+            !/^[A-Za-z0-9+/]*={0,2}$/.test(req.suffix)
+          )
             throw new Error("INVALID_REQUEST");
           const suffix = Buffer.from(req.suffix, "base64");
-          if (suffix.length > MAX_SUFFIX || suffix.toString("base64") !== req.suffix)
+          if (
+            suffix.length > MAX_SUFFIX ||
+            suffix.toString("base64") !== req.suffix
+          )
             throw new Error("INVALID_DATA");
           restoreSnapshot(term, req.state);
           await writeTerminal(term, suffix);
