@@ -2,7 +2,7 @@ use super::{
     callback::{self, CallbackError},
     config::AuthConfig,
     http::{ApiClient, HttpProblem, SessionCheck},
-    storage::CredentialStore,
+    storage::{CredentialSaveError, CredentialStore},
     AuthAttempt, AuthState, AuthStatus, AuthStorage, STATE_CHANGED_EVENT,
 };
 use ring::digest::{digest, SHA256};
@@ -960,7 +960,8 @@ impl AuthController {
                     if let Some(renewed) = check.renewed_token {
                         token = Secret::new(renewed);
                     }
-                    let storage = core.token_storage;
+                    let mut storage = core.token_storage;
+                    let mut session_fallback = false;
                     if storage == Some(AuthStorage::Persistent)
                         && (!core.token_persisted
                             || core
@@ -969,11 +970,8 @@ impl AuthController {
                                 .is_some_and(|old| old.exposed() != token.exposed()))
                     {
                         let previous_token = core.token.as_ref().cloned();
-                        let persisted = core
-                            .store
-                            .as_mut()
-                            .is_some_and(|store| store.save_active(token.exposed()).is_ok());
-                        if !persisted {
+                        let saved_storage = save_session(&mut core, token.exposed());
+                        if saved_storage.is_none() {
                             retire_notification_owner(&core);
                             if let Some(store) = core.store.as_mut() {
                                 let _ = store.tombstone();
@@ -987,7 +985,7 @@ impl AuthController {
                             core.state.attempt = None;
                             core.state.storage = None;
                             core.state.message = Some(
-                            "The account session could not be saved to the system key store. Local access was blocked; remote sign-out will be attempted.".into(),
+                            "The account session could not be stored safely. Local access was blocked; remote sign-out will be attempted.".into(),
                         );
                             revoke_after.push(token.clone());
                             if let Some(previous) =
@@ -996,7 +994,10 @@ impl AuthController {
                                 revoke_after.push(previous);
                             }
                         } else {
-                            core.token_persisted = true;
+                            storage = saved_storage;
+                            session_fallback = storage == Some(AuthStorage::Session);
+                            core.token_storage = storage;
+                            core.token_persisted = storage == Some(AuthStorage::Persistent);
                         }
                     }
                     if revoke_after.is_empty() {
@@ -1006,7 +1007,8 @@ impl AuthController {
                         core.state.session = Some(check.session);
                         core.state.attempt = None;
                         core.state.storage = storage;
-                        core.state.message = None;
+                        core.state.message =
+                            session_fallback.then(|| SESSION_STORAGE_FALLBACK_MESSAGE.into());
                         core.state.remote_revocation_confirmed = None;
                     }
                 }
@@ -1273,30 +1275,14 @@ impl AuthController {
                     if !core.current_attempt(generation, attempt_id) {
                         SessionActivation::Stale
                     } else {
-                        let saved = storage != AuthStorage::Persistent
-                            || core
-                                .store
-                                .as_mut()
-                                .is_some_and(|store| store.save_active(token.exposed()).is_ok());
-                        if !saved {
-                            if let Some(store) = core.store.as_mut() {
-                                let _ = store.tombstone();
-                            }
-                            core.active_attempt_id = None;
-                            core.attempt = None;
-                            core.token = None;
-                            core.token_storage = None;
-                            core.token_persisted = false;
-                            core.state.status = AuthStatus::StorageLocked;
-                            core.state.user = None;
-                            core.state.session = None;
-                            core.state.attempt = None;
-                            core.state.storage = None;
-                            core.state.message = Some(
-                                "The account was confirmed, but the session could not be saved to the system key store. Choose session-only storage and sign in again.".into(),
-                            );
-                            SessionActivation::StorageFailure
+                        let saved_storage = if storage == AuthStorage::Persistent {
+                            save_session(&mut core, token.exposed())
                         } else {
+                            Some(storage)
+                        };
+                        if let Some(saved_storage) = saved_storage {
+                            let session_fallback = saved_storage != storage;
+                            let storage = saved_storage;
                             let cleanup_pending = storage == AuthStorage::Persistent
                                 && core
                                     .store
@@ -1312,11 +1298,33 @@ impl AuthController {
                             core.state.session = Some(check.session);
                             core.state.attempt = None;
                             core.state.storage = Some(storage);
-                            core.state.message = cleanup_pending.then(|| {
-                                "Signed in. Cleanup of an older account credential will be retried.".into()
-                            });
+                            core.state.message = if session_fallback {
+                                Some(SESSION_STORAGE_FALLBACK_MESSAGE.into())
+                            } else {
+                                cleanup_pending.then(|| {
+                                    "Signed in. Cleanup of an older account credential will be retried.".into()
+                                })
+                            };
                             core.state.remote_revocation_confirmed = None;
                             SessionActivation::Activated
+                        } else {
+                            if let Some(store) = core.store.as_mut() {
+                                let _ = store.tombstone();
+                            }
+                            core.active_attempt_id = None;
+                            core.attempt = None;
+                            core.token = None;
+                            core.token_storage = None;
+                            core.token_persisted = false;
+                            core.state.status = AuthStatus::StorageLocked;
+                            core.state.user = None;
+                            core.state.session = None;
+                            core.state.attempt = None;
+                            core.state.storage = None;
+                            core.state.message = Some(
+                                "The account was confirmed, but local session storage could not be updated safely. Check storage access and retry.".into(),
+                            );
+                            SessionActivation::StorageFailure
                         }
                     }
                 } else {
@@ -1524,6 +1532,20 @@ impl AuthController {
             );
         }
         snapshot.0
+    }
+}
+
+const SESSION_STORAGE_FALLBACK_MESSAGE: &str = "The system credential store is unavailable. Signed in for this session only; sign in again after closing Lomi.";
+
+fn save_session(core: &mut Core, token: &str) -> Option<AuthStorage> {
+    let store = core.store.as_mut()?;
+    match store.save_active(token) {
+        Ok(_) => Some(AuthStorage::Persistent),
+        // Fence every journaled credential durably before keeping access in memory.
+        Err(CredentialSaveError::KeyStore) if store.tombstone().is_ok() => {
+            Some(AuthStorage::Session)
+        }
+        Err(_) => None,
     }
 }
 
@@ -2712,8 +2734,11 @@ mod tests {
             worker: server_worker,
         } = server;
         let controller = controller_for_origin(origin, AuthStatus::SignedOut);
+        let temp = tempfile::tempdir().unwrap();
+        attach_denied_store(&controller, temp.path());
         let mut callback =
-            begin_browser_callback(&controller, "cancel-during-check", AuthStorage::Session).await;
+            begin_browser_callback(&controller, "cancel-during-check", AuthStorage::Persistent)
+                .await;
         let session_request = tokio::task::spawn_blocking(move || {
             session_request
                 .recv_timeout(Duration::from_secs(3))
@@ -2747,6 +2772,220 @@ mod tests {
         assert!(requests[2]
             .to_ascii_lowercase()
             .contains("authorization: bearer issued-session"));
+    }
+
+    fn attach_denied_store(controller: &AuthController, root: &Path) {
+        let mut store = CredentialStore::open(root, "test-session-fallback").unwrap();
+        store.deny_key_store_access();
+        controller.inner.core.lock().unwrap().store = Some(store);
+    }
+
+    fn assert_memory_only_session(controller: &AuthController, root: &Path, token: &str) {
+        let core = controller.inner.core.lock().unwrap();
+        assert_eq!(core.state.status, AuthStatus::SignedIn);
+        assert!(core.token_storage == Some(AuthStorage::Session));
+        assert!(core.state.storage == Some(AuthStorage::Session));
+        assert!(!core.token_persisted);
+        assert_eq!(core.token.as_ref().unwrap().exposed(), token);
+        assert_eq!(
+            core.state.message.as_deref(),
+            Some(SESSION_STORAGE_FALLBACK_MESSAGE)
+        );
+        assert_eq!(core.state.remote_revocation_confirmed, None);
+        let metadata = std::fs::read_to_string(root.join("credentials.json")).unwrap();
+        assert!(!metadata.contains(token));
+        let metadata: serde_json::Value = serde_json::from_str(&metadata).unwrap();
+        assert_eq!(metadata["logoutTombstone"], true);
+        assert!(!metadata["journalIds"].as_array().unwrap().is_empty());
+        drop(core);
+        assert!(controller
+            .inner
+            .core
+            .lock()
+            .unwrap()
+            .store
+            .as_mut()
+            .unwrap()
+            .load_active()
+            .unwrap()
+            .is_none());
+    }
+
+    async fn browser_with_denied_store(fail_metadata_after: Option<usize>) {
+        let temp = tempfile::tempdir().unwrap();
+        let server = delayed_desktop_server(fail_metadata_after.is_some());
+        let controller = controller_for_origin(server.origin, AuthStatus::SignedOut);
+        attach_denied_store(&controller, temp.path());
+        if let Some(writes) = fail_metadata_after {
+            controller
+                .inner
+                .core
+                .lock()
+                .unwrap()
+                .store
+                .as_mut()
+                .unwrap()
+                .fail_metadata_write_after(writes);
+        }
+        let mut callback =
+            begin_browser_callback(&controller, "denied-key-store", AuthStorage::Persistent).await;
+        tokio::task::spawn_blocking(move || {
+            server
+                .session_request
+                .recv_timeout(Duration::from_secs(3))
+                .unwrap()
+        })
+        .await
+        .unwrap();
+        let browser_reader = tokio::spawn(async move {
+            let mut response = Vec::new();
+            callback.browser.read_to_end(&mut response).await.unwrap();
+            String::from_utf8(response).unwrap()
+        });
+        server.release_session.send(()).unwrap();
+        callback.worker.await.unwrap();
+        let response = browser_reader.await.unwrap();
+        let requests = server.worker.join().unwrap();
+        if fail_metadata_after.is_none() {
+            assert!(response.contains("Authentication successful"));
+            assert_memory_only_session(&controller, temp.path(), "issued-session");
+            assert!(controller.is_signed_in_generation(callback.generation));
+            assert_eq!(requests.len(), 2);
+        } else {
+            assert!(response.contains("Sign-in was not completed"));
+            assert!(!response.contains("Authentication successful"));
+            assert_eq!(controller.snapshot().status, AuthStatus::StorageLocked);
+            let core = controller.inner.core.lock().unwrap();
+            assert!(core.token.is_none());
+            assert!(!core.token_persisted);
+            drop(core);
+            assert!(!controller.is_signed_in_generation(callback.generation));
+            assert_eq!(requests.len(), 3);
+            assert!(requests[2].starts_with("POST /api/auth/sign-out "));
+        }
+    }
+
+    #[tokio::test]
+    async fn browser_key_store_failure_activates_memory_only_session_after_tombstone() {
+        browser_with_denied_store(None).await;
+    }
+
+    #[tokio::test]
+    async fn browser_tombstone_failure_revokes_without_activating() {
+        browser_with_denied_store(Some(1)).await;
+    }
+
+    #[tokio::test]
+    async fn browser_metadata_save_failure_revokes_without_session_fallback() {
+        browser_with_denied_store(Some(0)).await;
+    }
+
+    fn confirmed_session(renewed_token: Option<String>) -> SessionCheck {
+        SessionCheck {
+            user: super::super::AuthUser {
+                id: "user-1".into(),
+                display_name: "Ada".into(),
+                email: "ada@example.com".into(),
+                github_login: "ada".into(),
+                status: "active".into(),
+            },
+            session: super::super::AuthSession {
+                id: "session-1".into(),
+                expires_at: "2026-10-01T00:00:00Z".into(),
+            },
+            renewed_token,
+        }
+    }
+
+    #[tokio::test]
+    async fn deferred_confirmation_and_renewal_fall_back_after_durable_tombstone() {
+        for persisted in [false, true] {
+            let temp = tempfile::tempdir().unwrap();
+            // Any unexpected remote revocation fails against this unreachable endpoint.
+            let controller =
+                controller_for_origin("http://127.0.0.1:1".into(), AuthStatus::Offline);
+            if persisted {
+                attach_unreadable_store(&controller, temp.path());
+            } else {
+                attach_denied_store(&controller, temp.path());
+            }
+            let generation = {
+                let mut core = controller.inner.core.lock().unwrap();
+                core.token = Some(Secret::new("original-session".into()));
+                core.token_storage = Some(AuthStorage::Persistent);
+                core.token_persisted = persisted;
+                core.refresh_owner_generation = Some(core.generation);
+                core.generation
+            };
+            let token = if persisted {
+                "renewed-session"
+            } else {
+                "original-session"
+            };
+            controller
+                .apply_refresh_result(
+                    generation,
+                    Secret::new("original-session".into()),
+                    Ok(confirmed_session(persisted.then(|| token.into()))),
+                )
+                .await;
+            assert_memory_only_session(&controller, temp.path(), token);
+        }
+    }
+
+    #[tokio::test]
+    async fn deferred_confirmation_and_renewal_tombstone_failure_revoke_all_tokens() {
+        for persisted in [false, true] {
+            let temp = tempfile::tempdir().unwrap();
+            let count = if persisted { 2 } else { 1 };
+            let (origin, server) = health_server(vec!["200 OK"; count]);
+            let controller = controller_for_origin(origin, AuthStatus::Offline);
+            if persisted {
+                attach_unreadable_store(&controller, temp.path());
+            } else {
+                attach_denied_store(&controller, temp.path());
+            }
+            let generation = {
+                let mut core = controller.inner.core.lock().unwrap();
+                core.token = Some(Secret::new("original-session".into()));
+                core.token_storage = Some(AuthStorage::Persistent);
+                core.token_persisted = persisted;
+                core.refresh_owner_generation = Some(core.generation);
+                core.store.as_mut().unwrap().fail_metadata_write_after(1);
+                core.generation
+            };
+            controller
+                .apply_refresh_result(
+                    generation,
+                    Secret::new("original-session".into()),
+                    Ok(confirmed_session(
+                        persisted.then(|| "renewed-session".into()),
+                    )),
+                )
+                .await;
+            let state = controller.snapshot();
+            assert_eq!(state.status, AuthStatus::StorageLocked);
+            assert_eq!(state.remote_revocation_confirmed, Some(true));
+            let core = controller.inner.core.lock().unwrap();
+            assert!(core.token.is_none());
+            assert!(core.token_storage.is_none());
+            assert!(!core.token_persisted);
+            assert!(state.user.is_none());
+            assert!(state.session.is_none());
+            let requests = server.join().unwrap();
+            assert_eq!(requests.len(), count);
+            assert!(requests
+                .iter()
+                .all(|request| request.starts_with("POST /api/auth/sign-out ")));
+            assert!(requests
+                .iter()
+                .any(|request| request.contains("original-session")));
+            if persisted {
+                assert!(requests
+                    .iter()
+                    .any(|request| request.contains("renewed-session")));
+            }
+        }
     }
 
     #[tokio::test]

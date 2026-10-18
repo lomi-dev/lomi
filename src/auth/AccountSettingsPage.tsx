@@ -279,7 +279,7 @@ export default function AccountSettingsPage() {
             htmlFor="account-remember"
             description={
               remember
-                ? "Store your session in the system credential store."
+                ? "Store your session in the system credential store when available; otherwise sign in only until Lomi closes."
                 : "Keep your session only until Lomi closes. Nothing is saved to the credential store."
             }
             descriptionId="account-storage-description"

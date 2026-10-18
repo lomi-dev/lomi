@@ -37,6 +37,13 @@ impl Metadata {
         }
     }
 
+    fn reusable_id(&self) -> Option<&str> {
+        self.journal_ids
+            .iter()
+            .map(String::as_str)
+            .find(|id| Some(*id) != self.active_id.as_deref())
+    }
+
     fn commit(&mut self, id: &str) {
         if let Some(old) = self.active_id.replace(id.to_string()) {
             if old != id {
@@ -94,6 +101,12 @@ impl Metadata {
         }
         Ok(())
     }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum CredentialSaveError {
+    Metadata,
+    KeyStore,
 }
 
 pub(super) struct CredentialStore {
@@ -176,23 +189,29 @@ impl CredentialStore {
         }
     }
 
-    pub fn save_active(&mut self, secret: &str) -> Result<bool, String> {
-        let id = new_credential_id()?;
+    pub fn save_active(&mut self, secret: &str) -> Result<bool, CredentialSaveError> {
+        // Reuse an orphan to bound the journal when the key store stays unavailable.
+        // Never overwrite the committed credential, including after a tombstone.
+        let id = match self.metadata.reusable_id() {
+            Some(id) => id.to_string(),
+            None => new_credential_id().map_err(|_| CredentialSaveError::Metadata)?,
+        };
         let previous = self.metadata.clone();
         self.metadata.stage(&id);
-        if let Err(error) = self.persist() {
+        if self.persist().is_err() {
             self.metadata = previous;
-            return Err(error);
+            return Err(CredentialSaveError::Metadata);
         }
-        self.entry(&id)?
+        self.entry(&id)
+            .map_err(|_| CredentialSaveError::KeyStore)?
             .set_password(secret)
-            .map_err(|_| "The system key store is locked or unavailable.".to_string())?;
+            .map_err(|_| CredentialSaveError::KeyStore)?;
 
         let previous = self.metadata.clone();
         self.metadata.commit(&id);
-        if let Err(error) = self.persist() {
+        if self.persist().is_err() {
             self.metadata = previous;
-            return Err(error);
+            return Err(CredentialSaveError::Metadata);
         }
         Ok(self.cleanup_journal())
     }
@@ -243,7 +262,12 @@ impl CredentialStore {
 
     #[cfg(test)]
     pub(super) fn fail_next_metadata_write(&mut self) {
-        self.fail_persist_on = Some(self.persist_count + 1);
+        self.fail_metadata_write_after(0);
+    }
+
+    #[cfg(test)]
+    pub(super) fn fail_metadata_write_after(&mut self, successful_writes: usize) {
+        self.fail_persist_on = Some(self.persist_count + successful_writes + 1);
     }
 
     fn entry(&self, id: &str) -> Result<keyring::Entry, String> {
@@ -349,6 +373,90 @@ mod tests {
     }
 
     #[test]
+    fn reusable_journal_ids_always_exclude_the_active_credential() {
+        let mut metadata = Metadata::default();
+        assert_eq!(metadata.reusable_id(), None);
+        metadata.commit("active-credential");
+        metadata.tombstone();
+        assert_eq!(metadata.reusable_id(), None);
+        metadata.stage("orphan-credential");
+        assert_eq!(metadata.reusable_id(), Some("orphan-credential"));
+        metadata.logout_tombstone = false;
+        assert_eq!(metadata.reusable_id(), Some("orphan-credential"));
+        let id = metadata.reusable_id().unwrap().to_string();
+        metadata.commit(&id);
+        assert_eq!(metadata.restorable_id(), Some("orphan-credential"));
+        assert_eq!(metadata.cleanup_ids(), vec!["active-credential"]);
+        assert!(!metadata.logout_tombstone);
+    }
+
+    #[test]
+    fn full_journal_can_reuse_an_orphan_without_overwriting_the_active_reference() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut store = CredentialStore::open(temp.path(), "test-full-journal").unwrap();
+        store.metadata.commit("active-credential");
+        store.metadata.tombstone();
+        for index in 0..127 {
+            store.metadata.stage(&format!("orphan-{index}"));
+        }
+        store.persist().unwrap();
+        store.deny_key_store_access();
+        assert_eq!(
+            store.save_active("memory-only-secret"),
+            Err(CredentialSaveError::KeyStore)
+        );
+        store.tombstone().unwrap();
+        assert_eq!(store.metadata.journal_ids.len(), 128);
+        assert_eq!(
+            store.metadata.active_id.as_deref(),
+            Some("active-credential")
+        );
+        assert_eq!(store.metadata.reusable_id(), Some("orphan-0"));
+        assert!(store.load_active().unwrap().is_none());
+    }
+
+    #[test]
+    fn repeated_key_store_failures_keep_the_journal_bounded_across_reopens() {
+        for has_active in [false, true] {
+            let temp = tempfile::tempdir().unwrap();
+            if has_active {
+                let mut store = CredentialStore::open(temp.path(), "test-bounded-journal").unwrap();
+                store.metadata.commit("active-credential");
+                store.persist().unwrap();
+            }
+            let mut orphan_id = None;
+            for _ in 0..160 {
+                let mut store = CredentialStore::open(temp.path(), "test-bounded-journal").unwrap();
+                store.deny_key_store_access();
+                assert_eq!(
+                    store.save_active("memory-only-secret"),
+                    Err(CredentialSaveError::KeyStore)
+                );
+                let id = store.metadata.reusable_id().unwrap().to_string();
+                assert_ne!(id, "active-credential");
+                if let Some(previous) = &orphan_id {
+                    assert_eq!(&id, previous);
+                } else {
+                    orphan_id = Some(id);
+                }
+                store.tombstone().unwrap();
+                assert_eq!(
+                    store.metadata.active_id.as_deref(),
+                    has_active.then_some("active-credential")
+                );
+                assert_eq!(
+                    store.metadata.journal_ids.len(),
+                    if has_active { 2 } else { 1 }
+                );
+                assert!(store.load_active().unwrap().is_none());
+                assert!(!fs::read_to_string(&store.metadata_path)
+                    .unwrap()
+                    .contains("memory-only-secret"));
+            }
+        }
+    }
+
+    #[test]
     fn corrupt_or_unbounded_journals_are_rejected() {
         let metadata = Metadata {
             version: 2,
@@ -451,6 +559,26 @@ mod tests {
         assert_eq!(fs::read(&store.metadata_path).unwrap(), before);
     }
 
+    #[test]
+    fn key_store_save_failure_is_distinct_from_metadata_failure() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut store = CredentialStore::open(temp.path(), "test-save-error").unwrap();
+        store.deny_key_store_access();
+        store.fail_next_metadata_write();
+        assert_eq!(
+            store.save_active("memory-only-secret"),
+            Err(CredentialSaveError::Metadata)
+        );
+        assert!(store.metadata.journal_ids.is_empty());
+        assert_eq!(
+            store.save_active("memory-only-secret"),
+            Err(CredentialSaveError::KeyStore)
+        );
+        assert_eq!(store.metadata.journal_ids.len(), 1);
+        store.tombstone().unwrap();
+        assert!(store.load_active().unwrap().is_none());
+    }
+
     #[cfg(target_os = "macos")]
     #[test]
     #[ignore = "touches only a randomized, isolated Lomi test entry in macOS Keychain"]
@@ -477,7 +605,10 @@ mod tests {
         let mut store = CredentialStore::open(&temp.path().join("account"), &environment).unwrap();
         store.fail_persist_on = Some(2);
 
-        assert!(store.save_active("isolated-test-session").is_err());
+        assert_eq!(
+            store.save_active("isolated-test-session"),
+            Err(CredentialSaveError::Metadata)
+        );
         assert_eq!(store.metadata.restorable_id(), None);
         assert_eq!(store.metadata.journal_ids.len(), 1);
         let orphan_id = store.metadata.journal_ids[0].clone();

@@ -245,6 +245,65 @@ test("session-only login waits for browser approval and survives page changes", 
   ).toBeVisible();
 });
 
+test("remembered login can finish with a clearly disclosed session-only fallback", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 760, height: 650 });
+  await mockAccount(page);
+  await expect(
+    page.getByText(/otherwise sign in only until Lomi closes/),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Sign in with GitHub", exact: true })
+    .click();
+  await expect(page.getByText("Waiting for browser approval.")).toBeVisible();
+
+  await page.evaluate(
+    async (account) => {
+      const desktop = window as any;
+      desktop.__authTest.state = account;
+      await desktop.__nativeTest.emitEvent("auth-state-changed", account);
+    },
+    {
+      ...signedIn,
+      storage: "session",
+      message:
+        "The system credential store is unavailable. Signed in for this session only; sign in again after closing Lomi.",
+    },
+  );
+
+  await expect(page.getByText("Lomi User", { exact: true })).toBeVisible();
+  await expect(page.getByText("Waiting for browser approval.")).toHaveCount(0);
+  await expect(page.getByText(/Signed in for this session only/)).toBeVisible();
+  await expect(
+    page.getByText("This session only", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("You will need to sign in again after closing Lomi."),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: "/tmp/lomi-account-session-fallback.png",
+    fullPage: true,
+  });
+
+  await page.getByRole("button", { name: "Check connection" }).click();
+  await expect(
+    page.getByText("This session only", { exact: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() =>
+      (window as any).__authTest.calls.filter(
+        (call: any) => call.command === "auth_begin_login",
+      ),
+    ),
+  ).toEqual([{ command: "auth_begin_login", args: { storage: "persistent" } }]);
+});
+
 test("new logout event wins over an old refresh response", async ({ page }) => {
   await mockAccount(page, signedIn);
   await expect(

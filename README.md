@@ -76,6 +76,20 @@ Download the package for your platform from the
 See the [installation guide](https://docs.lomi.dev/overview/installation/) for
 platform requirements, first launch and updates.
 
+On Linux, remembering account sessions and AI API keys requires an available
+Secret Service provider, such as GNOME Keyring or KDE Wallet, with an unlocked
+default collection in your desktop session. If the credential store cannot save
+an account session, Lomi can keep the sign-in in memory until you quit and shows
+that it was not remembered. Configure your desktop's keyring to retain sign-in
+across restarts; installing the app alone does not configure that service.
+
+On Arch Linux with Hyprland, one option is to install `gnome-keyring` and
+`seahorse`, then use Seahorse (Passwords and Keys) to create or unlock a
+password-protected keyring and set it as the default. See the
+[ArchWiki GNOME Keyring guide](https://wiki.archlinux.org/title/GNOME/Keyring)
+for desktop session startup and automatic unlocking. You can also turn off
+**Remember me on this device** in Account settings to sign in without a keyring.
+
 ## Documentation
 
 Visit **[docs.lomi.dev](https://docs.lomi.dev)** for installation, setup, themes
