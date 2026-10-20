@@ -45,7 +45,7 @@
         "size": 52059408,
         "sha256": "2413149700df0f7d440500a84a8f764c535f21e5a5e87d38328b64eec2c5b500"
       },
-      "qualified": false
+      "qualified": true
     },
     "windows_x86_64": {
       "cli": {

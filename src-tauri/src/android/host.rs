@@ -210,9 +210,9 @@ mod tests {
     }
 
     #[test]
-    fn downloadable_tools_do_not_qualify_an_untested_runtime() {
+    fn qualified_hosts_allow_android_runtime() {
         use super::Host;
-        for host in [Host::MacArm64, Host::WindowsX64] {
+        for host in [Host::MacArm64, Host::LinuxX64, Host::WindowsX64] {
             assert!(
                 super::super::bootstrap::distribution(host)
                     .unwrap()
@@ -220,21 +220,24 @@ mod tests {
             );
             assert!(super::qualification(host).is_ok());
         }
-        for host in [Host::MacX64, Host::LinuxX64] {
-            assert!(
-                !super::super::bootstrap::distribution(host)
-                    .unwrap()
-                    .qualified
-            );
-            #[cfg(all(debug_assertions, feature = "android-probe"))]
-            if super::super::fixture::directory().unwrap().is_some() {
-                assert!(super::qualification(host).is_ok());
-                continue;
-            }
-            assert!(super::qualification(host)
-                .unwrap_err()
-                .contains("unavailable"));
+    }
+
+    #[test]
+    fn downloadable_tools_do_not_qualify_an_untested_intel_mac_runtime() {
+        let host = super::Host::MacX64;
+        assert!(
+            !super::super::bootstrap::distribution(host)
+                .unwrap()
+                .qualified
+        );
+        #[cfg(all(debug_assertions, feature = "android-probe"))]
+        if super::super::fixture::directory().unwrap().is_some() {
+            assert!(super::qualification(host).is_ok());
+            return;
         }
+        assert!(super::qualification(host)
+            .unwrap_err()
+            .contains("unavailable"));
     }
 
     #[test]

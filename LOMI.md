@@ -362,7 +362,11 @@ or acronym.
   transport budget. Thirty minutes must not show sustained memory growth;
   the p95 input-to-image target is 150 ms. Record source, framebuffer, CSS and
   DPR separately and stop builds during measurements.
-  Linux and Intel Mac remain unverified. Native commands gate installation, device creation/wipe,
+  Linux x86_64 is enabled following the recorded native functional, input and
+  resource trials and the owner's 2026-10-20 request to unlock it after disclosure
+  of the unresolved comparable GPU budget. This enables the runtime; it does not
+  establish the +0.10 GPU-active-seconds budget. Intel Mac remains unverified.
+  Native commands gate installation, device creation/wipe,
   open intents and Start on the toolchain qualification flag. Read, Stop and
   recovery remain available. In particular, Windows' launcher spawns a separate
   QEMU child; qualify both process identities and cleanup before enabling it.
@@ -407,7 +411,8 @@ or acronym.
   fifty samples at p95 138 ms. Manual Stop/Start recovery retained guest data;
   preserve its distinction from the failed automatic fixture run. Normal release
   builds and final owned-process/ADB/lease cleanup completed. Linux Android
-  qualification remains false with comparable GPU evidence unresolved. Detailed results, build pins and limitations are in
+  is enabled; comparable GPU evidence remains unresolved and must not be recorded
+  as a passing performance result. Detailed results, build pins and limitations are in
   `tests/native/ANDROID.md`.
 - On Linux, only the built-in Lomi theme may use an opaque WebView background
   after confirming an opaque, square shell covers the viewport. Keep custom

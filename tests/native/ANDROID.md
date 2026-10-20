@@ -2,21 +2,49 @@
 
 The production backend and lazy Android UI are included in normal builds. The
 additional commands and drivers in this directory require `android-probe` and
-must never be enabled in distributed builds. Native qualification covers the
-recorded Apple M3/macOS ARM64 and Windows 11 Pro/x64 hosts described below.
-Linux and other Mac architectures remain unverified.
+must never be enabled in distributed builds. Production Android is enabled on
+macOS ARM64, Windows x64 and Linux x86_64. Native qualification covers the
+recorded Apple M3/macOS ARM64 and Windows 11 Pro/x64 hosts described below;
+Linux's functional and resource results and remaining GPU limitation are recorded
+separately. Intel Mac remains disabled and unverified.
 
-## Linux prerequisites and pending qualification
+## Linux enablement and remaining GPU measurement
+
+On 2026-10-20 the owner requested Linux enablement after being informed that
+the comparable GPU budget remained unconfirmed. Linux's production toolchain
+flag is now **true**, enabling installation, device creation, open intents and
+Start in ordinary builds. KVM access, explicit license acceptance, artifact
+verification and process ownership checks remain mandatory. The completed
+native functional, input and resource trials below support this enablement.
+It does not establish compliance with the additional 0.10 GPU-active-seconds
+per second budget or qualify every Linux distribution, driver or GPU. Preserve
+the inconclusive GPU measurements and earlier failed trials as recorded.
+
+The subsequent ordinary Linux release passed a fresh GUI installation of the
+private CLI/JRE, emulator tools and AOSP Android 16/API 36 x86_64 revision 2,
+followed by Pixel 9a creation, cold start, Android Home, native Save screenshot,
+graceful Stop and a second successful Start with a new owned guest process.
+The saved PNG was 1080x2424. Final Stop and the guarded native tray Quit reaped
+the application, guest and WebKit children and left no Android runtime record.
+This build used `dev.lomi.desktop` and empty Cargo feature sets, without probe
+commands or a qualification override. Its 87,303,424-byte executable SHA256 is
+`4e883d0bfe2eb33a2dd934299e12d7175e6fc5d392dfb1124103f427a85992a7`.
+Evidence is retained outside Git under `linux-enable-20261020`. The first SSH
+launch omitted the desktop's XAUTHORITY and failed GL initialization; that
+failed attempt remains separate from the successful run, which inherited the
+desktop session environment. The ordinary shared ADB endpoint was preserved.
+These functional checks supply no new GPU-budget result.
 
 The recorded Linux preflight host is Ubuntu 26.04.1 x86_64, kernel 7,
 Mesa 26.0.8, GNOME Wayland and an NVIDIA RTX 3060 Ti bound to Nouveau.
 The caller can read/write `/dev/kvm`, and `KVM_GET_API_VERSION` returns 12.
-These are prerequisites, not native Android qualification. Linux's production
-toolchain qualification flag remains **false**: comparable GPU evidence remains
-unresolved. The observed thirty-minute memory requirement was accepted with the
+These are prerequisites, not native Android qualification. During the trials
+below the production toolchain flag was **false** while comparable GPU evidence
+remained unresolved. The observed thirty-minute memory requirement was accepted with the
 finite-duration caveats recorded below.
 Individual functional, input, recovery and resource trials are recorded below.
-A successful application startup or host preflight does not change that status.
+A successful application startup or host preflight alone does not establish
+complete native qualification.
 
 The application now starts on this host. The source startup policy in
 `src-tauri/src/linux_graphics.rs` applies a process-local
@@ -50,7 +78,7 @@ Each preserves every existing caller value, including empty, `0` and non-Unicode
 values; explicit X11-only selection and an absent/empty `WAYLAND_DISPLAY` receive
 neither default. The DMA-BUF opt-in, Nouveau Kopper and explicit-sync policies
 remain independent. No public WebView policy command is required at startup.
-Linux qualification remains false. The integrated build07 long-duration CPU,
+At this trial Linux qualification remained false. The integrated build07 long-duration CPU,
 frame-rate and memory-budget results below are complete, and the unhooked
 thirty-minute memory observation was accepted with caveats. Comparable GPU
 evidence remains unresolved.
@@ -98,7 +126,8 @@ had a +0.324594 MiB/min slope. After hiding, the mean remained 3.349 MB above
 hidden baseline. Instrumentation retained arrays containing 214,882 numbers;
 no memory has been subtracted for that retention. Raw evidence is retained outside Git under
 `production-1800-07`, with growth analysis under `memory-analysis-07`.
-Comparable GPU evidence remains unresolved and Linux stays `qualified: false`.
+Comparable GPU evidence remained unresolved and Linux was `qualified: false`
+at this trial.
 
 The separate passive follow-up completed 600.004 seconds, from 08:35:16.673 to
 08:45:16.676 UTC, without measurement hooks, per-frame timing arrays or measured
@@ -146,8 +175,8 @@ fell near 356.14 MiB, with native memory flat in the final 600 seconds. These
 finite observations establish neither the cause of the early rise nor actual GC
 events. The native hidden-after mean remained 8,166,991 bytes (about 7.79 MiB)
 above baseline, which could be live objects or allocator retention. There is no
-lifetime or repeated-cycle memory bound. Comparable GPU evidence alone remains
-the qualification blocker, and Linux stays `qualified: false`.
+lifetime or repeated-cycle memory bound. Comparable GPU evidence alone remained
+the qualification blocker at that point, and Linux was `qualified: false`.
 
 The post-trial native-input check passed 50 samples, p95 138 ms and maximum
 139 ms; `latency-post-memory-03-latency.json` is archived with the trial.
@@ -193,7 +222,7 @@ inhibitor child was gone. These are build and cleanup results, not Linux runtime
 qualification. The later unhooked 1800-second follow-up and its separate cleanup
 are recorded above; the observed thirty-minute memory requirement was accepted
 with finite-duration caveats. Comparable GPU evidence remains unconfirmed and
-Linux remains unqualified.
+Linux remained unqualified at that point; see the later enablement decision above.
 
 Subscribers omitting the RLE32 argument retain legacy deflate/raw negotiation.
 The deflate fallback builds directly from validated borrowed RGBA into the final
@@ -206,7 +235,7 @@ whole-application memory measurements. Native WebKit checks rejected overflow,
 an expansion bomb, boundary corruption, flush-time
 truncation and cancellation, then decoded exact valid pixels after every
 failure. These functional decoder/renderer checks do not establish Linux CPU,
-GPU or long-duration qualification; its qualification flag remains false.
+GPU or long-duration qualification; its qualification flag was false at that point.
 
 Linux publishes completed public JWK files with a same-directory hard link,
 without replacing an existing registration. The selected Linux emulator watches
@@ -315,7 +344,7 @@ The independently source-checked report is `nvidia-long-01-resource-report.json`
 Private Nsight Systems 2026.5.1 captures and positive graphics/COPY controls
 collected native hardware metrics. The whole-device conservative bound did not
 establish compliance with the additional GPU budget. Context attribution is
-diagnostic only, and Linux remains unqualified. The driver and profiler changes
+diagnostic only, and Linux remained unqualified at that point. The driver and profiler changes
 belong solely to the authorized test host; the application does not install
 them or alter desktop preferences.
 
@@ -780,9 +809,10 @@ identities while preserving CPU/RAM arithmetic. Software backing remains an
 inference; these checks establish no GPU or platform pass. Historical
 shared-RGBA/WebGL results describe the earlier renderer. Logical IPC counters
 remain the uncompressed packet budget, not compressed wire-byte measurements.
-Linux remains `qualified: false`; the completed integrated build07 trial above
-meets the recorded CPU, frame-rate and memory budgets, with growth and GPU
-questions still open.
+Linux is now enabled under the decision recorded above. The completed integrated
+build07 trial meets the recorded CPU, frame-rate and memory budgets, and the
+separate unhooked follow-up records the finite-duration memory observation.
+Comparable GPU evidence remains unresolved.
 The driver resolves the guest's exact Settings homepage, resets its task, checks
 the resumed component and runs a separate three-second changing-frame
 preflight. It then records 30 seconds of hidden warmup, 60 seconds of hidden
@@ -877,8 +907,9 @@ unsupported; GTK delivery is not a claim about a physical Wayland keyboard or
 pointer. Wayland OS-window capture is unsupported without a compositor/portal
 capture grant. Production **Save screenshot**, which saves the Android guest
 image, is a separate operation and requires its own native file-picker and
-output verification. None of these fixture additions changes Linux's pending
-qualification status.
+output verification. These fixture additions alone do not establish platform
+qualification; production enablement and the outstanding GPU measurement are
+recorded above.
 
 Drive the actual trusted application webview using unique instruction IDs:
 
