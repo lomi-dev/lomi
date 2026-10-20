@@ -141,6 +141,8 @@ or acronym.
   The Settings UI changes connections/keys or runs paid tests. Browser child
   views remain excluded by the global trusted-app caller check.
 - Chat credentials use keyring 3.6.3 or explicitly chosen session-only memory.
+  Linux uses shared system D-Bus; do not vendor libdbus into the GTK application,
+  where its exported symbols can collide with GTK/AT-SPI's shared library.
   Journal credential IDs before mutation, preserve committed revisions and
   recover orphan keys without enumeration. Never use plaintext fallback.
   Chat history and attachments are private local files, not encrypted storage.
