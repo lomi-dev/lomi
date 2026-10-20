@@ -6,7 +6,7 @@ test("context polling stays single-flight, retries failures and ignores unmounte
 }) => {
   await mockDesktop(page, false);
   await page.clock.install();
-  await page.route("**/src/main.tsx", (route) =>
+  await page.route(/\/src\/main\.tsx(?:\?.*)?$/, (route) =>
     route.fulfill({
       contentType: "text/javascript",
       body: `

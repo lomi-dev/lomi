@@ -83,8 +83,9 @@ test("Remote uses workspace sharing and keeps browser revocation without manual 
     page.getByRole("heading", { name: "Remote", exact: true }),
   ).toBeVisible();
   await expect(page.getByText(/Right-click a workspace/)).toBeVisible();
-  await expect(page.getByRole("textbox")).toHaveCount(0);
-  await expect(page.getByRole("checkbox")).toHaveCount(0);
+  const content = page.getByRole("main", { name: "Remote", exact: true });
+  await expect(content.getByRole("textbox")).toHaveCount(0);
+  await expect(content.getByRole("checkbox")).toHaveCount(0);
   await page.getByRole("button", { name: "Revoke access" }).click();
   await expect(page.getByText("No browsers have access.")).toBeVisible();
   await page.screenshot({

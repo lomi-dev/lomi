@@ -5,6 +5,8 @@ import { initializeAppearance } from "./theme/runtime";
 import { macOS, native } from "./api";
 import { trackRemoteActivity } from "./remote-activity";
 import "./styles.css";
+import "./content-ui.css";
+import "./workflow-ui.css";
 
 window.addEventListener("contextmenu", (event) => event.preventDefault(), {
   capture: true,

@@ -1,0 +1,586 @@
+.explorer-panel .project-tree-heading {
+  min-height: var(--tree-row-height);
+  margin: 4px 8px;
+  padding: var(--tree-heading-padding);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+}
+.explorer-panel .project-tree-heading:hover {
+  background: color-mix(
+    in srgb,
+    var(--color-surface-container-high) 65%,
+    transparent
+  );
+}
+.explorer-panel .project-tree-heading[data-selected="true"] {
+  background: var(--color-surface-container-high);
+}
+.explorer-panel .file-tree {
+  padding: var(--tree-padding);
+}
+.explorer-panel .tree-row {
+  min-height: var(--tree-row-height);
+  height: var(--tree-row-height);
+  margin-block: 1px;
+  border-radius: var(--radius-sm);
+}
+.explorer-panel .tree-entry {
+  font-size: var(--font-size-12);
+  gap: 7px;
+}
+.explorer-panel .tree-row:hover,
+.explorer-panel .tree-row:focus-within {
+  background: color-mix(
+    in srgb,
+    var(--color-surface-container-high) 65%,
+    transparent
+  );
+}
+.explorer-panel .tree-row[data-selected="true"] {
+  background: var(--color-primary-container);
+  box-shadow: inset 2px 0 var(--color-primary);
+}
+.explorer-panel .tree-toggle:hover,
+.explorer-panel .tree-action:hover {
+  background: color-mix(in srgb, var(--color-outline) 55%, transparent);
+}
+.explorer-panel .tree-message {
+  padding: 16px 12px;
+  line-height: 1.65;
+}
+.project-search-form {
+  gap: 8px;
+  padding: 12px 12px 8px;
+  border-bottom: var(--border-width) solid
+    color-mix(in srgb, var(--color-outline) 55%, transparent);
+}
+.project-search-input input {
+  min-height: 36px;
+  background: var(--color-background);
+}
+.project-search-options .icon-button[aria-pressed="true"] {
+  border-color: color-mix(
+    in srgb,
+    var(--color-primary) 45%,
+    var(--color-outline)
+  );
+  background: var(--color-primary-container);
+}
+.project-search-scope {
+  min-height: 26px;
+  font-size: var(--font-size-11);
+}
+.project-search-filters {
+  gap: 12px;
+  padding-block: 4px;
+}
+.project-search-filters input:not([type="checkbox"]) {
+  min-height: 32px;
+  background: var(--color-background);
+}
+.project-search-results {
+  padding-top: 4px;
+}
+.search-file-group + .search-file-group {
+  margin-top: 8px;
+}
+.search-file-heading {
+  min-height: 32px;
+  font-weight: 600;
+}
+.search-file-directory {
+  font-weight: 400;
+}
+.search-file-count {
+  background: var(--color-surface-container);
+  color: var(--color-surface-variant-text);
+  line-height: 1.4;
+}
+.search-match {
+  min-height: 28px;
+  line-height: 1.65;
+}
+.search-match code {
+  font-family: var(--font-family-mono);
+}
+.search-file-heading:hover:not(:disabled),
+.search-match:hover:not(:disabled) {
+  background: color-mix(
+    in srgb,
+    var(--color-surface-container-high) 65%,
+    transparent
+  );
+}
+.search-match.is-selected,
+.search-match.is-selected:hover {
+  background: var(--color-primary-container);
+}
+.search-match mark {
+  background: color-mix(
+    in srgb,
+    var(--color-primary) 24%,
+    var(--color-surface)
+  );
+  color: var(--color-surface-text);
+}
+.source-panel .source-heading {
+  min-height: 40px;
+  border-color: color-mix(in srgb, var(--color-outline) 55%, transparent);
+}
+.source-repositories {
+  gap: 3px;
+  padding: 8px;
+  border-color: color-mix(in srgb, var(--color-outline) 55%, transparent);
+}
+.source-repositories-heading {
+  padding: 5px 8px 7px;
+  color: var(--color-muted-text);
+}
+.source-repository {
+  min-height: 32px;
+  padding: 6px 8px;
+  font-size: var(--font-size-12);
+}
+.source-repository[aria-current="page"] {
+  background: var(--color-primary-container);
+  color: var(--color-surface-text);
+  box-shadow: inset 2px 0 var(--color-primary);
+}
+.source-repository[aria-current="page"]:hover {
+  background: var(--color-primary-container);
+}
+.source-all-repository {
+  border-color: color-mix(in srgb, var(--color-outline) 55%, transparent);
+}
+.source-all-repository-heading {
+  min-height: 38px;
+  background: color-mix(
+    in srgb,
+    var(--color-surface-container) 55%,
+    transparent
+  );
+}
+.source-all-file {
+  min-height: 30px;
+}
+.source-pages > button {
+  font-weight: 600;
+}
+.source-pages > button[aria-selected="true"] {
+  border-bottom-width: 2px;
+}
+.git-remote-actions {
+  padding: 8px 12px;
+}
+.git-remote-trigger {
+  border: var(--border-width) solid
+    color-mix(in srgb, var(--color-outline) 65%, transparent);
+}
+.git-remote-trigger > span {
+  padding: 5px 7px;
+}
+.git-toolbar {
+  min-height: 38px;
+  padding: var(--git-toolbar-padding);
+}
+.git-group > header {
+  min-height: 32px;
+  padding-inline: 10px;
+}
+.git-group-toggle {
+  font-weight: 600;
+}
+.git-file {
+  margin: 1px 8px;
+  padding: var(--git-file-padding);
+  border-radius: var(--radius-sm);
+}
+.git-file-open {
+  min-height: 30px;
+}
+.git-file-label {
+  gap: 8px;
+}
+.git-file-directory {
+  color: var(--color-muted-text);
+}
+.git-repository-bar {
+  min-height: 34px;
+  padding: var(--git-repository-padding);
+  background: color-mix(
+    in srgb,
+    var(--color-surface-container) 45%,
+    var(--color-surface)
+  );
+  border-color: color-mix(in srgb, var(--color-outline) 55%, transparent);
+}
+.commit-form {
+  padding: 8px;
+  gap: 6px;
+  background: var(--color-surface);
+}
+.commit-form textarea {
+  padding: var(--git-commit-padding);
+  border: var(--border-width) solid
+    color-mix(in srgb, var(--color-outline) 75%, transparent);
+  border-radius: var(--radius-control);
+  background: var(--color-background);
+  color: var(--color-surface-text);
+  font-family: var(--font-family);
+  font-size: var(--font-size-12);
+  line-height: 1.65;
+}
+.commit-actions {
+  padding: 0;
+}
+.commit-button,
+.git-stage-all {
+  min-height: 28px;
+  padding-inline: 10px;
+  font-size: var(--font-size-11);
+}
+.git-clean {
+  padding: 24px 16px;
+  line-height: 1.65;
+}
+.git-history-heading {
+  padding: 12px;
+  font-size: var(--font-size-11);
+}
+.git-history-entry {
+  gap: 10px;
+  padding: 12px;
+  border-color: color-mix(in srgb, var(--color-outline) 40%, transparent);
+}
+.git-history-entry:hover {
+  background: color-mix(
+    in srgb,
+    var(--color-surface-container-high) 65%,
+    transparent
+  );
+}
+.git-history-subject {
+  font-weight: 600;
+  line-height: 1.6;
+}
+.git-history-author,
+.git-history-meta {
+  color: var(--color-muted-text);
+}
+.git-history-meta code {
+  color: var(--color-surface-variant-text);
+  padding: 1px 5px;
+  background: var(--color-surface-container);
+  border-radius: var(--radius-xs);
+}
+.commit-details-header {
+  padding: 20px 24px 16px;
+  border-color: color-mix(in srgb, var(--color-outline) 65%, transparent);
+}
+.commit-details-title h1 {
+  font-weight: 650;
+  line-height: 1.5;
+  text-wrap: balance;
+}
+.commit-metadata {
+  line-height: 1.8;
+}
+.commit-metadata dt {
+  color: var(--color-muted-text);
+}
+.commit-files-heading,
+.commit-file-diff > header,
+.working-diff-comparison {
+  min-height: 38px;
+  border-color: color-mix(in srgb, var(--color-outline) 55%, transparent);
+  background: var(--color-surface);
+}
+.commit-file-list {
+  border-color: color-mix(in srgb, var(--color-outline) 55%, transparent);
+}
+.commit-file-entry {
+  min-height: 36px;
+  border-radius: var(--radius-sm);
+}
+.commit-file-entry[aria-current="true"] {
+  background: var(--color-primary-container);
+}
+.commit-file-path {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-11);
+}
+.commit-patch-lines {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-12);
+  line-height: 1.75;
+}
+.diff-line-number {
+  color: var(--color-muted-text);
+  font-variant-numeric: tabular-nums;
+}
+.commit-view-message {
+  line-height: 1.7;
+}
+.file-editor .editor-heading {
+  min-height: var(--editor-heading-height);
+  gap: var(--editor-heading-gap);
+  padding: var(--editor-heading-padding);
+  border-bottom: var(--border-width) solid
+    color-mix(in srgb, var(--color-outline) 55%, transparent);
+}
+.editor-path {
+  font-size: var(--font-size-12);
+  color: var(--color-surface-variant-text);
+}
+.editor-heading .editor-actions {
+  flex-shrink: 0;
+  gap: 4px;
+}
+.image-preview .editor-actions {
+  flex-shrink: 1;
+}
+.editor-heading .button {
+  min-height: 28px;
+  font-size: var(--font-size-11);
+}
+.file-editor .editor-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  min-height: 30px;
+  padding: 3px 10px;
+  border-top: var(--border-width) solid
+    color-mix(in srgb, var(--color-outline) 55%, transparent);
+  background: var(--color-surface);
+  color: var(--color-muted-text);
+  font-size: var(--font-size-11);
+  font-variant-numeric: tabular-nums;
+}
+.editor-status .text-button {
+  padding: 3px 5px;
+  border-radius: var(--radius-xs);
+  color: var(--color-surface-variant-text);
+}
+.editor-status .text-button:hover,
+.editor-status .text-button[aria-expanded="true"] {
+  background: var(--color-surface-container);
+  color: var(--color-surface-text);
+}
+.editor-status .icon-button {
+  width: 24px;
+  height: 24px;
+}
+.editor-loading {
+  line-height: 1.7;
+}
+.markdown-preview {
+  padding: var(--markdown-padding);
+}
+.markdown-content {
+  max-width: var(--markdown-max-width);
+  line-height: var(--markdown-line-height);
+}
+.markdown-content :is(h1, h2, h3, h4, h5, h6) {
+  font-weight: 650;
+  text-wrap: balance;
+}
+.markdown-content :is(h1, h2, pre, th, td, hr) {
+  border-color: color-mix(in srgb, var(--color-outline) 60%, transparent);
+}
+.markdown-content p {
+  text-wrap: pretty;
+}
+.markdown-content blockquote {
+  margin-inline: 0;
+  padding: 8px 16px;
+  border-left-color: var(--color-outline);
+  background: color-mix(
+    in srgb,
+    var(--color-surface-container) 45%,
+    transparent
+  );
+}
+.image-viewport {
+  background: color-mix(
+    in srgb,
+    var(--color-surface) 45%,
+    var(--color-background)
+  );
+}
+.image-canvas {
+  padding: 24px;
+}
+.image-canvas img {
+  outline: var(--border-width) solid
+    color-mix(in srgb, var(--color-outline) 55%, transparent);
+}
+.image-preview .editor-actions [aria-pressed="true"] {
+  background: var(--color-primary-container);
+  color: var(--color-surface-text);
+}
+.browser-toolbar,
+.browser-search {
+  gap: 4px;
+  padding: 7px 8px;
+  border-color: color-mix(in srgb, var(--color-outline) 55%, transparent);
+}
+.browser-toolbar input,
+.browser-search input {
+  height: 32px;
+  padding-inline: 10px;
+  border-color: color-mix(in srgb, var(--color-outline) 70%, transparent);
+  background: var(--color-background);
+  font-size: var(--font-size-12);
+}
+.browser-toolbar input:focus,
+.browser-search input:focus {
+  border-color: var(--color-primary);
+}
+.browser-toolbar .icon-button,
+.browser-search .icon-button {
+  width: 28px;
+  height: 30px;
+}
+.browser-message {
+  padding: 8px 12px;
+  line-height: 1.65;
+}
+.browser-viewport .empty-message {
+  gap: 8px;
+  padding: 24px;
+  font-size: var(--font-size-12);
+  line-height: 1.7;
+}
+.browser-viewport .empty-message h2 {
+  margin: 0;
+  color: var(--color-surface-text);
+  font-size: var(--font-size-18);
+  font-weight: 650;
+  text-wrap: balance;
+}
+.android-toolbar {
+  border-color: color-mix(in srgb, var(--color-outline) 55%, transparent);
+}
+.android-toolbar .icon-button {
+  border-radius: var(--radius-control);
+  color: var(--color-surface-variant-text);
+}
+.android-toolbar .icon-button:hover:not(:disabled) {
+  background: var(--color-surface-container-high);
+  color: var(--color-surface-text);
+}
+.android-phone-picker,
+.android-startup {
+  gap: 20px;
+}
+.android-phone-picker h2,
+.android-startup h2 {
+  font-weight: 650;
+  line-height: 1.4;
+  text-wrap: balance;
+}
+.android-phone-picker p,
+.android-startup p {
+  text-wrap: pretty;
+}
+.android-phone-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 0;
+}
+.android-phone-choices li {
+  border: 0;
+}
+.android-phone-choice {
+  gap: 12px;
+  padding: 14px 12px;
+  border: var(--border-width) solid
+    color-mix(in srgb, var(--color-outline) 65%, transparent);
+  background: var(--color-surface);
+}
+.android-phone-choice:hover:not(:disabled) {
+  border-color: var(--color-outline);
+  background: var(--color-surface-container);
+}
+.android-phone-choice-info strong {
+  font-weight: 650;
+}
+.android-phone-choice-action {
+  color: var(--color-surface-variant-text);
+}
+.android-startup-steps {
+  width: 100%;
+  gap: 4px;
+  padding: 8px;
+  border: var(--border-width) solid
+    color-mix(in srgb, var(--color-outline) 55%, transparent);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+}
+.android-startup-steps li {
+  min-height: 36px;
+  padding: 5px 8px;
+  border-radius: var(--radius-xs);
+}
+.android-startup-steps [aria-current="step"] {
+  background: var(--color-primary-container);
+}
+.android-device-form {
+  gap: 20px;
+}
+.android-device-form label {
+  font-weight: 600;
+}
+.android-device-form :is(input:not([type="checkbox"]), .select) {
+  min-height: 36px;
+  background: var(--color-background);
+}
+.android-device-form .settings-help {
+  font-size: var(--font-size-11);
+  color: var(--color-muted-text);
+}
+.android-form-advanced {
+  padding-block: 14px;
+  border-color: color-mix(in srgb, var(--color-outline) 55%, transparent);
+}
+.android-form-advanced summary {
+  padding-block: 2px;
+  font-weight: 600;
+}
+.android-input-consent {
+  padding: 12px;
+  border: var(--border-width) solid
+    color-mix(in srgb, var(--color-outline) 55%, transparent);
+  border-radius: var(--radius-control);
+  background: color-mix(
+    in srgb,
+    var(--color-surface-container) 45%,
+    transparent
+  );
+}
+.android-device-form > .dialog-actions {
+  border-color: color-mix(in srgb, var(--color-outline) 55%, transparent);
+}
+@container (width < 650px) {
+  .commit-details-header {
+    padding: 12px;
+  }
+  .commit-details-title h1 {
+    font-size: var(--font-size-14);
+  }
+}
+@media (max-height: 500px) {
+  .android-phone-picker,
+  .android-startup {
+    gap: 12px;
+  }
+  .android-phone-choice {
+    padding-block: 10px;
+  }
+  .android-startup-steps li {
+    min-height: 30px;
+  }
+}

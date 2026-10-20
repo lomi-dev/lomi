@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { Notice, type NoticeProps } from "./Notice";
 
 export function SettingsPage({
@@ -22,17 +22,19 @@ export function SettingsPage({
   contentClassName?: string;
   children?: ReactNode;
 }) {
+  const titleId = useId();
   return (
     <main
       className={`settings-page${wide ? " settings-page-wide" : ""}${className ? ` ${className}` : ""}`}
       aria-busy={busy}
+      aria-labelledby={titleId}
     >
       <div
         className={`settings-page-content${contentClassName ? ` ${contentClassName}` : ""}`}
       >
         <header className="settings-page-heading">
           <div className="settings-page-title">
-            <h1>{title}</h1>
+            <h1 id={titleId}>{title}</h1>
             {description && <p>{description}</p>}
           </div>
           {(status !== undefined || actions) && (
@@ -84,7 +86,7 @@ export function SettingsSection({
         </div>
         {actions && <div className="settings-section-actions">{actions}</div>}
       </header>
-      {children}
+      <div className="settings-section-body">{children}</div>
     </section>
   );
 }

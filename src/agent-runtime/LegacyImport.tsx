@@ -117,7 +117,7 @@ export default function LegacyImport() {
           closeDisabled={busy}
           onClose={() => void cancelImport()}
         >
-          <div className="dialog-form">
+          <div className="dialog-form agent-task-dialog">
             <p>
               Preserve original account logins and archive saved task history.
               Import does not start tasks or replay old inputs.

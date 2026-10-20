@@ -321,22 +321,6 @@ export default function Explorer(props: Props) {
                 />
                 <span title={props.root}>{basename(props.root)}</span>
               </button>
-              <IconButton
-                title="Copy project folder path"
-                onClick={() =>
-                  void writeText(props.root).catch((error) =>
-                    props.onError(errorMessage(error)),
-                  )
-                }
-              >
-                <Copy size={14} />
-              </IconButton>
-              <IconButton
-                title="Open terminal in project folder"
-                onClick={() => props.onTerminal(props.root)}
-              >
-                <Terminal size={14} />
-              </IconButton>
             </div>
           )}
           <div

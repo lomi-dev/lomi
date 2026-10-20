@@ -23,7 +23,7 @@ test("native DOM policy avoids WebGL from first attachment and retains font and 
       return load.apply(this, args);
     };
   });
-  await page.route("**/src/main.tsx", async (route) => {
+  await page.route(/\/src\/main\.tsx(?:\?.*)?$/, async (route) => {
     const response = await route.fetch();
     await route.fulfill({
       response,

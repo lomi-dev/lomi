@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Modal } from "../ui";
 import { useKeybindings } from "../KeybindingsProvider";
 import { isZoomAction, type ActionId } from "../keybindings";
@@ -6,6 +6,8 @@ import { usePlugins } from "./PluginsProvider";
 import { pluginHost } from "./runtime";
 import { commandAvailable } from "./host";
 import { errorMessage } from "../api";
+import { Search } from "../icons";
+import { formatShortcut } from "../keybindings";
 export default function CommandPicker({
   onClose,
   onBuiltin,
@@ -18,7 +20,8 @@ export default function CommandPicker({
   settingsActive?: boolean;
 }) {
   const [query, setQuery] = useState("");
-  const { actions } = useKeybindings();
+  const search = useRef<HTMLInputElement>(null);
+  const { actions, bindings } = useKeybindings();
   const { catalog } = usePlugins();
   const context = pluginHost.context;
   const builtinAvailable = (id: ActionId) => {
@@ -91,15 +94,30 @@ export default function CommandPicker({
         .includes(query.toLowerCase()),
   );
   return (
-    <Modal title="Commands" onClose={onClose}>
+    <Modal
+      title="Commands"
+      className="command-picker"
+      initialFocus={search}
+      onClose={onClose}
+    >
       <div className="dialog-form">
-        <input
-          aria-label="Find command"
-          autoFocus
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-        />
+        <div className="command-picker-search">
+          <Search size={17} aria-hidden="true" />
+          <input
+            ref={search}
+            aria-label="Find command"
+            placeholder="Search commands…"
+            autoFocus
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </div>
         <div className="command-picker-list">
+          {commands.length === 0 && views.length === 0 && (
+            <p className="command-picker-empty" role="status">
+              No matching commands. Try another name.
+            </p>
+          )}
           {commands.map((command) => {
             const entry = catalog.entries.find((e) =>
               e.manifest?.contributes?.commands?.some(
@@ -130,6 +148,11 @@ export default function CommandPicker({
               >
                 <span>{command.label}</span>
                 <small>{command.group}</small>
+                {bindings[command.id] && (
+                  <kbd aria-hidden="true">
+                    {formatShortcut(bindings[command.id])}
+                  </kbd>
+                )}
               </button>
             );
           })}
@@ -154,6 +177,12 @@ export default function CommandPicker({
             </button>
           ))}
         </div>
+        <footer className="command-picker-footer">
+          <span>{commands.length + views.length} results</span>
+          <span aria-hidden="true">
+            <kbd>Tab</kbd> navigate <kbd>Enter</kbd> run <kbd>Esc</kbd> close
+          </span>
+        </footer>
       </div>
     </Modal>
   );

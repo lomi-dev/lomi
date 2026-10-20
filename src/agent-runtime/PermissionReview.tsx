@@ -5,6 +5,7 @@ import { Modal } from "../ui";
 import { permissionControls } from "./permission-model";
 import { replyPermission } from "./permission-runtime";
 import type { PendingPermission } from "./types";
+import "./task.css";
 const claims = new Set<string>();
 export default function PermissionReview({ taskId }: { taskId?: string }) {
   const textFieldId = useId();
@@ -96,7 +97,7 @@ export default function PermissionReview({ taskId }: { taskId?: string }) {
         if (controls?.cancel) void decide(false, controls.cancel.value);
       }}
     >
-      <div className="dialog-form" aria-busy={busy}>
+      <div className="dialog-form agent-task-dialog" aria-busy={busy}>
         <p>
           This operation belongs to the active native attempt in{" "}
           {pending.projectRoot}. Save or close unsaved project editors before

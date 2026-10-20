@@ -2,9 +2,9 @@
   display: inline-flex;
   align-items: center;
   flex: 0 0 auto;
-  height: 22px;
-  border: var(--control-border-width) solid var(--color-outline);
-  border-radius: var(--radius-xs);
+  height: var(--icon-button-size);
+  border: var(--control-border-width) solid transparent;
+  border-radius: var(--radius-control);
   background: var(--color-surface-container);
   color: var(--color-surface-variant-text);
   -webkit-app-region: no-drag;
@@ -14,7 +14,7 @@
 .titlebar-account-control:not(
     .titlebar-account-control-avatar
   ).titlebar-account-menu-open {
-  border-color: var(--color-outline);
+  border-color: transparent;
   background: var(--color-surface-container-high);
   color: var(--color-background-text);
 }
@@ -31,8 +31,8 @@
   justify-content: center;
   flex: 0 0 auto;
   min-width: 0;
-  height: 22px;
-  padding: 0 7px;
+  height: 100%;
+  padding: 0 var(--space-8);
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -48,9 +48,9 @@
 }
 
 .titlebar-account-avatar {
-  width: 22px;
+  width: var(--icon-button-size);
   padding: 0;
-  border: var(--control-border-width) solid var(--color-outline);
+  border: var(--control-border-width) solid transparent;
   border-radius: 50%;
   background: var(--color-surface-container);
   color: var(--color-surface-variant-text);
@@ -58,15 +58,25 @@
 
 .titlebar-account-avatar:hover:not(:disabled),
 .titlebar-account-avatar[aria-expanded="true"] {
-  border-color: var(--color-outline);
+  border-color: transparent;
   background: var(--color-surface-container-high);
   color: var(--color-background-text);
 }
 
 .titlebar-account-menu-trigger {
-  width: 23px;
+  width: 24px;
   padding: 0;
-  border-left: var(--control-border-width) solid var(--color-outline);
+  border-radius: 0 var(--radius-control) var(--radius-control) 0;
+}
+
+.titlebar-account-sign-in {
+  padding-inline: var(--space-10);
+  border-radius: var(--radius-control) 0 0 var(--radius-control);
+}
+
+.titlebar-account-menu-trigger:hover:not(:disabled),
+.titlebar-account-menu-trigger[aria-expanded="true"] {
+  background: var(--color-surface-container-highest);
 }
 
 .titlebar-account:focus-visible {
@@ -105,6 +115,11 @@
 
 .account-context-menu .menu-divider {
   height: calc(2px / var(--app-zoom, 1));
+}
+
+.account-context-menu .menu-item {
+  min-height: 34px;
+  gap: var(--space-10);
 }
 
 .titlebar-account-avatar {

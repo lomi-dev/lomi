@@ -54,12 +54,12 @@ export default function AccountsSettings() {
     account.recovery.recoverable &&
     !account.recovery.requiresVerifiedBootChange;
   return (
-    <div className="dialog-form" aria-busy={busy}>
+    <div className="dialog-form agent-accounts-settings" aria-busy={busy}>
       <SettingsSection
         title="CLI Accounts"
         description="Separate native CLI logins. Each task explicitly selects its next account."
       >
-        <div className="dialog-form">
+        <div className="dialog-form agent-account-create">
           <label>
             CLI
             <select
@@ -122,7 +122,11 @@ export default function AccountsSettings() {
             (item) => item.cli === account.cli,
           );
           return (
-            <section key={account.accountId} aria-label={account.label}>
+            <section
+              className="agent-account-item"
+              key={account.accountId}
+              aria-label={account.label}
+            >
               <h3>
                 {account.label} · {cliNames[account.cli]}
               </h3>
@@ -243,32 +247,34 @@ export default function AccountsSettings() {
         title="CLI capabilities"
         description="Execution support depends on the exact admitted CLI version and platform."
       >
-        <table>
-          <thead>
-            <tr>
-              <th>CLI</th>
-              <th>Account terminal</th>
-              <th>Native task</th>
-              <th>Admitted versions</th>
-              <th>Qualification</th>
-            </tr>
-          </thead>
-          <tbody>
-            {snapshot?.capabilities.map((capability) => (
-              <tr key={capability.cli}>
-                <td>{cliNames[capability.cli]}</td>
-                <td>
-                  {capability.accountTerminal ? "Available" : "Unavailable"}
-                </td>
-                <td>
-                  {capability.managedExecution ? "Available" : "Unavailable"}
-                </td>
-                <td>{capability.versions.join(", ") || "None"}</td>
-                <td>{capability.reason}</td>
+        <div className="agent-capabilities-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>CLI</th>
+                <th>Account terminal</th>
+                <th>Native task</th>
+                <th>Admitted versions</th>
+                <th>Qualification</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {snapshot?.capabilities.map((capability) => (
+                <tr key={capability.cli}>
+                  <td>{cliNames[capability.cli]}</td>
+                  <td>
+                    {capability.accountTerminal ? "Available" : "Unavailable"}
+                  </td>
+                  <td>
+                    {capability.managedExecution ? "Available" : "Unavailable"}
+                  </td>
+                  <td>{capability.versions.join(", ") || "None"}</td>
+                  <td>{capability.reason}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </SettingsSection>
       {recovering && (
         <Modal

@@ -1,4 +1,5 @@
 import {
+  Fragment,
   lazy,
   Suspense,
   useEffect,
@@ -6,19 +7,8 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  Bell,
-  MessageSquare,
-  Monitor,
-  Info,
-  Keyboard,
-  Palette,
-  Puzzle,
-  Terminal,
-  RotateCcw,
-  ShieldCheck,
-  X,
-} from "./icons";
+import { RotateCcw, Search, X } from "./icons";
+import SettingsNavigation from "./SettingsNavigation";
 import AboutSettingsPage from "./AboutSettingsPage";
 import TerminalSettingsPage from "./TerminalSettingsPage";
 import { IconButton } from "./ui";
@@ -84,12 +74,13 @@ export default function SettingsPanel({
         page === "notifications"),
   );
   const [recording, setRecording] = useState<ActionId | null>(null);
+  const [shortcutQuery, setShortcutQuery] = useState("");
+  const shortcutSearch = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const busyRef = useRef(false);
   const recordingButton = useRef<HTMLButtonElement>(null);
-  const navigation = useRef<HTMLElement>(null);
   useLayoutEffect(() => {
     setRecording(null);
     if (requestedPage !== null) setPage(requestedPage);
@@ -97,12 +88,6 @@ export default function SettingsPanel({
   useLayoutEffect(() => {
     if (!active) setRecording(null);
   }, [active]);
-  useLayoutEffect(() => {
-    if (active && !document.querySelector("dialog[open]"))
-      navigation.current
-        ?.querySelector<HTMLButtonElement>('[aria-current="page"]')
-        ?.focus({ preventScroll: true });
-  }, [active, page, requestRevision]);
   useEffect(() => {
     const blurred = () => setRecording(null);
     window.addEventListener("blur", blurred);
@@ -148,107 +133,28 @@ export default function SettingsPanel({
     }
     void persist({ ...preferences.bindings, [id]: shortcut });
   };
+  const shortcutTerms = shortcutQuery
+    .toLocaleLowerCase()
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  const filteredActions = preferences.actions.filter((action) =>
+    shortcutTerms.every((term) =>
+      `${action.label} ${action.description} ${action.group} ${formatShortcut(preferences.bindings[action.id])}`
+        .toLocaleLowerCase()
+        .includes(term),
+    ),
+  );
   return (
     <div className="settings-panel">
       <div className="settings-layout">
-        <nav
-          ref={navigation}
-          className="settings-navigation"
-          aria-label="Settings pages"
-        >
-          <button
-            className="settings-nav-item"
-            aria-current={page === "keybinds" ? "page" : undefined}
-            onClick={() => setPage("keybinds")}
-          >
-            <Keyboard size={16} />
-            Keybinds
-          </button>
-          <button
-            className="settings-nav-item"
-            aria-current={page === "notifications" ? "page" : undefined}
-            onClick={() => setPage("notifications")}
-          >
-            <Bell size={16} aria-hidden="true" />
-            Notifications
-          </button>
-          <button
-            className="settings-nav-item"
-            aria-current={page === "terminal" ? "page" : undefined}
-            onClick={() => setPage("terminal")}
-          >
-            <Terminal size={16} />
-            Terminal
-          </button>
-          <button
-            className="settings-nav-item"
-            aria-current={page === "themes" ? "page" : undefined}
-            onClick={() => setPage("themes")}
-          >
-            <Palette size={16} />
-            Themes
-          </button>
-          <button
-            className="settings-nav-item"
-            aria-current={page === "plugins" ? "page" : undefined}
-            onClick={() => setPage("plugins")}
-          >
-            <Puzzle size={16} />
-            Plugins
-          </button>
-          <button
-            className="settings-nav-item"
-            aria-current={page === "chat-ai" ? "page" : undefined}
-            onClick={() => setPage("chat-ai")}
-          >
-            <MessageSquare size={16} />
-            Chat AI
-          </button>
-          <button
-            className="settings-nav-item"
-            aria-current={page === "android" ? "page" : undefined}
-            onClick={() => setPage("android")}
-          >
-            <Monitor size={16} />
-            Android
-          </button>
-          <button
-            className="settings-nav-item"
-            aria-current={page === "agent-control" ? "page" : undefined}
-            onClick={() => setPage("agent-control")}
-          >
-            <ShieldCheck size={16} />
-            Agent control
-          </button>
-          <button
-            className="settings-nav-item"
-            aria-current={page === "remote" ? "page" : undefined}
-            disabled={!remoteAvailable}
-            title={
-              remoteAvailable ? undefined : "Sign in to use remote sharing"
-            }
-            onClick={() => setPage("remote")}
-          >
-            <Monitor size={16} aria-hidden="true" />
-            Remote
-          </button>
-          <button
-            className="settings-nav-item settings-nav-account"
-            aria-current={page === "account" ? "page" : undefined}
-            onClick={() => setPage("account")}
-          >
-            <ShieldCheck size={16} aria-hidden="true" />
-            Account
-          </button>
-          <button
-            className="settings-nav-item settings-nav-about"
-            aria-current={page === "about" ? "page" : undefined}
-            onClick={() => setPage("about")}
-          >
-            <Info size={16} />
-            About
-          </button>
-        </nav>
+        <SettingsNavigation
+          active={active}
+          page={page}
+          requestRevision={requestRevision}
+          remoteAvailable={remoteAvailable}
+          onSelect={setPage}
+        />
         {page === "notifications" ? (
           <Suspense fallback={<SettingsLoading title="Notifications" />}>
             <NotificationSettingsPage />
@@ -329,156 +235,215 @@ export default function SettingsPanel({
                 {error || preferences.error}
               </SettingsNotice>
             )}
-            <SettingsSection title="Panel focus">
-              <SettingRow
-                label="Focus follows pointer"
-                htmlFor="focus-follows-pointer"
-                description="Typing, paste and shortcuts go to the panel under the mouse."
-                descriptionId="pointer-focus-help"
-              >
-                <input
-                  id="focus-follows-pointer"
-                  className="settings-switch"
-                  type="checkbox"
-                  role="switch"
-                  aria-describedby="pointer-focus-help"
-                  checked={preferences.focusFollowsPointer}
-                  disabled={!preferences.ready || busy || !!preferences.error}
-                  onChange={(event) =>
-                    void persist(preferences.bindings, event.target.checked)
-                  }
-                />
-              </SettingRow>
-            </SettingsSection>
-            <SettingsSection title="File Explorer">
-              <SettingRow
-                label="Open with one click"
-                htmlFor="explorer-open-on-single-click"
-                description="On: one click opens after a brief pause; a double click selects without opening. Off: one click selects and a double click opens."
-                descriptionId="explorer-click-mode-help"
-              >
-                <input
-                  id="explorer-open-on-single-click"
-                  className="settings-switch"
-                  type="checkbox"
-                  role="switch"
-                  aria-describedby="explorer-click-mode-help"
-                  checked={preferences.explorerOpenOnSingleClick}
-                  disabled={!preferences.ready || busy || !!preferences.error}
-                  onChange={(event) =>
-                    void persist(
-                      preferences.bindings,
-                      preferences.focusFollowsPointer,
-                      event.target.checked,
-                    )
-                  }
-                />
-              </SettingRow>
-            </SettingsSection>
-            {[
-              ...new Set(preferences.actions.map((action) => action.group)),
-            ].map((group) => (
-              <SettingsSection title={group} key={group}>
-                {preferences.actions
-                  .filter((action) => action.group === group)
-                  .map((action) => (
-                    <SettingRow
-                      key={action.id}
-                      label={action.label}
-                      description={action.description}
-                    >
-                      <div className="keybinding-controls">
-                        <button
-                          ref={
-                            recording === action.id
-                              ? recordingButton
-                              : undefined
-                          }
-                          className={`shortcut-recorder${recording === action.id ? " recording" : ""}`}
-                          aria-label={`Shortcut for ${action.label}`}
-                          disabled={
-                            !preferences.ready || busy || !!preferences.error
-                          }
-                          onClick={() => {
-                            setRecording(action.id);
-                            setError("");
-                            setStatus("");
-                          }}
-                          onBlur={() => {
-                            if (recording === action.id) setRecording(null);
-                          }}
-                          onKeyDown={(event) => {
-                            if (recording !== action.id) return;
-                            event.preventDefault();
-                            event.stopPropagation();
-                            if (
-                              event.key === "Escape" &&
-                              !event.ctrlKey &&
-                              !event.altKey &&
-                              !event.metaKey &&
-                              !event.shiftKey
-                            ) {
-                              setRecording(null);
+            <div className="settings-shortcut-search">
+              <Search size={14} aria-hidden="true" />
+              <input
+                ref={shortcutSearch}
+                type="text"
+                aria-label="Search shortcuts"
+                placeholder="Search shortcuts…"
+                value={shortcutQuery}
+                onChange={(event) => {
+                  setRecording(null);
+                  setShortcutQuery(event.target.value);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== "Escape" || event.nativeEvent.isComposing)
+                    return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setShortcutQuery("");
+                }}
+              />
+            </div>
+            {shortcutTerms.length === 0 && (
+              <>
+                <SettingsSection title="Panel focus">
+                  <SettingRow
+                    label="Focus follows pointer"
+                    htmlFor="focus-follows-pointer"
+                    description="Typing, paste and shortcuts go to the panel under the mouse."
+                    descriptionId="pointer-focus-help"
+                  >
+                    <input
+                      id="focus-follows-pointer"
+                      className="settings-switch"
+                      type="checkbox"
+                      role="switch"
+                      aria-describedby="pointer-focus-help"
+                      checked={preferences.focusFollowsPointer}
+                      disabled={
+                        !preferences.ready || busy || !!preferences.error
+                      }
+                      onChange={(event) =>
+                        void persist(preferences.bindings, event.target.checked)
+                      }
+                    />
+                  </SettingRow>
+                </SettingsSection>
+                <SettingsSection title="File Explorer">
+                  <SettingRow
+                    label="Open with one click"
+                    htmlFor="explorer-open-on-single-click"
+                    description="On: one click opens after a brief pause; a double click selects without opening. Off: one click selects and a double click opens."
+                    descriptionId="explorer-click-mode-help"
+                  >
+                    <input
+                      id="explorer-open-on-single-click"
+                      className="settings-switch"
+                      type="checkbox"
+                      role="switch"
+                      aria-describedby="explorer-click-mode-help"
+                      checked={preferences.explorerOpenOnSingleClick}
+                      disabled={
+                        !preferences.ready || busy || !!preferences.error
+                      }
+                      onChange={(event) =>
+                        void persist(
+                          preferences.bindings,
+                          preferences.focusFollowsPointer,
+                          event.target.checked,
+                        )
+                      }
+                    />
+                  </SettingRow>
+                </SettingsSection>
+              </>
+            )}
+            {filteredActions.length === 0 && preferences.ready && (
+              <div className="settings-shortcut-empty">
+                <p role="status">No matching shortcuts.</p>
+                <button
+                  className="text-button"
+                  type="button"
+                  onClick={() => {
+                    setShortcutQuery("");
+                    shortcutSearch.current?.focus();
+                  }}
+                >
+                  Clear shortcut search
+                </button>
+              </div>
+            )}
+            {[...new Set(filteredActions.map((action) => action.group))].map(
+              (group) => (
+                <SettingsSection title={group} key={group}>
+                  {filteredActions
+                    .filter((action) => action.group === group)
+                    .map((action) => (
+                      <SettingRow
+                        key={action.id}
+                        label={action.label}
+                        description={action.description}
+                      >
+                        <div className="keybinding-controls">
+                          <button
+                            ref={
+                              recording === action.id
+                                ? recordingButton
+                                : undefined
+                            }
+                            className={`shortcut-recorder${recording === action.id ? " recording" : ""}`}
+                            aria-label={`Shortcut for ${action.label}`}
+                            disabled={
+                              !preferences.ready || busy || !!preferences.error
+                            }
+                            onClick={() => {
+                              setRecording(action.id);
                               setError("");
-                              return;
-                            }
-                            if (
-                              event.repeat ||
-                              ["Control", "Shift", "Alt", "Meta"].includes(
-                                event.key,
+                              setStatus("");
+                            }}
+                            onBlur={() => {
+                              if (recording === action.id) setRecording(null);
+                            }}
+                            onKeyDown={(event) => {
+                              if (recording !== action.id) return;
+                              event.preventDefault();
+                              event.stopPropagation();
+                              if (
+                                event.key === "Escape" &&
+                                !event.ctrlKey &&
+                                !event.altKey &&
+                                !event.metaKey &&
+                                !event.shiftKey
+                              ) {
+                                setRecording(null);
+                                setError("");
+                                return;
+                              }
+                              if (
+                                event.repeat ||
+                                ["Control", "Shift", "Alt", "Meta"].includes(
+                                  event.key,
+                                )
                               )
-                            )
-                              return;
-                            const shortcut = shortcutFromEvent(
-                              event.nativeEvent,
-                            );
-                            if (!shortcut) {
-                              setError(
-                                "Use Ctrl, Alt, or Cmd with a key, or use a function key.",
+                                return;
+                              const shortcut = shortcutFromEvent(
+                                event.nativeEvent,
                               );
-                              return;
+                              if (!shortcut) {
+                                setError(
+                                  "Use Ctrl, Alt, or Cmd with a key, or use a function key.",
+                                );
+                                return;
+                              }
+                              assign(action.id, shortcut);
+                            }}
+                          >
+                            {recording === action.id ? (
+                              <kbd>Press keys…</kbd>
+                            ) : preferences.bindings[action.id] ? (
+                              preferences.bindings[action.id]
+                                ?.split("+")
+                                .map((key, index) => (
+                                  <Fragment key={index}>
+                                    {index > 0 && (
+                                      <span className="shortcut-separator">
+                                        +
+                                      </span>
+                                    )}
+                                    <kbd>{formatShortcut(key)}</kbd>
+                                  </Fragment>
+                                ))
+                            ) : (
+                              <span className="shortcut-unassigned">
+                                Not set
+                              </span>
+                            )}
+                          </button>
+                          <IconButton
+                            title={`Clear shortcut for ${action.label}`}
+                            disabled={
+                              !preferences.ready ||
+                              busy ||
+                              !!preferences.error ||
+                              !preferences.bindings[action.id]
                             }
-                            assign(action.id, shortcut);
-                          }}
-                        >
-                          <kbd>
-                            {recording === action.id
-                              ? "Press keys…"
-                              : formatShortcut(preferences.bindings[action.id])}
-                          </kbd>
-                        </button>
-                        <IconButton
-                          title={`Clear shortcut for ${action.label}`}
-                          disabled={
-                            !preferences.ready ||
-                            busy ||
-                            !!preferences.error ||
-                            !preferences.bindings[action.id]
-                          }
-                          onClick={() => assign(action.id, null)}
-                        >
-                          <X size={14} />
-                        </IconButton>
-                        <IconButton
-                          title={`Reset shortcut for ${action.label}`}
-                          disabled={
-                            !preferences.ready ||
-                            busy ||
-                            !!preferences.error ||
-                            preferences.bindings[action.id] ===
-                              preferences.defaults[action.id]
-                          }
-                          onClick={() =>
-                            assign(action.id, preferences.defaults[action.id])
-                          }
-                        >
-                          <RotateCcw size={14} />
-                        </IconButton>
-                      </div>
-                    </SettingRow>
-                  ))}
-              </SettingsSection>
-            ))}
+                            onClick={() => assign(action.id, null)}
+                          >
+                            <X size={14} />
+                          </IconButton>
+                          <IconButton
+                            title={`Reset shortcut for ${action.label}`}
+                            disabled={
+                              !preferences.ready ||
+                              busy ||
+                              !!preferences.error ||
+                              preferences.bindings[action.id] ===
+                                preferences.defaults[action.id]
+                            }
+                            onClick={() =>
+                              assign(action.id, preferences.defaults[action.id])
+                            }
+                          >
+                            <RotateCcw size={14} />
+                          </IconButton>
+                        </div>
+                      </SettingRow>
+                    ))}
+                </SettingsSection>
+              ),
+            )}
           </SettingsPage>
         )}
       </div>

@@ -7,6 +7,7 @@ import { newId } from "../model";
 import { cliNames } from "../cli-agents";
 import { useAccountsSnapshot } from "./useAccountsSnapshot";
 import type { Task, TasksSnapshot } from "./types";
+import "./task.css";
 export default function TaskCreateDialog({
   cwd,
   shellProfileId,
@@ -80,7 +81,7 @@ export default function TaskCreateDialog({
       closeDisabled={busy}
       onClose={onClose}
     >
-      <div className="dialog-form" aria-busy={busy}>
+      <div className="dialog-form agent-task-dialog" aria-busy={busy}>
         <p>Work in {cwd} using a native CLI account.</p>
         <div className="dialog-form">
           <label htmlFor={accountFieldId}>Account</label>
@@ -157,7 +158,7 @@ export default function TaskCreateDialog({
         </div>
         <LegacyImport />
         {tasks.length > 0 && (
-          <section aria-label="Saved tasks">
+          <section className="agent-saved-tasks" aria-label="Saved tasks">
             <h3>Saved tasks</h3>
             {tasks.map((task) => (
               <button

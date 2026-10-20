@@ -9,7 +9,11 @@ export default function NativeQualificationNotice({
 }) {
   if (qualified) return null;
   return (
-    <div role="note" aria-label="CLI background work limitation">
+    <div
+      className="agent-qualification-note"
+      role="note"
+      aria-label="CLI background work limitation"
+    >
       <strong>CLI background work limitation</strong>
       {cli === "codex" || cli === "claude" ? (
         <p>

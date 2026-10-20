@@ -1304,6 +1304,8 @@ export async function mockDesktop(
               throw new Error(desktop.__nativeTest.directoryError);
             return args.path;
           }
+          if (command === "resolve_project_entry")
+            return `${args.root}/${args.relative}`.replace(/\/$/, "");
           if (command === "list_directory")
             return args.relative
               ? [

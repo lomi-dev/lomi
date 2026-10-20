@@ -1,3 +1,109 @@
+.agent-accounts-settings {
+  min-width: 0;
+  padding: 0;
+}
+.agent-account-create {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+  gap: var(--space-16);
+  padding: var(--space-16);
+  border: 1px solid color-mix(in srgb, var(--color-outline) 55%, transparent);
+  border-radius: calc(var(--radius-control) + var(--space-4));
+  background: color-mix(in srgb, var(--color-surface) 65%, transparent);
+}
+.agent-account-create :is(input, select) {
+  width: 100%;
+  min-width: 0;
+}
+.agent-account-create > label {
+  min-width: 0;
+  margin: 0;
+  font-size: var(--font-size-12);
+}
+.agent-account-create > .button {
+  justify-self: start;
+}
+.agent-accounts-settings [role="note"] {
+  margin-block: var(--space-12) var(--space-20);
+  color: var(--color-surface-variant-text);
+  font-size: var(--font-size-11);
+  line-height: 1.7;
+  text-wrap: pretty;
+}
+.agent-accounts-settings [role="alert"] {
+  color: var(--color-error);
+  font-size: var(--font-size-12);
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.agent-account-item {
+  min-width: 0;
+  padding-block: var(--space-20);
+  border-top: 1px solid
+    color-mix(in srgb, var(--color-outline) 65%, transparent);
+  overflow-wrap: anywhere;
+}
+.agent-account-item > h3 {
+  margin: 0 0 var(--space-6);
+  font-size: var(--font-size-13);
+  font-weight: 650;
+  line-height: 1.5;
+  text-wrap: balance;
+}
+.agent-account-item p {
+  margin: var(--space-6) 0;
+  font-size: var(--font-size-12);
+  line-height: 1.65;
+}
+.agent-account-item > [role="status"] {
+  color: var(--color-surface-variant-text);
+  font-size: var(--font-size-11);
+  font-variant-numeric: tabular-nums;
+}
+.agent-account-item > .dialog-actions {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: var(--space-8);
+  margin-top: var(--space-16);
+}
+.agent-account-item .button {
+  max-width: 100%;
+  font-size: var(--font-size-11);
+  white-space: normal;
+}
+.agent-capabilities-scroll {
+  min-width: 0;
+  max-width: 100%;
+  overflow: auto;
+  border: 1px solid color-mix(in srgb, var(--color-outline) 55%, transparent);
+  border-radius: calc(var(--radius-control) + var(--space-4));
+}
+.agent-capabilities-scroll table {
+  width: 100%;
+  min-width: 540px;
+  border-collapse: collapse;
+  font-size: var(--font-size-11);
+  line-height: 1.6;
+  text-align: start;
+}
+.agent-capabilities-scroll :is(th, td) {
+  padding: var(--space-12);
+  vertical-align: top;
+  text-align: start;
+}
+.agent-capabilities-scroll th {
+  color: var(--color-surface-variant-text);
+  background: var(--color-surface-container);
+  font-weight: 550;
+}
+.agent-capabilities-scroll tbody tr + tr {
+  border-top: 1px solid
+    color-mix(in srgb, var(--color-outline) 55%, transparent);
+}
+.agent-capabilities-scroll td:first-child {
+  font-weight: 600;
+}
 .dialog-form .agent-account-recovery-confirmation {
   flex-direction: row;
   align-items: flex-start;
@@ -7,4 +113,9 @@
   flex: none;
   width: auto;
   margin-top: 3px;
+}
+@container settings-page (max-width: 520px) {
+  .agent-account-create {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

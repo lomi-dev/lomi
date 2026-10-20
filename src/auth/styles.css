@@ -2,21 +2,24 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-8, 8px);
-  margin-top: var(--space-12, 12px);
+  gap: var(--space-8);
+  margin-top: var(--space-16);
 }
 .account-verification {
   display: grid;
   justify-items: start;
-  gap: var(--space-8, 8px);
-  padding: var(--space-16, 16px);
+  gap: var(--space-12);
+  padding: var(--space-20);
   border: 1px solid var(--color-outline);
-  border-radius: var(--radius-md);
-  background: var(--color-surface-container);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  font-size: var(--font-size-13);
+  line-height: 1.65;
 }
 .account-verification p {
   margin: 0;
-  color: var(--color-muted-text);
+  color: var(--color-surface-variant-text);
+  text-wrap: pretty;
 }
 .account-email {
   overflow-wrap: anywhere;
@@ -24,4 +27,7 @@
 }
 .account-settings .setting-value {
   user-select: text;
+}
+.account-verification > .account-actions {
+  margin-top: var(--space-4);
 }

@@ -401,6 +401,15 @@ export function compileTheme(
         : {}),
     });
     if (navigation !== "right")
+      rule(".settings-navigation-header, .settings-nav-group-label", {
+        display: "none",
+      });
+    if (navigation !== "right")
+      rule(".settings-navigation > .settings-navigation-search", {
+        flex: "0 1 180px",
+        margin: "0",
+      });
+    if (navigation !== "right")
       rule(".settings-navigation > .settings-nav-item", {
         width: "auto",
         margin: "0",

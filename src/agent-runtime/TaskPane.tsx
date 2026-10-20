@@ -218,7 +218,9 @@ export default function TaskPane({
             {task.availabilityReason && (
               <p role="status">{task.availabilityReason}</p>
             )}
-            <p aria-live="polite">{task.statusMessage || task.state}</p>
+            <p className="agent-task-status" aria-live="polite">
+              {task.statusMessage || task.state}
+            </p>
             <dl className="agent-task-meta">
               <div>
                 <dt>Active account</dt>
@@ -480,7 +482,7 @@ export default function TaskPane({
           closeDisabled={state.busy}
           onClose={() => setReview(undefined)}
         >
-          <div className="dialog-form">
+          <div className="dialog-form agent-task-dialog">
             <p>
               Allow <strong>{review.account.label}</strong>, login revision{" "}
               {review.account.authRevision}, to read this task’s messages and
@@ -525,7 +527,7 @@ export default function TaskPane({
           closeDisabled={state.busy}
           onClose={() => setTransferReview(undefined)}
         >
-          <div className="dialog-form">
+          <div className="dialog-form agent-task-dialog">
             <p>
               Transfer the settled native Pi session to{" "}
               {transferReview.account.label} (login revision{" "}
