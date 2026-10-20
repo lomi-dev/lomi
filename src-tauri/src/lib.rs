@@ -69,6 +69,8 @@ mod editor_preferences;
 mod files;
 mod git;
 mod keybindings;
+#[cfg(target_os = "linux")]
+mod linux_instance;
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(feature = "native-smoke")]
@@ -158,6 +160,8 @@ fn show_ready_window(window: Window, background: [u8; 3]) -> Result<bool, String
         .state::<windows_instance::Instance>()
         .listen(window.app_handle())
         .map_err(|error| error.to_string())?;
+    #[cfg(target_os = "linux")]
+    linux_instance::ready(window.app_handle());
     Ok(true)
 }
 
@@ -189,6 +193,10 @@ pub fn run() {
         None => return,
     };
     let builder = tauri::Builder::default();
+    #[cfg(target_os = "linux")]
+    let builder = builder
+        .manage(linux_instance::Reopen::default())
+        .plugin(linux_instance::plugin());
     #[cfg(feature = "native-smoke")]
     let builder = if let Some(plugin) = native_smoke::terminal_regression_startup_plugin() {
         builder.plugin(plugin)
@@ -259,6 +267,8 @@ pub fn run() {
         .register_asynchronous_uri_scheme_protocol("theme", themes::protocol)
         .register_asynchronous_uri_scheme_protocol("plugin", plugins::protocol)
         .setup(|app| {
+            #[cfg(target_os = "linux")]
+            linux_instance::wait_for_previous_owner(app.handle())?;
             app.state::<agent_runtime::AgentRuntime>()
                 .with(app.handle(), |_| Ok(()))?;
 
@@ -658,6 +668,8 @@ pub fn run() {
             app.state::<terminal::Terminals>().stop_all();
             #[cfg(windows)]
             app.state::<windows_instance::Instance>().release();
+            #[cfg(target_os = "linux")]
+            tauri_plugin_single_instance::destroy(app);
         }
         if let tauri::RunEvent::WindowEvent {
             label,

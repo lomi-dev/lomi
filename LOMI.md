@@ -429,7 +429,15 @@ or acronym.
   one GUI process per application identifier and Windows session before native
   services start; subsequent launches reopen it once the frontend is ready.
   Headless CLI entry points remain independent. Release ownership after Exit
-  cleanup so Tauri can start a replacement process during restart.
+  cleanup so Tauri can start a replacement process during restart. Linux uses
+  `linux_instance.rs` and the pinned single-instance plugin to elect one GUI
+  process per application identifier on the session bus before native services
+  start. Relaunches coalesce until frontend readiness, then present the existing
+  main window without recreating its webview or PTYs. Keep D-Bus ownership through
+  final Exit cleanup. Before initializing services, the next Linux primary waits
+  up to five seconds for existing Chat AI and Agent runtime owner locks to retire;
+  probe both together without creating storage. Launcher arguments and working
+  directories are ignored.
 - `src-tauri/src/macos/traffic_lights.rs` caches weak native window references.
   Do not query or clone Tauri window dispatchers on every main-loop iteration:
   doing so can wake that same loop and consume a CPU core while idle. Remove

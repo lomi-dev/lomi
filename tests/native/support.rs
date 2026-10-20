@@ -11,6 +11,9 @@ mod desktop_smoke;
 mod explorer_clipboard_smoke;
 #[path = "image-support.rs"]
 mod image_smoke;
+#[cfg(target_os = "linux")]
+#[path = "linux-instance-support.rs"]
+mod linux_instance_smoke;
 #[path = "notification-support.rs"]
 mod notification_smoke;
 #[path = "terminal-clipboard-support.rs"]
@@ -23,6 +26,14 @@ pub mod terminal_output;
 mod terminal_regression;
 #[path = "theme-support.rs"]
 mod theme_smoke;
+#[cfg(target_os = "linux")]
+pub(crate) fn linux_instance_owner_contended(app: &tauri::AppHandle) -> std::io::Result<()> {
+    if std::env::var_os("LOMI_LINUX_INSTANCE_DIRECTORY").is_none() {
+        return Ok(());
+    }
+    linux_instance_smoke::owner_contended(app)
+}
+
 fn entry_script(source: &str, data: &serde_json::Value) -> String {
     source.replace("SMOKE_ENTRY", &serde_json::to_string(data).unwrap())
 }
@@ -117,6 +128,10 @@ pub async fn plugin_smoke_result(
 ) -> Result<serde_json::Value, String> {
     if window.label() != "main" {
         return Err("Unknown test caller.".into());
+    }
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("LOMI_LINUX_INSTANCE_DIRECTORY").is_some() {
+        return linux_instance_smoke::result(&app, &stage, data);
     }
     if std::env::var_os("LOMI_TERMINAL_REGRESSION_DIRECTORY").is_some() {
         return terminal_regression::result(&app, &stage, data).await;
