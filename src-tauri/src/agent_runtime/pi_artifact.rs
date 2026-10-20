@@ -219,6 +219,20 @@ mod tests {
     }
     #[test]
     fn dependency_change_and_extra_file_change_closure_with_unchanged_entry() {
+        use std::os::unix::fs::PermissionsExt;
+        fn trust_fixture(path: &Path) {
+            let directory = path.is_dir();
+            fs::set_permissions(
+                path,
+                fs::Permissions::from_mode(if directory { 0o700 } else { 0o600 }),
+            )
+            .unwrap();
+            if directory {
+                for entry in fs::read_dir(path).unwrap() {
+                    trust_fixture(&entry.unwrap().path());
+                }
+            }
+        }
         let d = tempfile::tempdir().unwrap();
         for p in ["package.json", "package-lock.json"] {
             fs::write(d.path().join(p), b"{}").unwrap();
@@ -228,12 +242,14 @@ mod tests {
         fs::write(&entry, b"require('./cli-runtime.js')").unwrap();
         let chunk = entry.with_file_name("cli-runtime.js");
         fs::write(&chunk, b"standard main").unwrap();
+        trust_fixture(d.path());
         let original = closure(d.path()).unwrap();
         fs::write(&chunk, b"injected SDK factories").unwrap();
         assert_ne!(closure(d.path()).unwrap(), original);
         fs::write(&chunk, b"standard main").unwrap();
         assert_eq!(closure(d.path()).unwrap(), original);
         fs::write(entry.with_file_name("extension.js"), b"injected").unwrap();
+        trust_fixture(d.path());
         assert_ne!(closure(d.path()).unwrap(), original);
     }
     #[test]

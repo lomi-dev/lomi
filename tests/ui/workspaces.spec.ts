@@ -595,13 +595,21 @@ test("adding a workspace chooses a folder every time, including the same folder,
     (window as any).__nativeTest.directoryError = "Folder not found";
   });
   await panel.getByRole("button", { name: /^Agent 1 / }).click();
-  await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toContainText(
-    "Folder not found",
-  );
   await expect(panel.getByRole("button", { name: /^lomi / })).toHaveAttribute(
     "aria-current",
     "true",
   );
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(
+    page.getByRole("dialog", { name: "Notifications", exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Open account menu" }).click();
+  await page
+    .getByRole("menuitem", { name: "Notifications", exact: true })
+    .click();
+  await expect(
+    page.getByRole("dialog", { name: "Notifications", exact: true }),
+  ).toContainText("Folder not found");
 });
 
 test("a configured workspace shortcut works before folder selection and is captured before terminal input", async ({

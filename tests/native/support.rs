@@ -5,6 +5,8 @@ mod agent_launch_smoke;
 mod agent_runtime_smoke;
 #[path = "agent-usage-support.rs"]
 mod agent_usage_smoke;
+#[path = "desktop-support.rs"]
+mod desktop_smoke;
 #[path = "explorer-clipboard-support.rs"]
 mod explorer_clipboard_smoke;
 #[path = "image-support.rs"]
@@ -19,6 +21,10 @@ fn entry_script(source: &str, data: &serde_json::Value) -> String {
     source.replace("SMOKE_ENTRY", &serde_json::to_string(data).unwrap())
 }
 pub fn page(webview: &tauri::Webview, payload: &tauri::webview::PageLoadPayload<'_>) {
+    if std::env::var_os("LOMI_DESKTOP_SMOKE_DIRECTORY").is_some() {
+        desktop_smoke::page(webview, payload);
+        return;
+    }
     if std::env::var_os("LOMI_AGENT_RUNTIME_SMOKE_DIRECTORY").is_some() {
         agent_runtime_smoke::page(webview, payload);
         return;
@@ -64,9 +70,16 @@ pub fn page(webview: &tauri::Webview, payload: &tauri::webview::PageLoadPayload<
     let Ok(path) = std::env::var("LOMI_PLUGIN_SMOKE_PACKAGE") else {
         return;
     };
+    if std::env::var("LOMI_PLUGIN_SMOKE_IDENTIFIER").as_deref()
+        != Ok(webview.app_handle().config().identifier.as_str())
+    {
+        eprintln!("Plugin fixture application identity does not match the isolated runner.");
+        webview.app_handle().exit(1);
+        return;
+    }
     if crate::plugins::safe_mode() {
         if let Some(main) = webview.app_handle().get_webview("main") {
-            let _ = main.eval(r#"(async()=>{const invoke=window.__TAURI_INTERNALS__.invoke;try{const catalog=await invoke('list_plugins');if(!catalog.safeMode||!catalog.entries.some(e=>e.enabled)||catalog.entries.some(e=>e.evaluated))throw Error('Safe startup evaluated a plugin');const entry=catalog.entries.find(e=>e.enabled);let blocked=false;try{await invoke('prepare_plugin',{id:entry.id,expected:entry.revision});}catch{blocked=true;}if(!blocked)throw Error('Safe startup allowed activation');await invoke('plugin_smoke_result',{stage:'passed',data:{checks:['safe startup preserves enabled metadata and rejects executable preparation']}});}catch(error){await invoke('plugin_smoke_result',{stage:'failed',data:String(error)});}})();"#);
+            let _ = main.eval(r#"(async()=>{const invoke=window.__TAURI_INTERNALS__.invoke;try{for(let i=0;i<200&&!document.querySelector('.terminal-pane');i++)await new Promise(r=>setTimeout(r,50));if(!document.querySelector('.terminal-pane'))throw Error('Safe startup did not restore terminal UI');await new Promise(r=>setTimeout(r,100));const catalog=await invoke('list_plugins');if(!catalog.safeMode||!catalog.entries.some(e=>e.enabled)||catalog.entries.some(e=>e.evaluated))throw Error('Safe startup evaluated a plugin');const entry=catalog.entries.find(e=>e.enabled);let blocked=false;try{await invoke('prepare_plugin',{id:entry.id,expected:entry.revision});}catch{blocked=true;}if(!blocked)throw Error('Safe startup allowed activation');await invoke('plugin_smoke_result',{stage:'passed',data:{checks:['safe startup preserves enabled metadata and rejects executable preparation']}});}catch(error){await invoke('plugin_smoke_result',{stage:'failed',data:String(error)});}})();"#);
         }
         return;
     }
@@ -85,6 +98,9 @@ pub fn plugin_smoke_result(
 ) -> Result<serde_json::Value, String> {
     if window.label() != "main" {
         return Err("Unknown test caller.".into());
+    }
+    if std::env::var_os("LOMI_DESKTOP_SMOKE_DIRECTORY").is_some() {
+        return desktop_smoke::result(&app, &stage, data);
     }
     if std::env::var_os("LOMI_AGENT_RUNTIME_SMOKE_DIRECTORY").is_some() {
         return agent_runtime_smoke::result(&app, &stage, data);

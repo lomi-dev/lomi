@@ -311,10 +311,13 @@ export default function NotificationCenter({
           ),
         ];
         const index = focusable.indexOf(document.activeElement as HTMLElement);
-        if (event.shiftKey ? index <= 0 : index === focusable.length - 1) {
-          event.preventDefault();
-          focusable[event.shiftKey ? focusable.length - 1 : 0]?.focus();
-        }
+        event.preventDefault();
+        const next = event.shiftKey
+          ? index <= 0
+            ? focusable.length - 1
+            : index - 1
+          : (index + 1) % focusable.length;
+        focusable[next]?.focus();
         event.stopPropagation();
       }}
     >

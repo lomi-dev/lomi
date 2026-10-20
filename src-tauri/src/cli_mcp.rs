@@ -1170,7 +1170,7 @@ mod tests {
             (TitleCli::Kimi, "KIMI_CODE_HOME", "mcp.json"),
             (TitleCli::Grok, "GROK_HOME", "config.toml"),
         ] {
-            let custom = format!("{variable}={}/custom", home.display());
+            let custom = format!("{variable}={}", home.join("custom").display());
             assert_eq!(
                 configuration_path(cli, &[home_entry.as_bytes(), custom.as_bytes()]).unwrap(),
                 home.join("custom").join(suffix)

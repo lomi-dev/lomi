@@ -522,7 +522,7 @@ function Directory(props: DirectoryProps) {
                   entry.isDirectory
                     ? entry.relativePath
                     : windows
-                      ? parentPath(entry.relativePath)
+                      ? parentPath(entry.relativePath, root)
                       : entry.relativePath.split("/").slice(0, -1).join("/")
                 }
                 data-explorer-folder={

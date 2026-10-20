@@ -37,7 +37,16 @@ async function terminal(page: Page) {
     .first()
     .getAttribute("data-pane-id"))!;
   const sessionId = await page.evaluate(async (id) => {
-    const { runningTerminal } = await import("/src/terminal-runtime.ts");
+    // Vite versions modules after edits. Read the same runtime instance that
+    // mounted the terminal instead of creating a second, empty registry.
+    const runtimeUrl = performance
+      .getEntriesByType("resource")
+      .map((entry) => entry.name)
+      .filter((url) => new URL(url).pathname === "/src/terminal-runtime.ts")
+      .at(-1);
+    const { runningTerminal } = await import(
+      runtimeUrl ?? "/src/terminal-runtime.ts"
+    );
     return runningTerminal(id)!.sessionId;
   }, paneId);
   return { paneId, sessionId };
@@ -222,11 +231,18 @@ test("setup requires explicit consent and re-review after a failed write", async
   });
   await dialog.getByRole("button", { name: "Enable integration" }).click();
   await expect(dialog).not.toBeVisible();
+  // Successful setup follows the application's quiet, persistent inbox flow.
+  await expect(page.getByRole("alert")).toHaveCount(0);
   await expect(
-    page.getByText("Claude Code notifications are configured.", {
-      exact: false,
-    }),
-  ).toBeVisible();
+    page.getByRole("dialog", { name: "Notifications", exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Open account menu" }).click();
+  await page
+    .getByRole("menuitem", { name: "Notifications", exact: true })
+    .click();
+  await expect(
+    page.getByRole("dialog", { name: "Notifications", exact: true }),
+  ).toContainText("Claude Code notifications are configured.");
 });
 
 test("denied system permission keeps inbox notifications and receives no in-app alert", async ({

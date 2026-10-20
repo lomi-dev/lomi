@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { buffer, mockDesktop } from "./desktop";
+import { buffer, mockDesktop, openProjectIfNeeded } from "./desktop";
 
 async function settings(page: Page) {
   await page.goto("/?window=settings");
@@ -62,7 +62,9 @@ for (const mode of ["light", "dark"] as const) {
     expect(
       (await calls(page, "sync_theme_window")).at(-1).args.appearance,
     ).toBe("system");
-    await page.screenshot({ path: `test-results/appearance-${mode}.png` });
+    await page.screenshot({
+      path: test.info().outputPath(`appearance-${mode}.png`),
+    });
   });
 }
 
@@ -139,7 +141,9 @@ test("system changes update both windows, hidden terminals, and an edited docume
   expect(await calls(page, "close_terminal")).toHaveLength(0);
   expect(await calls(page, "save_theme_preferences")).toHaveLength(0);
   expect(await calls(preferences, "save_theme_preferences")).toHaveLength(0);
-  await page.screenshot({ path: "test-results/appearance-light-editor.png" });
+  await page.screenshot({
+    path: test.info().outputPath("appearance-light-editor.png"),
+  });
 });
 
 test("manual modes persist across windows and relaunches, then System resumes following the OS", async ({
@@ -153,6 +157,7 @@ test("manual modes persist across windows and relaunches, then System resumes fo
   await other.emulateMedia({ colorScheme: "light" });
   await mockDesktop(other);
   await other.goto("/");
+  await openProjectIfNeeded(other);
   await expect(other.locator(".xterm-screen")).toBeVisible();
   for (const [label, appearance] of [
     ["Dark", "dark"],
@@ -200,7 +205,9 @@ test("manual modes persist across windows and relaunches, then System resumes fo
       .locator(".themes-page")
       .evaluate((node) => node.scrollWidth <= node.clientWidth),
   ).toBe(true);
-  await page.screenshot({ path: "test-results/appearance-minimum.png" });
+  await page.screenshot({
+    path: test.info().outputPath("appearance-minimum.png"),
+  });
 });
 
 test("adaptive custom themes follow the mode and fixed themes retain their palette", async ({

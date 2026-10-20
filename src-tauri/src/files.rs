@@ -328,6 +328,27 @@ pub fn write_json(path: &Path, data: &impl Serialize, limit: usize) -> Result<()
         .sync_all()
         .map_err(|error| error.to_string())?;
     reject_link(&destination)?;
+    #[cfg(windows)]
+    {
+        // Windows can briefly deny replacement while a concurrent reader
+        // closes. Retry the same complete file within a short deadline;
+        // persistent locks still return an error and preserve the destination.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(100);
+        loop {
+            match temporary.persist(&destination) {
+                Ok(_) => break,
+                Err(error)
+                    if matches!(error.error.raw_os_error(), Some(5 | 32))
+                        && std::time::Instant::now() < deadline =>
+                {
+                    temporary = error.file;
+                    std::thread::sleep(std::time::Duration::from_millis(2));
+                }
+                Err(error) => return Err(error.to_string()),
+            }
+        }
+    }
+    #[cfg(not(windows))]
     temporary
         .persist(&destination)
         .map_err(|error| error.to_string())?;
@@ -418,8 +439,9 @@ mod tests {
                 })
             })
             .collect();
-        for writer in writers {
-            writer.join().unwrap();
+        let results: Vec<_> = writers.into_iter().map(|writer| writer.join()).collect();
+        for result in results {
+            result.unwrap();
         }
         assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 1);
     }

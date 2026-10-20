@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   applyFileChange,
+  fileChangeAliases,
+  absoluteFilePath,
   containsPath,
   explorerGitStatuses,
   gitFilePath,
@@ -19,6 +21,86 @@ import {
   panes,
   splitPane,
 } from "../src/model.ts";
+
+test("Unix literal-backslash changes never retarget or close unrelated nested files", () => {
+  const root = "/project\\root";
+  const project = newProject(root, "bash");
+  const workspaceId = project.workspaces[0].id;
+  let state = {
+    ...newSession(),
+    projects: [project],
+    activeProjectId: project.id,
+  };
+  state = openFileTab(state, workspaceId, root, "a\\b.txt");
+  state = openFileTab(state, workspaceId, root, "a/b.txt");
+  assert.equal(containsPath(`${root}/a\\b.txt`, `${root}/a/b.txt`), false);
+  assert.deepEqual(
+    fileTabs(state).map((file) => file.title),
+    ["a\\b.txt", "b.txt"],
+  );
+  assert.deepEqual(fileTabs(state).map(absoluteFilePath), [
+    `${root}/a\\b.txt`,
+    `${root}/a/b.txt`,
+  ]);
+  const nested = fileTabs(state)[1];
+  const renamed = applyFileChange(
+    state,
+    {
+      oldPath: `${root}/a\\b.txt`,
+      newPath: `${root}/renamed\\file.txt`,
+    },
+    "bash",
+  );
+  assert.equal(fileTabs(renamed)[0].relative, "renamed\\file.txt");
+  assert.equal(fileTabs(renamed)[0].title, "renamed\\file.txt");
+  assert.deepEqual(fileTabs(renamed)[1], nested);
+  const removed = applyFileChange(
+    state,
+    {
+      oldPath: `${root}/a\\b.txt`,
+      newPath: null,
+    },
+    "bash",
+  );
+  assert.deepEqual(fileTabs(removed), [nested]);
+});
+
+test("Windows file changes retain native relative path meaning and titles", () => {
+  const root = "C:\\project";
+  const project = newProject(root, "powershell");
+  const state = openFileTab(
+    {
+      ...newSession(),
+      projects: [project],
+      activeProjectId: project.id,
+    },
+    project.workspaces[0].id,
+    root,
+    "src\\file.ts",
+  );
+  assert.equal(fileTabs(state)[0].title, "file.ts");
+  assert.equal(absoluteFilePath(fileTabs(state)[0]), "C:/project/src/file.ts");
+  const renamed = applyFileChange(
+    state,
+    {
+      oldPath: "C:\\project\\src",
+      newPath: "C:\\project\\code",
+    },
+    "powershell",
+  );
+  assert.equal(fileTabs(renamed)[0].relative, "code/file.ts");
+  assert.equal(fileTabs(renamed)[0].title, "file.ts");
+  const canonical = applyFileChange(
+    state,
+    {
+      oldPath: "\\\\?\\C:\\project\\src\\file.ts",
+      newPath: "\\\\?\\C:\\project\\src\\renamed.ts",
+    },
+    "powershell",
+  );
+  assert.equal(fileTabs(canonical)[0].relative, "src/renamed.ts");
+  assert.equal(fileTabs(canonical)[0].title, "renamed.ts");
+});
 
 test("Explorer matches repository paths and combines staged and working statuses", () => {
   const cases = [
@@ -317,4 +399,163 @@ test("Explorer combines sibling repositories and prefers nested repository statu
   assert.equal(statuses.get("/project/first"), "M");
   assert.equal(statuses.get("/project/group"), "U");
   assert.equal(statuses.get("/project"), "U");
+});
+
+test("canonical file changes update restored aliases without crossing component boundaries", () => {
+  const aliases = [
+    { root: "/tmp/project", canonical: "/private/tmp/project" },
+    { root: "/private/tmp/project", canonical: "/private/tmp/project" },
+    {
+      root: "/tmp/project-neighbor",
+      canonical: "/private/tmp/project-neighbor",
+    },
+  ];
+  const changes = fileChangeAliases(
+    {
+      oldPath: "/private/tmp/project/old.txt",
+      newPath: "/private/tmp/project/new.txt",
+    },
+    aliases,
+    "/tmp/project",
+  );
+  assert.deepEqual(changes, [
+    {
+      oldPath: "/private/tmp/project/old.txt",
+      newPath: "/private/tmp/project/new.txt",
+    },
+    { oldPath: "/tmp/project/old.txt", newPath: "/tmp/project/new.txt" },
+  ]);
+  assert.deepEqual(
+    fileChangeAliases(
+      { oldPath: "/private/tmp/project", newPath: "/private/tmp/renamed" },
+      aliases,
+      "/tmp/project",
+    ),
+    [
+      { oldPath: "/private/tmp/project", newPath: "/private/tmp/renamed" },
+      { oldPath: "/tmp/project", newPath: "/private/tmp/renamed" },
+    ],
+  );
+  assert.deepEqual(
+    fileChangeAliases(
+      { oldPath: "/private/tmp/project", newPath: null },
+      aliases,
+      "/tmp/project",
+    ),
+    [
+      { oldPath: "/private/tmp/project", newPath: null },
+      { oldPath: "/tmp/project", newPath: null },
+    ],
+  );
+});
+
+test("cross-project canonical moves target the selected logical destination", () => {
+  const changes = fileChangeAliases(
+    { oldPath: "/real/source/file.txt", newPath: "/real/destination/file.txt" },
+    [
+      { root: "/link/source", canonical: "/real/source" },
+      { root: "/link/destination", canonical: "/real/destination" },
+    ],
+    "/link/destination",
+  );
+  assert.deepEqual(changes[1], {
+    oldPath: "/link/source/file.txt",
+    newPath: "/link/destination/file.txt",
+  });
+  const windows = fileChangeAliases(
+    {
+      oldPath: "\\\\?\\C:\\project\\a.txt",
+      newPath: "\\\\?\\C:\\project\\b.txt",
+    },
+    [{ root: "C:\\project", canonical: "\\\\?\\C:\\project" }],
+    "C:\\project",
+  );
+  assert.deepEqual(windows, [
+    { oldPath: "C:/project/a.txt", newPath: "C:/project/b.txt" },
+  ]);
+});
+
+test("renaming a direct symlink project root follows the surviving canonical directory", () => {
+  assert.deepEqual(
+    fileChangeAliases(
+      { oldPath: "/real/project", newPath: "/real/renamed" },
+      [{ root: "/shortcut", canonical: "/real/project" }],
+      "/shortcut",
+    ),
+    [
+      { oldPath: "/real/project", newPath: "/real/renamed" },
+      { oldPath: "/shortcut", newPath: "/real/renamed" },
+    ],
+  );
+});
+
+test("alias batches match original paths before moving canonical parents", () => {
+  for (const base of ["/root", "/root\\literal", "C:\\root"]) {
+    const normalized = base.replace(/^C:\\/, "C:/");
+    const oldPath = `${normalized}/old`;
+    const newPath = `${normalized}/Old`;
+    const logical = `${oldPath}/link`;
+    const canonical = `${oldPath}/real`;
+    const project = newProject(logical, "bash");
+    let state = {
+      ...newSession(),
+      projects: [project],
+      activeProjectId: project.id,
+    };
+    for (const root of [logical, canonical, `${oldPath}/link-neighbor`])
+      state = openFileTab(state, project.workspaces[0].id, root, "file.txt");
+    const changes = fileChangeAliases(
+      { oldPath, newPath },
+      [{ root: logical, canonical }],
+      logical,
+    );
+    for (const batch of [changes, [...changes].reverse()]) {
+      const moved = applyFileChange(state, batch, "bash");
+      assert.equal(moved.projects[0].path, `${newPath}/real`);
+      assert.deepEqual(
+        fileTabs(moved).map((file) => file.root),
+        [`${newPath}/real`, `${newPath}/real`, `${newPath}/link-neighbor`],
+      );
+      assert.deepEqual(
+        fileTabs(moved).map((file) => file.id),
+        fileTabs(state).map((file) => file.id),
+      );
+      const terminal = layoutPanes(
+        moved.projects[0].workspaces[0].tabs[0].layout,
+      )[0];
+      assert.equal(terminal.type, "terminal");
+      if (terminal.type === "terminal")
+        assert.equal(terminal.cwd, `${newPath}/real`);
+    }
+    const removed = applyFileChange(
+      state,
+      fileChangeAliases(
+        { oldPath, newPath: null },
+        [{ root: logical, canonical }],
+        logical,
+      ),
+      "bash",
+    );
+    assert.deepEqual(removed.projects, []);
+  }
+});
+
+test("alias batch destinations are never matched again as old paths", () => {
+  const project = newProject("/source", "bash");
+  let state = {
+    ...newSession(),
+    projects: [project],
+    activeProjectId: project.id,
+  };
+  state = openFileTab(state, project.workspaces[0].id, "/source", "file.txt");
+  const moved = applyFileChange(
+    state,
+    [
+      { oldPath: "/source", newPath: "/destination" },
+      { oldPath: "/destination", newPath: "/elsewhere" },
+    ],
+    "bash",
+  );
+  assert.equal(moved.projects[0].path, "/destination");
+  assert.equal(absoluteFilePath(fileTabs(moved)[0]), "/destination/file.txt");
 });

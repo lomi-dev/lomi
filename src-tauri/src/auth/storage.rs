@@ -122,6 +122,12 @@ pub(super) struct CredentialStore {
     fail_key_store_access: bool,
 }
 
+impl Drop for CredentialStore {
+    fn drop(&mut self) {
+        let _ = self._owner.unlock();
+    }
+}
+
 impl CredentialStore {
     pub fn open(root: &Path, environment: &str) -> Result<Self, String> {
         crate::chat::storage::reject_link(root)?;
@@ -510,6 +516,19 @@ mod tests {
         );
         drop(owner);
         assert!(CredentialStore::open(temp.path(), "test-owner").is_ok());
+    }
+
+    #[test]
+    fn dropping_owner_releases_the_lock_with_a_cloned_handle_alive() {
+        let temp = tempfile::tempdir().unwrap();
+        let owner = CredentialStore::open(temp.path(), "test-inherited-owner").unwrap();
+        let inherited = owner._owner.try_clone().unwrap();
+
+        drop(owner);
+
+        let reopened = CredentialStore::open(temp.path(), "test-reopened-owner");
+        assert!(reopened.is_ok());
+        drop(inherited);
     }
 
     #[test]

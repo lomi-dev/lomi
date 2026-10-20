@@ -233,7 +233,9 @@ impl Session {
                         libc::proc_pidinfo(
                             pid as i32,
                             libc::PROC_PIDTBSDINFO,
-                            0,
+                            // Include retained/exiting ancestors. XNU only looks
+                            // up zombie BSD identities when this argument is set.
+                            1,
                             info.as_mut_ptr().cast(),
                             size,
                         )
@@ -3454,6 +3456,53 @@ mod tests {
                     session.protected_origin(&[i32::MAX as u32]),
                     "Unresolved process identity fails closed"
                 );
+                // Spawn normally, retaining the exited child until after the
+                // ancestry check. No fork runs inside this multithreaded test.
+                let mut retained = std::process::Command::new("/bin/sh")
+                    .args(["-c", "exit 0"])
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn()
+                    .unwrap();
+                let deadline = Instant::now() + Duration::from_secs(5);
+                let mut zombie = false;
+                while Instant::now() < deadline {
+                    let mut info = std::mem::MaybeUninit::<libc::proc_bsdinfo>::zeroed();
+                    let size = std::mem::size_of::<libc::proc_bsdinfo>() as i32;
+                    let count = unsafe {
+                        libc::proc_pidinfo(
+                            retained.id() as i32,
+                            libc::PROC_PIDTBSDINFO,
+                            1,
+                            info.as_mut_ptr().cast(),
+                            size,
+                        )
+                    };
+                    if count == size {
+                        let info = unsafe { info.assume_init() };
+                        if info.pbi_pid == retained.id()
+                            && info.pbi_ppid == std::process::id()
+                            && info.pbi_status == 5
+                        /* SZOMB */
+                        {
+                            zombie = true;
+                            break;
+                        }
+                    }
+                    thread::sleep(Duration::from_millis(10));
+                }
+                let protected = session.protected_origin(&[retained.id()]);
+                // Always reap before assertions, including failed observations.
+                retained.wait().unwrap();
+                assert!(
+                    zombie,
+                    "The subprocess fixture must reach retained zombie status"
+                );
+                assert!(
+                    !protected,
+                    "An unrelated retained process has a resolvable ancestry"
+                );
             }
             assert_eq!(manager.busy(&["test".into()]).unwrap(), ["test"]);
             assert!(manager.busy(&["other".into()]).unwrap().is_empty());
@@ -3482,7 +3531,7 @@ mod tests {
         {
             let session = manager.get("test").unwrap();
             use crate::cli_titles::TitleCli;
-            let sleep_path = "/usr/bin/sleep";
+            let fixture_binary = std::env::current_exe().unwrap();
             for (name, cli) in [
                 ("codex", TitleCli::Codex),
                 ("agy", TitleCli::Agy),
@@ -3490,12 +3539,19 @@ mod tests {
                 ("cursor-agent", TitleCli::Cursor),
             ] {
                 let executable_path = directory.path().join(name);
-                std::fs::copy(sleep_path, &executable_path).unwrap();
+                // Parallel pre-exec tests can inherit writable copy descriptors.
+                // Keep the writer in a short-lived child and reap it before exec.
+                assert!(std::process::Command::new("/bin/cp")
+                    .arg(&fixture_binary)
+                    .arg(&executable_path)
+                    .status()
+                    .unwrap()
+                    .success());
                 let executable = shell::quote(&executable_path.to_string_lossy(), "bash").unwrap();
                 for command in [
-                    format!("{executable} 30\r"),
+                    format!("LOMI_CLI_PROCESS_FIXTURE=1 {executable} --exact cli_titles::tests::fixture_cli_process --nocapture\r"),
                     format!(
-                        "sh -c 'trap \"kill \\$! 2>/dev/null; exit\" INT TERM; \"$1\" 30 & wait' sh {executable}\r"
+                        "LOMI_CLI_PROCESS_FIXTURE=1 sh -c 'trap \"kill \\$! 2>/dev/null; exit\" INT TERM; \"$1\" --exact cli_titles::tests::fixture_cli_process --nocapture & wait' sh {executable}\r"
                     ),
                 ] {
                     manager.write("test", &command).unwrap();
@@ -3503,8 +3559,15 @@ mod tests {
                     while session.title_process().is_none() && Instant::now() < deadline {
                         thread::sleep(Duration::from_millis(10));
                     }
-                    assert_eq!(session.title_process().unwrap().cli, cli);
-                    let process = session.title_process().unwrap();
+                    let process = session.title_process().unwrap_or_else(|| {
+                        let bytes = receive.try_iter().flatten().collect::<Vec<_>>();
+                        panic!(
+                            "CLI fixture {name} was not detected for {command:?}; foreground {:?}; output {}",
+                            session.foreground_program(),
+                            String::from_utf8_lossy(&bytes),
+                        )
+                    });
+                    assert_eq!(process.cli, cli);
                     manager.check_title_process("test", process).unwrap();
                     assert!(manager
                         .check_title_process(

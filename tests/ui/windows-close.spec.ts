@@ -139,11 +139,7 @@ test("Windows close releases shutdown gates when window destruction fails and al
     };
   });
   await nativeClose(page);
-  await expect(
-    page.getByText("Could not close the window: Window destruction failed", {
-      exact: true,
-    }),
-  ).toBeVisible();
+
   await expect
     .poll(async () => (await calls(page, "agent_runtime_cancel_close")).length)
     .toBe(1);
@@ -157,6 +153,20 @@ test("Windows close releases shutdown gates when window destruction fails and al
   await expect(
     page.getByRole("dialog", { name: "Preparing to close" }),
   ).toHaveCount(0);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(
+    page.getByRole("dialog", { name: "Notifications", exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Open account menu" }).click();
+  await page
+    .getByRole("menuitem", { name: "Notifications", exact: true })
+    .click();
+  await expect(
+    page.getByRole("dialog", { name: "Notifications", exact: true }),
+  ).toContainText("Could not close the window: Window destruction failed");
+  await page
+    .getByRole("button", { name: "Close notifications", exact: true })
+    .click();
   await nativeClose(page);
   await expect
     .poll(async () => (await calls(page, "plugin:window|destroy")).length)

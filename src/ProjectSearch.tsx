@@ -16,6 +16,7 @@ import {
 } from "./icons";
 import { api, errorMessage } from "./api";
 import { basename } from "./model";
+import { parentPath } from "./file-path";
 import { IconButton } from "./ui";
 
 export interface SearchMatch {
@@ -383,9 +384,9 @@ export default function ProjectSearch({
                   <ChevronDown size={12} />
                 )}
                 <ResourceIcon path={path} size={14} />
-                <span className="search-file-name">{basename(path)}</span>
+                <span className="search-file-name">{basename(path, root)}</span>
                 <span className="search-file-directory">
-                  {path.slice(0, -basename(path).length).replace(/[\\/]$/, "")}
+                  {parentPath(path, root)}
                 </span>
                 <span className="search-file-count">{matches.length}</span>
               </button>

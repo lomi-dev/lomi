@@ -1357,6 +1357,7 @@ test("late Settings open cannot recreate a closed setup target", async ({
   await openAndroid(page);
   await page.getByRole("button", { name: "Manage devices" }).click();
   const setup = await page.evaluate(() => (window as any).__androidTest.setup);
+  await page.getByRole("tab", { name: "Android", exact: true }).click();
   await page.getByRole("button", { name: "Close Android panel" }).click();
   await expect(page.locator(".android-pane")).toHaveCount(0);
   await page.evaluate(async (setup) => {

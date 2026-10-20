@@ -44,7 +44,7 @@ pub struct FileChange {
 
 fn name(value: &str) -> Result<(), String> {
     if value.is_empty()
-        || value == ".git"
+        || value.eq_ignore_ascii_case(".git")
         || value.contains(['/', '\\', '\0'])
         || Path::new(value).components().count() != 1
         || !matches!(
@@ -59,7 +59,11 @@ fn name(value: &str) -> Result<(), String> {
 
 fn validate_relative(relative: &str) -> Result<(), String> {
     if Path::new(relative).components().any(|part| {
-        !matches!(part, Component::Normal(_) | Component::CurDir) || part.as_os_str() == ".git"
+        !matches!(part, Component::Normal(_) | Component::CurDir)
+            || part
+                .as_os_str()
+                .as_encoded_bytes()
+                .eq_ignore_ascii_case(b".git")
     }) {
         return Err("The path must stay inside the project and outside .git.".into());
     }
@@ -89,6 +93,41 @@ fn unused(path: &Path) -> Result<(), String> {
         Ok(_) => Err("A file or folder with that name already exists.".into()),
         Err(error) => Err(error.to_string()),
     }
+}
+
+#[cfg(unix)]
+fn same_entry(source: &Path, target: &Path) -> std::io::Result<bool> {
+    use std::os::unix::fs::MetadataExt;
+    let source = fs::symlink_metadata(source)?;
+    let target = fs::symlink_metadata(target)?;
+    Ok((source.dev(), source.ino()) == (target.dev(), target.ino()))
+}
+
+#[cfg(windows)]
+fn same_entry(source: &Path, target: &Path) -> std::io::Result<bool> {
+    use std::os::windows::{fs::OpenOptionsExt, io::AsRawHandle};
+    use windows_sys::Win32::Storage::FileSystem::{
+        GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION, FILE_FLAG_BACKUP_SEMANTICS,
+        FILE_FLAG_OPEN_REPARSE_POINT,
+    };
+    let identity = |path: &Path| -> std::io::Result<(u32, u64)> {
+        let file = fs::OpenOptions::new()
+            .access_mode(0)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+            .open(path)?;
+        let mut info = std::mem::MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::zeroed();
+        if unsafe { GetFileInformationByHandle(file.as_raw_handle().cast(), info.as_mut_ptr()) }
+            == 0
+        {
+            return Err(std::io::Error::last_os_error());
+        }
+        let info = unsafe { info.assume_init() };
+        Ok((
+            info.dwVolumeSerialNumber,
+            (u64::from(info.nFileIndexHigh) << 32) | u64::from(info.nFileIndexLow),
+        ))
+    };
+    Ok(identity(source)? == identity(target)?)
 }
 
 fn copy_tree(source: &Path, target: &Path) -> Result<(), String> {
@@ -137,7 +176,27 @@ fn copy(source: &Path, target: &Path) -> Result<(), String> {
 
 fn move_entry(source: &Path, target: &Path) -> Result<(), String> {
     let _admission = crate::project_write_guard::admit(&[source, target])?;
-    unused(target)?;
+    // On case-insensitive volumes a differently cased name resolves to the
+    // source itself. Only allow that alias when no distinct directory entry
+    // has the requested spelling; never replace an existing sibling.
+    let case_alias = source.parent() == target.parent()
+        && source
+            .file_name()
+            .zip(target.file_name())
+            .and_then(|(a, b)| a.to_str().zip(b.to_str()))
+            .is_some_and(|(a, b)| a != b && a.to_lowercase() == b.to_lowercase())
+        && fs::symlink_metadata(target).is_ok()
+        && same_entry(source, target).map_err(|error| error.to_string())?
+        && !fs::read_dir(target.parent().ok_or("Invalid parent path.")?)
+            .map_err(|error| error.to_string())?
+            .try_fold(false, |found, entry| {
+                entry
+                    .map(|entry| found || Some(entry.file_name().as_os_str()) == target.file_name())
+            })
+            .map_err(|error| error.to_string())?;
+    if !case_alias {
+        unused(target)?;
+    }
     if target.starts_with(source) {
         return Err("A folder cannot be moved into itself.".into());
     }
@@ -472,6 +531,91 @@ fn ignore_item(root: &str, relative: &str, local: bool) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn protects_git_metadata_regardless_of_ascii_case() {
+        for value in [".git", ".GIT", ".Git"] {
+            assert!(name(value).is_err());
+            assert!(validate_relative(&format!("{value}/config")).is_err());
+            assert!(validate_relative(&format!("nested/{value}/config")).is_err());
+        }
+    }
+
+    #[test]
+    fn case_only_rename_preserves_contents_and_existing_siblings() {
+        for (source, target) in [("case.txt", "CASE.txt"), ("żółć.txt", "ŻÓŁĆ.txt")] {
+            let root = tempfile::tempdir().unwrap();
+            let path = root.path().to_str().unwrap();
+            fs::write(root.path().join(source), "original").unwrap();
+            perform(
+                path,
+                source,
+                Operation::Rename {
+                    name: target.into(),
+                },
+            )
+            .unwrap();
+            assert!(fs::read_dir(root.path())
+                .unwrap()
+                .any(|entry| entry.unwrap().file_name() == target));
+            assert_eq!(
+                fs::read_to_string(root.path().join(target)).unwrap(),
+                "original"
+            );
+            // On case-sensitive volumes a distinct sibling must still be protected.
+            let sibling = root.path().join(source);
+            if !sibling.exists() {
+                fs::write(&sibling, "sibling").unwrap();
+                assert!(perform(
+                    path,
+                    target,
+                    Operation::Rename {
+                        name: source.into()
+                    }
+                )
+                .is_err());
+                assert_eq!(fs::read_to_string(sibling).unwrap(), "sibling");
+            }
+        }
+    }
+
+    #[test]
+    fn unicode_case_rename_preserves_normalization_aliased_siblings() {
+        let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join("Ä.txt"), "source").unwrap();
+        let sibling = root.path().join("a\u{0308}.txt");
+        // Case-insensitive volumes cannot hold both spellings as distinct files.
+        let Ok(mut file) = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&sibling)
+        else {
+            return;
+        };
+        file.write_all(b"sibling").unwrap();
+        drop(file);
+        let target = root.path().join("ä.txt");
+        let collision =
+            target.exists() && !same_entry(&root.path().join("Ä.txt"), &target).unwrap();
+        let result = perform(
+            root.path().to_str().unwrap(),
+            "Ä.txt",
+            Operation::Rename {
+                name: "ä.txt".into(),
+            },
+        );
+        assert_eq!(result.is_err(), collision);
+        assert_eq!(
+            fs::read_to_string(if collision {
+                root.path().join("Ä.txt")
+            } else {
+                target
+            })
+            .unwrap(),
+            "source"
+        );
+        assert_eq!(fs::read_to_string(sibling).unwrap(), "sibling");
+    }
 
     #[test]
     fn copies_external_files_with_a_trailing_source_separator_without_overwriting() {

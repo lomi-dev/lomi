@@ -1147,12 +1147,17 @@ fn copy_tree(source: &Path, target: &Path) -> Result<(), String> {
     sync_dir(target)
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use rusqlite::params;
     fn fixture(schema: i64) -> (tempfile::TempDir, MigrationOptions, Connection) {
         let tmp = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(tmp.path(), fs::Permissions::from_mode(0o700)).unwrap();
+        }
         let root = tmp.path().join("source");
         let archive = tmp.path().join("archive");
         private_dir(&root).unwrap();

@@ -513,7 +513,9 @@ test("Send and Continue target B, A, C in one task with unknown quota", async ({
   await pane.locator(".agent-task-content").evaluate((element) => {
     element.scrollTop = 0;
   });
-  await page.screenshot({ path: "test-results/agent-task-switch.png" });
+  await page.screenshot({
+    path: test.info().outputPath("agent-task-switch.png"),
+  });
 });
 for (const state of ["recovery_required", "delivery_uncertain"])
   test(`${state} exposes an explicit stop for the previous native process`, async ({
@@ -856,6 +858,11 @@ test("CLI Accounts show capabilities and perform native account CRUD", async ({
       ),
     )
     .toEqual({ kind: "Webview", label: "main" });
+  await expect(
+    page.getByRole("tab", { name: "Codex · New account", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("tab", { name: "Settings", exact: true }).click();
+  await expect(account).toBeVisible();
   await account.getByRole("button", { name: "Remove account" }).click();
   const review = page.getByRole("dialog", { name: "Remove CLI account?" });
   await review
@@ -866,7 +873,9 @@ test("CLI Accounts show capabilities and perform native account CRUD", async ({
     for (const element of document.querySelectorAll("*"))
       if (element instanceof HTMLElement) element.scrollTop = 0;
   });
-  await page.screenshot({ path: "test-results/agent-accounts-settings.png" });
+  await page.screenshot({
+    path: test.info().outputPath("agent-accounts-settings.png"),
+  });
 });
 
 test("unknown native helper ownership protects account actions and has no UI override", async ({
@@ -929,7 +938,7 @@ test("account recovery requires effect review and retains a failed review for ex
   await expect(review).toBeVisible();
   await page.setViewportSize({ width: 800, height: 420 });
   await review.screenshot({
-    path: "test-results/agent-account-recovery-review.png",
+    path: test.info().outputPath("agent-account-recovery-review.png"),
   });
   await page.evaluate(() => {
     (window as any).__nativeTest.failAccountRecovery = false;
@@ -1021,7 +1030,9 @@ test("reviewed Pi transfer includes oversized history and prepares B before expl
     .getByText("Reviewed history fingerprint", { exact: true })
     .click();
   await expect(review.locator("pre")).toContainText("d".repeat(64));
-  await page.screenshot({ path: "test-results/agent-pi-transfer-review.png" });
+  await page.screenshot({
+    path: test.info().outputPath("agent-pi-transfer-review.png"),
+  });
   expect(await calls(page, "agent_task_send")).toHaveLength(0);
   expect(await calls(page, "agent_task_transfer_apply")).toHaveLength(0);
   await review

@@ -1,6 +1,11 @@
 import { test, expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { buffer, chooseOption, mockDesktop } from "./desktop";
+import {
+  buffer,
+  chooseOption,
+  mockDesktop,
+  openProjectIfNeeded,
+} from "./desktop";
 
 const theme = {
   version: 1,
@@ -342,7 +347,9 @@ test("a theme updates both windows and hidden terminals without replacing PTYs",
   expect((await terminal(page, second)).blink).toBe(false);
   await expect(page.locator(".statusbar")).toHaveCSS("height", "34px");
   await expect(page.locator(".tab").first()).toHaveCSS("border-radius", "14px");
-  await expect(preferences.locator("h1")).toHaveCSS("letter-spacing", "3px");
+  await expect(
+    preferences.getByRole("heading", { name: "Themes", exact: true }),
+  ).toHaveCSS("letter-spacing", "3px");
   expect(
     await page
       .locator(".terminal-pane")
@@ -382,7 +389,9 @@ test("a theme updates both windows and hidden terminals without replacing PTYs",
   await preferences
     .getByRole("button", { name: "Themes", exact: true })
     .click();
-  await expect(preferences.locator("h1")).toHaveCSS("letter-spacing", "1px");
+  await expect(
+    preferences.getByRole("heading", { name: "Themes", exact: true }),
+  ).toHaveCSS("letter-spacing", "1px");
   await expect(preferences.locator('link[data-theme-layer="css"]')).toHaveCount(
     2,
   );
@@ -411,7 +420,9 @@ test("invalid edits and failed saves preserve the previous theme, and reset reco
   await install(page);
   await settings(page);
   await page.getByRole("button", { name: "Use Graphite Glass theme" }).click();
-  await expect(page.locator("h1")).toHaveCSS("letter-spacing", "3px");
+  await expect(
+    page.getByRole("heading", { name: "Themes", exact: true }),
+  ).toHaveCSS("letter-spacing", "3px");
   await page.evaluate(() => {
     const manifests = JSON.parse(localStorage.getItem("test-theme-manifests")!);
     manifests.glass.terminal.fontSize = 0;
@@ -419,7 +430,9 @@ test("invalid edits and failed saves preserve the previous theme, and reset reco
   });
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("fontSize");
-  await expect(page.locator("h1")).toHaveCSS("letter-spacing", "3px");
+  await expect(
+    page.getByRole("heading", { name: "Themes", exact: true }),
+  ).toHaveCSS("letter-spacing", "3px");
   expect(
     JSON.parse(
       (await page.evaluate(() => localStorage.getItem("test-theme-settings")))!,
@@ -430,7 +443,9 @@ test("invalid edits and failed saves preserve the previous theme, and reset reco
   });
   await page.getByRole("button", { name: "Use Lomi theme" }).click();
   await expect(page.getByRole("alert")).toContainText("Disk is full");
-  await expect(page.locator("h1")).toHaveCSS("letter-spacing", "3px");
+  await expect(
+    page.getByRole("heading", { name: "Themes", exact: true }),
+  ).toHaveCSS("letter-spacing", "3px");
   await page.evaluate(() => {
     (window as any).__nativeTest.failThemeSave = false;
     localStorage.setItem(
@@ -577,7 +592,9 @@ test("legacy CSS preferences cannot disable a stylesheet declared by JSON", asyn
     { saved },
   );
   await settings(page);
-  await expect(page.locator("h1")).toHaveCSS("letter-spacing", "3px");
+  await expect(
+    page.getByRole("heading", { name: "Themes", exact: true }),
+  ).toHaveCSS("letter-spacing", "3px");
   await expect(page.locator("html")).toHaveAttribute(
     "data-appearance",
     "light",
@@ -861,6 +878,7 @@ test("preview stays local and cancel restores working layers even when current f
   const main = await context.newPage();
   await install(main);
   await main.goto("/");
+  await openProjectIfNeeded(main);
   await expect(main.locator(".terminal-pane")).toBeVisible();
   await page.getByRole("button", { name: "Edit theme", exact: true }).click();
   const editor = page.getByRole("dialog", {

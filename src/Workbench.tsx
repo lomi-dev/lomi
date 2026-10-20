@@ -116,6 +116,7 @@ import {
 import type {
   AppInfo,
   Session,
+  Project,
   ShellProfile,
   SidebarPanel,
   Split,
@@ -198,6 +199,7 @@ import {
   absoluteFilePath,
   applyFileChange,
   containsPath,
+  fileChangeAliases,
 } from "./explorer-model";
 import type { FileChange, FileOperation } from "./explorer-model";
 import type { SearchMatch } from "./ProjectSearch";
@@ -688,7 +690,7 @@ export default function Workbench() {
                 return {
                   ...saved,
                   ...location,
-                  title: basename(location.relative),
+                  title: basename(location.relative, location.root),
                 };
               })
             : state,
@@ -2584,7 +2586,7 @@ export default function Workbench() {
     }
   };
   const applyDiskFileChange = (
-    result: FileChange,
+    result: FileChange | FileChange[],
     canonicalChange?: FileChange,
   ) => {
     change((state) => {
@@ -2618,6 +2620,37 @@ export default function Workbench() {
     let resume: (() => void) | undefined;
     let closeIds: ReadonlySet<string> | undefined;
     try {
+      const current = currentSession.current!;
+      const requiredRoots = new Set([project.path]);
+      if (operation.kind === "copy" || operation.kind === "move")
+        requiredRoots.add(operation.sourceRoot);
+      const roots = new Set([
+        ...requiredRoots,
+        ...current.projects.map((project) => project.path),
+        ...fileTabs(current)
+          .filter((file) => !file.untitled)
+          .map((file) => file.root),
+      ]);
+      const aliases = (
+        await Promise.all(
+          [...roots].map(async (root) => {
+            try {
+              return {
+                root,
+                canonical: await api<string>("resolve_project_entry", {
+                  root,
+                  relative: "",
+                }),
+              };
+            } catch (error) {
+              if (requiredRoots.has(root)) throw error;
+              return null;
+            }
+          }),
+        )
+      ).filter(
+        (alias): alias is { root: string; canonical: string } => alias !== null,
+      );
       const deleting =
         operation.kind === "trash" || operation.kind === "delete";
       const expectedPath = deleting
@@ -2627,15 +2660,28 @@ export default function Workbench() {
           })
         : undefined;
       if (expectedPath) {
-        const path = expectedPath;
+        const targets = fileChangeAliases(
+          { oldPath: expectedPath, newPath: null },
+          aliases,
+          project.path,
+        ).flatMap((change) => (change.oldPath ? [change.oldPath] : []));
+        const affectsProject = (project: Project) =>
+          targets.some((path) => containsPath(path, project.path));
         const ids = new Set(
           fileTabs(currentSession.current!)
             .filter(
               (file) =>
-                containsPath(path, absoluteFilePath(file)) ||
+                targets.some(
+                  (path) =>
+                    containsPath(path, absoluteFilePath(file)) ||
+                    containsPath(
+                      path,
+                      loadedEditor(file)?.path ?? absoluteFilePath(file),
+                    ),
+                ) ||
                 currentSession.current!.projects.some(
                   (project) =>
-                    containsPath(path, project.path) &&
+                    affectsProject(project) &&
                     project.workspaces.some((workspace) =>
                       workspace.tabs
                         .flatMap(filesInTab)
@@ -2651,7 +2697,7 @@ export default function Workbench() {
         ].filter((panel) =>
           currentSession.current!.projects.some(
             (project) =>
-              containsPath(path, project.path) &&
+              affectsProject(project) &&
               project.workspaces.some((workspace) =>
                 workspace.tabs.some(
                   (tab) =>
@@ -2668,9 +2714,7 @@ export default function Workbench() {
           !(await closeGuard.confirm(
             ids,
             currentSession
-              .current!.projects.filter((project) =>
-                containsPath(path, project.path),
-              )
+              .current!.projects.filter(affectsProject)
               .flatMap((project) =>
                 project.workspaces.flatMap((workspace) =>
                   workspace.tabs.flatMap((tab) =>
@@ -2691,7 +2735,10 @@ export default function Workbench() {
         operation,
         expectedPath,
       });
-      applyDiskFileChange(result);
+      applyDiskFileChange(
+        fileChangeAliases(result, aliases, project.path),
+        result,
+      );
       return true;
     } finally {
       if (closeIds) await closeGuard.release(closeIds);

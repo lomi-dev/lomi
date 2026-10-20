@@ -292,9 +292,7 @@ test("notification permission denial does not write CLI configuration", async ({
     .getByRole("group", { name: "Codex integrations" })
     .getByRole("button", { name: "Enable Codex notifications" })
     .click();
-  await expect(
-    page.getByText("Notifications are blocked.", { exact: false }),
-  ).toBeVisible();
+  await expectRecordedNotification(page, "Notifications are blocked.");
   expect(
     await calls(page, "plugin:notification|request_permission"),
   ).toHaveLength(1);

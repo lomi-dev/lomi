@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { mockDesktop } from "./desktop";
+import { mockDesktop, openProjectIfNeeded } from "./desktop";
 import { mockChats } from "./chat-mock";
 
 test.beforeEach(async ({ page }) => {
@@ -875,6 +875,7 @@ for (const [format, label] of [
     );
     await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
     await page.goto("/");
+    await openProjectIfNeeded(page);
     await page.getByRole("button", { name: /^New tab/ }).click();
     await page.getByRole("menuitem", { name: "Chat AI", exact: true }).click();
     const message = page.getByRole("textbox", { name: "Message", exact: true });

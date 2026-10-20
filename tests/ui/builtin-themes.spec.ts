@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { mockDesktop } from "./desktop";
+import { mockDesktop, openProjectIfNeeded } from "./desktop";
 
 test("Lomi is the default; both immutable built-ins persist, synchronize and duplicate", async ({
   page,
@@ -12,6 +12,7 @@ test("Lomi is the default; both immutable built-ins persist, synchronize and dup
   await main.emulateMedia({ colorScheme: "dark" });
   await mockDesktop(main);
   await main.goto("/");
+  await openProjectIfNeeded(main);
   await expect(main.locator(".xterm-screen")).toBeVisible();
   const lomi = page.getByRole("article", { name: "Lomi", exact: true });
   const deepmono = page.getByRole("article", { name: "DeepMono", exact: true });

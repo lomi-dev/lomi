@@ -1,4 +1,5 @@
 import type { PanelDescriptor } from "@lomi-dev/plugin-sdk";
+import { pathBasename as basename } from "./file-path.ts";
 import { jsonState, pluginId } from "./plugins/manifest.ts";
 export type PluginPanel = PanelDescriptor;
 import { restoreBrowserUrl } from "./browser-url.ts";
@@ -313,11 +314,7 @@ export interface Session {
 }
 
 export const newId = () => crypto.randomUUID();
-export const basename = (path: string) =>
-  path
-    .replace(/[\\/]+$/, "")
-    .split(/[\\/]/)
-    .pop() || path;
+export { pathBasename as basename } from "./file-path.ts";
 export const newPane = (cwd: string): Pane => ({
   type: "terminal",
   id: newId(),
@@ -1002,7 +999,7 @@ export function openDiffTab(
       root,
       relative,
       staged,
-      title: `${basename(relative)} · ${staged ? "Staged changes" : "Changes"}`,
+      title: `${basename(relative, root)} · ${staged ? "Staged changes" : "Changes"}`,
     };
     return {
       ...workspace,
@@ -1063,7 +1060,7 @@ export function openFileTab(
     const tab: FileTab = {
       type: "file",
       id: newId(),
-      title: basename(relative),
+      title: basename(relative, root),
       root,
       relative,
     };
@@ -1252,7 +1249,10 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
     return {
       type: "file",
       id: id(node.id),
-      title: string(node.title, basename(string(node.relative, "File"))),
+      title: string(
+        node.title,
+        basename(string(node.relative, "File"), string(node.root, cwd)),
+      ),
       ...(string(node.customTitle, "")
         ? { customTitle: node.customTitle as string }
         : {}),

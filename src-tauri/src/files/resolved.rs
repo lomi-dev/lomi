@@ -180,6 +180,17 @@ mod windows_tests {
         assert!(super::super::markdown::read_resolved(path).is_err());
     }
 
+    fn symlink_or_skip(result: std::io::Result<()>) -> bool {
+        match result {
+            Ok(()) => true,
+            Err(error) if error.raw_os_error() == Some(1314) => {
+                eprintln!("Skipping Windows symlink fixture: Developer Mode or symlink privilege is required (1314).");
+                false
+            }
+            Err(error) => panic!("Could not create the Windows symlink fixture: {error}"),
+        }
+    }
+
     #[test]
     fn opened_handle_rejects_leaf_and_ancestor_reparse_replacements() {
         // Windows native qualification requires Developer Mode or symlink privilege.
@@ -195,13 +206,17 @@ mod windows_tests {
             .unwrap()
             .is_file());
         fs::remove_file(&resolved).unwrap();
-        symlink_file(outside.path().join("preview.png"), &resolved).unwrap();
+        if !symlink_or_skip(symlink_file(outside.path().join("preview.png"), &resolved)) {
+            return;
+        }
         previews_reject(&resolved);
         fs::create_dir(root.join("sub")).unwrap();
         fs::write(root.join("sub/preview.png"), "approved").unwrap();
         let resolved = super::super::inside(root.to_str().unwrap(), "sub/preview.png").unwrap();
         fs::rename(root.join("sub"), root.join("old-sub")).unwrap();
-        symlink_dir(outside.path(), root.join("sub")).unwrap();
+        if !symlink_or_skip(symlink_dir(outside.path(), root.join("sub"))) {
+            return;
+        }
         previews_reject(&resolved);
     }
 
@@ -209,7 +224,12 @@ mod windows_tests {
     fn internal_windows_aliases_remain_readable() {
         let directory = tempfile::tempdir().unwrap();
         fs::write(directory.path().join("preview.svg"), "approved").unwrap();
-        symlink_file("preview.svg", directory.path().join("alias.svg")).unwrap();
+        if !symlink_or_skip(symlink_file(
+            "preview.svg",
+            directory.path().join("alias.svg"),
+        )) {
+            return;
+        }
         let resolved =
             super::super::inside(directory.path().to_str().unwrap(), "alias.svg").unwrap();
         assert_eq!(

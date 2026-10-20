@@ -1101,6 +1101,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let path = root.path().to_str().unwrap();
         checked(root.path(), &["init", "-b", "main"]).unwrap();
+        checked(root.path(), &["config", "core.autocrlf", "false"]).unwrap();
         let name = "literal[1].txt";
         std::fs::write(root.path().join(name), "staged text").unwrap();
         std::fs::write(root.path().join("literal1.txt"), "other staged text").unwrap();
@@ -1169,6 +1170,7 @@ mod tests {
         let outside = tempfile::tempdir().unwrap();
         let path = root.path().to_str().unwrap();
         checked(root.path(), &["init", "-b", "main"]).unwrap();
+        checked(root.path(), &["config", "core.autocrlf", "false"]).unwrap();
         std::fs::create_dir(root.path().join("nested")).unwrap();
         std::fs::write(root.path().join("nested/file"), "staged").unwrap();
         change_index(path, &["nested/file".into()], true).unwrap();
@@ -1201,6 +1203,7 @@ mod tests {
     fn lists_individual_untracked_files_and_excludes_ignored_files() {
         let root = tempfile::tempdir().unwrap();
         checked(root.path(), &["init", "-b", "main"]).unwrap();
+        checked(root.path(), &["config", "core.autocrlf", "false"]).unwrap();
         std::fs::create_dir_all(root.path().join("new/nested")).unwrap();
         std::fs::write(root.path().join(".git/info/exclude"), "*.log\n").unwrap();
         std::fs::write(root.path().join("new/nested/file.ts"), "new").unwrap();
@@ -1226,6 +1229,7 @@ mod tests {
         let path = root.path().to_str().unwrap();
         assert!(status(path).unwrap().is_none());
         checked(root.path(), &["init", "-b", "main"]).unwrap();
+        checked(root.path(), &["config", "core.autocrlf", "false"]).unwrap();
         std::fs::write(root.path().join("literal[1].txt"), "hello").unwrap();
         let paths = vec!["literal[1].txt".into()];
         change_index(path, &paths, true).unwrap();
@@ -1243,7 +1247,9 @@ mod tests {
         fs::create_dir_all(&first).unwrap();
         fs::create_dir_all(&second).unwrap();
         checked(&first, &["init", "-b", "main"]).unwrap();
+        checked(&first, &["config", "core.autocrlf", "false"]).unwrap();
         checked(&second, &["init", "-b", "main"]).unwrap();
+        checked(&second, &["config", "core.autocrlf", "false"]).unwrap();
         fs::write(first.join("one.txt"), "one").unwrap();
         fs::write(second.join("two.txt"), "two").unwrap();
         let found = repositories(project.path().to_str().unwrap(), None)
@@ -1251,13 +1257,13 @@ mod tests {
             .repositories;
         assert_eq!(found.len(), 2);
         assert_eq!(
-            found[0].root,
-            fs::canonicalize(&first).unwrap().to_string_lossy()
+            fs::canonicalize(&found[0].root).unwrap(),
+            fs::canonicalize(&first).unwrap()
         );
         assert_eq!(found[0].changes[0].path, "one.txt");
         assert_eq!(
-            found[1].root,
-            fs::canonicalize(&second).unwrap().to_string_lossy()
+            fs::canonicalize(&found[1].root).unwrap(),
+            fs::canonicalize(&second).unwrap()
         );
         assert_eq!(found[1].changes[0].path, "two.txt");
     }

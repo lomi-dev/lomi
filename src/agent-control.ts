@@ -2117,7 +2117,7 @@ export function useAgentControlBridge(
                 const target = {
                   type: "file" as const,
                   id: command.operationId,
-                  title: basename(action.relativePath),
+                  title: basename(action.relativePath, project.path),
                   root: project.path,
                   relative: action.relativePath,
                 };

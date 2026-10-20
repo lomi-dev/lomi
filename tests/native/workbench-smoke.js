@@ -1,5 +1,6 @@
 (async () => {
   const invoke = window.__TAURI_INTERNALS__.invoke;
+  const windows = navigator.platform.includes("Win");
   let phase = "theme selection";
   const wait = async (fn) => {
     for (let i = 0; i < 200; i++) {
@@ -21,18 +22,24 @@
     await wait(() => document.querySelector(".file-tree"));
     await invoke("write_terminal", {
       id: terminal,
-      data: "mkdir explorer-watch\n",
+      data: windows
+        ? "New-Item -ItemType Directory explorer-watch | Out-Null\r"
+        : "mkdir explorer-watch\n",
     });
     await wait(() => button("explorer-watch"));
     button("explorer-watch").click();
     await invoke("write_terminal", {
       id: terminal,
-      data: "for i in $(seq 1 100); do touch explorer-watch/file-$i; done; touch explorer-watch/.hidden\n",
+      data: windows
+        ? "1..100 | ForEach-Object { New-Item -ItemType File ('explorer-watch/file-' + $_) | Out-Null }; New-Item -ItemType File explorer-watch/.hidden | Out-Null\r"
+        : "for i in $(seq 1 100); do touch explorer-watch/file-$i; done; touch explorer-watch/.hidden\n",
     });
     await wait(() => button("file-100") && button(".hidden"));
     await invoke("write_terminal", {
       id: terminal,
-      data: "mv explorer-watch/file-100 explorer-watch/renamed; rm explorer-watch/.hidden\n",
+      data: windows
+        ? "Move-Item explorer-watch/file-100 explorer-watch/renamed; Remove-Item explorer-watch/.hidden\r"
+        : "mv explorer-watch/file-100 explorer-watch/renamed; rm explorer-watch/.hidden\n",
     });
     await wait(
       () => button("renamed") && !button("file-100") && !button(".hidden"),
@@ -40,7 +47,9 @@
     button("explorer-watch").click();
     await invoke("write_terminal", {
       id: terminal,
-      data: "touch explorer-watch/while-collapsed\n",
+      data: windows
+        ? "New-Item -ItemType File explorer-watch/while-collapsed | Out-Null\r"
+        : "touch explorer-watch/while-collapsed\n",
     });
     button("explorer-watch").click();
     await wait(() => button("while-collapsed"));
@@ -117,11 +126,28 @@
         ) > 2,
     );
     phase = "native browser zoom";
+    // A reused fixture identity can retain its previous zoom in webview storage.
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "0",
+        code: "Digit0",
+        ctrlKey: !navigator.platform.includes("Mac"),
+        metaKey: navigator.platform.includes("Mac"),
+        bubbles: true,
+      }),
+    );
+    await wait(
+      () =>
+        getComputedStyle(document.documentElement)
+          .getPropertyValue("--app-zoom")
+          .trim() === "1",
+    );
     window.dispatchEvent(
       new KeyboardEvent("keydown", {
         key: "=",
         code: "Equal",
-        ctrlKey: true,
+        ctrlKey: !navigator.platform.includes("Mac"),
+        metaKey: navigator.platform.includes("Mac"),
         bubbles: true,
       }),
     );
@@ -183,7 +209,9 @@
     await wait(() => document.querySelector(".context-plugin"));
     await invoke("write_terminal", {
       id: terminal,
-      data: "printf '\\nLOMI_NATIVE_AFTER_THEME\\n'\n",
+      data: windows
+        ? "Write-Output 'LOMI_NATIVE_AFTER_THEME'\r"
+        : "printf '\\nLOMI_NATIVE_AFTER_THEME\\n'\n",
     });
     // The terminal exposes its accessible buffer on request; this also exercises its real parser.
     const textarea = document.querySelector(".terminal-pane textarea");
@@ -193,7 +221,8 @@
       new KeyboardEvent("keydown", {
         key: "F",
         code: "KeyF",
-        ctrlKey: true,
+        ctrlKey: !navigator.platform.includes("Mac"),
+        metaKey: navigator.platform.includes("Mac"),
         shiftKey: true,
         bubbles: true,
       }),

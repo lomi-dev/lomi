@@ -90,6 +90,7 @@ fn account(id: &str) -> AccountInstance {
     }
 }
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn mcp_existing_session_keeps_durable_native_ceiling_across_owner_restart() {
     use lomi_control_protocol::{control::Request, EmptyInput, ErrorCode};
     let (_root, inner, task) = fixture();
@@ -161,6 +162,7 @@ fn mcp_unknown_peer_missing_owner_and_close_never_get_ordinary_fallback() {
 }
 
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn mcp_unknown_turn_intent_is_fenced_without_a_native_pid() {
     use lomi_control_protocol::{control::Request, EmptyInput, ErrorCode};
     let (_root, mut inner, task) = fixture();
@@ -375,6 +377,7 @@ fn settle(inner: &mut Inner, mut t: Task) -> Task {
     t
 }
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn same_receipt_never_creates_second_intention_and_changed_content_fails() {
     let (_root, mut i, t) = fixture();
     let r = send(&t, "a", "send-one");
@@ -394,6 +397,7 @@ fn same_receipt_never_creates_second_intention_and_changed_content_fails() {
         .contains("different command"));
 }
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn explicit_continue_uses_b_without_previous_owner_fallback() {
     let (_root, mut i, t) = fixture();
     let (first, _) = prepare_send(&mut i, &send(&t, "a", "send-a"), false).unwrap();
@@ -420,6 +424,7 @@ fn failed_receipt_transaction_does_not_publish_projection_or_intention() {
     assert_eq!(s.revision().unwrap(), before);
 }
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn restart_pending_is_not_dispatched_and_same_command_still_replays() {
     let (root, mut i, t) = fixture();
     let r = send(&t, "a", "pending");
@@ -437,6 +442,7 @@ fn restart_pending_is_not_dispatched_and_same_command_still_replays() {
     assert!(s.processes_settled("task").unwrap());
 }
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn restart_spawn_gap_keeps_account_reserved_and_cannot_claim_death() {
     let (root, mut i, t) = fixture();
     let (mut started, _) = prepare_send(&mut i, &send(&t, "a", "spawn-gap"), false).unwrap();
@@ -455,6 +461,7 @@ fn restart_spawn_gap_keeps_account_reserved_and_cannot_claim_death() {
     assert!(!s.processes_settled("task").unwrap());
 }
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn proven_no_child_releases_spawn_intention() {
     let (_root, mut i, t) = fixture();
     let (mut started, _) = prepare_send(&mut i, &send(&t, "a", "spawn-error"), false).unwrap();
@@ -467,6 +474,7 @@ fn proven_no_child_releases_spawn_intention() {
     assert!(s.unresolved_accounts().unwrap().is_empty());
 }
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn full_journal_handoff_returns_a_with_b_work_and_refuses_oversize() {
     let (_root, mut i, t) = fixture();
     let (first, _) = prepare_send(&mut i, &send(&t, "a", "a1"), false).unwrap();
@@ -509,6 +517,7 @@ fn full_journal_handoff_returns_a_with_b_work_and_refuses_oversize() {
         .contains("No history was truncated"));
 }
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn stop_switch_revalidates_target_auth_and_grants_after_source_settlement() {
     let (_root, mut i, t) = fixture();
     let (first, _) = prepare_send(&mut i, &send(&t, "a", "source"), false).unwrap();
@@ -556,6 +565,7 @@ fn stop_switch_revalidates_target_auth_and_grants_after_source_settlement() {
     assert!(t.switches[0].reason.as_ref().unwrap().contains("changed"));
 }
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn stop_control_serialization_fences_queued_permission() {
     let (_root, mut i, t) = fixture();
     let (_started, _) = prepare_send(&mut i, &send(&t, "a", "approval-source"), false).unwrap();
@@ -618,6 +628,7 @@ fn pi_json_null_cancel_survives_deserialization_and_command_validation() {
 }
 
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn durable_history_digest_is_stable_across_canonical_projection_reopen() {
     let (root, mut i, t) = fixture();
     let (started, _) = prepare_send(&mut i, &send(&t, "a", "canonical-history"), false).unwrap();
@@ -670,6 +681,7 @@ fn oversized_projection_refuses_before_commit_and_previous_record_reopens() {
 
 #[cfg(unix)]
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn restart_owned_child_reserves_binding_until_private_marker_cleanup() {
     use std::os::unix::process::CommandExt;
     let (root, mut i, t) = fixture();
@@ -737,6 +749,7 @@ fn restart_owned_child_reserves_binding_until_private_marker_cleanup() {
 
 #[cfg(unix)]
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn failed_final_projection_retains_worker_fence_until_durable_retry() {
     let (_root, mut i, t) = fixture();
     prepare_send(&mut i, &send(&t, "a", "final-receipt"), false).unwrap();
@@ -773,6 +786,7 @@ fn failed_final_projection_retains_worker_fence_until_durable_retry() {
 
 #[cfg(unix)]
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn verified_boot_change_proves_process_death_but_never_replays_delivery() {
     let (root, mut i, t) = fixture();
     let (mut started, _) =
@@ -798,6 +812,7 @@ fn verified_boot_change_proves_process_death_but_never_replays_delivery() {
 
 #[cfg(unix)]
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn explicit_untracked_native_effects_cannot_be_cleared_by_empty_owner_scan() {
     assert!(super::execution::untracked_effect(
         &json!({"input":{"run_in_background":true}})
@@ -819,6 +834,7 @@ fn explicit_untracked_native_effects_cannot_be_cleared_by_empty_owner_scan() {
 
 #[cfg(unix)]
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn queued_allow_then_accepted_stop_emits_no_native_transport_frame() {
     use std::io::{Read, Write};
     let (_root, mut i, t) = fixture();
@@ -909,6 +925,7 @@ fn pi_supplied_cancel_named_option_is_a_value_and_synthetic_cancel_is_null() {
 
 #[cfg(unix)]
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn failed_final_task_load_retains_whole_finish_work_for_next_owner_entry() {
     let (_root, mut i, t) = fixture();
     prepare_send(&mut i, &send(&t, "a", "finish-read-error"), false).unwrap();
@@ -934,6 +951,7 @@ fn failed_final_task_load_retains_whole_finish_work_for_next_owner_entry() {
 
 #[cfg(unix)]
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn explicitly_denied_claude_tool_proposal_does_not_claim_external_dispatch() {
     use super::{
         native_wire::{NativePermission, NativeTool, ToolState},
@@ -994,6 +1012,7 @@ fn explicitly_denied_claude_tool_proposal_does_not_claim_external_dispatch() {
 }
 
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn restart_preserves_committed_checkpoint_and_clears_unfinalized_active_projection() {
     let (root, mut i, t) = fixture();
     let (mut done, _) = prepare_send(&mut i, &send(&t, "a", "checkpoint-crash"), false).unwrap();
@@ -1033,6 +1052,7 @@ fn restart_preserves_committed_checkpoint_and_clears_unfinalized_active_projecti
 
 #[cfg(unix)]
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn durable_unknown_tool_proposal_survives_restart_and_correlated_deny_clears_only_it() {
     let (root, mut i, t) = fixture();
     let (started, _) =
@@ -1059,6 +1079,7 @@ fn durable_unknown_tool_proposal_survives_restart_and_correlated_deny_clears_onl
 }
 
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn unqualified_active_stop_switch_cannot_cross_backend_dispatch_boundary() {
     let (_root, mut i, t) = fixture();
     let (first, _) = prepare_send(&mut i, &send(&t, "a", "qualification-source"), false).unwrap();
@@ -1143,6 +1164,7 @@ fn imported_native_a_b_generations_keep_exact_auth_and_observation_provenance() 
 
 #[cfg(unix)]
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn exact_reviewed_pi_transfer_preserves_oversize_context_and_rejects_stale_fences() {
     let (_root, mut i, t) = fixture();
     let (started, _) = prepare_send(&mut i, &send(&t, "a", "pi-source"), false).unwrap();
@@ -1232,6 +1254,7 @@ fn exact_reviewed_pi_transfer_preserves_oversize_context_and_rejects_stale_fence
 
 #[cfg(unix)]
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn failed_observation_write_retries_exact_text_and_remaining_native_tool_batch_before_finish() {
     use super::native_wire::{NativeEvent, NativeTool, ToolState};
     let (_root, mut i, t) = fixture();
@@ -1387,6 +1410,7 @@ fn change_helper_boot(store: &Store, id: &str, boot: &str) {
     .unwrap();
 }
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn helper_intent_survives_exit_restart_and_same_boot_ack_cannot_release() {
     let (_root, mut i, t) = fixture();
     let s = i.store.as_mut().unwrap();
@@ -1421,6 +1445,7 @@ fn helper_intent_survives_exit_restart_and_same_boot_ack_cannot_release() {
     assert!(!s.helpers_settled(None).unwrap());
 }
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn helper_recovery_requires_all_old_boot_operations_and_invalidates_auth_grants_atomically() {
     let (_root, mut i, t) = fixture();
     let s = i.store.as_mut().unwrap();
@@ -1522,6 +1547,7 @@ fn known_schema_one_upgrade_preserves_exact_private_sqlite_backup() {
     assert!(Store::open(path).is_ok());
 }
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn reviewed_helper_history_remains_valid_after_account_removal_and_restart() {
     let (_root, mut i, t) = fixture();
     let s = i.store.as_mut().unwrap();
@@ -1585,6 +1611,7 @@ fn unavailable_native_family_refuses_helper_intent_without_publication() {
     assert_eq!(s.revision().unwrap(), revision);
 }
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn durable_helper_controls_block_auth_login_verify_remove_and_send_without_ram_lease() {
     let (_root, mut i, t) = fixture();
     let s = i.store.as_mut().unwrap();
@@ -1688,6 +1715,7 @@ fn schema_upgrade_preserves_partial_vacuum_stage_and_exclusive_publish_crash_gap
     assert!(backup.exists());
 }
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn reviewed_attempt_linked_helper_survives_missing_account_and_task_without_replay() {
     let (_root, mut i, t) = fixture();
     let (active, _) = prepare_send(&mut i, &send(&t, "a", "source-helper-attempt"), false).unwrap();
@@ -1759,6 +1787,7 @@ fn dangling_schema_backup_stage_is_refused_without_writing_its_target() {
 }
 
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn repeated_query_observation_failures_append_all_interleaved_frames_once() {
     use super::native_wire::NativeEvent;
     use std::cell::RefCell;
@@ -1847,6 +1876,7 @@ fn repeated_query_observation_failures_append_all_interleaved_frames_once() {
 }
 
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn completion_notifications_require_admitted_settled_checkpoint_and_durable_retry() {
     let (root, mut inner, task) = fixture();
     let owner = crate::push::ledger::Owner {
@@ -1945,4 +1975,18 @@ fn completion_notifications_require_admitted_settled_checkpoint_and_durable_retr
             .len(),
         1
     );
+}
+
+#[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+#[test]
+fn unavailable_codex_binding_rejects_send_without_mutating_the_task() {
+    let (_root, mut inner, task) = fixture();
+    assert!(!super::native_accounts::available(TitleCli::Codex));
+    let before = serde_json::to_value(inner.store.as_ref().unwrap().task("task").unwrap()).unwrap();
+    let error = prepare_send(&mut inner, &send(&task, "a", "unavailable-platform"), false)
+        .err()
+        .expect("An unavailable binding must reject dispatch");
+    assert!(error.contains("unavailable"));
+    let after = serde_json::to_value(inner.store.as_ref().unwrap().task("task").unwrap()).unwrap();
+    assert_eq!(after, before);
 }

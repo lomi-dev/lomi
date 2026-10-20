@@ -1158,8 +1158,10 @@ export default function AgentControlSettingsPage({
                 startupBusy
               }
               onChange={(event) => {
-                if (event.target.checked) setYoloConfirmationOpen(true);
-                else void setYoloMode(false);
+                if (event.target.checked) {
+                  event.currentTarget.focus();
+                  setYoloConfirmationOpen(true);
+                } else void setYoloMode(false);
               }}
             />
           </SettingRow>

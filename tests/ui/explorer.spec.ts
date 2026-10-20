@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { newProject, newSession } from "../../src/model";
 import { mockDesktop } from "./desktop";
+import { expectRecordedNotification } from "./application-notification-helpers";
 
 async function setup(
   page: Page,
@@ -637,6 +638,7 @@ for (const platform of ["linux", "windows"] as const) {
 test("Windows-style Explorer paths paste a copied item into its current folder", async ({
   page,
 }) => {
+  const project = newProject("C:/project", "local:bash");
   await setup(
     page,
     true,
@@ -647,9 +649,10 @@ test("Windows-style Explorer paths paste a copied item into its current folder",
     ],
     false,
     "windows",
+    { ...newSession(), projects: [project], activeProjectId: project.id },
   );
   const tree = page.locator(".file-tree");
-  const folder = tree.locator('.tree-entry[title="/project/src"]');
+  const folder = tree.locator('.tree-entry[title="C:/project/src"]');
   await page.getByRole("button", { name: "Expand src", exact: true }).click();
   const source = tree.getByRole("button", { name: "main.ts", exact: true });
 
@@ -668,7 +671,7 @@ test("Windows-style Explorer paths paste a copied item into its current folder",
       ),
     )
     .toMatchObject({
-      root: "/project",
+      root: "C:/project",
       relative: "src\\main.ts",
       operation: { kind: "duplicate" },
     });
@@ -2116,7 +2119,7 @@ test("native Explorer spring expansion requires a stationary second and cancels 
 }) => {
   await setup(page);
   await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
-  await page.clock.pauseAt(new Date("2026-01-01T00:00:01Z"));
+  await page.clock.pauseAt(new Date("2026-01-02T00:00:00Z"));
   const folder = page.locator('[data-explorer-folder="src"]');
   await nativeExplorerDrag(page, "enter", folder);
   await page.clock.runFor(600);
@@ -2179,11 +2182,10 @@ test("native Explorer imports keep partial success and reject overlapping drops"
   await expect(
     page.getByRole("button", { name: "second.txt", exact: true }),
   ).toBeVisible();
-  await expect(
-    page.getByText("A file or folder with that name already exists.", {
-      exact: true,
-    }),
-  ).toBeVisible();
+  await expectRecordedNotification(
+    page,
+    "A file or folder with that name already exists.",
+  );
   await expect(page.locator("[data-explorer-root]")).toHaveAttribute(
     "aria-busy",
     "false",
@@ -2216,7 +2218,7 @@ test("native Explorer search hides the tree and cancels pending expansion", asyn
 }) => {
   await setup(page);
   await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
-  await page.clock.pauseAt(new Date("2026-01-01T00:00:01Z"));
+  await page.clock.pauseAt(new Date("2026-01-02T00:00:00Z"));
   await nativeExplorerDrag(
     page,
     "enter",
@@ -2310,7 +2312,7 @@ test("native Explorer navigation cancels hover and retains accepted import desti
     activeProjectId: project.id,
   });
   await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
-  await page.clock.pauseAt(new Date("2026-01-01T00:00:01Z"));
+  await page.clock.pauseAt(new Date("2026-01-02T00:00:00Z"));
   await nativeExplorerDrag(
     page,
     "enter",
@@ -2360,7 +2362,7 @@ test("native Explorer spring expansion cancels after layout moves or unmount", a
 }) => {
   await setup(page);
   await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
-  await page.clock.pauseAt(new Date("2026-01-01T00:00:01Z"));
+  await page.clock.pauseAt(new Date("2026-01-02T00:00:00Z"));
   const folder = page.locator('[data-explorer-folder="src"]');
   await nativeExplorerDrag(page, "enter", folder);
   await folder.evaluate((element) => {

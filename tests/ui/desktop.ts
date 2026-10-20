@@ -1663,3 +1663,14 @@ export async function chooseOption(control: Locator, label: string) {
     .getByRole("option", { name: label, exact: true })
     .click();
 }
+
+export async function openProjectIfNeeded(page: Page) {
+  const newTab = page.getByRole("button", { name: /^New tab/ });
+  const openFolder = page.getByRole("button", {
+    name: "Open folder or repository",
+    exact: true,
+  });
+  await newTab.or(openFolder).first().waitFor({ state: "visible" });
+  if (await openFolder.isVisible()) await openFolder.click();
+  await newTab.waitFor({ state: "visible" });
+}

@@ -64,7 +64,9 @@
     globalThis.__lomiSmoke = { before, terminal, entry };
     await invoke("write_terminal", {
       id: terminal,
-      data: "for i in 1 2 3 4 5 6 7 8 9 10; do printf '\\nLOMI_NATIVE_%s\\n' \"$i\"; sleep 0.1; done\n",
+      data: navigator.platform.includes("Win")
+        ? "1..10 | ForEach-Object { Write-Output ('LOMI_NATIVE_' + $_); Start-Sleep -Milliseconds 100 }\r"
+        : "for i in 1 2 3 4 5 6 7 8 9 10; do printf '\\nLOMI_NATIVE_%s\\n' \"$i\"; sleep 0.1; done\n",
     });
     await command("Show workspace context");
     await wait(() =>

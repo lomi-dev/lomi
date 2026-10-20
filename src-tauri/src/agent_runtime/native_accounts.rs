@@ -568,7 +568,7 @@ mod tests {
         check_private_directory(&root.path().join("account")).unwrap();
         root
     }
-    #[cfg(unix)]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[test]
     fn new_codex_uses_file_store_and_existing_configuration_survives() {
         let root = private_root();
@@ -596,15 +596,16 @@ mod tests {
         let root = private_root();
         let other = private_root();
         symlink(other.path(), root.path().join("account/data")).unwrap();
-        assert!(prepare(&root.path().join("account"), TitleCli::Pi).is_err());
+        assert!(prepare(&root.path().join("account"), TitleCli::Kimi).is_err());
         fs::set_permissions(other.path(), fs::Permissions::from_mode(0o755)).unwrap();
-        assert!(prepare(&other.path().join("account"), TitleCli::Pi).is_err());
+        assert!(prepare(&other.path().join("account"), TitleCli::Kimi).is_err());
     }
     #[cfg(unix)]
     #[test]
     fn environments_have_private_paths_and_no_credentials() {
         for cli in [
             TitleCli::Claude,
+            TitleCli::Codex,
             TitleCli::Kimi,
             TitleCli::Pi,
             TitleCli::Kilo,
@@ -612,6 +613,10 @@ mod tests {
         ] {
             let root = private_root();
             let account = root.path().join("account");
+            if !available(cli) {
+                assert!(prepare(&account, cli).is_err());
+                continue;
+            }
             let launch = prepare(&account, cli).unwrap();
             let canonical = account.canonicalize().unwrap();
             assert!(launch

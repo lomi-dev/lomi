@@ -1,10 +1,11 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { mockDesktop } from "./desktop";
+import { mockDesktop, openProjectIfNeeded } from "./desktop";
 import { mockChats } from "./chat-mock";
 import { defaultConfig } from "../../src/chat/types";
 
 async function openChat(page: Page) {
+  await openProjectIfNeeded(page);
   await page.getByRole("button", { name: /^New tab/ }).click();
   await page.getByRole("menuitem", { name: "Chat AI", exact: true }).click();
   await expect(
@@ -311,6 +312,9 @@ test("setup and advanced conversation dialogs scroll inside a short window", asy
     ),
   ).toContainEqual({ command: "open_settings", args: { page: "chat-ai" } });
   await expect(dialog).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Close Settings", exact: true })
+    .click();
   await page.getByRole("button", { name: "Choose model" }).click();
   await page.getByText("Advanced options", { exact: true }).click();
   const apply = page.getByRole("button", { name: "Apply", exact: true });

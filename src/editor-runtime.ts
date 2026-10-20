@@ -12,6 +12,7 @@ import { gotoLine, openSearchPanel } from "@codemirror/search";
 import { codeEditorExtensions } from "./editor-extensions";
 import { listen } from "@tauri-apps/api/event";
 import { api, errorMessage } from "./api";
+import { isWindowsPath, joinFilePath } from "./file-path";
 import type { EditorPosition, FileTab } from "./model";
 import {
   editorFileKey,
@@ -258,11 +259,15 @@ export function relocateDocuments(
   if (changes.some(({ old }) => old.document?.nativeOperationFrozen))
     throw new Error("TARGET_BUSY");
   for (const { old } of changes) aliases.delete(editorFileKey(old.tab));
+  const relocated = new Set<EditorDocument>();
   for (const { tab, old } of changes) {
     const document = old.document!;
-    buffers.delete(document.path);
-    document.relocate(tab, canonicalChange);
-    buffers.set(document.path, document);
+    if (!relocated.has(document)) {
+      buffers.delete(document.path);
+      document.relocate(tab, canonicalChange);
+      buffers.set(document.path, document);
+      relocated.add(document);
+    }
     aliases.set(editorFileKey(tab), document);
   }
   if (changes.length) {
@@ -1127,22 +1132,33 @@ export class EditorDocument {
     ++this.bufferVersion;
     ++this.reloadVersion;
     this.location = { root: tab.root, relative: tab.relative };
-    const separator = tab.root.includes("\\") ? "\\" : "/";
+    const relocateCanonical = (path: string | undefined) => {
+      if (
+        canonicalChange?.newPath &&
+        canonicalChange.oldPath &&
+        path &&
+        (path === canonicalChange.oldPath ||
+          path.startsWith(`${canonicalChange.oldPath}/`) ||
+          (isWindowsPath(canonicalChange.oldPath) &&
+            path.startsWith(`${canonicalChange.oldPath}\\`)))
+      )
+        return (
+          canonicalChange.newPath + path.slice(canonicalChange.oldPath.length)
+        );
+      return undefined;
+    };
+    // Renaming a directory link can move the logical view while leaving its
+    // canonical target unchanged. Native changes remain authoritative for it.
     this.path =
-      tab.root.replace(/[\\/]$/, "") +
-      separator +
-      tab.relative.replace(/[\\/]/g, separator);
-    if (this.sourcePath === previousPath) this.sourcePath = this.path;
-    if (
-      canonicalChange?.newPath &&
-      canonicalChange.oldPath &&
-      previousSource &&
-      (previousSource === canonicalChange.oldPath ||
-        previousSource.startsWith(`${canonicalChange.oldPath}/`))
-    )
-      this.sourcePath =
-        canonicalChange.newPath +
-        previousSource.slice(canonicalChange.oldPath.length);
+      relocateCanonical(previousPath) ??
+      (canonicalChange ? previousPath : joinFilePath(tab.root, tab.relative));
+    this.sourcePath =
+      relocateCanonical(previousSource) ??
+      (canonicalChange
+        ? previousSource
+        : previousSource === previousPath
+          ? this.path
+          : previousSource);
     if (this.diskError === this.snapshot.error) this.publish({ error: "" });
     this.diskError = "";
     if (this.snapshot.languageMode === "auto") this.setLanguage("auto");

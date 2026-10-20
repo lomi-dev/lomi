@@ -653,6 +653,34 @@ fn select_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
+    // History admission requires trusted fixture paths regardless of the
+    // developer's umask. Do not change the process-wide umask in parallel tests.
+    mod fixture_fs {
+        use std::{
+            io::Write,
+            os::unix::fs::{DirBuilderExt, OpenOptionsExt},
+            path::Path,
+        };
+        pub fn create_dir(path: impl AsRef<Path>) -> std::io::Result<()> {
+            std::fs::DirBuilder::new().mode(0o700).create(path)
+        }
+        pub fn create_dir_all(path: impl AsRef<Path>) -> std::io::Result<()> {
+            std::fs::DirBuilder::new()
+                .recursive(true)
+                .mode(0o700)
+                .create(path)
+        }
+        pub fn write(path: impl AsRef<Path>, content: impl AsRef<[u8]>) -> std::io::Result<()> {
+            std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .mode(0o600)
+                .open(path)?
+                .write_all(content.as_ref())
+        }
+    }
+    use fixture_fs as fs;
     fn storage() -> tempfile::TempDir {
         let root = tempfile::tempdir().unwrap();
         crate::chat::storage::private(root.path(), true).unwrap();
@@ -765,7 +793,9 @@ mod tests {
             };
             let dir = root.join("data").join(name);
             fs::create_dir_all(&dir).unwrap();
-            let db = rusqlite::Connection::open(dir.join(format!("{name}.db"))).unwrap();
+            let database = dir.join(format!("{name}.db"));
+            fs::write(&database, []).unwrap();
+            let db = rusqlite::Connection::open(database).unwrap();
             db.execute_batch("CREATE TABLE session(id TEXT,directory TEXT,parent_id TEXT,time_updated INTEGER); CREATE TABLE session_message(session_id TEXT); INSERT INTO session VALUES('owned','/project',NULL,1),('other','/project',NULL,100),('child','/project','owned',101); INSERT INTO session_message VALUES('owned'),('other'),('child');").unwrap();
             let continuation = select_account(&root, cli, "reviewed", "/project", "owned").unwrap();
             assert_eq!(
@@ -949,7 +979,9 @@ mod tests {
             };
             let data = root.path().join("data").join(name);
             fs::create_dir_all(&data).unwrap();
-            let db = rusqlite::Connection::open(data.join(format!("{name}.db"))).unwrap();
+            let database = data.join(format!("{name}.db"));
+            fs::write(&database, []).unwrap();
+            let db = rusqlite::Connection::open(database).unwrap();
             db.execute_batch("CREATE TABLE session(id TEXT,directory TEXT,parent_id TEXT,time_updated INTEGER); CREATE TABLE message(session_id TEXT); CREATE TABLE session_message(session_id TEXT); INSERT INTO session VALUES('owned','/project',NULL,1); INSERT INTO session VALUES('subagent','/project','owned',100); INSERT INTO message VALUES('subagent');").unwrap();
             assert!(select(root.path(), cli, "reviewed", "/project").is_err());
             db.execute("INSERT INTO message VALUES('owned')", [])

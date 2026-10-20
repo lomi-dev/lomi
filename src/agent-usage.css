@@ -1,4 +1,6 @@
 .agent-usage-trigger {
+  position: relative;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -31,8 +33,6 @@
 }
 
 .agent-usage-trigger:focus-visible {
-  position: relative;
-  z-index: 1;
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }

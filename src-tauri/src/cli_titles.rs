@@ -1590,9 +1590,15 @@ mod tests {
             b"CURSOR_AUTH_TOKEN=other-account",
         ]);
         assert!(paths.has_cursor_api_key);
+        let fixture = tempfile::tempdir().unwrap();
+        let home = format!("HOME={}", fixture.path().join("process-home").display());
+        let kimi_home = format!(
+            "KIMI_CODE_HOME={}",
+            fixture.path().join("process-kimi").display()
+        );
         let kimi = UsageProcessPaths::from_entries(&[
-            b"HOME=/process-home",
-            b"KIMI_CODE_HOME=/process-kimi",
+            home.as_bytes(),
+            kimi_home.as_bytes(),
             b"KIMI_CODE_BASE_URL=https://api.kimi.ai/coding/v1",
             b"KIMI_CODE_OAUTH_HOST=https://auth.kimi.ai",
             b"KIMI_MODEL_PROVIDER=other",
@@ -1600,7 +1606,7 @@ mod tests {
         ]);
         assert_eq!(
             kimi.directory_for(TitleCli::Kimi).unwrap(),
-            PathBuf::from("/process-kimi")
+            fixture.path().join("process-kimi")
         );
         assert_eq!(
             kimi.kimi_code_base_url.as_deref(),
@@ -1648,36 +1654,41 @@ mod tests {
 
     #[test]
     fn usage_credentials_follow_only_the_running_process_directories() {
-        let paths = UsageProcessPaths::from_entries(&[
-            b"HOME=/process-home",
-            b"CODEX_HOME=/process-codex",
-            b"CLAUDE_CONFIG_DIR=/process-claude",
-            b"CLAUDE_SECURESTORAGE_CONFIG_DIR=",
-            b"XDG_CONFIG_HOME=/process-xdg",
-        ]);
-        assert_eq!(
-            paths.directory_for(TitleCli::Codex).unwrap(),
-            PathBuf::from("/process-codex")
+        let fixture = tempfile::tempdir().unwrap();
+        let home = fixture.path().join("process-home");
+        let codex = fixture.path().join("process-codex");
+        let claude = fixture.path().join("process-claude");
+        let xdg = fixture.path().join("process-xdg");
+        let entries = [
+            format!("HOME={}", home.display()),
+            format!("CODEX_HOME={}", codex.display()),
+            format!("CLAUDE_CONFIG_DIR={}", claude.display()),
+            "CLAUDE_SECURESTORAGE_CONFIG_DIR=".into(),
+            format!("XDG_CONFIG_HOME={}", xdg.display()),
+        ];
+        let paths = UsageProcessPaths::from_entries(
+            &entries
+                .iter()
+                .map(|entry| entry.as_bytes())
+                .collect::<Vec<_>>(),
         );
-        assert_eq!(
-            paths.directory_for(TitleCli::Claude).unwrap(),
-            PathBuf::from("/process-claude")
-        );
+        assert_eq!(paths.directory_for(TitleCli::Codex).unwrap(), codex);
+        assert_eq!(paths.directory_for(TitleCli::Claude).unwrap(), claude);
         assert!(paths.claude_secure_storage_config_dir_set);
         assert_eq!(paths.claude_secure_storage_config_dir, None);
         #[cfg(target_os = "macos")]
         assert_eq!(
             paths.directory_for(TitleCli::Cursor).unwrap(),
-            PathBuf::from("/process-home/.cursor")
+            home.join(".cursor")
         );
         #[cfg(not(target_os = "macos"))]
         assert_eq!(
             paths.directory_for(TitleCli::Cursor).unwrap(),
-            PathBuf::from("/process-xdg/cursor")
+            xdg.join("cursor")
         );
         assert_eq!(
             paths.cursor_cli_config_directory().unwrap(),
-            PathBuf::from("/process-xdg/cursor")
+            xdg.join("cursor")
         );
     }
 
@@ -2654,7 +2665,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().canonicalize().unwrap();
         let home = format!("HOME={}", root.display());
-        let custom = format!("QWEN_HOME={}/profile", root.display());
+        let custom = format!("QWEN_HOME={}", root.join("profile").display());
         let resolved = title_configuration_from_environment(
             TitleCli::Qwen,
             &[home.as_bytes(), custom.as_bytes()],

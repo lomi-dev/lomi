@@ -770,6 +770,12 @@ mod tests {
         assert!(result.is_err());
         if let Ok(pid) = fs::read_to_string(pid_file) {
             let pid: i32 = pid.trim().parse().unwrap();
+            // The group signal precedes the kernel scheduling and reaping its
+            // descendants; kill(0) can still observe them immediately after it.
+            let deadline = Instant::now() + Duration::from_secs(1);
+            while unsafe { libc::kill(pid, 0) == 0 } && Instant::now() < deadline {
+                thread::sleep(Duration::from_millis(10));
+            }
             let alive = unsafe { libc::kill(pid, 0) == 0 };
             assert!(!alive, "probe left child process {pid} alive");
         }

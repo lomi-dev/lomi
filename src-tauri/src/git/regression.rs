@@ -4,6 +4,7 @@ use super::*;
 fn initialize(root: &Path) {
     fs::create_dir_all(root).unwrap();
     checked(root, &["init", "-b", "main"]).unwrap();
+    checked(root, &["config", "core.autocrlf", "false"]).unwrap();
     checked(root, &["config", "user.name", "Review Test"]).unwrap();
     checked(root, &["config", "user.email", "review@example.test"]).unwrap();
     checked(root, &["config", "commit.gpgsign", "false"]).unwrap();
@@ -56,6 +57,7 @@ fn repository_scan_respects_its_declared_repository_budget() {
         let path = project.path().join(format!("repo-{index}"));
         fs::create_dir(&path).unwrap();
         checked(&path, &["init", "-b", "main"]).unwrap();
+        checked(&path, &["config", "core.autocrlf", "false"]).unwrap();
     }
     let found = repositories(project.path().to_str().unwrap(), None).unwrap();
     assert_eq!(found.repositories.len(), 64);
@@ -208,6 +210,7 @@ fn automatic_status_cannot_execute_repository_helpers_but_explicit_stage_can() {
 fn ordinary_observation_handles_large_indexes_without_worker_processes() {
     let root = tempfile::tempdir().unwrap();
     checked(root.path(), &["init", "-b", "main"]).unwrap();
+    checked(root.path(), &["config", "core.autocrlf", "false"]).unwrap();
     checked(root.path(), &["config", "core.preloadIndex", "true"]).unwrap();
     for index in 0..2000 {
         fs::write(root.path().join(format!("file-{index}.txt")), "tracked\n").unwrap();
@@ -230,6 +233,8 @@ fn guarded_submodules_preserve_clean_dirty_untracked_and_changed_head_status() {
         &[
             "-c",
             "protocol.file.allow=always",
+            "-c",
+            "core.autocrlf=false",
             "submodule",
             "add",
             "--",
@@ -244,6 +249,7 @@ fn guarded_submodules_preserve_clean_dirty_untracked_and_changed_head_status() {
         ("user.email", "submodule@example.test"),
         ("commit.gpgsign", "false"),
         ("core.hooksPath", ".git/disabled-hooks"),
+        ("core.autocrlf", "false"),
     ] {
         checked(&child, &["config", key, value]).unwrap();
     }
@@ -252,6 +258,8 @@ fn guarded_submodules_preserve_clean_dirty_untracked_and_changed_head_status() {
         &[
             "-c",
             "protocol.file.allow=always",
+            "-c",
+            "core.autocrlf=false",
             "submodule",
             "add",
             "--",
@@ -260,6 +268,7 @@ fn guarded_submodules_preserve_clean_dirty_untracked_and_changed_head_status() {
         ],
     )
     .unwrap();
+    checked(&child.join("nested"), &["config", "core.autocrlf", "false"]).unwrap();
     checked(&child, &["commit", "-am", "add nested submodule"]).unwrap();
     checked(root.path(), &["add", "--all"]).unwrap();
     checked(root.path(), &["commit", "-m", "add submodule"]).unwrap();
@@ -357,6 +366,8 @@ fn recursive_submodule_status_matches_effective_ignore_modes() {
         &[
             "-c",
             "protocol.file.allow=always",
+            "-c",
+            "core.autocrlf=false",
             "submodule",
             "add",
             "--name",
@@ -373,6 +384,7 @@ fn recursive_submodule_status_matches_effective_ignore_modes() {
         ("user.email", "ignore@example.test"),
         ("commit.gpgsign", "false"),
         ("core.hooksPath", ".git/disabled-hooks"),
+        ("core.autocrlf", "false"),
     ] {
         checked(&child, &["config", key, value]).unwrap();
     }

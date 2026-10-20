@@ -1,27 +1,93 @@
 import { basename, layoutPanes, newTab } from "./model.ts";
 import type { FileTab, Layout, Project, Session, Tab } from "./model.ts";
 import type { GitStatus } from "./api.ts";
+import { joinFilePath, normalizePath, parentPath } from "./file-path.ts";
+export { normalizePath, parentPath } from "./file-path.ts";
 
 export interface FileChange {
   oldPath: string | null;
   newPath: string | null;
 }
+export interface FileRootAlias {
+  root: string;
+  canonical: string;
+}
+
+// Native mutations report canonical paths. Retained sessions may instead use
+// restored directory aliases, so update each known logical namespace as well.
+export function fileChangeAliases(
+  change: FileChange,
+  aliases: readonly FileRootAlias[],
+  destinationRoot: string,
+): FileChange[] {
+  if (!change.oldPath) return [change];
+  const oldPath = normalizePath(change.oldPath);
+  const newPath =
+    change.newPath === null ? null : normalizePath(change.newPath);
+  const roots = aliases.map(({ root, canonical }) => ({
+    root: normalizePath(root),
+    canonical: normalizePath(canonical),
+  }));
+  const destination =
+    newPath === null
+      ? undefined
+      : roots
+          .filter((alias) => containsPath(alias.canonical, newPath))
+          .sort(
+            (a, b) =>
+              b.canonical.length - a.canonical.length ||
+              Number(b.root === normalizePath(destinationRoot)) -
+                Number(a.root === normalizePath(destinationRoot)),
+          )[0];
+  const changes: FileChange[] = [{ oldPath, newPath }];
+  for (const alias of roots.sort(
+    (a, b) => a.canonical.length - b.canonical.length,
+  )) {
+    if (containsPath(alias.canonical, oldPath)) {
+      let target = newPath;
+      if (newPath !== null) {
+        if (containsPath(alias.canonical, newPath)) {
+          target = alias.root + newPath.slice(alias.canonical.length);
+        } else if (destination) {
+          target =
+            destination.root + newPath.slice(destination.canonical.length);
+        }
+      }
+      changes.push({
+        oldPath: alias.root + oldPath.slice(alias.canonical.length),
+        newPath: target,
+      });
+    } else if (containsPath(oldPath, alias.canonical)) {
+      // An independently restored alias of a descendant also loses its target.
+      changes.push({
+        oldPath: alias.root,
+        newPath:
+          newPath === null
+            ? null
+            : newPath + alias.canonical.slice(oldPath.length),
+      });
+    }
+  }
+  return changes.filter(
+    (item, index) =>
+      changes.findIndex(
+        (other) =>
+          other.oldPath === item.oldPath && other.newPath === item.newPath,
+      ) === index,
+  );
+}
+
 export type FileOperation =
   | { kind: "newFile" | "newFolder" | "rename"; name: string }
   | { kind: "copy" | "move"; sourceRoot: string; source: string }
   | { kind: "duplicate" | "trash" | "delete" };
-export const normalizePath = (path: string) =>
-  path.replaceAll("\\", "/").replace(/\/$/, "");
 export const absoluteFilePath = (file: Pick<FileTab, "root" | "relative">) =>
-  `${normalizePath(file.root)}/${normalizePath(file.relative)}`;
+  normalizePath(joinFilePath(file.root, file.relative));
 export const containsPath = (parent: string, path: string) => {
   const base = normalizePath(parent);
   const candidate = normalizePath(path);
   return candidate === base || candidate.startsWith(`${base}/`);
 };
-export const parentPath = (path: string) =>
-  normalizePath(path).split("/").slice(0, -1).join("/");
-
 export const gitFilePath = (path: string) =>
   normalizePath(path)
     .replace(/^\/\/\?\/UNC\//, "//")
@@ -96,27 +162,42 @@ export function explorerGitStatuses(
 
 export function applyFileChange(
   session: Session,
-  change: FileChange,
+  change: FileChange | readonly FileChange[],
   profileId: string,
 ): Session {
-  if (!change.oldPath) return session;
-  const oldPath = normalizePath(change.oldPath);
-  const newPath =
-    change.newPath === null ? null : normalizePath(change.newPath);
-  const relocate = (path: string) =>
-    containsPath(oldPath, path) && newPath !== null
-      ? newPath + normalizePath(path).slice(oldPath.length)
-      : path;
-  const projects = session.projects
-    .filter(
-      (project) => newPath !== null || !containsPath(oldPath, project.path),
+  const changes = (Array.isArray(change) ? change : [change])
+    .flatMap((item) =>
+      item.oldPath
+        ? [
+            {
+              oldPath: normalizePath(item.oldPath),
+              newPath:
+                item.newPath === null ? null : normalizePath(item.newPath),
+            },
+          ]
+        : [],
     )
+    .sort((a, b) => b.oldPath.length - a.oldPath.length);
+  if (!changes.length) return session;
+  // Match every path in the original namespace. A canonical parent move must
+  // not consume a more specific restored alias or relocate a destination twice.
+  const matchingChange = (path: string) =>
+    changes.find((item) => containsPath(item.oldPath, path));
+  const removed = (path: string) => matchingChange(path)?.newPath === null;
+  const relocate = (path: string) => {
+    const item = matchingChange(path);
+    return item?.newPath != null
+      ? item.newPath + normalizePath(path).slice(item.oldPath.length)
+      : path;
+  };
+  const projects = session.projects
+    .filter((project) => !removed(project.path))
     .map((project) => ({ ...project, path: relocate(project.path) }));
   const file = (file: FileTab): FileTab | null => {
     if (file.untitled) return file;
     const path = absoluteFilePath(file);
-    if (!containsPath(oldPath, path)) return file;
-    if (newPath === null) return null;
+    if (!matchingChange(path)) return file;
+    if (removed(path)) return null;
     const destination = relocate(path);
     const previousRoot = relocate(file.root);
     const root = containsPath(previousRoot, destination)
@@ -147,10 +228,7 @@ export function applyFileChange(
     if (item.type === "terminal")
       return {
         ...item,
-        cwd:
-          newPath === null && containsPath(oldPath, item.cwd)
-            ? project.path
-            : relocate(item.cwd),
+        cwd: removed(item.cwd) ? project.path : relocate(item.cwd),
       };
     const first = layout(item.first, project);
     const second = layout(item.second, project);
@@ -173,7 +251,7 @@ export function applyFileChange(
         )
           return [tab];
         if (tab.type === "diff") {
-          if (newPath === null && containsPath(oldPath, tab.root)) return [];
+          if (removed(tab.root)) return [];
           const root = relocate(tab.root);
           const destination = relocate(absoluteFilePath(tab));
           const relative = containsPath(root, destination)
@@ -184,12 +262,12 @@ export function applyFileChange(
               ...tab,
               root,
               relative,
-              title: `${basename(relative)} · ${tab.staged ? "Staged changes" : "Changes"}`,
+              title: `${basename(relative, root)} · ${tab.staged ? "Staged changes" : "Changes"}`,
             },
           ];
         }
         if (tab.type === "commit")
-          return newPath === null && containsPath(oldPath, tab.root)
+          return removed(tab.root)
             ? []
             : [{ ...tab, root: relocate(tab.root) }];
         const updated = layout(tab.layout, project);

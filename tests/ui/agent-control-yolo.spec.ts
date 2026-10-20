@@ -55,14 +55,17 @@ test("cancelling YOLO confirmation with buttons, Escape, or backdrop never saves
   await yolo.click();
   await confirmation.getByRole("button", { name: "Close dialog" }).click();
   await expect(confirmation).toHaveCount(0);
+  await expect(yolo).toBeFocused();
 
   await yolo.click();
   await page.mouse.click(12, 12);
   await expect(confirmation).toHaveCount(0);
+  await expect(yolo).toBeFocused();
 
   await yolo.click();
   await cancel.click();
   await expect(confirmation).toHaveCount(0);
+  await expect(yolo).toBeFocused();
   expect(await yoloWrites(page)).toEqual([]);
   await expect(yolo).not.toBeChecked();
 });

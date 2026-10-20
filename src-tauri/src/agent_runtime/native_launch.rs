@@ -257,6 +257,11 @@ mod resolver_tests {
         let target = home.path().join("owned-kimi-entry");
         std::fs::write(&target, b"owned resolver fixture; never executed").unwrap();
         std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o700)).unwrap();
+        std::fs::set_permissions(
+            home.path().join(".local"),
+            std::fs::Permissions::from_mode(0o700),
+        )
+        .unwrap();
         symlink(&target, bin.join("kimi")).unwrap();
         assert_eq!(
             resolve_from(
@@ -276,6 +281,13 @@ mod resolver_tests {
         )
         .unwrap();
         std::fs::set_permissions(&installed, std::fs::Permissions::from_mode(0o700)).unwrap();
+        for parent in installed
+            .ancestors()
+            .skip(1)
+            .take_while(|path| path.starts_with(home.path()))
+        {
+            std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
         assert_eq!(
             resolve_from(
                 TitleCli::Kimi,

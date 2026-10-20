@@ -75,7 +75,9 @@ export function useExplorerActions(props: Props) {
   const errorId = useId();
   const trigger = useRef<HTMLElement>(null);
   const parent = (entry: FileEntry) =>
-    entry.isDirectory ? entry.relativePath : parentPath(entry.relativePath);
+    entry.isDirectory
+      ? entry.relativePath
+      : parentPath(entry.relativePath, props.root);
   const dismiss = () => {
     setContext(undefined);
     if (trigger.current?.isConnected)
@@ -143,7 +145,8 @@ export function useExplorerActions(props: Props) {
     const destination = parent(entry);
     const sameParent =
       normalizePath(source.root) === normalizePath(props.root) &&
-      parentPath(source.relative) === normalizePath(destination);
+      parentPath(source.relative, source.root) ===
+        normalizePath(destination, props.root);
     if (sameParent && source.cut) return;
     run(async () => {
       if (sameParent) {
