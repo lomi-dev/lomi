@@ -29,6 +29,9 @@ or acronym.
   path and full commit hash.
   Dragging terminal, browser, or file tabs into a terminal layout preserves pane IDs,
   editor buffers, and running PTYs; moved terminal panes may override the tab's default shell profile, including after restoration.
+  Ctrl/Alt-dragging a pane heading onto another workspace tab moves that pane;
+  tab edges, gaps, and the new-tab button extract it into a separate tab. Publish
+  both ownership changes atomically without closing any moved runtime.
   Keep terminal operations scoped to
   terminal tabs and preserve compatibility with saved tabs without a type.
 - `src/useSettingsTab.ts` owns the single application-level Settings utility tab,

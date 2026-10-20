@@ -31,6 +31,7 @@ import PluginPanel from "./plugins/PluginPanel";
 import type { Json } from "@lomi-dev/plugin-sdk";
 import DockviewLayout from "./DockviewLayout";
 import { usePaneDrag } from "./pane-drag";
+import type { PaneTabDropOptions } from "./pane-drag";
 
 interface Props {
   layout: Layout;
@@ -44,6 +45,7 @@ interface Props {
   onRestart: (id: string, useProjectDirectory?: boolean) => void;
   onResize: (id: string, ratio: number) => void;
   onMove: (id: string, targetId: string, side: TabDropSide) => void;
+  tabDrop?: PaneTabDropOptions;
   onFilePosition: (id: string, position: EditorPosition) => void;
   onPreviewView: (id: string, view: FilePreviewView) => void;
   onPreviewResize: (id: string, ratio: number) => void;
@@ -68,7 +70,11 @@ export default function SplitView({
   const { beginDrag, moveModifierHeld, suppressClick } = usePaneDrag({
     layout: props.layout,
     root,
-    enabled: allPanes.length > 1 && !props.overview && !maximizedPane,
+    enabled:
+      (allPanes.length > 1 || !!props.tabDrop) &&
+      !props.overview &&
+      !maximizedPane,
+    tabDrop: props.tabDrop,
     onMove: props.onMove,
   });
   useEffect(() => {

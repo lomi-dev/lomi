@@ -89,6 +89,7 @@ import {
   mergeTabs,
   moveTab,
   movePane,
+  movePaneToTab,
   moveSidebar,
   toggleSidebar,
   newPane,
@@ -290,6 +291,7 @@ export default function Workbench() {
   );
   const workArea = useRef<HTMLDivElement>(null);
   const terminalLayout = useRef<HTMLDivElement>(null);
+  const tabStrip = useRef<HTMLDivElement>(null);
   const terminalStage = useRef<HTMLElement>(null);
   const selected = session ? active(session) : undefined;
   const agentProfileId =
@@ -2775,6 +2777,7 @@ export default function Workbench() {
             {projectPicker}
             <TabBar
               key={workspace.id}
+              stripRef={tabStrip}
               tabs={workspace.tabs}
               modified={
                 new Set(
@@ -3110,6 +3113,56 @@ export default function Workbench() {
                         modifyTab((tab) => ({ ...tab, activePaneId: id }));
                     }}
                     onRestart={restartPane}
+                    tabDrop={{
+                      strip: tabStrip,
+                      tabs: workspace.tabs,
+                      sourceTabId: tab.id,
+                      canDrop: (id, destination) => {
+                        const selected = currentSession.current
+                          ? active(currentSession.current)
+                          : undefined;
+                        const container = terminalLayout.current;
+                        if (
+                          settings.activeRef.current ||
+                          !container ||
+                          selected?.workspace.id !== workspace.id ||
+                          selected.tab.id !== tab.id
+                        )
+                          return false;
+                        return (
+                          movePaneToTab(
+                            selected.workspace,
+                            tab.id,
+                            id,
+                            destination,
+                            {
+                              width: container.clientWidth,
+                              height: container.clientHeight,
+                            },
+                          ) !== selected.workspace
+                        );
+                      },
+                      onDrop: (id, destination) => {
+                        const container = terminalLayout.current;
+                        if (!container || settings.activeRef.current) return;
+                        change((state) =>
+                          updateWorkspace(state, workspace.id, (current) =>
+                            current.activeTabId === tab.id
+                              ? movePaneToTab(
+                                  current,
+                                  tab.id,
+                                  id,
+                                  destination,
+                                  {
+                                    width: container.clientWidth,
+                                    height: container.clientHeight,
+                                  },
+                                )
+                              : current,
+                          ),
+                        );
+                      },
+                    }}
                     onMove={(id, targetId, side) => {
                       const container = terminalLayout.current;
                       if (!container) return;

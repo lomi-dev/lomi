@@ -838,6 +838,132 @@ export function transferTab(
   };
 }
 
+export type PaneTabDestination =
+  { type: "new-tab"; beforeId: string | null } | { type: "tab"; tabId: string };
+
+export function movePaneToTab(
+  workspace: Workspace,
+  sourceTabId: string,
+  paneId: string,
+  destination: PaneTabDestination,
+  size: LayoutSize,
+): Workspace {
+  const source = workspace.tabs.find((tab) => tab.id === sourceTabId);
+  if (source?.type !== "terminal") return workspace;
+  const pane = layoutPanes(source.layout).find((pane) => pane.id === paneId);
+  if (!pane) return workspace;
+  // A descriptor must have exactly one owner before transferring it.
+  const ids = workspace.tabs.flatMap((tab) =>
+    tab.type === "terminal"
+      ? [tab.id, ...layoutPanes(tab.layout).map((pane) => pane.id)]
+      : [tab.id],
+  );
+  if (new Set(ids).size !== ids.length) return workspace;
+  const remaining = removePane(source.layout, paneId);
+  const tabs = workspace.tabs.flatMap((tab): Tab[] =>
+    tab !== source
+      ? [tab]
+      : remaining
+        ? [
+            {
+              ...source,
+              layout: remaining,
+              activePaneId:
+                source.activePaneId === paneId
+                  ? layoutPanes(remaining)[0].id
+                  : source.activePaneId,
+            },
+          ]
+        : [],
+  );
+  if (destination.type === "new-tab") {
+    const { beforeId } = destination;
+    if (
+      !layoutFits(pane, size) ||
+      (beforeId !== null && !workspace.tabs.some((tab) => tab.id === beforeId))
+    )
+      return workspace;
+    if (!remaining && pane.type === "terminal") {
+      const moved = moveTab(workspace, source.id, beforeId);
+      return moved.activeTabId === source.id
+        ? moved
+        : { ...moved, activeTabId: source.id };
+    }
+    const added: Tab =
+      pane.type === "terminal"
+        ? {
+            type: "terminal",
+            id: newId(),
+            title: source.title,
+            ...(source.customTitle !== undefined
+              ? { customTitle: source.customTitle }
+              : {}),
+            profileId: pane.profileId ?? source.profileId,
+            activePaneId: pane.id,
+            layout: pane,
+          }
+        : pane;
+    const index =
+      beforeId === null
+        ? tabs.length
+        : workspace.tabs
+            .slice(
+              0,
+              workspace.tabs.findIndex((tab) => tab.id === beforeId),
+            )
+            .filter((tab) => tab !== source || remaining !== null).length;
+    tabs.splice(index, 0, added);
+    return { ...workspace, tabs, activeTabId: added.id };
+  }
+  const target = workspace.tabs.find((tab) => tab.id === destination.tabId);
+  if (
+    !target ||
+    target === source ||
+    target.type === "diff" ||
+    target.type === "commit"
+  )
+    return workspace;
+  const profileId =
+    target.type === "terminal" ? target.profileId : source.profileId;
+  const moved =
+    pane.type === "terminal" &&
+    pane.profileId === undefined &&
+    source.profileId !== profileId
+      ? { ...pane, profileId: source.profileId }
+      : pane;
+  const layout: Split = {
+    type: "split",
+    id: newId(),
+    axis: "horizontal",
+    ratio: 0.5,
+    first: target.type === "terminal" ? target.layout : target,
+    second: moved,
+  };
+  if (!layoutFits(layout, size)) {
+    layout.axis = "vertical";
+    if (!layoutFits(layout, size)) return workspace;
+  }
+  const merged: TerminalTab =
+    target.type === "terminal"
+      ? { ...target, layout, activePaneId: pane.id }
+      : {
+          type: "terminal",
+          id: newId(),
+          title: target.title,
+          ...(target.customTitle !== undefined
+            ? { customTitle: target.customTitle }
+            : {}),
+          profileId,
+          activePaneId: pane.id,
+          layout,
+        };
+  return {
+    ...workspace,
+    tabs: tabs.map((tab) => (tab === target ? merged : tab)),
+    activeTabId: merged.id,
+  };
+}
+
 export function canMergeTabs(
   source: Tab,
   target: Tab,

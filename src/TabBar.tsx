@@ -54,6 +54,7 @@ interface Props {
   onMove: (id: string, beforeId: string | null) => void;
   onMerge: (id: string, targetId: string, side: TabDropSide) => void;
   mergeContainer: RefObject<HTMLDivElement | null>;
+  stripRef?: RefObject<HTMLDivElement | null>;
   modified?: ReadonlySet<string>;
   settings?: SettingsTabControl;
 }
@@ -121,6 +122,7 @@ export default function TabBar({
   onMove,
   onMerge,
   mergeContainer,
+  stripRef,
   modified = new Set<string>(),
   settings,
 }: Props) {
@@ -135,7 +137,8 @@ export default function TabBar({
       .filter((p) => p.type === "chat")
       .map((p) => chatActivity(p.conversationId))
       .find(Boolean);
-  const strip = useRef<HTMLDivElement>(null);
+  const localStrip = useRef<HTMLDivElement>(null);
+  const strip = stripRef ?? localStrip;
   const newButton = useRef<HTMLButtonElement>(null);
   const renameCandidate = useRef<string | null>(null);
   const [newMenu, setNewMenu] = useState<{ x: number; y: number } | null>(null);
@@ -161,7 +164,7 @@ export default function TabBar({
         ? previous
         : { left, right },
     );
-  }, []);
+  }, [strip]);
 
   useLayoutEffect(() => {
     const element = strip.current!;
@@ -175,7 +178,7 @@ export default function TabBar({
     const observer = new ResizeObserver(revealActive);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [selectedId, tabs.length, settings?.opened, updateScroll]);
+  }, [selectedId, tabs.length, settings?.opened, updateScroll, strip]);
 
   const focusTab = (id: string) => {
     if (id === SETTINGS_TAB_ID) settings?.onSelect();

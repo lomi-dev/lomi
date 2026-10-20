@@ -1,17 +1,29 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
-import { layoutPositions, movePane } from "./model";
-import type { Layout, TabDropSide } from "./model";
+import { layoutPositions, movePane, tabTitle } from "./model";
+import type { Layout, PaneTabDestination, Tab, TabDropSide } from "./model";
+
+export interface PaneTabDropOptions {
+  strip: RefObject<HTMLDivElement | null>;
+  tabs: Tab[];
+  sourceTabId: string;
+  canDrop: (id: string, destination: PaneTabDestination) => boolean;
+  onDrop: (id: string, destination: PaneTabDestination) => void;
+}
 
 interface Props {
   layout: Layout;
   root: RefObject<HTMLDivElement | null>;
   enabled: boolean;
   onMove: (id: string, targetId: string, side: TabDropSide) => void;
+  tabDrop?: PaneTabDropOptions;
 }
 
 // Use pointer capture, as native webviews can intercept HTML drag-and-drop.
-export function usePaneDrag({ layout, root, enabled, onMove }: Props) {
+export function usePaneDrag(props: Props) {
+  const { layout, root, enabled } = props;
+  const latest = useRef(props);
+  latest.current = props;
   const [moveModifierHeld, setMoveModifierHeld] = useState(false);
   const cleanup = useRef<(() => void) | null>(null);
   const suppressClick = useRef(false);
@@ -55,7 +67,7 @@ export function usePaneDrag({ layout, root, enabled, onMove }: Props) {
       ".terminal-title-box, [data-pane-drag-handle]",
     );
     const source = handle?.closest<HTMLElement>(
-      "[data-pane-id], [data-plugin-pane-id], [data-file-pane-id], [data-browser-pane-id], [data-chat-pane-id], [data-android-pane-id]",
+      "[data-pane-id], [data-plugin-pane-id], [data-file-pane-id], [data-browser-pane-id], [data-chat-pane-id], [data-android-pane-id], [data-task-pane-id]",
     );
     const id =
       source?.dataset.paneId ??
@@ -63,7 +75,8 @@ export function usePaneDrag({ layout, root, enabled, onMove }: Props) {
       source?.dataset.filePaneId ??
       source?.dataset.browserPaneId ??
       source?.dataset.chatPaneId ??
-      source?.dataset.androidPaneId;
+      source?.dataset.androidPaneId ??
+      source?.dataset.taskPaneId;
     const container = root.current;
     if (
       !handle ||
@@ -80,12 +93,118 @@ export function usePaneDrag({ layout, root, enabled, onMove }: Props) {
     let ghost: HTMLDivElement | undefined;
     let indicator: HTMLDivElement | undefined;
     let destination: { targetId: string; side: TabDropSide } | undefined;
+    let tabDestination: PaneTabDestination | undefined;
+    let x = startX;
+    let y = startY;
+    let frame = 0;
+    let lastTime = 0;
+    const sourceTabId = latest.current.tabDrop?.sourceTabId;
     handle.setPointerCapture(pointerId);
 
-    const preview = (x: number, y: number) => {
+    const preview = () => {
       if (!ghost || !indicator) return;
+      const options = latest.current.tabDrop;
+      if (
+        !handle.isConnected ||
+        latest.current.layout !== layout ||
+        !latest.current.enabled ||
+        options?.sourceTabId !== sourceTabId ||
+        (options && !options.tabs.some((tab) => tab.id === sourceTabId))
+      ) {
+        clean();
+        return;
+      }
+      ghost.textContent = handle.textContent;
       ghost.style.left = `${Math.max(0, Math.min(x + 12, innerWidth - ghost.offsetWidth))}px`;
       ghost.style.top = `${Math.max(0, Math.min(y + 12, innerHeight - ghost.offsetHeight))}px`;
+      tabDestination = undefined;
+      const strip = options?.strip.current;
+      const stripBounds = strip?.getBoundingClientRect();
+      if (
+        options &&
+        strip &&
+        stripBounds &&
+        x >= stripBounds.left &&
+        x <= stripBounds.right &&
+        y >= stripBounds.top &&
+        y <= stripBounds.bottom
+      ) {
+        destination = undefined;
+        const elements = [
+          ...strip.querySelectorAll<HTMLElement>("[data-tab-id]"),
+        ];
+        const hovered = elements.find((element) => {
+          const rect = element.getBoundingClientRect();
+          return x >= rect.left && x <= rect.right;
+        });
+        const hoveredTab = options.tabs.find(
+          (tab) => tab.id === hovered?.dataset.tabId,
+        );
+        const rect = hovered?.getBoundingClientRect();
+        const edgeWidth = rect ? Math.min(24, rect.width / 4) : 0;
+        const middle =
+          rect && x > rect.left + edgeWidth && x < rect.right - edgeWidth;
+        const candidates = elements.filter((element) =>
+          options.tabs.some((tab) => tab.id === element.dataset.tabId),
+        );
+        const before = candidates.find((element) => {
+          const bounds = element.getBoundingClientRect();
+          return x < bounds.left + bounds.width / 2;
+        });
+        const proposed: PaneTabDestination =
+          middle && hoveredTab
+            ? { type: "tab", tabId: hoveredTab.id }
+            : { type: "new-tab", beforeId: before?.dataset.tabId ?? null };
+        const supported =
+          !hovered ||
+          (hoveredTab &&
+            hoveredTab.type !== "diff" &&
+            hoveredTab.type !== "commit");
+        const allowed =
+          !!supported &&
+          !(proposed.type === "tab" && proposed.tabId === sourceTabId) &&
+          options.canDrop(id, proposed);
+        if (allowed) tabDestination = proposed;
+        ghost.textContent = allowed
+          ? proposed.type === "new-tab"
+            ? "Move panel to a new tab"
+            : `Move panel to ${tabTitle(hoveredTab!)}`
+          : "Cannot move panel here";
+        indicator.removeAttribute("style");
+        indicator.textContent = "";
+        delete indicator.dataset.side;
+        if (allowed && proposed.type === "new-tab") {
+          const edge =
+            before?.getBoundingClientRect().left ??
+            candidates.at(-1)?.getBoundingClientRect().right ??
+            stripBounds.left;
+          indicator.className = "tab-drop-marker";
+          Object.assign(indicator.style, {
+            left: `${Math.max(stripBounds.left, Math.min(stripBounds.right - 2, edge))}px`,
+            top: `${stripBounds.top + 6}px`,
+            width: "2px",
+            height: `${Math.max(0, stripBounds.height - 12)}px`,
+          });
+        } else {
+          indicator.className = `pane-tab-drop-preview${allowed ? "" : " is-blocked"}`;
+          const left = Math.max(
+            stripBounds.left,
+            rect?.left ?? stripBounds.left,
+          );
+          const right = Math.min(
+            stripBounds.right,
+            rect?.right ?? stripBounds.right,
+          );
+          Object.assign(indicator.style, {
+            left: `${left}px`,
+            top: `${stripBounds.top}px`,
+            width: `${Math.max(0, right - left)}px`,
+            height: `${stripBounds.height}px`,
+          });
+        }
+        indicator.hidden = false;
+        return;
+      }
       const area = container.getBoundingClientRect();
       const positions = layoutPositions(layout, area);
       const target = positions.find(
@@ -133,6 +252,7 @@ export function usePaneDrag({ layout, root, enabled, onMove }: Props) {
             .bounds
         : bounds;
       destination = allowed ? { targetId: target.layout.id, side } : undefined;
+      indicator.removeAttribute("style");
       indicator.className = `pane-drop-preview${allowed ? "" : " is-blocked"}`;
       indicator.dataset.side = side;
       indicator.textContent = allowed
@@ -146,8 +266,30 @@ export function usePaneDrag({ layout, root, enabled, onMove }: Props) {
       });
       indicator.hidden = false;
     };
+    const tick = (time: number) => {
+      const strip = latest.current.tabDrop?.strip.current;
+      const bounds = strip?.getBoundingClientRect();
+      if (
+        strip &&
+        bounds &&
+        y >= bounds.top &&
+        y <= bounds.bottom &&
+        x >= bounds.left &&
+        x <= bounds.right
+      ) {
+        const direction =
+          x < bounds.left + 32 ? -1 : x > bounds.right - 32 ? 1 : 0;
+        strip.scrollLeft +=
+          direction * Math.min(32, time - (lastTime || time)) * 0.7;
+      }
+      lastTime = time;
+      preview();
+      if (ghost) frame = requestAnimationFrame(tick);
+    };
     const move = (event: PointerEvent) => {
       if (event.pointerId !== pointerId) return;
+      x = event.clientX;
+      y = event.clientY;
       if (!event.altKey && !event.ctrlKey) {
         clean();
         return;
@@ -168,11 +310,13 @@ export function usePaneDrag({ layout, root, enabled, onMove }: Props) {
         document.body.append(indicator, ghost);
         document.body.classList.add("dragging-pane");
         handle.classList.add("is-dragging");
+        frame = requestAnimationFrame(tick);
       }
       event.preventDefault();
-      preview(event.clientX, event.clientY);
+      preview();
     };
     const clean = () => {
+      cancelAnimationFrame(frame);
       document.removeEventListener("pointermove", move);
       document.removeEventListener("pointerup", up);
       document.removeEventListener("pointercancel", cancel);
@@ -189,11 +333,16 @@ export function usePaneDrag({ layout, root, enabled, onMove }: Props) {
     };
     const up = (event: PointerEvent) => {
       if (event.pointerId !== pointerId) return;
-      preview(event.clientX, event.clientY);
+      x = event.clientX;
+      y = event.clientY;
+      preview();
       const drop =
         (event.altKey || event.ctrlKey) && ghost ? destination : undefined;
+      const tabDrop =
+        (event.altKey || event.ctrlKey) && ghost ? tabDestination : undefined;
       clean();
-      if (drop) onMove(id, drop.targetId, drop.side);
+      if (tabDrop) latest.current.tabDrop?.onDrop(id, tabDrop);
+      else if (drop) latest.current.onMove(id, drop.targetId, drop.side);
     };
     const cancel = (event: PointerEvent) => {
       if (event.pointerId === pointerId) clean();

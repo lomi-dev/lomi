@@ -950,14 +950,16 @@ svg {
   user-select: none !important;
 }
 .tab.is-dragging,
-.terminal-title-box.is-dragging {
+.terminal-title-box.is-dragging,
+[data-pane-drag-handle].is-dragging {
   opacity: 0.5;
 }
 .tab-drag-ghost,
 .pane-drag-ghost,
 .tab-drop-marker,
 .tab-merge-preview,
-.pane-drop-preview {
+.pane-drop-preview,
+.pane-tab-drop-preview {
   position: fixed;
   z-index: 1000;
   pointer-events: none;
@@ -979,7 +981,8 @@ svg {
   background: var(--color-primary);
 }
 .tab-merge-preview,
-.pane-drop-preview {
+.pane-drop-preview,
+.pane-tab-drop-preview {
   display: grid;
   place-items: center;
   padding: var(--space-20);
@@ -991,15 +994,22 @@ svg {
   text-align: center;
 }
 .tab-merge-preview.is-blocked,
-.pane-drop-preview.is-blocked {
+.pane-drop-preview.is-blocked,
+.pane-tab-drop-preview.is-blocked {
   border-style: dashed;
   border-color: var(--color-outline);
+}
+.pane-tab-drop-preview {
+  overflow: hidden;
+  padding: var(--space-2);
+  border-radius: var(--radius-tab);
 }
 .tab-drop-marker[hidden] {
   display: none;
 }
 .tab-merge-preview,
-.pane-drop-preview {
+.pane-drop-preview,
+.pane-tab-drop-preview {
   transition:
     left 160ms ease-out,
     top 160ms ease-out,
@@ -1009,7 +1019,8 @@ svg {
     visibility 0s;
 }
 .tab-merge-preview[hidden],
-.pane-drop-preview[hidden] {
+.pane-drop-preview[hidden],
+.pane-tab-drop-preview[hidden] {
   display: grid;
   opacity: 0;
   visibility: hidden;
@@ -1019,7 +1030,9 @@ svg {
   .tab-merge-preview,
   .tab-merge-preview[hidden],
   .pane-drop-preview,
-  .pane-drop-preview[hidden] {
+  .pane-tab-drop-preview,
+  .pane-drop-preview[hidden],
+  .pane-tab-drop-preview[hidden] {
     transition: none;
   }
 }

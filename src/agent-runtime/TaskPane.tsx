@@ -192,8 +192,9 @@ export default function TaskPane({
       onPointerDown={onFocus}
       aria-label={tab.title}
       data-task-id={tab.taskId}
+      data-task-pane-id={tab.id}
     >
-      <header className="agent-task-header">
+      <header className="agent-task-header" data-pane-drag-handle>
         <strong>{task?.title ?? tab.title}</strong>
         <button className="button" onClick={onClose}>
           Close task
