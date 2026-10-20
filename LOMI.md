@@ -453,10 +453,20 @@ or acronym.
 - Keep terminal output outside React state. Send binary output directly through
   Tauri channels and acknowledge it after xterm parses it. Preserve bounded flow
   control, ordered input/output, and the ordered end-of-stream marker.
+  Local PTY readers must not wait for Remote queue capacity. A full observer
+  queue must invalidate only the affected Remote generation, preserving local
+  output and the existing fail-closed recovery fences.
 - Switching tabs or workspaces must not restart running PTYs or stop parsing
   their output. Release hidden WebGL renderers and dispose closed PTYs.
 - Preserve WebGL initialization and context-loss fallback. Do not impose an
   arbitrary tab cap; retain bounded scrollback and command metadata.
+- Select the DOM terminal renderer before attaching terminals when Linux
+  WebKit compositing is disabled. Preserve explicit graphics overrides and
+  the WebGL path on other configurations, including its font readiness gate.
+- Inspect terminal processes outside the terminal registry lock and off the
+  native event loop. Keep context polling single-flight. Session reads, lock
+  waits, backups and atomic writes also run off the native event loop; final
+  close/publication guards must await an in-flight recovery save.
 - Shell commands, control keys, terminal escape sequences, and Unicode must pass
   through without speculative interpretation or automatic command execution.
 - Dropped paths must use the selected shell's quoting rules, including WSL path

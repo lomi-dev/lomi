@@ -5,7 +5,7 @@ use std::{
     path::{Component, Path, PathBuf},
     sync::Mutex,
 };
-use tauri::{Manager, State, Window};
+use tauri::{Manager, Window};
 
 #[cfg(unix)]
 pub(crate) mod agent;
@@ -165,57 +165,68 @@ fn session_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 }
 
 #[tauri::command]
-pub fn load_session(
+pub async fn load_session(
     window: Window,
     app: tauri::AppHandle,
-    state: State<'_, SessionFile>,
 ) -> Result<Option<serde_json::Value>, String> {
     main_window(&window)?;
-    let _guard = state.0.lock().map_err(|error| error.to_string())?;
-    let path = session_path(&app)?;
-    if !path.exists() {
-        return Ok(None);
-    }
-    let mut data = Vec::new();
-    fs::File::open(&path)
-        .map_err(|error| error.to_string())?
-        .take(8 * 1024 * 1024 + 1)
-        .read_to_end(&mut data)
-        .map_err(|error| error.to_string())?;
-    if data.len() > 8 * 1024 * 1024 {
-        return Err(format!(
-            "The session exceeds 8 MiB. The file has been left intact at {}.",
-            path.display()
-        ));
-    }
-    let saved: serde_json::Value = serde_json::from_slice(&data).map_err(|error| {
-        format!(
-            "Cannot restore the saved session ({error}). The file has been left intact at {}.",
-            path.display()
-        )
-    })?;
-    if saved.is_null() {
-        return Err(
-            "The saved session is null, not an empty layout. Choose recovery before replacing it."
-                .into(),
-        );
-    }
-    Ok(Some(saved))
+    // Session reads and lock waits must not block the native event loop.
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<SessionFile>();
+        let _guard = state.0.lock().map_err(|error| error.to_string())?;
+        let path = session_path(&app)?;
+        if !path.exists() {
+            return Ok(None);
+        }
+        let mut data = Vec::new();
+        fs::File::open(&path)
+            .map_err(|error| error.to_string())?
+            .take(8 * 1024 * 1024 + 1)
+            .read_to_end(&mut data)
+            .map_err(|error| error.to_string())?;
+        if data.len() > 8 * 1024 * 1024 {
+            return Err(format!(
+                "The session exceeds 8 MiB. The file has been left intact at {}.",
+                path.display()
+            ));
+        }
+        let saved: serde_json::Value = serde_json::from_slice(&data).map_err(|error| {
+            format!(
+                "Cannot restore the saved session ({error}). The file has been left intact at {}.",
+                path.display()
+            )
+        })?;
+        if saved.is_null() {
+            return Err(
+                "The saved session is null, not an empty layout. Choose recovery before replacing it."
+                    .into(),
+            );
+        }
+        Ok(Some(saved))
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
-pub fn save_session(
+pub async fn save_session(
     window: Window,
     app: tauri::AppHandle,
-    state: State<'_, SessionFile>,
     data: serde_json::Value,
     recovery: Option<bool>,
 ) -> Result<(), String> {
     main_window(&window)?;
-    let _guard = state.0.lock().map_err(|error| error.to_string())?;
-    let path = session_path(&app)?;
-    prepare_session_save(&path, &data, recovery.unwrap_or(false))?;
-    write_json(&path, &data, 8 * 1024 * 1024)
+    // Backup and atomic publication include fsync; retain the session lock
+    // throughout the operation without holding the native event loop.
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<SessionFile>();
+        let _guard = state.0.lock().map_err(|error| error.to_string())?;
+        let path = session_path(&app)?;
+        prepare_session_save(&path, &data, recovery.unwrap_or(false))?;
+        write_json(&path, &data, 8 * 1024 * 1024)
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 fn prepare_session_save(

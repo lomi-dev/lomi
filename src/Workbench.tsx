@@ -67,6 +67,7 @@ import {
   macOS,
   native,
   saveSession,
+  waitForSessionSaves,
 } from "./api";
 import useGit from "./useGit";
 import { SourceControlState } from "./source-control-state";
@@ -129,6 +130,7 @@ import type {
 import {
   closeTerminals,
   configureTerminals,
+  configureTerminalRenderer,
   observeTerminalContexts,
   runningTerminal,
   terminalFor,
@@ -765,6 +767,8 @@ export default function Workbench() {
         try {
           await api("agent_runtime_prepare_close");
           nativePrepared = true;
+          // Recovery can still be saving while normal autosaves are disabled.
+          if (!savingEnabled.current) await waitForSessionSaves();
           if (currentSession.current && savingEnabled.current)
             await saveSession(captureEditorPositions(currentSession.current));
           return release;
@@ -854,6 +858,9 @@ export default function Workbench() {
           // A debounce from an earlier layout must not overtake the final save.
           clearTimeout(autosaveTimer.current);
           flushSync(() => setAutosavePaused(true));
+          // A failed recovery blocks closing; a normal final save can retry
+          // earlier autosave failures through saveSession's existing queue.
+          if (!savingEnabled.current) await waitForSessionSaves();
           if (currentSession.current && savingEnabled.current) {
             await saveSession(captureEditorPositions(currentSession.current));
           }
@@ -1014,6 +1021,7 @@ export default function Workbench() {
     void initialize()
       .then(({ info, saved, restoreError }) => {
         if (!current) return;
+        configureTerminalRenderer(info.terminalRenderer ?? "webgl");
         setInfo(info);
         setSession(restoreSession(saved, info));
         setRestoreError(restoreError);
@@ -1071,11 +1079,16 @@ export default function Workbench() {
       },
     });
   }, [restoreError]);
+  const terminalContextPollPending = useRef(false);
   useEffect(() => {
     if (!info) return;
+    let current = true;
     const timer = setInterval(() => {
+      if (terminalContextPollPending.current) return;
+      terminalContextPollPending.current = true;
       void api<Record<string, TerminalContext>>("terminal_contexts")
         .then((contexts) => {
+          if (!current) return;
           const directories = observeTerminalContexts(contexts);
           void cliIntegrations.observe(contexts);
           agentUsage.observe(contexts);
@@ -1083,9 +1096,15 @@ export default function Workbench() {
             state ? updateDirectories(state, directories) : state,
           );
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => {
+          terminalContextPollPending.current = false;
+        });
     }, 1000);
-    return () => clearInterval(timer);
+    return () => {
+      current = false;
+      clearInterval(timer);
+    };
   }, [info, cliIntegrations.observe, agentUsage.observe]);
   useEffect(() => {
     if (!info) return;

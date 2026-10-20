@@ -15,12 +15,31 @@ mod image_smoke;
 mod notification_smoke;
 #[path = "terminal-clipboard-support.rs"]
 mod terminal_clipboard_smoke;
+#[path = "terminal-latency-support.rs"]
+pub mod terminal_latency;
+#[path = "terminal-regression-output.rs"]
+pub mod terminal_output;
+#[path = "terminal-regression-support.rs"]
+mod terminal_regression;
 #[path = "theme-support.rs"]
 mod theme_smoke;
 fn entry_script(source: &str, data: &serde_json::Value) -> String {
     source.replace("SMOKE_ENTRY", &serde_json::to_string(data).unwrap())
 }
+pub fn terminal_regression_startup_plugin() -> Option<tauri::plugin::TauriPlugin<tauri::Wry>> {
+    std::env::var_os("LOMI_TERMINAL_REGRESSION_DIRECTORY")
+        .map(|_| terminal_regression::startup_plugin())
+}
+
 pub fn page(webview: &tauri::Webview, payload: &tauri::webview::PageLoadPayload<'_>) {
+    if std::env::var_os("LOMI_TERMINAL_REGRESSION_DIRECTORY").is_some() {
+        terminal_regression::page(webview, payload);
+        return;
+    }
+    if std::env::var_os("LOMI_TERMINAL_LATENCY_DIRECTORY").is_some() {
+        terminal_latency::page(webview, payload);
+        return;
+    }
     if std::env::var_os("LOMI_DESKTOP_SMOKE_DIRECTORY").is_some() {
         desktop_smoke::page(webview, payload);
         return;
@@ -90,7 +109,7 @@ pub fn page(webview: &tauri::Webview, payload: &tauri::webview::PageLoadPayload<
     let _ = webview.eval(&script);
 }
 #[tauri::command]
-pub fn plugin_smoke_result(
+pub async fn plugin_smoke_result(
     window: Window,
     app: tauri::AppHandle,
     stage: String,
@@ -98,6 +117,12 @@ pub fn plugin_smoke_result(
 ) -> Result<serde_json::Value, String> {
     if window.label() != "main" {
         return Err("Unknown test caller.".into());
+    }
+    if std::env::var_os("LOMI_TERMINAL_REGRESSION_DIRECTORY").is_some() {
+        return terminal_regression::result(&app, &stage, data).await;
+    }
+    if std::env::var_os("LOMI_TERMINAL_LATENCY_DIRECTORY").is_some() {
+        return terminal_latency::result(&app, &stage, data);
     }
     if std::env::var_os("LOMI_DESKTOP_SMOKE_DIRECTORY").is_some() {
         return desktop_smoke::result(&app, &stage, data);

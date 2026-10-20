@@ -20,6 +20,7 @@ export interface AppInfo {
   directory: string;
   home: string;
   platform: string;
+  terminalRenderer?: "webgl" | "dom";
   profiles: ShellProfile[];
 }
 

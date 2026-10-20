@@ -66,6 +66,11 @@ type DirectoryListener = (id: string, cwd: string) => void;
 let directoryListener: DirectoryListener = () => {};
 let reportError: (message: string) => void = () => {};
 let webglModule: Promise<typeof import("@xterm/addon-webgl")> | undefined;
+let terminalRenderer: "webgl" | "dom" = "webgl";
+
+export function configureTerminalRenderer(renderer: "webgl" | "dom") {
+  terminalRenderer = renderer;
+}
 
 export function configureTerminals(
   onDirectory: DirectoryListener,
@@ -482,51 +487,55 @@ export class TerminalRuntime {
       )
         return;
     }
-    let webgl: WebglAddon | undefined;
-    try {
-      const { WebglAddon } = await (webglModule ??=
-        import("@xterm/addon-webgl").catch((error) => {
-          webglModule = undefined;
-          throw error;
-        }));
-      if (
-        !this.attached ||
-        this.disposed ||
-        generation !== this.rendererGeneration
-      )
-        return;
-      webgl = new WebglAddon();
-      const addon = webgl;
-      webgl.onContextLoss(() => {
-        if (this.webgl !== addon) return;
-        addon.dispose();
-        this.webgl = undefined;
-        this.update({ renderer: "DOM" });
-        this.fit();
-      });
-      this.terminal.loadAddon(webgl);
-      // addon-webgl 0.19 multiplies glyph alpha twice with blendFunc, washing out
-      // antialiased and dim text over a transparent canvas. Keep alpha coverage
-      // separate from RGB blending for the browser's premultiplied compositor.
-      for (const canvas of this.host.querySelectorAll<HTMLCanvasElement>(
-        ".xterm-screen > canvas",
-      )) {
-        const gl = canvas.getContext("webgl2");
-        if (!gl) continue;
-        gl.blendFuncSeparate(
-          gl.SRC_ALPHA,
-          gl.ONE_MINUS_SRC_ALPHA,
-          gl.ONE,
-          gl.ONE_MINUS_SRC_ALPHA,
-        );
-        break;
+    // Noncomposited WebKit pages copy WebGL canvases through CPU image buffers.
+    // Select DOM before importing the addon or creating a WebGL context.
+    if (terminalRenderer === "webgl") {
+      let webgl: WebglAddon | undefined;
+      try {
+        const { WebglAddon } = await (webglModule ??=
+          import("@xterm/addon-webgl").catch((error) => {
+            webglModule = undefined;
+            throw error;
+          }));
+        if (
+          !this.attached ||
+          this.disposed ||
+          generation !== this.rendererGeneration
+        )
+          return;
+        webgl = new WebglAddon();
+        const addon = webgl;
+        webgl.onContextLoss(() => {
+          if (this.webgl !== addon) return;
+          addon.dispose();
+          this.webgl = undefined;
+          this.update({ renderer: "DOM" });
+          this.fit();
+        });
+        this.terminal.loadAddon(webgl);
+        // addon-webgl 0.19 multiplies glyph alpha twice with blendFunc, washing out
+        // antialiased and dim text over a transparent canvas. Keep alpha coverage
+        // separate from RGB blending for the browser's premultiplied compositor.
+        for (const canvas of this.host.querySelectorAll<HTMLCanvasElement>(
+          ".xterm-screen > canvas",
+        )) {
+          const gl = canvas.getContext("webgl2");
+          if (!gl) continue;
+          gl.blendFuncSeparate(
+            gl.SRC_ALPHA,
+            gl.ONE_MINUS_SRC_ALPHA,
+            gl.ONE,
+            gl.ONE_MINUS_SRC_ALPHA,
+          );
+          break;
+        }
+        this.webgl = webgl;
+        this.update({ renderer: "WebGL" });
+      } catch {
+        webgl?.dispose();
+        if (generation === this.rendererGeneration)
+          this.update({ renderer: "DOM" });
       }
-      this.webgl = webgl;
-      this.update({ renderer: "WebGL" });
-    } catch {
-      webgl?.dispose();
-      if (generation === this.rendererGeneration)
-        this.update({ renderer: "DOM" });
     }
     if (measureFont) {
       // Replacing xterm's DOM renderer changes styles and can invalidate WebKit's

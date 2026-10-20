@@ -82,6 +82,7 @@ mod settings_window;
 mod shell;
 mod terminal;
 mod terminal_preferences;
+mod terminal_renderer;
 mod themes;
 mod updater;
 #[cfg(windows)]
@@ -95,6 +96,7 @@ struct AppInfo {
     directory: String,
     home: String,
     platform: String,
+    terminal_renderer: &'static str,
     profiles: Vec<shell::Profile>,
 }
 
@@ -113,6 +115,10 @@ fn app_info(window: Window, shells: State<'_, terminal::Shells>) -> Result<AppIn
         directory: directory.to_string_lossy().into_owned(),
         home: shell::home().to_string_lossy().into_owned(),
         platform: std::env::consts::OS.into(),
+        terminal_renderer: terminal_renderer::select(
+            std::env::consts::OS,
+            std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").as_deref(),
+        ),
         profiles: shells.profiles.clone(),
     })
 }
@@ -183,6 +189,12 @@ pub fn run() {
         None => return,
     };
     let builder = tauri::Builder::default();
+    #[cfg(feature = "native-smoke")]
+    let builder = if let Some(plugin) = native_smoke::terminal_regression_startup_plugin() {
+        builder.plugin(plugin)
+    } else {
+        builder
+    };
     #[cfg(windows)]
     let builder = builder.manage(instance);
     // Install the guarded Quit action before Tauri can create its default macOS menu.
@@ -296,6 +308,20 @@ pub fn run() {
                     .resolver
                     .reject("Web pages cannot call application commands.");
                 return true;
+            }
+            #[cfg(feature = "native-smoke")]
+            if matches!(
+                invoke.message.command(),
+                "terminal_latency_input"
+                    | "terminal_latency_snapshot"
+                    | "terminal_latency_hold_session"
+            ) {
+                let smoke: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+                    native_smoke::terminal_latency::terminal_latency_input,
+                    native_smoke::terminal_latency::terminal_latency_snapshot,
+                    native_smoke::terminal_latency::terminal_latency_hold_session
+                ];
+                return smoke(invoke);
             }
             #[cfg(feature = "native-smoke")]
             if invoke.message.command() == "plugin_smoke_result" {

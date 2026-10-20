@@ -9,7 +9,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Mutex,
 };
-use tauri::{Emitter, State, Window};
+use tauri::{Emitter, Manager, State, Window};
 
 #[derive(Default)]
 pub struct CliIntegrations(Mutex<HashSet<(TitleCli, Feature)>>);
@@ -99,33 +99,39 @@ fn inspect_features(
 }
 
 #[tauri::command]
-pub fn inspect_cli_integrations(
+pub async fn inspect_cli_integrations(
     window: Window,
     app: tauri::AppHandle,
-    terminals: State<'_, Terminals>,
-    config: State<'_, CliTitleConfig>,
-    state: State<'_, CliIntegrations>,
     id: String,
     process: TitleProcess,
 ) -> Result<CliStatus, String> {
     crate::files::main_window(&window)?;
-    let dismissed = state.0.lock().map_err(|error| error.to_string())?.clone();
-    let _guard = config.0.lock().map_err(|error| error.to_string())?;
-    terminals.check_title_process(&id, process)?;
-    let features = inspect_features(
-        process.cli,
-        cli_titles::configuration(process),
-        (crate::agent_control::supported_host() && cli_mcp::supported(process.cli))
-            .then(|| cli_titles::mcp_configuration(process)),
-        cli_mcp::registration(&app, false),
-    )
-    .into_iter()
-    .filter(|feature| !dismissed.contains(&(process.cli, feature.feature)))
-    .collect();
-    Ok(CliStatus {
-        cli: process.cli,
-        features,
+    // Process validation and configuration reads must not block the native
+    // event loop, including while another operation holds the config lock.
+    tauri::async_runtime::spawn_blocking(move || {
+        let terminals = app.state::<Terminals>();
+        let config = app.state::<CliTitleConfig>();
+        let state = app.state::<CliIntegrations>();
+        let dismissed = state.0.lock().map_err(|error| error.to_string())?.clone();
+        let _guard = config.0.lock().map_err(|error| error.to_string())?;
+        terminals.check_title_process(&id, process)?;
+        let features = inspect_features(
+            process.cli,
+            cli_titles::configuration(process),
+            (crate::agent_control::supported_host() && cli_mcp::supported(process.cli))
+                .then(|| cli_titles::mcp_configuration(process)),
+            cli_mcp::registration(&app, false),
+        )
+        .into_iter()
+        .filter(|feature| !dismissed.contains(&(process.cli, feature.feature)))
+        .collect();
+        Ok(CliStatus {
+            cli: process.cli,
+            features,
+        })
     })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
