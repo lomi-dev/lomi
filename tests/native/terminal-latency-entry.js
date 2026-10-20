@@ -99,7 +99,7 @@ for (const method of [
     const result = original.apply(this, args);
     if (method === "attach") {
       const tabId = this.host
-        .closest('[role="tabpanel"]')
+        .closest('.terminal-stage[role="tabpanel"]')
         ?.getAttribute("aria-labelledby");
       if (tabId) tabByPane.set(this.paneId, tabId);
     }
@@ -175,7 +175,7 @@ const shortcut = (key, code, shiftKey = false) =>
 const rememberVisibleTab = (runtime) => {
   if (runtime.host.isConnected) {
     const tabId = runtime.host
-      .closest('[role="tabpanel"]')
+      .closest('.terminal-stage[role="tabpanel"]')
       ?.getAttribute("aria-labelledby");
     if (tabId) tabByPane.set(runtime.paneId, tabId);
   }
@@ -188,7 +188,8 @@ const visible = () =>
       (runtime) =>
         runtime.host.isConnected &&
         runtime.host.getBoundingClientRect().width > 0 &&
-        runtime.host.closest('[role="tabpanel"]')?.hidden !== true &&
+        runtime.host.closest('.terminal-stage[role="tabpanel"]')?.hidden !==
+          true &&
         runtime.host.checkVisibility(),
     );
 const visiblePanes = () =>
@@ -263,7 +264,7 @@ try {
   const first = visible();
   const originalPids = await invoke("latency-inspect");
   const retainedTabId = first.host
-    .closest('[role="tabpanel"]')
+    .closest('.terminal-stage[role="tabpanel"]')
     ?.getAttribute("aria-labelledby");
   record("startup-running", { pane: first.paneId });
   const requireWorkload = (runtime, workload) => {

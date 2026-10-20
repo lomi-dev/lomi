@@ -144,3 +144,76 @@ Raw results, process cleanup receipts, build logs, source hashes and installer
 receipts are archived locally under
 `desktop-audits/2026-10-20/linux-terminal-latency/verified-evidence.tar.gz`
 in the parent Lomi project directory. They are not release resources.
+
+## Recorded Fedora qualification: 2026-10-20
+
+Host: Fedora 44 Workstation, GNOME 50.6 on Wayland, WebKitGTK 2.54.1,
+Mesa 26.2.4 with Nouveau on an NVIDIA RTX 3060 Ti, Intel Core i5-11400F.
+The initial trial at commit `26938ea` passed with p95 22 ms and maximum 48 ms.
+Its diagnostic overlay scoped tab ownership selectors to the enclosing workspace
+`.terminal-stage[role="tabpanel"]`, avoiding Dockview's nested pane tabpanels.
+
+The final trial below includes the Linux instance and shared D-Bus corrections
+in this change. The ordinary application previously rejected a secondary launch
+with a Chat AI ownership error; Linux activation now returns to the existing
+window and retains its PTYs. An actual accessibility-triggered crash showed
+static libdbus dispatch inside Lomi mixed with GTK/AT-SPI's shared libdbus.
+Removing Linux keyring's `vendored` feature retains Secret Service while linking
+to system libdbus. Final ELF inspection found no defined `dbus_*`/`_dbus_*`
+implementations and confirmed `libdbus-1.so.3` linkage. See
+[Linux instance qualification](LINUX-INSTANCE.md) for lifecycle, accessibility,
+credential round-trip and storage handoff evidence.
+
+All compilers were stopped before the final latency trial. It inherited the
+default graphics policy without external rendering overrides; all eight visible
+panes reported WebGL rendering.
+
+| Measurement                                           |        Result |
+| ----------------------------------------------------- | ------------: |
+| Validated input samples                               |           327 |
+| Key dispatch to render callback, p95 / maximum        | 22 ms / 42 ms |
+| Ordinary 30-second typing, 120 samples, p95 / maximum | 18 ms / 19 ms |
+| Three-second session-lock stage, render callback      |         10 ms |
+| Successful actual save duration in that stage         |       3015 ms |
+| Lock time remaining at key submission                 |   2899.697 ms |
+| Finite ANSI workloads completed normally              |             9 |
+| Frames per second for each 20-second ANSI program     |   About 30.05 |
+| WebGL context losses                                  |             0 |
+| Owned fixture processes retired                       |           Yes |
+
+Every phase passed the unchanged acceptance criteria, including rapid creation
+of 2/4/8 tabs and 2/4/8 visible panes, and eight simultaneous ANSI workloads.
+Fifteen PTYs were created in total, and the original PTY retained its PID.
+All nine ANSI programs received the exact expected bytes. The real session save
+completed successfully while the key was submitted during the controlled lock
+hold. Cleanup reported `retired: true`, with no survivors, unproven processes
+or errors.
+
+The ordinary release RPM was built without diagnostic features, reinstalled
+through DNF, and passed `rpm --verify`. Its installed executable matched the RPM
+payload. Installed runtime checks passed for resource integrity, bundled Node
+without PATH, production handshake, three Custom API formats with and without
+a dummy key against loopback, and clean runtime shutdown.
+
+The installed release also survived real AT-SPI enumeration and reopened the
+same process on subsequent launch. Final desktop exercise/restore passed for
+native file encodings, atomic saves, conflict fences, Explorer, CodeMirror, Git,
+preferences, notifications and session persistence. Browser child-webview,
+terminal search, plugin/theme and safe-startup regressions passed.
+
+The user confirmed directly on the Fedora monitor that ordinary shell typing,
+rapid tab/pane creation, pasting and scrolling were smooth in the full installed
+RPM application, using the separate "Test Fedory" manual profile. This is a
+manual observation, not a physical per-key timing bound.
+
+Normal RPM SHA-256:
+`8df31a0998b4c1414826c88da965dc07b4941c589031b797c3da0c2be7c11108`.
+Installed executable SHA-256:
+`4d9801951ae518831fbc9879a21980ac12691a2c5c6bc6308451d5881044eed1`.
+
+These are native GTK key-dispatch-to-software-callback measurements, not physical
+keyboard-to-screen presentation timings. This finite trial qualifies the recorded
+host and workload, not every distribution or graphics driver. Raw results,
+metadata, cleanup receipts and source/build/installer evidence are archived under
+`desktop-audits/2026-10-20/fedora-terminal-qualification/` in the parent Lomi
+project directory. They are not release resources.
