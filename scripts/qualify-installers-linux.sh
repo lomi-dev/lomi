@@ -51,6 +51,7 @@ chmod +x "$image"
 grep -q '^lomi-mcp .* (control API 1.0, IPC 1)' installer-results/appimage-launcher.txt
 mkdir "$scratch/appimage"
 (cd "$scratch/appimage" && "$image" --appimage-extract > "$root/installer-results/appimage-files.txt")
+node scripts/qualify-appimage-backend.mjs "$scratch/appimage/squashfs-root" > installer-results/appimage-backend.txt
 resource=$(find "$scratch/appimage/squashfs-root" -path '*/ai-runtime/index.cjs' -printf '%h\n')
 node scripts/qualify-installers-runtime.mjs "$scratch/appimage/squashfs-root/usr/bin/lomi" "$(dirname "$resource")" appimage-extracted "$scratch/rpm/usr/bin/lomi-node"
 printf '%s\n' 'DEB install, visible GUI and uninstall passed; Fedora RPM install, file verification, native helper and uninstall passed; RPM and AppImage extracted runtimes and AppImage extraction launcher passed.' > installer-results/linux.txt

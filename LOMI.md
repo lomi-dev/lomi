@@ -399,6 +399,10 @@ or acronym.
   webview on Windows/macOS, preserve Tauri's restart exit code on macOS, and never
   commit the updater private key. Publish complete signed releases with `latest.json`.
 - `src-tauri/tauri.conf.json` connects Vite to Tauri and configures the window.
+- AppImage AppRun and GTK hooks must preserve backend selection and explicit
+  `GDK_BACKEND` overrides. Keep the Tauri CLI pinned to the bundler with the
+  refreshed GTK hook; qualify extracted artifacts with
+  `scripts/qualify-appimage-backend.mjs` before release.
 - `src-tauri/capabilities/` defines the native commands available to the frontend.
 - `src-tauri/src/main.rs` contains a startup workaround for WebKitGTK's Wayland
   Error 71 on NVIDIA. Keep it scoped to that environment, preserve explicit user
@@ -408,8 +412,20 @@ or acronym.
   candidate. This is a process-wide WebKit page policy, not Android-only. Preserve
   every caller value, including empty, `0` and non-Unicode values. Keep the
   DMA-BUF compatibility opt-in, Nouveau Kopper and explicit-sync policies
-  independent. On the recorded Ubuntu/NVIDIA host, the integrated two-view
-  trial met the CPU, frame-rate, IPC and memory budgets at 720x1280. A separate
+  independent. A separate Nouveau X11 candidate defaults only
+  `WEBKIT_DMABUF_RENDERER_FORCE_SHM=1`: require nonempty `DISPLAY` and a resolved
+  Nouveau `renderD` driver binding. With nonempty `WAYLAND_DISPLAY`, require
+  `x11` first in an explicit `GDK_BACKEND` list; a Wayland-first list or wildcard
+  must not qualify. Without a Wayland display, accept an unset backend or an
+  explicit list containing `x11` or `*`. Preserve all caller values for this
+  setting too. Any present `WEBKIT_DISABLE_DMABUF_RENDERER` value suppresses
+  this default, including `0`, empty and non-Unicode values. WebKitGTK 2.54's
+  shared-memory transport skips GBM while retaining GPU compositing; this switch
+  is absent from WebKitGTK 2.42/2.48, so those versions are not qualified by it.
+  This checks any bound Nouveau render device, not which GPU WebKit actually uses;
+  it must not change the passing default Wayland path. On the recorded
+  Ubuntu/NVIDIA host, the integrated two-view trial met the CPU, frame-rate, IPC
+  and memory budgets at 720x1280. A separate
   hook-free thirty-minute memory observation showed an early rise, late plateau
   and decreases; no sustained upward memory trend was observed through the end
   of that workload. This accepted observation is not a lifetime memory bound. Post-trial native input passed

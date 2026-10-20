@@ -181,6 +181,24 @@ jobs:
           updaterJsonPreferNsis: true
           args: ${{ matrix.args }} -- --locked
 
+      - name: verify AppImage backend selection before publishing
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          images=(src-tauri/target/release/bundle/appimage/*.AppImage)
+          if [ "${#images[@]}" -ne 1 ]; then
+            echo "Expected exactly one AppImage for backend qualification." >&2
+            exit 1
+          fi
+          image="$PWD/${images[0]}"
+          scratch=$(mktemp -d "$RUNNER_TEMP/lomi-appimage-backend.XXXXXX")
+          trap 'rm -rf "$scratch"' EXIT
+          chmod +x "$image"
+          (cd "$scratch" && "$image" --appimage-extract > /dev/null)
+          node scripts/qualify-appimage-backend.mjs "$scratch/squashfs-root"
+
       - name: notarize and verify macOS disk images before publishing
         if: runner.os == 'macOS'
         shell: bash

@@ -1,4 +1,4 @@
-//! Process-local Wayland graphics defaults, applied before WebKit starts.
+//! Process-local Linux graphics defaults, applied before WebKit starts.
 use std::{ffi::OsStr, fs, path::Path};
 
 /// Run before GUI threads or graphics contexts are created. Existing user values,
@@ -41,6 +41,60 @@ pub fn configure() {
         // Vulkan WSI swapchain. It does not disable WebKit DMA-BUF or GPU rendering.
         // https://docs.mesa3d.org/envvars.html#libgl-kopper-disable
         std::env::set_var("LIBGL_KOPPER_DISABLE", "true");
+    }
+    if should_force_nouveau_x11_shm(
+        std::env::var_os("DISPLAY").as_deref(),
+        std::env::var_os("WAYLAND_DISPLAY").as_deref(),
+        std::env::var_os("GDK_BACKEND").as_deref(),
+        std::env::var_os("WEBKIT_DMABUF_RENDERER_FORCE_SHM").as_deref(),
+        std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").as_deref(),
+        Path::new("/sys/class/drm"),
+    ) {
+        // WebKitGTK 2.54 can use shared-memory buffers without GBM while keeping
+        // GPU compositing. This switch is unavailable in older WebKitGTK releases.
+        std::env::set_var("WEBKIT_DMABUF_RENDERER_FORCE_SHM", "1");
+    }
+}
+
+fn should_force_nouveau_x11_shm(
+    display: Option<&OsStr>,
+    wayland_display: Option<&OsStr>,
+    gdk_backend: Option<&OsStr>,
+    existing: Option<&OsStr>,
+    disable_dmabuf: Option<&OsStr>,
+    drm: &Path,
+) -> bool {
+    existing.is_none()
+        && disable_dmabuf.is_none()
+        && is_x11_candidate(display, wayland_display, gdk_backend)
+        && has_nouveau_render_device(drm)
+}
+
+fn is_x11_candidate(
+    display: Option<&OsStr>,
+    wayland_display: Option<&OsStr>,
+    gdk_backend: Option<&OsStr>,
+) -> bool {
+    if !display.is_some_and(|value| !value.is_empty()) {
+        return false;
+    }
+    let has_wayland_display = wayland_display.is_some_and(|value| !value.is_empty());
+    match gdk_backend {
+        Some(backends) => backends.to_str().is_some_and(|backends| {
+            // In a Wayland session, only an explicit first-choice X11 backend
+            // qualifies. A fallback or wildcard may still select passing Wayland.
+            if has_wayland_display {
+                backends
+                    .split(',')
+                    .next()
+                    .is_some_and(|backend| backend == "x11")
+            } else {
+                backends
+                    .split(',')
+                    .any(|backend| matches!(backend, "x11" | "*"))
+            }
+        }),
+        None => !has_wayland_display,
     }
 }
 
@@ -143,6 +197,22 @@ mod tests {
                 display.map(OsStr::new),
                 backend.map(OsStr::new),
                 existing.map(OsStr::new),
+                &self.0,
+            )
+        }
+        fn x11_policy(
+            &self,
+            display: Option<&str>,
+            wayland_display: Option<&str>,
+            backend: Option<&str>,
+            existing: Option<&str>,
+        ) -> bool {
+            should_force_nouveau_x11_shm(
+                display.map(OsStr::new),
+                wayland_display.map(OsStr::new),
+                backend.map(OsStr::new),
+                existing.map(OsStr::new),
+                None,
                 &self.0,
             )
         }
@@ -277,6 +347,142 @@ mod tests {
                 should_default_nvidia_wayland(Some(OsStr::new("wayland-0")), None, value, &module)
             });
             assert_eq!(decisions, [false, true, false]);
+        }
+    }
+
+    #[test]
+    fn nouveau_shm_requires_x11_candidate() {
+        let drm = DrmFixture::new();
+        drm.bind("renderD128", "nouveau");
+        assert!(drm.x11_policy(Some(":0"), None, None, None));
+        assert!(drm.x11_policy(Some(":0"), Some(""), None, None));
+        assert!(!drm.x11_policy(Some(":0"), Some("wayland-0"), None, None));
+        for backend in ["x11", "wayland,x11", "x11,broadway", "broadway,x11", "*"] {
+            assert!(drm.x11_policy(Some(":0"), None, Some(backend), None));
+        }
+        for backend in ["x11", "x11,wayland", "x11,*", "x11,broadway"] {
+            assert!(drm.x11_policy(Some(":0"), Some("wayland-0"), Some(backend), None));
+        }
+        for backend in [
+            "wayland,x11",
+            "*",
+            "*,x11",
+            "broadway,x11",
+            " wayland, x11 ",
+            " x11 , *",
+            "x11 ,wayland",
+            " x11,*",
+        ] {
+            assert!(!drm.x11_policy(Some(":0"), Some("wayland-0"), Some(backend), None));
+        }
+        for backend in [
+            "",
+            "wayland",
+            "broadway",
+            "wayland,broadway",
+            " wayland, x11 ",
+            " x11 , *",
+            "x11 ,wayland",
+        ] {
+            assert!(!drm.x11_policy(Some(":0"), None, Some(backend), None));
+        }
+        for display in [None, Some("")] {
+            assert!(!drm.x11_policy(display, None, None, None));
+            assert!(!drm.x11_policy(display, Some("wayland-0"), Some("x11"), None));
+        }
+    }
+
+    #[test]
+    fn nouveau_x11_shm_requires_resolved_render_driver_binding() {
+        let drm = DrmFixture::new();
+        assert!(!drm.x11_policy(Some(":0"), None, None, None));
+        drm.bind("renderD128", "nvidia");
+        drm.bind("renderD129", "i915");
+        drm.bind("card0", "nouveau");
+        drm.bind("renderD", "nouveau");
+        drm.bind("renderDnot-a-node", "nouveau");
+        let device = drm.0.join("renderD130/device");
+        fs::create_dir_all(&device).unwrap();
+        std::os::unix::fs::symlink(drm.0.join("missing/nouveau"), device.join("driver")).unwrap();
+        assert!(!drm.x11_policy(Some(":0"), None, None, None));
+        assert!(!should_force_nouveau_x11_shm(
+            Some(OsStr::new(":0")),
+            None,
+            None,
+            None,
+            None,
+            &drm.0.join("absent"),
+        ));
+        drm.bind("renderD131", "nouveau");
+        assert!(drm.x11_policy(Some(":0"), None, None, None));
+    }
+
+    #[test]
+    fn nouveau_x11_shm_preserves_os_overrides_and_backend_selection() {
+        use std::os::unix::ffi::OsStrExt;
+
+        let drm = DrmFixture::new();
+        drm.bind("renderD128", "nouveau");
+        for existing in ["", "0", "1", "false", "custom"].map(OsStr::new) {
+            assert!(!should_force_nouveau_x11_shm(
+                Some(OsStr::new(":0")),
+                None,
+                None,
+                Some(existing),
+                None,
+                &drm.0,
+            ));
+        }
+        let non_unicode = OsStr::from_bytes(&[0xff]);
+        assert!(!should_force_nouveau_x11_shm(
+            Some(OsStr::new(":0")),
+            None,
+            None,
+            Some(non_unicode),
+            None,
+            &drm.0,
+        ));
+        assert!(!should_force_nouveau_x11_shm(
+            Some(OsStr::new(":0")),
+            None,
+            Some(non_unicode),
+            None,
+            None,
+            &drm.0,
+        ));
+        assert!(!should_force_nouveau_x11_shm(
+            Some(OsStr::new(":0")),
+            Some(non_unicode),
+            None,
+            None,
+            None,
+            &drm.0,
+        ));
+    }
+
+    #[test]
+    fn nouveau_x11_shm_respects_any_explicit_dmabuf_disable_setting() {
+        use std::os::unix::ffi::OsStrExt;
+
+        let drm = DrmFixture::new();
+        drm.bind("renderD128", "nouveau");
+        assert!(drm.x11_policy(Some(":0"), None, None, None));
+        for disable_dmabuf in [
+            OsStr::new(""),
+            OsStr::new("0"),
+            OsStr::new("1"),
+            OsStr::new("false"),
+            OsStr::new("custom"),
+            OsStr::from_bytes(&[0xff]),
+        ] {
+            assert!(!should_force_nouveau_x11_shm(
+                Some(OsStr::new(":0")),
+                None,
+                None,
+                None,
+                Some(disable_dmabuf),
+                &drm.0,
+            ));
         }
     }
 }
