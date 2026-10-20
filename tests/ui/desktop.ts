@@ -1259,7 +1259,13 @@ export async function mockDesktop(
             );
             return id;
           }
-          if (["sync_theme_window", "open_themes_folder"].includes(command))
+          if (
+            [
+              "sync_theme_window",
+              "sync_theme_webview_background",
+              "open_themes_folder",
+            ].includes(command)
+          )
             return;
           if (command === "save_keybindings") {
             if (desktop.__nativeTest.failKeybindingsSave)

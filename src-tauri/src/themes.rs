@@ -1194,6 +1194,8 @@ fn create_starter(root: &Path) -> Result<String, String> {
 #[tauri::command]
 pub fn sync_theme_window(window: Window, appearance: Appearance) -> Result<(), String> {
     authorize(window.label(), false)?;
+    #[cfg(target_os = "linux")]
+    set_webview_background(&window, None)?;
     window
         .set_theme(appearance.native())
         .map_err(|error| error.to_string())?;
@@ -1206,6 +1208,32 @@ pub fn sync_theme_window(window: Window, appearance: Appearance) -> Result<(), S
             .set_theme(Some(theme))
             .map_err(|error| error.to_string())?;
     }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn set_webview_background(window: &Window, background: Option<[u8; 3]>) -> Result<(), String> {
+    let color = background
+        .map(|[red, green, blue]| tauri::window::Color(red, green, blue, 255))
+        .unwrap_or(tauri::window::Color(0, 0, 0, 0));
+    window
+        .app_handle()
+        .get_webview("main")
+        .ok_or("The main WebView is unavailable.")?
+        .set_background_color(Some(color))
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn sync_theme_webview_background(
+    window: Window,
+    background: Option<[u8; 3]>,
+) -> Result<(), String> {
+    authorize(window.label(), false)?;
+    #[cfg(target_os = "linux")]
+    set_webview_background(&window, background)?;
+    #[cfg(not(target_os = "linux"))]
+    let _ = background;
     Ok(())
 }
 

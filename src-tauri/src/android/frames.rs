@@ -9,6 +9,8 @@ use crate::android_protocol::{Image, ImageFormat};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
+    future::Future,
+    pin::Pin,
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc, Mutex, Weak,
@@ -21,7 +23,18 @@ const HEADER: usize = 68;
 const MIN_PACKET: usize = 1024;
 const MAX_SAFE_INTEGER: u64 = (1u64 << 53) - 1;
 const ACK_TIMEOUT: Duration = Duration::from_secs(2);
-type Sink = Box<dyn Fn(Vec<u8>) -> Result<(), String> + Send + Sync>;
+const FRAME_PERIOD: Duration = Duration::from_micros(33_334);
+pub(super) type Delivery = Pin<Box<dyn Future<Output = Result<(), String>> + Send>>;
+pub(super) type Sink = Box<dyn Fn(Vec<u8>) -> Delivery + Send + Sync>;
+
+pub(super) fn immediate(
+    send: impl Fn(Vec<u8>) -> Result<(), String> + Send + Sync + 'static,
+) -> Sink {
+    Box::new(move |packet| {
+        let result = send(packet);
+        Box::pin(std::future::ready(result))
+    })
+}
 
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -57,6 +70,7 @@ pub struct Status {
     pub grpc_frames: u64,
     pub grpc_bytes: u64,
     pub ipc_frames: u64,
+    /// Logical uncompressed packet bytes, including header/padding, before negotiated encoding.
     pub ipc_bytes: u64,
 }
 
@@ -150,6 +164,26 @@ impl Streams {
         size: Size,
         sink: Sink,
     ) -> Result<u64, String> {
+        self.subscribe_with_encoding(manager, runtime, generation, size, sink, Encoding::Raw)
+    }
+
+    pub(super) fn subscribe_with_encoding(
+        &self,
+        manager: &Arc<Manager>,
+        runtime: DeviceRuntime,
+        generation: String,
+        size: Size,
+        sink: Sink,
+        encoding: Encoding,
+    ) -> Result<u64, String> {
+        let options = PacketOptions {
+            size,
+            encoding: if cfg!(target_os = "linux") {
+                encoding
+            } else {
+                Encoding::Raw
+            },
+        };
         size.validate()?;
         let generation_bytes = generation_bytes(&generation)?;
         let status = runtime.status();
@@ -210,7 +244,7 @@ impl Streams {
                     } => Ok(()),
                     result = async {
                         let connection = runtime.connection().await?;
-                        stream(connection, size, generation_bytes, epoch, &entry, &manager, sink).await
+                        stream(connection, options, generation_bytes, epoch, &entry, &manager, sink).await
                     } => result,
                 }
             };
@@ -302,15 +336,29 @@ async fn wait_done(completion: &mut watch::Receiver<bool>) {
     }
 }
 
+#[derive(Clone, Copy)]
+struct PacketOptions {
+    size: Size,
+    encoding: Encoding,
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum Encoding {
+    Raw,
+    Deflate,
+    Rle32,
+}
+
 async fn stream(
     connection: Arc<Connection>,
-    size: Size,
+    options: PacketOptions,
     generation: [u8; 16],
     epoch: u64,
     entry: &Entry,
     manager: &Weak<Manager>,
     sink: Sink,
 ) -> Result<(), String> {
+    let PacketOptions { size, encoding } = options;
     let request = connection.request(
         "streamScreenshot",
         ImageFormat {
@@ -350,14 +398,17 @@ async fn stream(
     };
     let send = async {
         let mut sequence = 0;
-        let mut last_sent = tokio::time::Instant::now() - Duration::from_secs(1);
+        let mut pacing = tokio::time::interval(FRAME_PERIOD);
+        pacing.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let mut sleeping = None;
         loop {
             receiver
                 .changed()
                 .await
                 .map_err(|_| "Android image source ended")?;
-            tokio::time::sleep_until(last_sent + Duration::from_micros(33_334)).await;
+            // Fixed phase avoids adding serialization, UI delivery, and ACK
+            // time to every period. Skip missed ticks and send only the latest frame.
+            pacing.tick().await;
             let Some(frame) = receiver.borrow_and_update().clone() else {
                 continue;
             };
@@ -368,14 +419,21 @@ async fn stream(
                 );
             }
             let is_sleeping = frame.image.is_empty();
-            let packet = packet(&frame, size, generation, epoch, sequence)?;
+            let packet = match encoding {
+                #[cfg(target_os = "linux")]
+                Encoding::Rle32 => rle32_packet(&frame, size, generation, epoch, sequence)?,
+                #[cfg(target_os = "linux")]
+                Encoding::Deflate => compressed_packet(&frame, size, generation, epoch, sequence)?,
+                _ => packet(&frame, size, generation, epoch, sequence)?,
+            };
+            // Counters describe logical raw bytes regardless of negotiated wire encoding.
+            let bytes = (HEADER + frame.image.len()).max(MIN_PACKET) as u64;
             drop(frame);
-            let bytes = packet.len() as u64;
             *entry
                 .pending
                 .lock()
                 .map_err(|_| "Android frame acknowledgement failed")? = Some(sequence);
-            sink(packet)?;
+            sink(packet).await?;
             entry.counters.ipc_frames.fetch_add(1, Ordering::Relaxed);
             entry.counters.ipc_bytes.fetch_add(bytes, Ordering::Relaxed);
             if sleeping != Some(is_sleeping) {
@@ -386,7 +444,6 @@ async fn stream(
                     None,
                 );
             }
-            last_sent = tokio::time::Instant::now();
             entry.wait_ack().await?;
         }
     };
@@ -435,16 +492,16 @@ fn validate(frame: &Image, requested: Size) -> Result<(u32, u32, i32), String> {
     Ok((format.width, format.height, rotation))
 }
 
-fn packet(
+fn packet_header(
     frame: &Image,
     size: Size,
     generation: [u8; 16],
     epoch: u64,
     sequence: u64,
+    capacity: usize,
 ) -> Result<Vec<u8>, String> {
     let (width, height, rotation) = validate(frame, size)?;
-    let length = (HEADER + frame.image.len()).max(MIN_PACKET);
-    let mut packet = Vec::with_capacity(length);
+    let mut packet = Vec::with_capacity(capacity);
     packet.extend_from_slice(b"SBAP");
     packet.extend_from_slice(&4u32.to_le_bytes());
     packet.extend_from_slice(&generation);
@@ -454,8 +511,162 @@ fn packet(
     for value in [width, height, rotation as u32, 0, frame.image.len() as u32] {
         packet.extend_from_slice(&value.to_le_bytes());
     }
-    packet.extend_from_slice(&frame.image);
-    packet.resize(length, 0);
+    Ok(packet)
+}
+
+fn finish_raw_packet(mut packet: Vec<u8>, image: &[u8]) -> Vec<u8> {
+    packet.truncate(HEADER);
+    packet.reserve(image.len());
+    packet.extend_from_slice(image);
+    packet.resize((HEADER + image.len()).max(MIN_PACKET), 0);
+    packet
+}
+
+fn packet(
+    frame: &Image,
+    size: Size,
+    generation: [u8; 16],
+    epoch: u64,
+    sequence: u64,
+) -> Result<Vec<u8>, String> {
+    Ok(finish_raw_packet(
+        packet_header(
+            frame,
+            size,
+            generation,
+            epoch,
+            sequence,
+            (HEADER + frame.image.len()).max(MIN_PACKET),
+        )?,
+        &frame.image,
+    ))
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn lossless_packet_header(
+    frame: &Image,
+    size: Size,
+    generation: [u8; 16],
+    epoch: u64,
+    sequence: u64,
+) -> Result<Vec<u8>, String> {
+    let packet = packet_header(frame, size, generation, epoch, sequence, HEADER)?;
+    if epoch == 0 || epoch > MAX_SAFE_INTEGER || sequence == 0 || sequence > MAX_SAFE_INTEGER {
+        return Err("Invalid Android packet identity for lossless encoding".into());
+    }
+    if !frame.image.is_empty() {
+        let format = frame.format.as_ref().ok_or("Android frame has no format")?;
+        Size {
+            width: format.width,
+            height: format.height,
+        }
+        .validate()?;
+    }
+    Ok(packet)
+}
+
+/// Append bounded pixel runs directly from borrowed RGBA; false selects raw fallback.
+#[cfg(any(target_os = "linux", test))]
+fn encode_rle32(rgba: &[u8], out: &mut Vec<u8>) -> bool {
+    if rgba.is_empty() || rgba.len() % 4 != 0 || rgba.len() / 4 > MAX_PIXELS as usize {
+        return false;
+    }
+    fn append(out: &mut Vec<u8>, bytes: &[u8], limit: usize) -> bool {
+        let Some(needed) = out.len().checked_add(bytes.len()) else {
+            return false;
+        };
+        if needed > limit {
+            return false;
+        }
+        if out.capacity() < needed {
+            let capacity = needed.max(out.capacity().saturating_mul(2)).min(limit);
+            out.reserve_exact(capacity - out.len());
+        }
+        out.extend_from_slice(bytes);
+        true
+    }
+    let limit = out.len() + rgba.len() * 7 / 8;
+    let count = rgba.len() / 4;
+    let pixel = |i: usize| &rgba[i * 4..i * 4 + 4];
+    let repeat_at = |i: usize| i + 3 < count && (1..4).all(|j| pixel(i) == pixel(i + j));
+    let mut i = 0;
+    while i < count {
+        if repeat_at(i) {
+            let start = i;
+            i += 4;
+            while i < count && pixel(i) == pixel(start) {
+                i += 1;
+            }
+            let token = (0x8000_0000 | (i - start) as u32).to_le_bytes();
+            if !append(out, &token, limit) || !append(out, pixel(start), limit) {
+                return false;
+            }
+        } else {
+            let start = i;
+            i += 1;
+            while i < count && !repeat_at(i) {
+                i += 1;
+            }
+            let token = ((i - start) as u32).to_le_bytes();
+            if !append(out, &token, limit) || !append(out, &rgba[start * 4..i * 4], limit) {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn rle32_packet(
+    frame: &Image,
+    size: Size,
+    generation: [u8; 16],
+    epoch: u64,
+    sequence: u64,
+) -> Result<Vec<u8>, String> {
+    let mut packet = lossless_packet_header(frame, size, generation, epoch, sequence)?;
+    let logical_length = (HEADER + frame.image.len()).max(MIN_PACKET);
+    if !encode_rle32(&frame.image, &mut packet) || packet.len().max(MIN_PACKET) >= logical_length {
+        return Ok(finish_raw_packet(packet, &frame.image));
+    }
+    let encoded_length = packet.len() - HEADER;
+    packet[60..64].copy_from_slice(&2u32.to_le_bytes());
+    packet[64..68].copy_from_slice(&(encoded_length as u32).to_le_bytes());
+    packet.resize(packet.len().max(MIN_PACKET), 0);
+    Ok(packet)
+}
+
+/// Encode directly from validated borrowed RGBA into the final header/payload Vec.
+/// No full raw packet is staged when the negotiated Linux encoding is worthwhile.
+#[cfg(any(target_os = "linux", test))]
+fn compressed_packet(
+    frame: &Image,
+    size: Size,
+    generation: [u8; 16],
+    epoch: u64,
+    sequence: u64,
+) -> Result<Vec<u8>, String> {
+    use std::io::Write;
+    let mut packet = lossless_packet_header(frame, size, generation, epoch, sequence)?;
+    if frame.image.is_empty() {
+        return Ok(finish_raw_packet(packet, &frame.image));
+    }
+    let length = frame.image.len();
+    let logical_length = (HEADER + length).max(MIN_PACKET);
+    // The encoder appends after the completed header, borrowing the source pixels.
+    let mut encoder = flate2::write::ZlibEncoder::new(packet, flate2::Compression::fast());
+    encoder
+        .write_all(&frame.image)
+        .map_err(|error| error.to_string())?;
+    packet = encoder.finish().map_err(|error| error.to_string())?;
+    let encoded_length = packet.len() - HEADER;
+    let wire_length = packet.len().max(MIN_PACKET);
+    if encoded_length == 0 || encoded_length * 8 > length * 7 || wire_length >= logical_length {
+        return Ok(finish_raw_packet(packet, &frame.image));
+    }
+    packet[60..64].copy_from_slice(&1u32.to_le_bytes());
+    packet[64..68].copy_from_slice(&(encoded_length as u32).to_le_bytes());
+    packet.resize(wire_length, 0);
     Ok(packet)
 }
 
@@ -516,6 +727,316 @@ mod tests {
         }
         .validate()
         .is_err());
+    }
+
+    fn compression_source(width: u32, height: u32, image: Vec<u8>) -> Image {
+        Image {
+            format: Some(ImageFormat {
+                format: 1,
+                width,
+                height,
+                ..Default::default()
+            }),
+            image: image.into(),
+            timestamp_us: 123456789,
+            ..Default::default()
+        }
+    }
+
+    fn encode_source(frame: &Image, compressed: bool) -> Result<Vec<u8>, String> {
+        let encode = if compressed {
+            compressed_packet
+        } else {
+            packet
+        };
+        encode(
+            frame,
+            Size {
+                width: 720,
+                height: 1280,
+            },
+            [17; 16],
+            12,
+            34,
+        )
+    }
+
+    #[test]
+    fn lossless_packets_round_trip_preserve_identity_and_zero_padding() {
+        use std::io::Read;
+        for (width, height) in [(64, 64), (720, 1280)] {
+            let image: Vec<_> = (0..width * height * 4)
+                .map(|index| (index % 4 * 50) as u8)
+                .collect();
+            let frame = compression_source(width, height, image);
+            let source_allocation = frame.image.as_ptr();
+            let raw = encode_source(&frame, false).unwrap();
+            let encoded = encode_source(&frame, true).unwrap();
+            assert_eq!(frame.image.as_ptr(), source_allocation);
+            assert_eq!(&encoded[..60], &raw[..60]);
+            assert_eq!(u32::from_le_bytes(encoded[60..64].try_into().unwrap()), 1);
+            let count = u32::from_le_bytes(encoded[64..68].try_into().unwrap()) as usize;
+            assert_eq!(encoded.len(), (HEADER + count).max(MIN_PACKET));
+            assert!(encoded[HEADER + count..].iter().all(|byte| *byte == 0));
+            assert!(encoded.len() < raw.len());
+            assert!(count * 8 <= frame.image.len() * 7);
+            let mut decoded = Vec::new();
+            flate2::read::ZlibDecoder::new(&encoded[HEADER..HEADER + count])
+                .take(frame.image.len() as u64 + 1)
+                .read_to_end(&mut decoded)
+                .unwrap();
+            assert_eq!(decoded.as_slice(), frame.image.as_ref());
+            // The final compressed Vec was not preallocated as a full RGBA packet.
+            assert!(encoded.capacity() < frame.image.len());
+        }
+    }
+
+    #[test]
+    fn lossless_encoding_keeps_incompressible_tiny_and_sleeping_packets_raw() {
+        let mut random = 0x123456789abcdef0u64;
+        let image = (0..128 * 128 * 4)
+            .map(|_| {
+                random ^= random << 13;
+                random ^= random >> 7;
+                random ^= random << 17;
+                random as u8
+            })
+            .collect();
+        for frame in [
+            compression_source(128, 128, image),
+            compression_source(2, 2, vec![0; 16]),
+            compression_source(0, 0, vec![]),
+        ] {
+            assert_eq!(
+                encode_source(&frame, true).unwrap(),
+                encode_source(&frame, false).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn lossless_encoding_rejects_invalid_source_before_encoding() {
+        let source = compression_source(64, 64, vec![0; 64 * 64 * 4]);
+        let size = Size {
+            width: 720,
+            height: 1280,
+        };
+        for (epoch, sequence) in [
+            (0, 1),
+            (1, 0),
+            (MAX_SAFE_INTEGER + 1, 1),
+            (1, MAX_SAFE_INTEGER + 1),
+        ] {
+            assert!(compressed_packet(&source, size, [17; 16], epoch, sequence).is_err());
+        }
+        for (width, height) in [
+            (1281, 1),
+            (0, 64),
+            (64, 0),
+            (1280, 1280),
+            (u32::MAX, u32::MAX),
+        ] {
+            let mut invalid = source.clone();
+            let format = invalid.format.as_mut().unwrap();
+            format.width = width;
+            format.height = height;
+            assert!(encode_source(&invalid, true).is_err());
+        }
+        let mut invalid = source.clone();
+        invalid.format = None;
+        assert!(encode_source(&invalid, true).is_err());
+        let mut invalid = source.clone();
+        invalid.format.as_mut().unwrap().format = 2;
+        assert!(encode_source(&invalid, true).is_err());
+        let mut invalid = source.clone();
+        invalid.format.as_mut().unwrap().rotation = Some(crate::android_protocol::Rotation {
+            rotation: 4,
+            ..Default::default()
+        });
+        assert!(encode_source(&invalid, true).is_err());
+        let mut invalid = source;
+        invalid.image = vec![0; 4].into();
+        assert!(encode_source(&invalid, true).is_err());
+        let over_edge = compression_source(1281, 1, vec![0; 1281 * 4]);
+        assert!(compressed_packet(
+            &over_edge,
+            Size {
+                width: 1281,
+                height: 1
+            },
+            [17; 16],
+            1,
+            1
+        )
+        .is_err());
+    }
+
+    fn decode_rle_payload(bytes: &[u8]) -> Vec<u8> {
+        let mut output = Vec::new();
+        let mut i = 0;
+        while i < bytes.len() {
+            let token = u32::from_le_bytes(bytes[i..i + 4].try_into().unwrap());
+            i += 4;
+            let count = (token & 0x7fff_ffff) as usize;
+            assert!(count > 0);
+            if token & 0x8000_0000 != 0 {
+                for _ in 0..count {
+                    output.extend_from_slice(&bytes[i..i + 4]);
+                }
+                i += 4;
+            } else {
+                output.extend_from_slice(&bytes[i..i + count * 4]);
+                i += count * 4;
+            }
+        }
+        output
+    }
+
+    #[test]
+    fn rle32_packets_preserve_mixed_pixels_identity_and_padding() {
+        for (width, height) in [(64, 64), (720, 1280)] {
+            let mut image = [31, 128, 255, 9].repeat((width * height) as usize);
+            for (i, pixel) in image.chunks_exact_mut(4).take(5).enumerate() {
+                pixel.copy_from_slice(&(i as u32).to_le_bytes());
+            }
+            let frame = compression_source(width, height, image);
+            let source = frame.image.as_ptr();
+            let raw = encode_source(&frame, false).unwrap();
+            let encoded = rle32_packet(
+                &frame,
+                Size {
+                    width: 720,
+                    height: 1280,
+                },
+                [17; 16],
+                12,
+                34,
+            )
+            .unwrap();
+            assert_eq!(frame.image.as_ptr(), source);
+            assert_eq!(&encoded[..60], &raw[..60]);
+            assert_eq!(u32::from_le_bytes(encoded[60..64].try_into().unwrap()), 2);
+            let length = u32::from_le_bytes(encoded[64..68].try_into().unwrap()) as usize;
+            assert_eq!(encoded.len(), (HEADER + length).max(MIN_PACKET));
+            assert!(encoded[HEADER + length..].iter().all(|byte| *byte == 0));
+            assert_eq!(
+                decode_rle_payload(&encoded[HEADER..HEADER + length]),
+                frame.image.as_ref()
+            );
+            assert!(length * 8 <= frame.image.len() * 7);
+            assert!(encoded.capacity() < frame.image.len());
+        }
+    }
+
+    #[test]
+    fn rle32_falls_back_raw_without_trying_deflate() {
+        let image = (0..64 * 64)
+            .flat_map(|i| {
+                if i % 2 == 0 {
+                    [0, 0, 0, 255]
+                } else {
+                    [255, 0, 0, 255]
+                }
+            })
+            .collect();
+        let alternating = compression_source(64, 64, image);
+        assert_eq!(
+            u32::from_le_bytes(
+                encode_source(&alternating, true).unwrap()[60..64]
+                    .try_into()
+                    .unwrap()
+            ),
+            1
+        );
+        for frame in [
+            alternating,
+            compression_source(2, 2, vec![0; 16]),
+            compression_source(0, 0, vec![]),
+        ] {
+            let encoded = rle32_packet(
+                &frame,
+                Size {
+                    width: 720,
+                    height: 1280,
+                },
+                [17; 16],
+                12,
+                34,
+            )
+            .unwrap();
+            assert_eq!(encoded, encode_source(&frame, false).unwrap());
+        }
+    }
+
+    #[test]
+    fn rle32_threshold_and_token_rules_are_bounded() {
+        let mut exact: Vec<u8> = (0..4u32).flat_map(u32::to_le_bytes).collect();
+        exact.extend([9, 8, 7, 6].repeat(4));
+        let mut output = Vec::new();
+        assert!(encode_rle32(&exact, &mut output));
+        assert_eq!(output.len() * 8, exact.len() * 7);
+        assert_eq!(decode_rle_payload(&output), exact);
+        let mut too_large: Vec<u8> = (0..5u32).flat_map(u32::to_le_bytes).collect();
+        too_large.extend([9, 8, 7, 6].repeat(4));
+        assert!(!encode_rle32(&too_large, &mut Vec::new()));
+        for invalid in [vec![], vec![0; 3], vec![0; MAX_PIXELS as usize * 4 + 4]] {
+            assert!(!encode_rle32(&invalid, &mut Vec::new()));
+        }
+    }
+
+    #[test]
+    fn rle32_rejects_invalid_source_and_packet_identity() {
+        let mut frame = compression_source(64, 64, vec![0; 64 * 64 * 4]);
+        let size = Size {
+            width: 720,
+            height: 1280,
+        };
+        for (epoch, sequence) in [
+            (0, 1),
+            (1, 0),
+            (MAX_SAFE_INTEGER + 1, 1),
+            (1, MAX_SAFE_INTEGER + 1),
+        ] {
+            assert!(rle32_packet(&frame, size, [17; 16], epoch, sequence).is_err());
+        }
+        frame.image = vec![0; 4].into();
+        assert!(rle32_packet(&frame, size, [17; 16], 1, 1).is_err());
+        let over_edge = compression_source(1281, 1, vec![0; 1281 * 4]);
+        assert!(rle32_packet(
+            &over_edge,
+            Size {
+                width: 1281,
+                height: 1
+            },
+            [17; 16],
+            1,
+            1
+        )
+        .is_err());
+    }
+
+    #[tokio::test]
+    async fn delivery_waits_for_completion_and_propagates_failure() {
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        let receiver = Arc::new(Mutex::new(Some(receiver)));
+        let sink: Sink = Box::new(move |_| {
+            let receiver = receiver.lock().unwrap().take().unwrap();
+            Box::pin(async move { receiver.await.map_err(|e| e.to_string())? })
+        });
+        let mut delivery = sink(vec![0; MIN_PACKET]);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(5), &mut delivery)
+                .await
+                .is_err()
+        );
+        sender.send(Err("UI post failed".to_string())).unwrap();
+        assert_eq!(delivery.await.unwrap_err(), "UI post failed");
+        assert_eq!(
+            immediate(|_| Err("channel closed".into()))(vec![])
+                .await
+                .unwrap_err(),
+            "channel closed"
+        );
     }
 
     #[tokio::test]
@@ -637,7 +1158,7 @@ mod tests {
             let (send, mut receive) = tokio::sync::mpsc::unbounded_channel();
             let make_sink = || -> Sink {
                 let send = send.clone();
-                Box::new(move |packet| {
+                immediate(move |packet| {
                     if packet.len() < HEADER || &packet[..4] != b"SBAP" || packet[4] != 4 { return Err("Invalid production frame packet".into()); }
                     let epoch = u64::from_le_bytes(packet[24..32].try_into().unwrap());
                     let sequence = u64::from_le_bytes(packet[32..40].try_into().unwrap());

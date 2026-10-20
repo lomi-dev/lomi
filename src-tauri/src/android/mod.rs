@@ -21,6 +21,8 @@ mod devices;
 mod diagnostics;
 mod disk;
 mod download;
+#[cfg(windows)]
+mod emulator_process;
 mod environment;
 mod events;
 #[cfg(any(feature = "android-probe", feature = "mcp-probe"))]
@@ -47,7 +49,11 @@ pub(crate) mod remote_probe;
 mod repository;
 mod rpc;
 mod runtime;
+#[cfg(windows)]
+mod shared_frames;
 mod storage;
+#[cfg(windows)]
+mod window_focus;
 
 #[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
 #[path = "../../../tests/native/mcp-android-support.rs"]

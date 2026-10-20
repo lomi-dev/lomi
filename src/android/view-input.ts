@@ -1,8 +1,9 @@
 import { api, errorMessage } from "../api";
 import { reportAndroidError } from "./service";
 import { touchPoint, type AndroidFrame } from "./frame";
-import type { AndroidCanvas } from "./canvas";
+import type { AndroidRenderer } from "./canvas";
 import type { Status } from "./types";
+import { TextCommitAssembler, wellFormedInputText } from "./text-commit";
 
 export type InputEvent =
   | { type: "key"; key: string; down: boolean }
@@ -27,6 +28,7 @@ interface Focus {
   deviceId: string;
   generation: string;
   epoch: number;
+  commits: TextCommitAssembler;
 }
 interface Owner extends Focus {
   lease: string;
@@ -84,6 +86,7 @@ async function drain() {
         });
       }
     } catch (reason) {
+      desired?.commits.reset();
       desired = undefined;
       queue.length = 0;
       bytes = 0;
@@ -110,13 +113,21 @@ export function focusInput(id: string, deviceId: string, generation: string) {
     desired.generation === generation
   )
     return;
-  desired = { id, deviceId, generation, epoch: ++epoch };
+  desired?.commits.reset();
+  desired = {
+    id,
+    deviceId,
+    generation,
+    epoch: ++epoch,
+    commits: new TextCommitAssembler(),
+  };
   queue.length = 0;
   bytes = 0;
   void drain();
 }
 export async function releaseInput(viewId?: string) {
   if (viewId && desired?.id !== viewId && owner?.id !== viewId) return;
+  desired?.commits.reset();
   desired = undefined;
   queue.length = 0;
   bytes = 0;
@@ -125,12 +136,18 @@ export async function releaseInput(viewId?: string) {
 export async function pasteInput(id: string, read: () => Promise<string>) {
   const focus = desired;
   if (!focus || focus.id !== id) return;
+  focus.commits.reset();
   const text = await read();
   // Native clipboard reads can finish after a tab switch or a new focus lease.
   if (desired === focus) enqueueInput(id, { type: "paste", text });
 }
 export function enqueueInput(id: string, event: InputEvent) {
   if (!desired || desired.id !== id) return;
+  // Non-text input cannot connect two halves from unrelated editing actions.
+  if (event.type !== "text" || event.action !== "commit")
+    desired.commits.reset();
+  if ("text" in event)
+    event = { ...event, text: wellFormedInputText(event.text) };
   const size = cost(event);
   const last = queue[queue.length - 1];
   if (
@@ -171,7 +188,7 @@ export function attachInput(
     deviceId: string;
     input: HTMLTextAreaElement;
     host: HTMLElement;
-    renderer?: AndroidCanvas;
+    renderer?: Pick<AndroidRenderer, "element">;
     metadata?: Pick<AndroidFrame, "width" | "height" | "rotation">;
     onFocus: () => void;
   },
@@ -188,9 +205,13 @@ export function attachInput(
   let wheelPosition: { clientX: number; clientY: number } | undefined;
   const keys = new Set<string>();
   const send = (event: InputEvent) => enqueueInput(view.id, event);
+  const resetText = () => {
+    if (desired?.id === view.id) desired.commits.reset();
+  };
   const focused = () =>
     document.activeElement === input && !document.querySelector("dialog[open]");
   const focus = () => {
+    resetText();
     view.onFocus();
     focusInput(view.id, view.deviceId, status.generation!);
   };
@@ -228,6 +249,7 @@ export function attachInput(
       canvas.releasePointerCapture(previous.id);
   };
   const release = () => {
+    resetText();
     clearTimeout(wheel);
     wheel = 0;
     wheelPosition = undefined;
@@ -246,6 +268,7 @@ export function attachInput(
   input.addEventListener(
     "compositionstart",
     () => {
+      resetText();
       composing = true;
       compositionCommit = undefined;
     },
@@ -262,6 +285,7 @@ export function attachInput(
   input.addEventListener(
     "compositionend",
     (event) => {
+      resetText();
       composing = false;
       compositionCommit = event.data ?? "";
       if (focused())
@@ -281,16 +305,28 @@ export function attachInput(
         composing ||
         event.isComposing ||
         event.inputType === "insertFromComposition"
-      )
+      ) {
+        resetText();
         return;
+      }
       event.preventDefault();
-      if (event.inputType === "insertText" && event.data !== compositionCommit)
-        send({ type: "text", action: "commit", text: event.data ?? "" });
-      else if (
-        event.inputType === "deleteContentBackward" &&
-        !keys.has("Backspace")
-      )
-        send({ type: "text", action: "delete", text: "" });
+      if (
+        event.inputType === "insertText" &&
+        event.data !== compositionCommit
+      ) {
+        const text =
+          desired?.id === view.id
+            ? desired.commits.append(event.data ?? "")
+            : "";
+        if (text) send({ type: "text", action: "commit", text });
+      } else {
+        resetText();
+        if (
+          event.inputType === "deleteContentBackward" &&
+          !keys.has("Backspace")
+        )
+          send({ type: "text", action: "delete", text: "" });
+      }
       clear();
     },
     options,
@@ -298,6 +334,7 @@ export function attachInput(
   input.addEventListener(
     "paste",
     (event) => {
+      resetText();
       event.preventDefault();
       if (focused())
         send({
@@ -310,6 +347,16 @@ export function attachInput(
   input.addEventListener(
     "keydown",
     (event) => {
+      if (
+        event.defaultPrevented ||
+        event.isComposing ||
+        composing ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey ||
+        event.key.length !== 1
+      )
+        resetText();
       if (
         !focused() ||
         event.defaultPrevented ||

@@ -237,6 +237,8 @@ pub fn run() {
         })
         .on_page_load(|_view, _payload| {
             agent_control::page_load(_view, _payload);
+            #[cfg(windows)]
+            android::commands::page_load(_view, _payload);
             #[cfg(feature = "native-smoke")]
             native_smoke::page(_view, _payload);
             #[cfg(feature = "chat-probe")]
@@ -544,6 +546,7 @@ pub fn run() {
                 themes::create_theme,
                 themes::duplicate_theme,
                 themes::sync_theme_window,
+                themes::sync_theme_webview_background,
                 plugins::list_plugins,
                 plugins::import_plugin,
                 plugins::enable_plugin,

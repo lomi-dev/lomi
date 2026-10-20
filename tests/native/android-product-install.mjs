@@ -3,16 +3,26 @@ import { createHash } from "node:crypto";
 import { readFile, writeFile, realpath } from "node:fs/promises";
 import { join, resolve, basename } from "node:path";
 
+const windows = process.platform === "win32" && process.arch === "x64";
+const mac = process.platform === "darwin" && process.arch === "arm64";
+const linux = process.platform === "linux" && process.arch === "x64";
+if (!windows && !mac && !linux)
+  throw Error(
+    "The isolated product fixture supports macOS ARM64, Windows x64 and Linux x64.",
+  );
 const root = await realpath(process.argv[2]);
 const name = process.argv[3];
 const target = process.argv[4];
-const imageId = process.argv[5] ?? "system-images;android-36;default;arm64-v8a";
-if (
-  !/^system-images;android-\d+(?:\.\d+)?;(default|google_apis(?:_playstore)?(?:_ps16k)?);arm64-v8a$/.test(
+const abi = mac ? "arm64-v8a" : "x86_64";
+const imageId = process.argv[5] ?? `system-images;android-36;default;${abi}`;
+const image =
+  /^system-images;android-\d+(?:\.\d+)?;(default|google_apis(?:_playstore)?(?:_ps16k)?);(arm64-v8a|x86_64)$/.exec(
     imageId,
-  )
-)
-  throw Error("Select a stable ARM64 phone image from the provider catalog");
+  );
+if (!image || image[2] !== abi)
+  throw Error(
+    `Select a stable ${abi} phone image for this host from the provider catalog`,
+  );
 if (
   !/^[a-zA-Z0-9-]{1,50}$/.test(name ?? "") ||
   !["tools", "image"].includes(target)
@@ -26,7 +36,19 @@ if (
   resolve(application.managed, "..") !== trial
 )
   throw Error("Use only the isolated native product fixture");
-const binary = join(application.repository, "src-tauri/target/release/lomi");
+const repository = resolve(import.meta.dirname, "../..");
+if (
+  application.repository !== repository ||
+  application.buildProfile !== "debug" ||
+  application.platform !== process.platform ||
+  application.architecture !== process.arch
+)
+  throw Error("The receipt does not match this host's debug product fixture");
+const binary = join(
+  repository,
+  "src-tauri/target/debug",
+  windows ? "lomi.exe" : "lomi",
+);
 if (
   createHash("sha256")
     .update(await readFile(binary))
@@ -110,10 +132,26 @@ const review = control(
 await wait(()=>document.querySelector('.android-settings-page'));
 ${
   target === "tools"
-    ? "click('Install Android tools');"
+    ? "const install=await wait(()=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Install Android tools'&&!b.disabled&&b.getClientRects().length));install.click();"
     : `
-if(!document.querySelector('.android-image-list')){const b=await wait(()=>[...document.querySelectorAll('button')].find(b=>/^(Browse available images|Refresh image catalog)$/.test(b.textContent.trim())&&!b.disabled));b.click();}
-const row=await wait(()=>[...document.querySelectorAll('.android-image-list .android-row')].find(row=>row.dataset.androidPackage===${JSON.stringify(imageId)}));
+const versions=await wait(()=>document.querySelector('button[aria-controls="android-versions"]'));
+if(versions.getAttribute('aria-expanded')!=='true')versions.click();
+if(!document.querySelector('.android-image-list')){
+ const loaded=await wait(()=>document.querySelector('.android-image-list')||[...document.querySelectorAll('button')].find(b=>/^(Load Android versions|Refresh catalog)$/.test(b.textContent.trim())&&!b.disabled&&b.getClientRects().length));
+ if(loaded.tagName==='BUTTON')loaded.click();
+}
+await wait(()=>document.querySelector('.android-image-list')?.getClientRects().length);
+const filter=async(label,value)=>{
+ const trigger=await wait(()=>document.querySelector('[role="combobox"][aria-label="'+label+'"]'));
+ if(trigger.textContent.trim()===value)return;
+ trigger.click();
+ const option=await wait(()=>[...document.getElementById(trigger.getAttribute('aria-controls')).querySelectorAll('[role="option"]')].find(o=>o.textContent.trim()===value&&o.getAttribute('aria-disabled')!=='true'&&o.getClientRects().length));
+ option.click();await wait(()=>trigger.textContent.trim()===value);
+};
+await filter('Filter Android version','All versions');
+await filter('Filter included apps','All variants');
+const row=await wait(()=>[...document.querySelectorAll('.android-image-list .android-row')].find(row=>row.dataset.androidPackage===${JSON.stringify(imageId)}&&row.getClientRects().length));
+row.scrollIntoView({block:'center'});
 const button=row.querySelector('button');if(button.disabled)throw Error('Image is unavailable');button.click();
 `
 }
@@ -132,7 +170,7 @@ const started = control(
   "main",
   `
 for(const section of document.querySelectorAll('.android-license'))section.querySelector('input').click();
-await sleep(100);click('Install selected components');
+const accept=await wait(()=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Accept and install'&&!b.disabled&&b.getClientRects().length));accept.click();
 return await wait(async()=>{const state=await invoke('android_state');return state.operation?.phase==='running'?state.operation:null});
 `,
 );

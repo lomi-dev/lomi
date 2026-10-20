@@ -898,7 +898,12 @@ mod tests {
             socket.write_all(b"OKAY").unwrap();
             stop.store(true, Ordering::Release);
             let mut byte = [0];
-            assert_eq!(socket.read(&mut byte).unwrap(), 0);
+            // Cancelling with an unread acknowledgement can close TCP with a reset.
+            match socket.read(&mut byte) {
+                Ok(0) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::ConnectionReset => {}
+                result => panic!("Cancelled input registration did not disconnect: {result:?}"),
+            }
         });
         let started = Instant::now();
         assert!(guest

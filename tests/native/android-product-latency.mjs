@@ -29,11 +29,22 @@ await wait(()=>{const c=document.querySelector('.android-screen');return c&&c.wi
 await sleep(700);
 const canvas=document.querySelector('.android-screen');
 if(canvas.width*canvas.height>720*1280)throw Error('Preview exceeds its pixel budget');
-const prototype=WebGLRenderingContext.prototype,original=prototype.drawArrays;
+const prototype=WebGLRenderingContext.prototype,original=prototype.drawArrays,originalUpload=prototype.texSubImage2D;
 const pixel=new Uint8Array(4),samples=[];
-let previous,pending,draws=0;
+let previous,pending,draws=0,source,sourceFailure;
 const pointer=()=>{if(pending)pending.started=performance.now();};
 canvas.addEventListener('pointerdown',pointer,true);
+prototype.texSubImage2D=function(...args){
+  const result=originalUpload.apply(this,args);
+  if(this.canvas===canvas){
+    const size=args.length===9?[args[4],args[5]]:args.length===7&&args[6] instanceof HTMLCanvasElement?[args[6].width,args[6].height]:null;
+    if(!size||!size.every(n=>Number.isInteger(n)&&n>0&&n<=1280)||size[0]*size[1]>720*1280)
+      sourceFailure='Invalid or unknown latency texture-upload source';
+    else if(source&&source.some((n,i)=>n!==size[i]))sourceFailure='Latency texture-upload source changed';
+    else source=size;
+  }
+  return result;
+};
 prototype.drawArrays=function(...args){
   const result=original.apply(this,args);
   if(this.canvas===canvas){
@@ -56,6 +67,7 @@ const touch=async()=>{
 try{
   await touch();await wait(()=>previous!==undefined,3000);await sleep(300);
   for(let i=0;i<50;i++){
+    if(sourceFailure)throw Error(sourceFailure);
     if(document.visibilityState!=='visible')throw Error('Product was hidden during latency measurement');
     if(!document.hasFocus())throw Error('Product lost native focus during latency measurement');
     let timer;
@@ -70,11 +82,15 @@ try{
   const after=(await invoke('android_state')).statuses.find(s=>s.deviceId===deviceId);
   if(after?.generation!==before.generation)throw Error('Phone restarted during measurement');
   const sorted=[...samples].sort((a,b)=>a-b);
+  if(sourceFailure||!source)throw Error(sourceFailure??'No actual texture-upload source was observed');
+  const rect=canvas.getBoundingClientRect();
+  if(!canvas.isConnected||rect.width<=0||rect.height<=0)throw Error('Measured framebuffer was retired or hidden');
   return {completed:true,samples,p95:sorted[Math.floor(sorted.length*.95)],max:sorted.at(-1),draws,
-    generation:before.generation,display:before.display,source:[canvas.width,canvas.height],dpr:devicePixelRatio,
-    endpoint:'Native pointerdown in WKWebView to second requestAnimationFrame after the guest color transition is read from the rendered WebGL framebuffer'};
+    generation:before.generation,display:before.display,source,framebuffer:[canvas.width,canvas.height],css:[rect.width,rect.height],dpr:devicePixelRatio,
+    sourceInterpretation:'Actual dimensions supplied to the measured WebGL texture upload, separate from its rendered framebuffer',
+    endpoint:'Native pointerdown in the native WebView to second requestAnimationFrame after the guest color transition is read from the rendered WebGL framebuffer'};
 }finally{
-  prototype.drawArrays=original;canvas.removeEventListener('pointerdown',pointer,true);
+  prototype.drawArrays=original;prototype.texSubImage2D=originalUpload;canvas.removeEventListener('pointerdown',pointer,true);
   pending=undefined;
 }
 `,

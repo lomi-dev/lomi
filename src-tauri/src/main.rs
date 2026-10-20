@@ -1,6 +1,9 @@
 // Hide the extra Windows console window in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+#[cfg(target_os = "linux")]
+mod linux_graphics;
+
 fn main() {
     if let Some(code) = lomi_lib::cursor_usage_keychain_authorization_entry() {
         std::process::exit(code);
@@ -23,6 +26,9 @@ fn main() {
         }
         return;
     }
+
+    #[cfg(target_os = "linux")]
+    linux_graphics::configure();
 
     #[cfg(target_os = "linux")]
     if std::env::var_os("WAYLAND_DISPLAY").is_some()

@@ -3,6 +3,9 @@ use std::{
     process::{Child, Command, ExitStatus},
 };
 
+#[cfg(windows)]
+const DESCENDANT_EXIT_GRACE: std::time::Duration = std::time::Duration::from_millis(500);
+
 /// Own one explicitly spawned process group. On Unix the group
 /// leader is not reaped until its descendants exit, preventing PGID reuse.
 pub struct Tree {
@@ -11,7 +14,9 @@ pub struct Tree {
     killed: bool,
     pub abandoned_descendants: bool,
     #[cfg(windows)]
-    job: windows::Job,
+    job: std::sync::Arc<windows::Job>,
+    #[cfg(windows)]
+    leader_exited_at: Option<std::time::Instant>,
 }
 
 impl Tree {
@@ -35,8 +40,17 @@ impl Tree {
             killed: false,
             abandoned_descendants: false,
             #[cfg(windows)]
-            job,
+            job: std::sync::Arc::new(job),
+            #[cfg(windows)]
+            leader_exited_at: None,
         })
+    }
+
+    /// Observe this tree without transferring termination authority. Dropping the
+    /// tree still explicitly kills the job while observers retain their handles.
+    #[cfg(windows)]
+    pub fn membership(&self) -> Membership {
+        Membership(self.job.clone())
     }
 
     pub fn kill(&mut self) -> io::Result<()> {
@@ -90,8 +104,19 @@ impl Tree {
             if self.child.try_wait()?.is_none() {
                 return Ok(None);
             }
+            let exited_at = self
+                .leader_exited_at
+                .get_or_insert_with(std::time::Instant::now);
             if self.job.active()? != 0 {
-                if !self.killed {
+                // Windows helpers (including console hosts) can finish shortly
+                // after the launcher. Retain the job and caller's ownership
+                // guards throughout one bounded grace period; never reset its
+                // start on later polls. Explicit kill bypasses this grace.
+                // Success still requires all job accounting to drain.
+                if !self.killed
+                    && exited_at.elapsed() >= DESCENDANT_EXIT_GRACE
+                    && self.job.has_live_descendants(self.child.id())?
+                {
                     self.abandoned_descendants = true;
                     self.kill()?;
                 }
@@ -106,6 +131,22 @@ impl Tree {
 impl Drop for Tree {
     fn drop(&mut self) {
         let _ = self.kill();
+    }
+}
+
+/// A read-only observer of the kernel-owned process tree.
+#[cfg(windows)]
+#[derive(Clone)]
+pub struct Membership(std::sync::Arc<windows::Job>);
+
+#[cfg(windows)]
+impl Membership {
+    pub fn pids(&self) -> io::Result<Vec<u32>> {
+        self.0.pids()
+    }
+
+    pub fn contains(&self, pid: u32) -> io::Result<bool> {
+        Ok(self.pids()?.contains(&pid))
     }
 }
 
@@ -208,20 +249,27 @@ mod windows {
     use super::*;
     use std::os::windows::io::AsRawHandle;
     use windows_sys::Win32::{
-        Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE},
+        Foundation::{
+            CloseHandle, GetLastError, ERROR_INVALID_PARAMETER, HANDLE, INVALID_HANDLE_VALUE,
+            WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT,
+        },
         System::{
             Diagnostics::ToolHelp::{
                 CreateToolhelp32Snapshot, Thread32First, Thread32Next, TH32CS_SNAPTHREAD,
                 THREADENTRY32,
             },
             JobObjects::{
-                AssignProcessToJobObject, CreateJobObjectW, JobObjectBasicAccountingInformation,
+                AssignProcessToJobObject, CreateJobObjectW, IsProcessInJob,
+                JobObjectBasicAccountingInformation, JobObjectBasicProcessIdList,
                 JobObjectExtendedLimitInformation, QueryInformationJobObject,
                 SetInformationJobObject, TerminateJobObject,
                 JOBOBJECT_BASIC_ACCOUNTING_INFORMATION, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
                 JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
             },
-            Threading::{OpenThread, ResumeThread, THREAD_SUSPEND_RESUME},
+            Threading::{
+                OpenProcess, OpenThread, ResumeThread, WaitForSingleObject,
+                PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, THREAD_SUSPEND_RESUME,
+            },
         },
     };
 
@@ -236,12 +284,82 @@ mod windows {
     pub struct Job(Handle);
     // Windows handles are kernel-owned and may be used by the operation's worker thread.
     unsafe impl Send for Job {}
+    unsafe impl Sync for Job {}
     impl Job {
+        pub fn pids(&self) -> io::Result<Vec<u32>> {
+            #[repr(C)]
+            struct Processes {
+                assigned: u32,
+                count: u32,
+                ids: [usize; 4096],
+            }
+            let mut processes: Processes = unsafe { std::mem::zeroed() };
+            if unsafe {
+                QueryInformationJobObject(
+                    self.0 .0,
+                    JobObjectBasicProcessIdList,
+                    (&mut processes as *mut Processes).cast(),
+                    std::mem::size_of_val(&processes) as u32,
+                    std::ptr::null_mut(),
+                )
+            } == 0
+            {
+                return Err(io::Error::last_os_error());
+            }
+            if processes.assigned > 4096 || processes.count > 4096 {
+                return Err(io::Error::other("Owned process job exceeds its bound"));
+            }
+            processes.ids[..processes.count as usize]
+                .iter()
+                .map(|pid| u32::try_from(*pid).map_err(io::Error::other))
+                .collect()
+        }
         pub fn kill(&self) -> io::Result<()> {
             if unsafe { TerminateJobObject(self.0 .0, 1) } == 0 {
                 return Err(io::Error::last_os_error());
             }
             Ok(())
+        }
+        pub(super) fn has_live_descendants(&self, leader: u32) -> io::Result<bool> {
+            for pid in self.pids()? {
+                if pid == leader {
+                    // The retained Child has already reported leader exit.
+                    // Its job entry can outlive that observation; only other
+                    // members can be abandoned descendants.
+                    continue;
+                }
+                let raw = unsafe {
+                    OpenProcess(
+                        PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE,
+                        0,
+                        pid,
+                    )
+                };
+                if raw.is_null() {
+                    if unsafe { GetLastError() } == ERROR_INVALID_PARAMETER {
+                        // The enumerated member has already disappeared.
+                        continue;
+                    }
+                    return Err(io::Error::last_os_error());
+                }
+                let process = Handle(raw);
+                let mut member = 0;
+                if unsafe { IsProcessInJob(process.0, self.0 .0, &mut member) } == 0 {
+                    return Err(io::Error::last_os_error());
+                }
+                if member == 0 {
+                    // The PID was reused after the job snapshot. Never treat
+                    // an unrelated process as a living owned descendant.
+                    continue;
+                }
+                match unsafe { WaitForSingleObject(process.0, 0) } {
+                    WAIT_TIMEOUT => return Ok(true),
+                    WAIT_OBJECT_0 => {}
+                    WAIT_FAILED => return Err(io::Error::last_os_error()),
+                    _ => return Err(io::Error::other("Unexpected owned process wait result")),
+                }
+            }
+            Ok(false)
         }
         pub fn active(&self) -> io::Result<u32> {
             let mut info: JOBOBJECT_BASIC_ACCOUNTING_INFORMATION = unsafe { std::mem::zeroed() };
@@ -320,5 +438,162 @@ mod windows {
                 Err(error)
             }
         }
+    }
+}
+
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use super::*;
+    use std::{
+        path::Path,
+        process::Stdio,
+        time::{Duration, Instant},
+    };
+
+    const FIXTURE: &str = "process_tree::windows_tests::launcher_fixture";
+
+    fn fixture(directory: &Path, role: &str) -> Command {
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        command
+            .args(["--exact", FIXTURE, "--ignored", "--nocapture"])
+            .env("LOMI_TREE_FIXTURE_DIRECTORY", directory)
+            .env("LOMI_TREE_FIXTURE_ROLE", role)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        command
+    }
+
+    #[test]
+    #[ignore = "subprocess fixture invoked by the ownership test"]
+    fn launcher_fixture() {
+        let directory = std::env::var_os("LOMI_TREE_FIXTURE_DIRECTORY").unwrap();
+        let directory = Path::new(&directory);
+        let role = std::env::var("LOMI_TREE_FIXTURE_ROLE").unwrap();
+        if role == "output" {
+            use std::io::Write;
+            let mut output = std::io::stdout().lock();
+            for _ in 0..32 {
+                output.write_all(&[b'x'; 8192]).unwrap();
+            }
+            output.flush().unwrap();
+        } else if role == "launcher" || role == "orphan-launcher" {
+            let mut child = fixture(directory, "qemu").spawn().unwrap();
+            std::fs::write(directory.join("qemu.pid"), child.id().to_string()).unwrap();
+            if role == "orphan-launcher" {
+                wait_for(|| directory.join("ready").is_file());
+                // Model a failed launcher leaving its live child behind.
+                return;
+            }
+            // Model emulator.exe's _wspawnv followed by an infinite child wait.
+            child.wait().unwrap();
+        } else {
+            std::fs::write(directory.join("ready"), b"ready").unwrap();
+            let deadline = Instant::now() + Duration::from_secs(60);
+            while !directory.join("shutdown").is_file() && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        }
+    }
+
+    fn wait_for(mut condition: impl FnMut() -> bool) {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !condition() {
+            assert!(
+                Instant::now() < deadline,
+                "native process fixture timed out"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+    #[test]
+    fn windows_output_only_exit_never_marks_the_leader_as_abandoned() {
+        use std::io::Read;
+        let directory = tempfile::tempdir().unwrap();
+        // Exercise signaling/accounting order across successive pipe-heavy
+        // exits. Every iteration must succeed; failures are never retried.
+        for _ in 0..16 {
+            let mut command = fixture(directory.path(), "output");
+            command.stdout(Stdio::piped());
+            let mut tree = Tree::spawn(&mut command).unwrap();
+            let mut pipe = tree.child.stdout.take().unwrap();
+            let reader = std::thread::spawn(move || {
+                let mut output = Vec::new();
+                pipe.read_to_end(&mut output).unwrap();
+                output
+            });
+            let mut exit = None;
+            wait_for(|| {
+                exit = tree.try_wait().unwrap();
+                exit.is_some()
+            });
+            assert!(exit.unwrap().success());
+            assert!(!tree.abandoned_descendants);
+            let output = reader.join().unwrap();
+            assert!(output.iter().filter(|byte| **byte == b'x').count() >= 32 * 8192);
+        }
+    }
+
+    #[test]
+    fn windows_launcher_tree_force_stop_and_drop_own_only_descendants() {
+        let unrelated_directory = tempfile::tempdir().unwrap();
+        let mut unrelated = fixture(unrelated_directory.path(), "qemu");
+        let mut unrelated = Tree::spawn(&mut unrelated).unwrap();
+        wait_for(|| unrelated_directory.path().join("ready").is_file());
+        for force in [true, false] {
+            let directory = tempfile::tempdir().unwrap();
+            let mut command = fixture(directory.path(), "launcher");
+            let mut tree = Tree::spawn(&mut command).unwrap();
+            let membership = tree.membership();
+            let mut qemu = None;
+            wait_for(|| {
+                qemu = std::fs::read_to_string(directory.path().join("qemu.pid"))
+                    .ok()
+                    .and_then(|text| text.parse::<u32>().ok());
+                qemu.is_some() && directory.path().join("ready").is_file()
+            });
+            let qemu = qemu.unwrap();
+            assert_ne!(qemu, tree.child.id());
+            assert!(membership.contains(tree.child.id()).unwrap());
+            assert!(membership.contains(qemu).unwrap());
+            assert!(!membership.contains(unrelated.child.id()).unwrap());
+            if force {
+                tree.kill().unwrap();
+                wait_for(|| tree.try_wait().unwrap().is_some());
+            }
+            drop(tree);
+            // Retaining an observer must never retain a living owned process.
+            wait_for(|| membership.pids().unwrap().is_empty());
+            assert!(unrelated.try_wait().unwrap().is_none());
+        }
+        let graceful_directory = tempfile::tempdir().unwrap();
+        let mut command = fixture(graceful_directory.path(), "launcher");
+        let mut graceful = Tree::spawn(&mut command).unwrap();
+        wait_for(|| graceful_directory.path().join("ready").is_file());
+        std::fs::write(graceful_directory.path().join("shutdown"), b"shutdown").unwrap();
+        wait_for(|| graceful.try_wait().unwrap().is_some());
+        assert!(!graceful.abandoned_descendants);
+        assert!(unrelated.try_wait().unwrap().is_none());
+        let orphan_directory = tempfile::tempdir().unwrap();
+        let mut command = fixture(orphan_directory.path(), "orphan-launcher");
+        let mut orphan = Tree::spawn(&mut command).unwrap();
+        let membership = orphan.membership();
+        let mut qemu = None;
+        wait_for(|| {
+            qemu = std::fs::read_to_string(orphan_directory.path().join("qemu.pid"))
+                .ok()
+                .and_then(|text| text.parse::<u32>().ok());
+            qemu.is_some() && orphan_directory.path().join("ready").is_file()
+        });
+        assert!(membership.contains(qemu.unwrap()).unwrap());
+        let orphan_wait_started = Instant::now();
+        wait_for(|| orphan.try_wait().unwrap().is_some());
+        assert!(orphan_wait_started.elapsed() >= DESCENDANT_EXIT_GRACE);
+        assert!(orphan.abandoned_descendants);
+        assert!(membership.pids().unwrap().is_empty());
+        assert!(unrelated.try_wait().unwrap().is_none());
+        unrelated.kill().unwrap();
+        wait_for(|| unrelated.try_wait().unwrap().is_some());
     }
 }

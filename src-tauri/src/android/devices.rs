@@ -431,14 +431,16 @@ async fn create_candidate(
         5037,
     )?;
     command
-        .env("ANDROID_AVD_HOME", &locators)
+        .env("ANDROID_AVD_HOME", environment::external_path(&locators))
         .arg("-Djava.awt.headless=true")
         .arg(format!(
             "-Dcom.android.sdkmanager.toolsdir={}",
-            sdk_tools.display()
+            environment::external_path(&sdk_tools).display()
         ))
         .arg("-classpath")
-        .arg(sdk_tools.join("lib/avdmanager-classpath.jar"))
+        .arg(environment::external_path(
+            &sdk_tools.join("lib/avdmanager-classpath.jar"),
+        ))
         .args([
             "com.android.sdklib.tool.AvdManagerCli",
             "create",
@@ -451,7 +453,7 @@ async fn create_candidate(
         .arg("--device")
         .arg(&device.profile)
         .arg("--path")
-        .arg(&candidate);
+        .arg(environment::external_path(&candidate));
     progress.progress("Creating Android device", 0, 0);
     bootstrap::run(
         command,
@@ -639,7 +641,10 @@ fn finish_inner(
                 ("avd.ini.encoding".into(), "UTF-8".into()),
                 (
                     "path".into(),
-                    active.to_str().ok_or("AVD path is not Unicode")?.into(),
+                    environment::external_path(&active)
+                        .to_str()
+                        .ok_or("AVD path is not Unicode")?
+                        .into(),
                 ),
                 ("target".into(), target.into()),
             ]),

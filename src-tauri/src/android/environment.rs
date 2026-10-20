@@ -12,6 +12,13 @@ pub fn command(
     if !program.is_absolute() || !root.is_absolute() || !sdk.is_absolute() || adb_port == 0 {
         return Err("Invalid managed Android process configuration.".into());
     }
+    // External Android/Java tools may concatenate paths using forward slashes,
+    // which Windows rejects with verbatim prefixes. Keep canonical paths inside
+    // Lomi and use their equivalent compatible form only at this boundary.
+    let program = external_path(program);
+    let root = external_path(root);
+    let sdk = external_path(sdk);
+    let java = java.map(external_path);
     let mut command = Command::new(program);
     sanitize(&mut command, std::env::vars_os().map(|(name, _)| name));
     let cli_home = root.join("user/cli-home");
@@ -34,6 +41,11 @@ pub fn command(
         .env("JAVA_TOOL_OPTIONS", java_home_option(cli_home));
     if let Some(java) = java {
         command.env("JAVA_HOME", java);
+        #[cfg(windows)]
+        command.env(
+            "PATH",
+            private_java_path(java, std::env::var_os("PATH").as_deref())?,
+        );
     }
     #[cfg(windows)]
     {
@@ -41,6 +53,30 @@ pub fn command(
         command.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
     Ok(command)
+}
+
+/// Convert a verified internal path only when handing it to an external tool.
+/// This performs no I/O and does not replace canonical ownership comparisons.
+pub(super) fn external_path(path: &Path) -> &Path {
+    #[cfg(windows)]
+    {
+        dunce::simplified(path)
+    }
+    #[cfg(not(windows))]
+    {
+        path
+    }
+}
+
+#[cfg(windows)]
+fn private_java_path(java: &Path, inherited: Option<&std::ffi::OsStr>) -> Result<OsString, String> {
+    // The verified private JRE also supplies the runtime DLLs needed by the
+    // native Android CLI. Its Java subprocesses inherit this same child PATH.
+    std::env::join_paths(
+        std::iter::once(external_path(java).join("bin"))
+            .chain(inherited.into_iter().flat_map(std::env::split_paths)),
+    )
+    .map_err(|error| format!("Cannot configure the private Android Java PATH: {error}"))
 }
 
 fn sanitize(command: &mut Command, names: impl IntoIterator<Item = OsString>) {
@@ -79,6 +115,143 @@ fn java_home_option(path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn external_windows_paths_preserve_identity_without_verbatim_cli_arguments() {
+        let temp = tempfile::tempdir().unwrap();
+        let native_root = temp.path().join("private Android żółć");
+        std::fs::create_dir(&native_root).unwrap();
+        let root = native_root.canonicalize().unwrap();
+        for directory in ["user", "sdk", "private-java/bin"] {
+            std::fs::create_dir_all(root.join(directory)).unwrap();
+        }
+        let program = root.join("android-cli.exe");
+        std::fs::write(&program, b"fixture").unwrap();
+        let sdk = root.join("sdk");
+        let java = root.join("private-java");
+        let process = command(&program, &root, &sdk, Some(&java), 5037).unwrap();
+        let environment: std::collections::BTreeMap<_, _> = process.get_envs().collect();
+        assert!(!process.get_program().to_string_lossy().starts_with(r"\\?\"));
+        assert_eq!(
+            std::fs::canonicalize(process.get_program()).unwrap(),
+            program
+        );
+        assert_eq!(
+            process.get_current_dir().unwrap().canonicalize().unwrap(),
+            root.join("user")
+        );
+        for name in [
+            "ANDROID_HOME",
+            "ANDROID_SDK_ROOT",
+            "ANDROID_USER_HOME",
+            "ANDROID_EMULATOR_HOME",
+            "ANDROID_AVD_HOME",
+            "TMPDIR",
+            "TMP",
+            "TEMP",
+            "JAVA_HOME",
+        ] {
+            let value = environment[std::ffi::OsStr::new(name)].unwrap();
+            assert!(!value.to_string_lossy().starts_with(r"\\?\"), "{name}");
+        }
+        assert_eq!(
+            Path::new(environment[std::ffi::OsStr::new("JAVA_HOME")].unwrap())
+                .canonicalize()
+                .unwrap(),
+            java
+        );
+        assert!(!environment[std::ffi::OsStr::new("JAVA_TOOL_OPTIONS")]
+            .unwrap()
+            .to_string_lossy()
+            .contains(r"\\?\"));
+        let path = environment[std::ffi::OsStr::new("PATH")].unwrap();
+        assert_eq!(
+            std::env::split_paths(path)
+                .next()
+                .unwrap()
+                .canonicalize()
+                .unwrap(),
+            java.join("bin")
+        );
+        assert_eq!(external_path(&root).canonicalize().unwrap(), root);
+        let unc = Path::new(r"\\server\share\private Android");
+        assert_eq!(external_path(unc), unc);
+        // dunce deliberately retains prefixes whose removal may change meaning.
+        let verbatim_unc = Path::new(r"\\?\UNC\server\share\private Android");
+        assert_eq!(external_path(verbatim_unc), verbatim_unc);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn external_unix_paths_preserve_non_unicode_bytes() {
+        use std::os::unix::ffi::OsStrExt;
+        let bytes = b"/tmp/private-\xff Android";
+        let path = Path::new(std::ffi::OsStr::from_bytes(bytes));
+        assert_eq!(external_path(path).as_os_str().as_bytes(), bytes);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn private_java_bin_precedes_all_inherited_windows_path_entries() {
+        let java = Path::new(r"C:\Lomi trial\private Java");
+        let inherited_entries = [
+            Path::new(r"C:\Windows\System32"),
+            Path::new(r"D:\tools with spaces"),
+            Path::new(r"D:\żółć\tools"),
+        ];
+        let inherited = std::env::join_paths(inherited_entries).unwrap();
+        let path = private_java_path(java, Some(&inherited)).unwrap();
+        let actual: Vec<_> = std::env::split_paths(&path).collect();
+        let expected: Vec<_> = std::iter::once(java.join("bin"))
+            .chain(inherited_entries.into_iter().map(Path::to_path_buf))
+            .collect();
+        assert_eq!(actual, expected);
+        assert_eq!(
+            std::env::split_paths(&private_java_path(java, None).unwrap()).collect::<Vec<_>>(),
+            vec![java.join("bin")]
+        );
+        assert!(private_java_path(Path::new("C:\\invalid\"java"), None)
+            .unwrap_err()
+            .contains("private Android Java PATH"));
+    }
+
+    #[test]
+    fn private_java_configuration_is_scoped_to_the_child_command() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let java = root.join("private-java");
+        let inherited = std::env::var_os("PATH");
+        let process = command(
+            &root.join("tool"),
+            root,
+            &root.join("sdk"),
+            Some(&java),
+            5037,
+        )
+        .unwrap();
+        let environment: std::collections::BTreeMap<_, _> = process.get_envs().collect();
+        assert_eq!(
+            environment[std::ffi::OsStr::new("JAVA_HOME")],
+            Some(java.as_os_str())
+        );
+        #[cfg(windows)]
+        {
+            let path = environment[std::ffi::OsStr::new("PATH")].unwrap();
+            let expected: Vec<_> = std::iter::once(java.join("bin"))
+                .chain(
+                    inherited
+                        .as_deref()
+                        .into_iter()
+                        .flat_map(std::env::split_paths),
+                )
+                .collect();
+            assert_eq!(std::env::split_paths(path).collect::<Vec<_>>(), expected);
+        }
+        #[cfg(not(windows))]
+        assert!(!environment.contains_key(std::ffi::OsStr::new("PATH")));
+        assert_eq!(std::env::var_os("PATH"), inherited);
+    }
 
     #[test]
     fn children_cannot_inherit_foreign_sdk_adb_or_jvm_configuration() {

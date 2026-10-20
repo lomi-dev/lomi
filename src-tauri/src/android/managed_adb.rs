@@ -6,6 +6,14 @@ use std::{
     time::{Duration, Instant},
 };
 
+// Windows can take slightly over two seconds to report a closed loopback
+// listener. Let that refusal arrive; a real timeout still fails closed below.
+const LISTENER_PROBE_TIMEOUT: Duration = if cfg!(windows) {
+    Duration::from_secs(5)
+} else {
+    Duration::from_secs(2)
+};
+
 /// A shared server is never killed by Lomi. Its foreground entry point
 /// only binds a listener; unlike an ordinary client it cannot replace a peer.
 #[derive(Default)]
@@ -36,7 +44,7 @@ impl SharedServer {
             }
         }
         let server = Server { port };
-        match TcpStream::connect_timeout(&([127,0,0,1], port).into(), Duration::from_secs(2)) {
+        match TcpStream::connect_timeout(&([127,0,0,1], port).into(), LISTENER_PROBE_TIMEOUT) {
             Ok(_) => return server.preflight(),
             Err(error) if error.kind() == std::io::ErrorKind::ConnectionRefused => {},
             Err(error) => return Err(format!("Cannot inspect the local ADB server: {error}. Retry when the listener is available.")),
@@ -100,6 +108,27 @@ impl SharedServer {
 mod tests {
     use super::*;
     use std::io::{Read, Write};
+
+    #[cfg(windows)]
+    #[test]
+    fn closed_windows_listener_reaches_reserved_launch_after_connection_refusal() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        let root = tempfile::tempdir().unwrap();
+        let mut server = SharedServer::default();
+        let error = server
+            .ensure_at(
+                root.path(),
+                &root.path().join("missing-private-adb.exe"),
+                port,
+            )
+            .unwrap_err();
+        // The missing executable proves we reached the owned launch boundary
+        // after a positive port reservation, without starting a real ADB server.
+        assert!(error.contains("Cannot start managed ADB"), "{error}");
+        assert!(server.child.is_none());
+    }
 
     #[test]
     #[ignore = "Subprocess fixture for the retained server test"]

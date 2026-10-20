@@ -750,7 +750,10 @@ async fn install_package(
     };
     command
         .arg("--no-metrics")
-        .arg(format!("--sdk={}", sdk.display()))
+        .arg(format!(
+            "--sdk={}",
+            environment::external_path(&sdk).display()
+        ))
         .args(["sdk", "install", &argument]);
     operation.progress(&format!("Installing {}", package.name), 0, 0);
     let output = bootstrap::run(

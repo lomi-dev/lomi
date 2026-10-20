@@ -2,6 +2,13 @@
 use std::{fs, path::PathBuf, time::Duration};
 use tauri::{Manager, Window};
 
+#[cfg(windows)]
+#[path = "android-windows-capture.rs"]
+mod windows_capture;
+#[cfg(windows)]
+#[path = "android-windows-dialog.rs"]
+mod windows_dialog;
+
 fn root() -> Result<PathBuf, String> {
     let managed = PathBuf::from(
         std::env::var_os("LOMI_ANDROID_PRODUCT_DIRECTORY").ok_or("Product probe is disabled")?,
@@ -86,11 +93,16 @@ async fn control(
 ) -> Result<serde_json::Value, String> {
     let window = app.get_window(label).ok_or("Missing product test window")?;
     match action {
+        #[cfg(target_os = "linux")]
+        "webview-software-policy" => {
+            root()?;
+            return crate::android_probe::linux_product::webview_software_policy(&window).await;
+        }
         "present" | "move-to-current-space" => {
             window.unminimize().map_err(|e| e.to_string())?;
             window.show().map_err(|e| e.to_string())?;
             window.set_always_on_top(true).map_err(|e| e.to_string())?;
-            #[cfg(not(target_os = "macos"))]
+            #[cfg(target_os = "linux")]
             window
                 .set_visible_on_all_workspaces(true)
                 .map_err(|e| e.to_string())?;
@@ -133,6 +145,37 @@ async fn control(
         }
         "minimize" => window.minimize().map_err(|e| e.to_string())?,
         "hide" => window.hide().map_err(|e| e.to_string())?,
+        #[cfg(target_os = "linux")]
+        "dialog-location"
+        | "dialog-type-apk"
+        | "dialog-type-screenshot"
+        | "dialog-confirm"
+        | "dialog-cancel"
+        | "dialog-state"
+        | "dialog-directory-apk"
+        | "dialog-directory-screenshot"
+        | "dialog-select-apk" => {
+            return crate::android_probe::linux_product::dialog(
+                &window,
+                action.to_owned(),
+                root()?,
+            )
+            .await;
+        }
+        #[cfg(windows)]
+        "dialog-type-apk"
+        | "dialog-type-screenshot"
+        | "dialog-confirm"
+        | "dialog-cancel"
+        | "dialog-state" => {
+            let product = root()?;
+            let path = if action == "dialog-type-apk" {
+                product.join("apk-selection").join("input-test.apk")
+            } else {
+                product.join("screenshot.png")
+            };
+            return windows_dialog::control(&window, action, &path);
+        }
         #[cfg(target_os = "macos")]
         "dialog-location"
         | "dialog-type-apk"
@@ -247,6 +290,8 @@ async fn control(
                 .set_size(tauri::LogicalSize::new(width, height))
                 .map_err(|e| e.to_string())?;
         }
+        #[cfg(target_os = "linux")]
+        "process-info" => return crate::android_probe::linux_product::processes(),
         #[cfg(target_os = "macos")]
         "process-info" => return crate::android_probe::webkit_processes(app).await,
         _ => return Err("Unknown native product control".into()),
@@ -339,7 +384,11 @@ pub fn result(
             })();
             if let Err(error) = result { let _ = fs::write(path.with_extension("error.txt"), error); }
         }).map_err(|e| e.to_string())?;
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(windows)]
+        windows_capture::capture(&target, path)?;
+        #[cfg(target_os = "linux")]
+        crate::android_probe::linux_product::capture(&target, path)?;
+        #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
         {
             let _ = (target, path);
             return Err("Native screenshots are only qualified on macOS".into());

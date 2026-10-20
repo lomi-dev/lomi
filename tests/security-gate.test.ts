@@ -79,12 +79,14 @@ console.log('test result: ok. ' + count + ' passed; 0 failed; 0 ignored');
   },
 );
 
-test("all platforms gate Remote and authentication without selecting Unix-only control suites on Windows", () => {
+test("all platforms gate Android, Remote and authentication with native Windows process ownership", () => {
   assert.deepEqual(securitySuites("win32"), [
     ["lomi", "files::tests::json_"],
     ["lomi", "auth::"],
     ["lomi", "remote::"],
     ["lomi", "terminal::tests::remote_"],
+    ["lomi", "android::"],
+    ["lomi-control-core", "process_tree::"],
     ["lomi-remote-crypto", ""],
   ]);
   for (const platform of ["darwin", "linux"]) {
@@ -93,6 +95,7 @@ test("all platforms gate Remote and authentication without selecting Unix-only c
       ["lomi", "auth::"],
       ["lomi", "remote::"],
       ["lomi", "terminal::tests::remote_"],
+      ["lomi", "android::"],
       ["lomi-control-core", "authentication::tests::"],
       ["lomi-control-core", "project_files::tests::"],
       ["lomi-control-core", "broker::revoke_tests::"],

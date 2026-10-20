@@ -34,8 +34,9 @@ const create=async label=>{
 };
 const terminalId=await create('New terminal');
 const title=document.querySelector('.active-tab [role=tab]');
-title.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));
-const form=await wait(()=>document.querySelector('dialog form.dialog-form'));
+title.dispatchEvent(new MouseEvent('click',{detail:1,bubbles:true}));
+title.dispatchEvent(new MouseEvent('dblclick',{detail:2,bubbles:true}));
+const form=await wait(()=>document.querySelector('dialog[open] form.dialog-form'));
 const field=form.querySelector('input');
 Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(field,'Android views');
 field.dispatchEvent(new Event('input',{bubbles:true}));await sleep(150);form.requestSubmit();await sleep(250);

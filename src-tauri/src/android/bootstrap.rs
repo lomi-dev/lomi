@@ -2,7 +2,7 @@ use super::{
     catalog::Host,
     download, environment,
     installation::{checked_path, create_directories, move_directory, sync_directory},
-    installer_process::InstallerChild,
+    installer_process::{InstallerChild, Outcome},
     jre_archive,
     storage::{self, Directory},
 };
@@ -55,7 +55,7 @@ pub fn host_key(host: Host) -> &'static str {
 pub fn distribution(host: Host) -> Result<Distribution, String> {
     let mut catalog: Catalog =
         serde_json::from_str(include_str!("../../android-toolchain.json")).map_err(error)?;
-    if catalog.version != 1 || catalog.checked_at != "2026-09-18" {
+    if catalog.version != 1 || catalog.checked_at != "2026-10-19" {
         return Err("Unsupported bundled Android tool catalog".into());
     }
     let distribution = catalog
@@ -432,20 +432,20 @@ pub async fn run(
     cancel: watch::Receiver<bool>,
     progress: impl Fn(&str),
 ) -> Result<String, String> {
-    let mut child = InstallerChild::spawn(command, timeout)?;
+    let program = Path::new(command.get_program())
+        .file_name()
+        .unwrap_or(command.get_program())
+        .to_string_lossy()
+        .into_owned();
+    let mut child =
+        InstallerChild::spawn(command, timeout).map_err(|error| format!("{program}: {error}"))?;
     loop {
         if *cancel.borrow() {
             child.cancel();
         }
         match child.poll() {
             Ok(Some(result)) if result.success => return Ok(result.output),
-            Ok(Some(result)) => {
-                return Err(format!(
-                    "{}\n{}",
-                    result.stop_reason.unwrap_or("Android tool failed"),
-                    result.output
-                ))
-            }
+            Ok(Some(result)) => return Err(tool_failure(&program, &result)),
             Ok(None) => {}
             Err(error) => {
                 child.cancel();
@@ -454,6 +454,20 @@ pub async fn run(
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
+}
+
+fn tool_failure(program: &str, result: &Outcome) -> String {
+    let status = match result.status.code() {
+        Some(code) => format!("exit code {code} (0x{:08X})", code as u32),
+        None => result.status.to_string(),
+    };
+    let reason = result.stop_reason.unwrap_or("Android tool failed");
+    let output = if result.output.trim().is_empty() {
+        "The child process produced no output."
+    } else {
+        &result.output
+    };
+    format!("{reason}: {program} ({status})\n{output}")
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -538,6 +552,77 @@ fn error(error: impl std::fmt::Display) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn failed_outcome(output: &str) -> Outcome {
+        #[cfg(unix)]
+        let status = {
+            use std::os::unix::process::ExitStatusExt;
+            std::process::ExitStatus::from_raw(23 << 8)
+        };
+        #[cfg(windows)]
+        let status = {
+            use std::os::windows::process::ExitStatusExt;
+            std::process::ExitStatus::from_raw(0xC0000135)
+        };
+        Outcome {
+            success: false,
+            status,
+            output: output.into(),
+            stop_reason: None,
+        }
+    }
+
+    #[test]
+    fn failed_tool_without_output_identifies_program_and_exit_status() {
+        let result = failed_outcome("");
+        let error = tool_failure("android-cli.exe", &result);
+        assert!(error.contains("Android tool failed: android-cli.exe"));
+        assert!(error.contains("exit code"));
+        assert!(error.contains("The child process produced no output."));
+        #[cfg(windows)]
+        assert!(error.contains("0xC0000135"));
+        #[cfg(unix)]
+        assert!(error.contains("exit code 23 (0x00000017)"));
+    }
+
+    #[test]
+    fn failed_tool_preserves_stop_reason_and_captured_output() {
+        let mut result = failed_outcome("bounded child stderr\n");
+        for reason in [
+            "Android installation cancelled",
+            "Android installation exceeded its deadline",
+        ] {
+            result.stop_reason = Some(reason);
+            let error = tool_failure("java", &result);
+            assert!(error.starts_with(reason));
+            assert!(error.ends_with("\nbounded child stderr\n"));
+        }
+    }
+
+    #[test]
+    fn bundled_cli_downloads_are_bound_to_the_verified_version() {
+        for host in [
+            Host::MacArm64,
+            Host::MacX64,
+            Host::LinuxX64,
+            Host::WindowsX64,
+        ] {
+            let cli = distribution(host).unwrap().cli;
+            let executable = if matches!(host, Host::WindowsX64) {
+                "android-cli.exe"
+            } else {
+                "android-cli"
+            };
+            assert_eq!(
+                cli.url,
+                format!(
+                    "https://dl.google.com/android/cli/{}/{}/{executable}",
+                    cli.version,
+                    host_key(host)
+                )
+            );
+        }
+    }
 
     fn candidate(root: &Path, before: Manifest) -> Journal {
         let host = Host::native().unwrap();

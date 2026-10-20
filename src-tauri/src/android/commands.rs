@@ -247,7 +247,7 @@ pub async fn android_state(window: Window, state: State<'_, Android>) -> Result<
         )
         .unwrap_or_default(),
         host: bootstrap::host_key(host).into(),
-        qualified: bootstrap::distribution(host)?.qualified,
+        qualified: host::qualified(host)?,
         acceleration: host::acceleration()?,
         sdk_path: directory.root.join("sdk").to_string_lossy().into_owned(),
         adb_path,
@@ -455,6 +455,9 @@ pub fn android_subscribe_frames(
     generation: String,
     size: super::frames::Size,
     frames: tauri::ipc::Channel<tauri::ipc::InvokeResponseBody>,
+    shared_frames: Option<String>,
+    compressed_frames: Option<bool>,
+    rle32_frames: Option<bool>,
 ) -> Result<u64, String> {
     crate::files::main_window(&window)?;
     if !window.is_visible().map_err(|e| e.to_string())?
@@ -464,17 +467,48 @@ pub fn android_subscribe_frames(
     }
     let manager = backend(&window, &state)?;
     let runtime = manager.runtime(&device_id, &generation)?;
-    manager.streams.subscribe(
-        &manager,
-        runtime,
-        generation,
-        size,
-        Box::new(move |packet| {
-            frames
-                .send(tauri::ipc::InvokeResponseBody::Raw(packet))
-                .map_err(|e| e.to_string())
-        }),
-    )
+    if shared_frames
+        .as_ref()
+        .is_some_and(|token| !super::storage::valid_id(token))
+    {
+        return Err("Invalid Android shared frame token".into());
+    }
+    let sink = super::frames::immediate(move |packet| {
+        frames
+            .send(tauri::ipc::InvokeResponseBody::Raw(packet))
+            .map_err(|e| e.to_string())
+    });
+    #[cfg(windows)]
+    let sink = match shared_frames {
+        Some(token) => super::shared_frames::sink(
+            &window,
+            token,
+            device_id,
+            generation.clone(),
+            state.frame_document(),
+            sink,
+        )?,
+        None => sink,
+    };
+    if cfg!(target_os = "linux") && (compressed_frames == Some(true) || rle32_frames == Some(true))
+    {
+        manager.streams.subscribe_with_encoding(
+            &manager,
+            runtime,
+            generation,
+            size,
+            sink,
+            if rle32_frames == Some(true) {
+                super::frames::Encoding::Rle32
+            } else {
+                super::frames::Encoding::Deflate
+            },
+        )
+    } else {
+        manager
+            .streams
+            .subscribe(&manager, runtime, generation, size, sink)
+    }
 }
 
 #[tauri::command]
@@ -513,6 +547,19 @@ pub async fn android_unsubscribe_frames(
     Ok(())
 }
 
+fn input_window_focused(window: &Window) -> Result<bool, String> {
+    #[cfg(windows)]
+    {
+        super::window_focus::is_focused(window)
+    }
+    #[cfg(not(windows))]
+    {
+        Ok(window.is_focused().map_err(|error| error.to_string())?
+            && window.is_visible().map_err(|error| error.to_string())?
+            && !window.is_minimized().map_err(|error| error.to_string())?)
+    }
+}
+
 #[tauri::command]
 pub async fn android_input(
     window: Window,
@@ -522,11 +569,7 @@ pub async fn android_input(
     input: super::input::Request,
 ) -> Result<super::input::Reply, String> {
     crate::files::main_window(&window)?;
-    if !matches!(input, super::input::Request::Blur { .. })
-        && (!window.is_focused().map_err(|e| e.to_string())?
-            || !window.is_visible().map_err(|e| e.to_string())?
-            || window.is_minimized().map_err(|e| e.to_string())?)
-    {
+    if !matches!(input, super::input::Request::Blur { .. }) && !input_window_focused(&window)? {
         return Err("Focus the Lomi window before controlling Android.".into());
     }
     let manager = backend(&window, &state)?;
@@ -670,14 +713,29 @@ pub async fn android_save_screenshot(
     .map_err(|e| e.to_string())?
 }
 
+#[cfg(windows)]
+pub fn page_load(view: &tauri::Webview, payload: &tauri::webview::PageLoadPayload<'_>) {
+    if view.label() == "main" && payload.event() == tauri::webview::PageLoadEvent::Started {
+        // Invalidate queued native posts before the replacement document loads.
+        // This never opens the lazy Android backend.
+        if let Some(android) = view.try_state::<Android>() {
+            android.document_started();
+        }
+    }
+}
+
 pub fn window_event(window: &Window, event: &tauri::WindowEvent) {
     if window.label() != "main" {
         return;
     }
-    if matches!(
-        event,
-        tauri::WindowEvent::Focused(false) | tauri::WindowEvent::Destroyed
-    ) {
+    #[cfg(windows)]
+    let internal_focus_transfer = matches!(event, tauri::WindowEvent::Focused(false))
+        && input_window_focused(window).unwrap_or(false);
+    #[cfg(not(windows))]
+    let internal_focus_transfer = false;
+    if matches!(event, tauri::WindowEvent::Destroyed)
+        || (matches!(event, tauri::WindowEvent::Focused(false)) && !internal_focus_transfer)
+    {
         if let Some(manager) = window.state::<Android>().loaded() {
             super::input::Router::release_from_host(manager);
         }

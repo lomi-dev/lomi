@@ -362,7 +362,10 @@ mod tests {
         let mut command = environment::command(&cli, &owner.root, &sdk, None, 15037).unwrap();
         command
             .arg("--no-metrics")
-            .arg(format!("--sdk={}", sdk.display()))
+            .arg(format!(
+                "--sdk={}",
+                environment::external_path(&sdk).display()
+            ))
             .args(["sdk", "install", "platform-tools@37.0.1"]);
         let mut child = InstallerChild::spawn(command, Duration::from_secs(120)).unwrap();
         let outcome = loop {

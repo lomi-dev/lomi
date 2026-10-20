@@ -41,11 +41,11 @@ export function generationBytes(generation: string): Uint8Array {
   );
 }
 
-/** Borrows the binary IPC allocation; no pixel copying or JSON conversion. */
-export function decodeFrame(
+function frameHeader(
   bytes: ArrayBuffer,
   generation: Uint8Array,
-): AndroidFrame {
+  expectedEncoding: 0 | 1 | 2,
+) {
   if (
     !(bytes instanceof ArrayBuffer) ||
     bytes.byteLength < 1024 ||
@@ -76,17 +76,22 @@ export function decodeFrame(
     epoch < 1 ||
     sequence < 1 ||
     rotation > 3 ||
-    encoding !== 0 ||
+    encoding !== expectedEncoding ||
     width > 1280 ||
     height > 1280 ||
     width * height > MAX_ANDROID_PIXELS ||
     (width === 0) !== (height === 0) ||
-    length !== width * height * 4 ||
+    (encoding === 0
+      ? length !== width * height * 4
+      : length < 1 || length > width * height * 4) ||
     Math.max(ANDROID_FRAME_HEADER + length, 1024) !== bytes.byteLength
   )
     throw new Error(
       "Invalid Android frame dimensions or metadata. Reconnect the panel.",
     );
+  const padding = new Uint8Array(bytes, ANDROID_FRAME_HEADER + length);
+  if (padding.some((value) => value !== 0))
+    throw new Error("Invalid Android frame padding. Reconnect the panel.");
   return {
     epoch,
     sequence,
@@ -94,8 +99,188 @@ export function decodeFrame(
     width,
     height,
     rotation: rotation as AndroidFrame["rotation"],
+    length,
+  };
+}
+
+/** Borrows the binary IPC allocation; no pixel copying or JSON conversion. */
+export function decodeFrame(
+  bytes: ArrayBuffer,
+  generation: Uint8Array,
+): AndroidFrame {
+  const { length, ...frame } = frameHeader(bytes, generation, 0);
+  return {
+    ...frame,
     pixels: new Uint8Array(bytes, ANDROID_FRAME_HEADER, length),
   };
+}
+
+let deflateSupported: boolean | undefined;
+export function supportsCompressedFrames() {
+  if (deflateSupported !== undefined) return deflateSupported;
+  try {
+    new DecompressionStream("deflate");
+    return (deflateSupported = true);
+  } catch {
+    return (deflateSupported = false);
+  }
+}
+
+function ownedPixels(
+  bytes: ArrayBuffer,
+  expected: number,
+  output?: Uint8Array<ArrayBuffer>,
+): Uint8Array<ArrayBuffer> {
+  return output instanceof Uint8Array &&
+    output.buffer instanceof ArrayBuffer &&
+    output.byteOffset === 0 &&
+    output.byteLength === expected &&
+    output.buffer.byteLength === expected &&
+    output.buffer !== bytes
+    ? output
+    : new Uint8Array(expected);
+}
+
+const rle32LittleEndian =
+  new Uint8Array(new Uint32Array([0x01020304]).buffer)[0] === 4;
+
+/** Decode bounded RGBA pixel runs into owned storage, preserving byte order. */
+export function decodeRLE32Frame(
+  bytes: ArrayBuffer,
+  generation: Uint8Array,
+  signal: AbortSignal,
+  output?: Uint8Array<ArrayBuffer>,
+): AndroidFrame {
+  signal.throwIfAborted();
+  const { length, ...frame } = frameHeader(bytes, generation, 2);
+  const pixels = ownedPixels(bytes, frame.width * frame.height * 4, output);
+  const payload = new Uint8Array(bytes, ANDROID_FRAME_HEADER, length);
+  const input = new DataView(bytes, ANDROID_FRAME_HEADER, length);
+  const words = rle32LittleEndian ? new Uint32Array(pixels.buffer) : null;
+  let from = 0,
+    to = 0,
+    tokens = 0;
+  while (from < length) {
+    if ((tokens++ & 255) === 0) signal.throwIfAborted();
+    if (length - from < 4) throw new Error("Truncated Android RLE32 token.");
+    const token = input.getUint32(from, true);
+    from += 4;
+    const count = token & 0x7fffffff;
+    if (!count || count > (pixels.length - to) / 4)
+      throw new Error("Invalid Android RLE32 count or pixel bounds.");
+    if (token & 0x80000000) {
+      if (length - from < 4) throw new Error("Truncated Android RLE32 repeat.");
+      const end = to + count * 4;
+      if (words) words.fill(input.getUint32(from, true), to / 4, end / 4);
+      else {
+        const a = payload[from],
+          b = payload[from + 1],
+          c = payload[from + 2],
+          d = payload[from + 3];
+        for (let i = to; i < end; i += 4) {
+          pixels[i] = a;
+          pixels[i + 1] = b;
+          pixels[i + 2] = c;
+          pixels[i + 3] = d;
+        }
+      }
+      to = end;
+      from += 4;
+    } else {
+      const countBytes = count * 4;
+      if (countBytes > length - from)
+        throw new Error("Truncated Android RLE32 literal.");
+      pixels.set(payload.subarray(from, from + countBytes), to);
+      from += countBytes;
+      to += countBytes;
+    }
+  }
+  if (to !== pixels.length) throw new Error("Truncated Android RLE32 pixels.");
+  signal.throwIfAborted();
+  return { ...frame, pixels };
+}
+
+/** Inflate into bounded owned storage; no Blob, URL or network path. */
+export async function decodeCompressedFrame(
+  bytes: ArrayBuffer,
+  generation: Uint8Array,
+  signal: AbortSignal,
+  output?: Uint8Array<ArrayBuffer>,
+): Promise<AndroidFrame> {
+  signal.throwIfAborted();
+  const { length, ...frame } = frameHeader(bytes, generation, 1);
+  signal.throwIfAborted();
+  const payload = new Uint8Array(bytes, ANDROID_FRAME_HEADER, length);
+  const expected = frame.width * frame.height * 4;
+  const pixels = ownedPixels(bytes, expected, output);
+  const transform = new DecompressionStream("deflate");
+  const writer = transform.writable.getWriter();
+  const reader = transform.readable.getReader();
+  let stopped = false;
+  let cancellation: Promise<PromiseSettledResult<unknown>[]> | undefined;
+  const stop = (reason?: unknown) => {
+    if (stopped) return;
+    stopped = true;
+    // Cancel the readable first to release transform backpressure, including a
+    // pending writer.write. Always retain/consume both cancellation promises.
+    cancellation = Promise.allSettled([
+      reader.cancel(reason),
+      writer.abort(reason),
+    ]);
+  };
+  const cancel = () => stop(signal.reason);
+  signal.addEventListener("abort", cancel, { once: true });
+  if (signal.aborted) cancel();
+  let feedFailed = false;
+  let feedFailure: unknown;
+  const feeding = (async () => {
+    for (let offset = 0; offset < payload.length;) {
+      signal.throwIfAborted();
+      if (stopped) return;
+      // Preserve the native expansion bound: never write more than 4096 bytes.
+      const end = Math.min(offset + 4096, payload.length);
+      await writer.write(payload.subarray(offset, end));
+      offset = end;
+    }
+    signal.throwIfAborted();
+    if (!stopped) await writer.close();
+  })().catch((error: unknown) => {
+    feedFailed = true;
+    feedFailure = error;
+    // A rejected writer must also wake a pending reader, even for a codec
+    // implementation which does not propagate the writable error itself.
+    stop(error);
+  });
+  let written = 0;
+  try {
+    for (;;) {
+      signal.throwIfAborted();
+      const { value, done } = await reader.read();
+      signal.throwIfAborted();
+      if (done) break;
+      if (
+        !(value instanceof Uint8Array) ||
+        value.length > pixels.length - written
+      )
+        throw new Error("Android decompressed frame exceeds its pixel bounds.");
+      pixels.set(value, written);
+      written += value.length;
+    }
+    await feeding;
+    if (feedFailed) throw feedFailure;
+    if (written !== pixels.length)
+      throw new Error("Android decompressed frame is truncated.");
+  } finally {
+    signal.removeEventListener("abort", cancel);
+    stop();
+    // Keep the packet borrowed until every write/close and cancellation settles.
+    await feeding;
+    await cancellation;
+    reader.releaseLock();
+    writer.releaseLock();
+  }
+  signal.throwIfAborted();
+  return { ...frame, pixels };
 }
 
 /** Coordinates are physical guest pixels in its natural orientation. */

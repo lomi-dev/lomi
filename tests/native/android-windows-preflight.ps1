@@ -24,36 +24,81 @@ using System.Runtime.InteropServices;
 public static class AndroidPreflight {
     [DllImport("kernel32", CharSet = CharSet.Unicode, SetLastError = true)]
     static extern IntPtr LoadLibraryExW(string name, IntPtr file, uint flags);
-    [DllImport("kernel32", CharSet = CharSet.Ansi)]
+    [DllImport("kernel32", CharSet = CharSet.Ansi, SetLastError = true)]
     static extern IntPtr GetProcAddress(IntPtr library, string name);
     [DllImport("kernel32")]
     static extern bool FreeLibrary(IntPtr library);
     [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-    delegate int Query(int code, out int present, uint size, out uint written);
-    public static bool Present() {
+    delegate int Query(int code, out long capability, uint size, out uint written);
+    public sealed class CapabilityDiagnostic {
+        public bool available;
+        public string diagnostic;
+        public bool dllLoaded;
+        public bool entryPointFound;
+        public int? win32Error;
+        public string hresult;
+        public uint bufferSize = 8;
+        public uint? written;
+        public int? present;
+    }
+    public static CapabilityDiagnostic Probe() {
+        var evidence = new CapabilityDiagnostic();
         var library = LoadLibraryExW("WinHvPlatform.dll", IntPtr.Zero, 0x800);
-        if (library == IntPtr.Zero) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        if (library == IntPtr.Zero) {
+            evidence.win32Error = Marshal.GetLastWin32Error();
+            evidence.diagnostic = "WinHvPlatform.dll could not load from System32; Windows Hypervisor Platform may be missing or require repair: " + new System.ComponentModel.Win32Exception(evidence.win32Error.Value).Message;
+            return evidence;
+        }
+        evidence.dllLoaded = true;
         try {
             var address = GetProcAddress(library, "WHvGetCapability");
-            if (address == IntPtr.Zero) throw new Exception("WHvGetCapability is absent");
+            if (address == IntPtr.Zero) {
+                evidence.win32Error = Marshal.GetLastWin32Error();
+                evidence.diagnostic = "WinHvPlatform.dll loaded, but WHvGetCapability is absent.";
+                return evidence;
+            }
+            evidence.entryPointFound = true;
             var query = (Query)Marshal.GetDelegateForFunctionPointer(address, typeof(Query));
-            int present; uint written;
-            int result = query(0, out present, 4, out written);
-            Marshal.ThrowExceptionForHR(result);
-            if (written != 4) throw new Exception("Unexpected WHPX capability size");
-            return present != 0;
+            // The API requires at least 8 aligned bytes, even for the four-byte BOOL.
+            long capability; uint written;
+            int result = query(0, out capability, evidence.bufferSize, out written);
+            evidence.hresult = "0x" + result.ToString("X8");
+            evidence.written = written;
+            if (result < 0) {
+                evidence.diagnostic = "WHvGetCapability failed (HRESULT=" + evidence.hresult + ").";
+            } else if (written != 4) {
+                evidence.diagnostic = "WHvGetCapability returned an unexpected capability size (written=" + written + "; expected 4 bytes).";
+            } else {
+                evidence.present = unchecked((int)capability);
+                evidence.available = evidence.present.Value != 0;
+                evidence.diagnostic = evidence.available
+                    ? "WHvGetCapability reports HypervisorPresent=true."
+                    : "WHvGetCapability succeeded and reports HypervisorPresent=false; no running hypervisor is available. Check firmware virtualization, Windows Hypervisor Platform and nested virtualization when running in a host VM, then restart Windows.";
+            }
+            return evidence;
         } finally { FreeLibrary(library); }
     }
     [DllImport("user32")]
     public static extern uint GetDpiForSystem();
+    [DllImport("kernel32")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool IsProcessorFeaturePresent(uint feature);
 }
 '@
-    @{ available = [AndroidPreflight]::Present() }
+    [AndroidPreflight]::Probe()
 }
 if ($results.checks.whpx.status -eq 'PASS' -and !$results.checks.whpx.value.available) {
     $results.checks.whpx.status = 'FAIL'
 }
 Record 'systemDpi' { [AndroidPreflight]::GetDpiForSystem() }
+Record 'processorFeatures' {
+    # These are diagnostic hints, not proof of firmware settings inside a VM
+    # or when Hyper-V/VBS owns the virtualization extensions.
+    @{
+        secondLevelAddressTranslation = [AndroidPreflight]::IsProcessorFeaturePresent(20)
+        virtualizationFirmwareEnabled = [AndroidPreflight]::IsProcessorFeaturePresent(21)
+    }
+}
 Record 'webview2' {
     $versions = @()
     foreach ($base in @("${env:ProgramFiles(x86)}/Microsoft/EdgeWebView/Application", "$env:LOCALAPPDATA/Microsoft/EdgeWebView/Application")) {

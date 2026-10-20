@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "checkedAt": "2026-09-18",
+  "checkedAt": "2026-10-19",
   "hosts": {
     "darwin_arm64": {
       "cli": {
@@ -20,7 +20,7 @@
     "darwin_x86_64": {
       "cli": {
         "version": "1.0.16261425",
-        "url": "https://dl.google.com/android/cli/latest/darwin_x86_64/android-cli",
+        "url": "https://dl.google.com/android/cli/1.0.16261425/darwin_x86_64/android-cli",
         "size": 85512528,
         "sha256": "557060b2dbbe33d35947a679d0afaba1fb31f7275c734ef4a5e80e80e63d8541"
       },
@@ -35,7 +35,7 @@
     "linux_x86_64": {
       "cli": {
         "version": "1.0.16261425",
-        "url": "https://dl.google.com/android/cli/latest/linux_x86_64/android-cli",
+        "url": "https://dl.google.com/android/cli/1.0.16261425/linux_x86_64/android-cli",
         "size": 87324848,
         "sha256": "847e24a7d1711561a8739629b59c6e09b5a80dbfd98045d6ce7c661f46ecbc81"
       },
@@ -49,10 +49,10 @@
     },
     "windows_x86_64": {
       "cli": {
-        "version": "1.0.16261425",
-        "url": "https://dl.google.com/android/cli/latest/windows_x86_64/android-cli.exe",
-        "size": 84612760,
-        "sha256": "203f647c50a3dfed38ccc8337610fc08618161471c9472a16de0abfa8248565e"
+        "version": "1.0.16625370",
+        "url": "https://dl.google.com/android/cli/1.0.16625370/windows_x86_64/android-cli.exe",
+        "size": 87366808,
+        "sha256": "3782acdbdc2a2f589f81de5b853a74623765d018dd6a91069028a2a8ea6a3554"
       },
       "java": {
         "version": "21.0.12.1+1",
@@ -60,7 +60,7 @@
         "size": 48999141,
         "sha256": "d35f31e712f0fcf6ac5a093edc90204fbff22f720ba3950bd09d331d5e621636"
       },
-      "qualified": false
+      "qualified": true
     }
   }
 }

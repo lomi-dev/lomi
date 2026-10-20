@@ -1,12 +1,17 @@
 import { Channel } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { api, errorMessage, native } from "../api";
+import { api, errorMessage, native, windows } from "../api";
 import type { AndroidTab } from "../model";
-import { AndroidCanvas } from "./canvas";
+import { AndroidCanvas, type AndroidRenderer } from "./canvas";
+import { LinuxCanvas2D } from "./canvas-2d";
 import {
   decodeFrame,
+  decodeCompressedFrame,
+  decodeRLE32Frame,
+  supportsCompressedFrames,
+  ANDROID_FRAME_HEADER,
   generationBytes,
-  releaseFrame,
+  releaseFrame as detachFrame,
   previewSize,
   type AndroidFrame,
 } from "./frame";
@@ -14,12 +19,42 @@ import { androidSnapshot, observeAndroid, refreshAndroid } from "./state";
 import { changeAndroid, reportAndroidError } from "./service";
 import { attachInput, releaseInput } from "./view-input";
 import {
+  ownFrame,
+  SharedFrameBroker,
+  type FramePacket,
+  type SharedFrameBridge,
+} from "./shared-frames";
+import {
   boundedZoom,
   relativeZoom,
   screenSize,
   zoomStep,
   type ScreenZoom,
 } from "./zoom";
+
+function releaseFrame(bytes: ArrayBuffer) {
+  // Native stress measurements favor normal GC ownership on WebView2.
+  if (!windows) detachFrame(bytes);
+}
+
+let sharedBroker: SharedFrameBroker | undefined;
+function windowsFrameBroker() {
+  if (!native || !windows) return;
+  const bridge = (
+    window as unknown as { chrome?: { webview?: SharedFrameBridge } }
+  ).chrome?.webview;
+  if (
+    typeof bridge?.addEventListener !== "function" ||
+    typeof bridge.releaseBuffer !== "function"
+  )
+    return;
+  try {
+    return (sharedBroker ??= new SharedFrameBroker(bridge));
+  } catch {
+    // Older WebView2 versions may reject this event; keep the binary channel.
+    return;
+  }
+}
 
 interface View {
   id: string;
@@ -30,7 +65,7 @@ interface View {
   overview: boolean;
   zoom: ScreenZoom;
   visible: boolean;
-  renderer?: AndroidCanvas;
+  renderer?: AndroidRenderer;
   generation?: string;
   resize: ResizeObserver;
   cleanupInput?: ReturnType<typeof attachInput>;
@@ -43,7 +78,11 @@ interface Stream {
   size: string;
   active: boolean;
   frame: number;
-  pending?: ArrayBuffer;
+  pending?: FramePacket;
+  decoding?: FramePacket;
+  decodeAbort: AbortController;
+  scratchPixels?: Uint8Array<ArrayBuffer>;
+  shared?: { token: string; dispose: () => void };
   replacementUntil?: number;
   channel: Channel<ArrayBuffer>;
 }
@@ -282,11 +321,16 @@ function schedule() {
 
 async function disconnect(deviceId: string, stream: Stream, replacing = false) {
   stream.active = false;
+  stream.decodeAbort.abort();
+  // An in-flight decoder retains its local reference until cancellation settles.
+  // Never detach reusable pixels when dropping the stream's ownership.
+  stream.scratchPixels = undefined;
+  stream.shared?.dispose();
   if (streams.get(deviceId) === stream) streams.delete(deviceId);
   if (!replacing) checkAgentInput();
   cancelAnimationFrame(stream.frame);
   if (stream.pending) {
-    releaseFrame(stream.pending);
+    stream.pending.release();
     stream.pending = undefined;
   }
   if (stream.epoch)
@@ -729,7 +773,11 @@ async function synchronize() {
     const restoreScroll = !view.renderer;
     if (!view.renderer) {
       try {
-        view.renderer = new AndroidCanvas((message) => {
+        const Renderer =
+          native && androidSnapshot()?.host === "linux_x86_64"
+            ? LinuxCanvas2D
+            : AndroidCanvas;
+        view.renderer = new Renderer((message) => {
           error(view.deviceId, message);
           disposeView(view);
           const stream = streams.get(view.deviceId);
@@ -770,12 +818,16 @@ async function synchronize() {
     const replacing = old?.active && old.generation === size.generation;
     if (old) void disconnect(deviceId, old, replacing);
     const generation = generationBytes(size.generation);
+    const linuxFrames = native && androidSnapshot()?.host === "linux_x86_64";
+    const compressedFrames = linuxFrames && supportsCompressedFrames();
+    const rle32Frames = linuxFrames;
     const channel = new Channel<ArrayBuffer>();
     const stream: Stream = {
       generation: size.generation,
       size: key,
       epoch: 0,
       active: true,
+      decodeAbort: new AbortController(),
       frame: 0,
       channel,
       replacementUntil: replacing ? performance.now() + 5000 : undefined,
@@ -785,13 +837,18 @@ async function synchronize() {
       window.setTimeout(() => {
         if (streams.get(deviceId) === stream) checkAgentInput();
       }, 5000);
-    channel.onmessage = (bytes) => {
+    const fail = (reason: unknown) => {
+      if (!stream.active || streams.get(deviceId) !== stream) return;
+      error(deviceId, errorMessage(reason));
+      void disconnect(deviceId, stream);
+    };
+    const receive = (packet: FramePacket) => {
       if (!stream.active || streams.get(deviceId) !== stream || !mainVisible) {
-        releaseFrame(bytes);
+        packet.release();
         return;
       }
-      if (stream.pending) {
-        releaseFrame(bytes);
+      if (stream.pending || stream.decoding) {
+        packet.release();
         error(
           deviceId,
           "Android sent another frame before acknowledgement. Reconnect the panel.",
@@ -799,12 +856,13 @@ async function synchronize() {
         void disconnect(deviceId, stream);
         return;
       }
-      stream.pending = bytes;
-      const render = () => {
+      stream.pending = packet;
+      const render = async () => {
         // Disconnect owns and releases a queued frame. A microtask cannot be
         // cancelled, so it must never draw, ACK or release that frame again.
-        if (stream.pending !== bytes) return;
+        if (stream.pending !== packet) return;
         stream.pending = undefined;
+        stream.decoding = packet;
         stream.frame = 0;
         try {
           if (
@@ -813,8 +871,45 @@ async function synchronize() {
             !mainVisible
           )
             return;
-          const frame = decodeFrame(bytes, generation);
+          const encoding =
+            packet.bytes.byteLength >= ANDROID_FRAME_HEADER
+              ? new DataView(packet.bytes).getUint32(60, true)
+              : 0;
+          const compressed = encoding === 1 || encoding === 2;
+          if (
+            (encoding === 1 && !compressedFrames) ||
+            (encoding === 2 && !rle32Frames)
+          )
+            throw new Error(
+              "Unexpected compressed Android frame. Reconnect the panel.",
+            );
+          const frame =
+            encoding === 2
+              ? decodeRLE32Frame(
+                  packet.bytes,
+                  generation,
+                  stream.decodeAbort.signal,
+                  stream.scratchPixels,
+                )
+              : encoding === 1
+                ? await decodeCompressedFrame(
+                    packet.bytes,
+                    generation,
+                    stream.decodeAbort.signal,
+                    stream.scratchPixels,
+                  )
+                : decodeFrame(packet.bytes, generation);
+          if (
+            !stream.active ||
+            streams.get(deviceId) !== stream ||
+            !mainVisible ||
+            androidSnapshot()?.statuses.find(
+              (status) => status.deviceId === deviceId,
+            )?.generation !== stream.generation
+          )
+            return;
           if (stream.epoch && stream.epoch !== frame.epoch) return;
+          if (compressed) stream.scratchPixels = frame.pixels;
           stream.epoch = frame.epoch;
           const display = androidSnapshot()?.statuses.find(
             (status) => status.deviceId === deviceId,
@@ -880,21 +975,46 @@ async function synchronize() {
             void disconnect(deviceId, stream);
           });
         } catch (reason) {
-          error(deviceId, errorMessage(reason));
-          void disconnect(deviceId, stream);
+          fail(reason);
         } finally {
-          releaseFrame(bytes);
+          if (stream.decoding === packet) stream.decoding = undefined;
+          packet.release();
         }
       };
       if (native && document.visibilityState === "hidden")
         queueMicrotask(render);
       else stream.frame = requestAnimationFrame(render);
     };
+    channel.onmessage = (bytes) => {
+      const packet = ownFrame(bytes, releaseFrame, fail);
+      try {
+        receive(packet);
+      } catch (reason) {
+        packet.release();
+        fail(reason);
+      }
+    };
+    const broker = windowsFrameBroker();
+    if (broker) {
+      const token = crypto.randomUUID();
+      stream.shared = {
+        token,
+        dispose: broker.subscribe(token, {
+          deviceId,
+          generation: stream.generation,
+          receive,
+          onError: fail,
+        }),
+      };
+    }
     void api<number>("android_subscribe_frames", {
       deviceId,
       generation: size.generation,
       size: { width: size.width, height: size.height },
       frames: channel,
+      sharedFrames: stream.shared?.token,
+      compressedFrames,
+      rle32Frames,
     })
       .then((epoch) => {
         stream.epoch = epoch;

@@ -18,6 +18,17 @@ use tonic::{transport::Channel as GrpcChannel, Request};
 use crate::android_protocol as protocol;
 use protocol::{emulator_controller_client::EmulatorControllerClient, Image, ImageFormat};
 
+#[cfg(windows)]
+#[path = "android-windows-input.rs"]
+mod windows_input;
+
+#[cfg(target_os = "linux")]
+#[path = "android-linux-input.rs"]
+mod linux_input;
+#[cfg(target_os = "linux")]
+#[path = "android-linux-product.rs"]
+pub(super) mod linux_product;
+
 const MAX_PIXELS: u32 = 1920 * 1080;
 const MAX_MESSAGE: usize = 9 * 1024 * 1024;
 const FRAME_HEADER: usize = 60;
@@ -480,7 +491,9 @@ pub async fn android_probe_control(
         "process-info" => {
             #[cfg(target_os = "macos")]
             let webkit = webkit_processes(window.app_handle()).await?;
-            #[cfg(not(target_os = "macos"))]
+            #[cfg(target_os = "linux")]
+            let webkit = linux_product::processes()?;
+            #[cfg(not(any(target_os = "macos", target_os = "linux")))]
             let webkit = serde_json::Value::Null;
             let processes = state.processes.lock().unwrap();
             Ok(serde_json::json!({
@@ -1001,8 +1014,18 @@ pub async fn android_probe_native_text(
         }).map_err(|e| e.to_string())?;
         rx.await.map_err(|e| e.to_string())?
     }
-    #[cfg(not(target_os = "macos"))]
-    Err("Native host text fixture has only been implemented for macOS".into())
+    #[cfg(windows)]
+    {
+        tauri::async_runtime::spawn_blocking(move || windows_input::text(&window, &action, &text))
+            .await
+            .map_err(|e| e.to_string())?
+    }
+    #[cfg(target_os = "linux")]
+    {
+        linux_input::text(&window, action, text).await
+    }
+    #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
+    Err("Native host text fixture is unavailable on this platform".into())
 }
 
 #[tauri::command]
@@ -1017,6 +1040,8 @@ pub async fn android_probe_native_pointer(
         "down" => 1usize,
         "up" => 2usize,
         "drag" => 6usize,
+        #[cfg(any(windows, target_os = "linux"))]
+        "move" | "wheel-up" | "wheel-down" => 0usize,
         _ => return Err("Invalid native pointer phase".into()),
     };
     let size = window
@@ -1071,10 +1096,22 @@ pub async fn android_probe_native_pointer(
             .map_err(|error| error.to_string())?;
         receive.await.map_err(|error| error.to_string())?
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
     {
         let _ = kind;
-        Err("Native pointer fixture is qualified only for macOS".into())
+        tauri::async_runtime::spawn_blocking(move || windows_input::pointer(&window, &phase, x, y))
+            .await
+            .map_err(|e| e.to_string())?
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let _ = kind;
+        linux_input::pointer(&window, phase, x, y).await
+    }
+    #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
+    {
+        let _ = kind;
+        Err("Native pointer fixture is unavailable on this platform".into())
     }
 }
 

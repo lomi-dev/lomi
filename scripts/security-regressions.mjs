@@ -15,6 +15,8 @@ export function securitySuites(platform = process.platform) {
     ["lomi", "auth::"],
     ["lomi", "remote::"],
     ["lomi", "terminal::tests::remote_"],
+    ["lomi", "android::"],
+    ...(platform === "win32" ? [["lomi-control-core", "process_tree::"]] : []),
     ...(platform === "win32" ? [] : unixSuites),
     ["lomi-remote-crypto", ""],
   ];

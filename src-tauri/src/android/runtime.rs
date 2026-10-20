@@ -21,11 +21,15 @@ use std::{
 };
 use tokio::{
     io::AsyncReadExt,
-    process::Child,
     sync::{mpsc, oneshot, watch},
     task::JoinHandle,
     time::Instant,
 };
+
+#[cfg(windows)]
+use super::emulator_process::Child;
+#[cfg(not(windows))]
+use tokio::process::Child;
 
 const LOG_LIMIT: usize = 64 * 1024;
 const BOOT_TIMEOUT: Duration = Duration::from_secs(120);
@@ -382,7 +386,11 @@ impl Ports {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+// Keep record publication and conditional removal synchronous under one lock.
+// No caller holds this guard across an await or process operation.
+static RUNTIME_RECORD_PUBLICATION: Mutex<()> = Mutex::new(());
+
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Record {
     version: u32,
@@ -401,6 +409,16 @@ struct Record {
 impl Record {
     fn current_process(&self, root: &Path) -> Result<Option<Identity>, String> {
         if self.process.matches_or_exited()? {
+            #[cfg(windows)]
+            {
+                let mut process = self.process.clone();
+                process.executable = process
+                    .executable
+                    .canonicalize()
+                    .map_err(|e| e.to_string())?;
+                return Ok(Some(process));
+            }
+            #[cfg(not(windows))]
             return Ok(Some(self.process.clone()));
         }
         if self.launching {
@@ -467,6 +485,36 @@ fn previous(path: &Path, device_id: &str) -> Result<Option<Record>, String> {
     Ok(old)
 }
 
+fn write_runtime_record(path: &Path, record: &Record) -> Result<(), String> {
+    let _guard = RUNTIME_RECORD_PUBLICATION
+        .lock()
+        .map_err(|_| "Android runtime record lock failed")?;
+    storage::write(path, record)
+}
+
+fn remove_recovered_record(path: &Path, device_id: &str, expected: &Record) -> Result<(), String> {
+    remove_recovered_record_after_check(path, device_id, expected, || {})
+}
+
+fn remove_recovered_record_after_check(
+    path: &Path,
+    device_id: &str,
+    expected: &Record,
+    checked: impl FnOnce(),
+) -> Result<(), String> {
+    let _guard = RUNTIME_RECORD_PUBLICATION
+        .lock()
+        .map_err(|_| "Android runtime record lock failed")?;
+    let Some(current) = previous(path, device_id)? else {
+        return Ok(());
+    };
+    if current != *expected {
+        return Err("The Android recovery record changed before cleanup. Its replacement was preserved; retry Stop.".into());
+    }
+    checked();
+    fs::remove_file(path).map_err(|error| error.to_string())
+}
+
 pub fn recovered_statuses(
     root: &Path,
     known: &std::collections::BTreeSet<String>,
@@ -521,6 +569,7 @@ pub async fn stop_recovered(
         return Ok(stopped());
     };
     let Some(process) = record.current_process(&root)? else {
+        remove_recovered_record(&path, &device_id, &record)?;
         return Ok(stopped());
     };
     let engine = root
@@ -592,9 +641,7 @@ pub async fn stop_recovered(
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    if previous(&path, &device_id)?.is_some_and(|current| current.generation == record.generation) {
-        fs::remove_file(path).map_err(|e| e.to_string())?;
-    }
+    remove_recovered_record(&path, &device_id, &record)?;
     Ok(stopped())
 }
 
@@ -638,6 +685,8 @@ pub(super) fn check_previous(path: &Path, device_id: &str) -> Result<(), String>
 
 struct Process {
     child: Child,
+    #[cfg(windows)]
+    runtime_identity: Arc<Mutex<Option<Identity>>>,
     ports: Ports,
     generation: String,
     guest: adb::Guest,
@@ -719,17 +768,23 @@ impl Process {
                 &format!("androidboot.lomi.device={}", plan.device_id),
                 "-adb-path",
             ])
-            .arg(plan.root.join("runtime/no-external-adb"))
+            .arg(environment::external_path(
+                &plan.root.join("runtime/no-external-adb"),
+            ))
             .arg("-grpc-allowlist")
-            .arg(&allowlist)
+            .arg(environment::external_path(&allowlist))
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         // Emulator has no socket-activation API. Reserve the whole pair until spawn;
         // a cross-application bind race fails authentication/boot, never selects a peer.
         ports.reservations.clear();
+        #[cfg(not(windows))]
         let mut child = tokio::process::Command::from(command)
             .spawn()
+            .map_err(|e| format!("Cannot start Android: {e}. Repair tools in Android settings."))?;
+        #[cfg(windows)]
+        let mut child = Child::spawn(&mut command)
             .map_err(|e| format!("Cannot start Android: {e}. Repair tools in Android settings."))?;
         let output = Arc::new(Mutex::new(VecDeque::with_capacity(LOG_LIMIT)));
         let mut readers = Vec::new();
@@ -741,6 +796,8 @@ impl Process {
         }
         Ok(Self {
             child,
+            #[cfg(windows)]
+            runtime_identity: Arc::new(Mutex::new(None)),
             guest: adb::Guest {
                 server: adb::Server {
                     port: plan.adb_port,
@@ -781,12 +838,14 @@ impl Process {
                 storage::write_bytes(&parent.join(format!("{device}.log")), self.log().as_bytes());
         }
         let _ = super::maintenance::prune_logs(root);
-        if storage::read::<Record>(&self.record)
-            .ok()
-            .flatten()
-            .is_some_and(|record| record.generation == self.generation)
-        {
-            let _ = fs::remove_file(&self.record);
+        if let Ok(_guard) = RUNTIME_RECORD_PUBLICATION.lock() {
+            if storage::read::<Record>(&self.record)
+                .ok()
+                .flatten()
+                .is_some_and(|record| record.generation == self.generation)
+            {
+                let _ = fs::remove_file(&self.record);
+            }
         }
         let _ = fs::remove_file(&self.allowlist);
     }
@@ -923,6 +982,10 @@ impl Actor {
                 });
                 let plan = self.plan.clone();
                 let pid = process.child.id().expect("a newly spawned child has a PID");
+                #[cfg(windows)]
+                let membership = process.child.membership();
+                #[cfg(windows)]
+                let runtime_identity = process.runtime_identity.clone();
                 let port = process.ports.grpc;
                 let guest = process.guest.clone();
                 let record = process.record.clone();
@@ -932,7 +995,7 @@ impl Actor {
                 let claimed = process.claimed.clone();
                 let generation = process.generation.clone();
                 let recorded = Identity::read(pid).and_then(|identity| {
-                    storage::write(
+                    write_runtime_record(
                         &record,
                         &Record {
                             version: 1,
@@ -961,6 +1024,10 @@ impl Actor {
                             guard,
                             plan,
                             pid,
+                            #[cfg(windows)]
+                            membership,
+                            #[cfg(windows)]
+                            runtime_identity,
                             port,
                             guest,
                             record,
@@ -1287,6 +1354,37 @@ impl Actor {
 
     async fn tick(&mut self) {
         if let Some(process) = &mut self.process {
+            #[cfg(windows)]
+            {
+                let runtime_alive = process
+                    .runtime_identity
+                    .lock()
+                    .map_err(|_| "Android process identity lock failed".to_string())
+                    .and_then(|identity| {
+                        identity
+                            .as_ref()
+                            .map(Identity::matches_or_exited)
+                            .transpose()
+                            .map(|alive| alive.unwrap_or(true))
+                    });
+                match runtime_alive {
+                    Ok(false) => {
+                        // QEMU can exit before the waiting launcher is scheduled.
+                        // Finish the entire owned job before reporting exit.
+                        if let Err(error) = process.child.start_kill() {
+                            self.failed_stop(format!(
+                                "Cannot finish Android process exit: {error}"
+                            ));
+                            return;
+                        }
+                    }
+                    Err(error) => {
+                        self.failed_stop(error);
+                        return;
+                    }
+                    Ok(true) => {}
+                }
+            }
             match process.child.try_wait() {
                 Ok(Some(exit)) => {
                     self.exited(exit).await;
@@ -1342,6 +1440,10 @@ struct Boot {
     guard: Option<DispatchGuard>,
     plan: Launch,
     pid: u32,
+    #[cfg(windows)]
+    membership: lomi_control_core::process_tree::Membership,
+    #[cfg(windows)]
+    runtime_identity: Arc<Mutex<Option<Identity>>>,
     port: u16,
     guest: adb::Guest,
     record: PathBuf,
@@ -1351,11 +1453,93 @@ struct Boot {
     generation: String,
 }
 
+fn validate_discovery(plan: &Launch, identity: &Identity, port: u16) -> Result<(), String> {
+    let engine = plan
+        .root
+        .join("sdk/emulator")
+        .canonicalize()
+        .map_err(|e| e.to_string())?;
+    if !identity.executable.starts_with(engine) {
+        return Err("Android process executable changed unexpectedly".into());
+    }
+    let path = plan.discovery.join(format!("pid_{}.ini", identity.pid));
+    if path
+        .symlink_metadata()
+        .map_err(|e| e.to_string())?
+        .file_type()
+        .is_symlink()
+    {
+        return Err("Android discovery data must not be a symbolic link".into());
+    }
+    // Require each authority field exactly once before selecting a QEMU child.
+    use std::io::Read;
+    let mut text = String::new();
+    fs::File::open(path)
+        .map_err(|e| e.to_string())?
+        .take(65537)
+        .read_to_string(&mut text)
+        .map_err(|e| e.to_string())?;
+    if text.len() > 65536 {
+        return Err("Android discovery data exceeds its bound".into());
+    }
+    let field = |name: &str| -> Result<&str, String> {
+        let mut values = text
+            .lines()
+            .filter_map(|line| line.split_once('='))
+            .filter(|(key, _)| *key == name)
+            .map(|(_, value)| value.trim());
+        let value = values
+            .next()
+            .ok_or_else(|| format!("Missing Android discovery field {name}"))?;
+        if values.next().is_some() {
+            return Err(format!("Ambiguous Android discovery field {name}"));
+        }
+        Ok(value)
+    };
+    let avd = plan
+        .root
+        .join("avd")
+        .join(format!("{}.avd", plan.avd_name))
+        .canonicalize()
+        .map_err(|e| e.to_string())?;
+    if field("avd.id")? != plan.avd_name
+        || PathBuf::from(field("avd.dir")?)
+            .canonicalize()
+            .map_err(|e| e.to_string())?
+            != avd
+        || field("grpc.port")?.parse::<u16>().ok() != Some(port)
+    {
+        return Err("Android discovery does not match the owned AVD and port".into());
+    }
+    Ok(())
+}
+
+/// Invalid or stale advertisements are not evidence about the owned runtime.
+/// Only ambiguity among fully verified candidates prevents selection.
+#[cfg(any(windows, test))]
+fn select_runtime_identity(
+    candidates: impl IntoIterator<Item = Result<Identity, String>>,
+) -> Result<Option<Identity>, String> {
+    let mut selected = None;
+    for candidate in candidates {
+        let Ok(identity) = candidate else { continue };
+        if selected.is_some() {
+            return Err("Ambiguous Android runtime processes in the owned tree".into());
+        }
+        selected = Some(identity);
+    }
+    Ok(selected)
+}
+
 async fn ready(boot: Boot) -> Result<(Arc<Connection>, (u32, u32)), String> {
     let Boot {
         guard,
         plan,
         pid,
+        #[cfg(windows)]
+        membership,
+        #[cfg(windows)]
+        runtime_identity,
         port,
         guest,
         record,
@@ -1380,21 +1564,53 @@ async fn ready(boot: Boot) -> Result<(Arc<Connection>, (u32, u32)), String> {
     };
     let identity = loop {
         checkpoint()?;
-        if plan.discovery.join(format!("pid_{pid}.ini")).is_file() {
-            let identity = Identity::read(pid)?;
-            if !identity.executable.starts_with(
-                plan.root
-                    .join("sdk/emulator")
-                    .canonicalize()
-                    .map_err(|e| e.to_string())?,
-            ) {
-                return Err("Android process executable changed unexpectedly".into());
+        #[cfg(not(windows))]
+        let candidates = vec![pid];
+        #[cfg(windows)]
+        let candidates = {
+            if !membership.contains(pid).map_err(|e| e.to_string())? {
+                return Err("Android launcher exited while booting".into());
+            }
+            membership.pids().map_err(|e| e.to_string())?
+        };
+        let advertisements = candidates
+            .into_iter()
+            .filter(|candidate| {
+                plan.discovery
+                    .join(format!("pid_{candidate}.ini"))
+                    .is_file()
+            })
+            .map(|candidate| -> Result<Identity, String> {
+                let identity = Identity::read(candidate)?;
+                validate_discovery(&plan, &identity, port)?;
+                if !identity.still_matches()? {
+                    return Err("Android discovery process changed during verification".into());
+                }
+                Ok(identity)
+            });
+        #[cfg(windows)]
+        let selected = select_runtime_identity(advertisements)?;
+        #[cfg(not(windows))]
+        let selected = advertisements.into_iter().next().transpose()?;
+        if let Some(identity) = selected {
+            #[cfg(windows)]
+            if !membership
+                .contains(identity.pid)
+                .map_err(|e| e.to_string())?
+            {
+                return Err("Android discovery process left its owned job".into());
             }
             break identity;
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     };
-    storage::write(
+    #[cfg(windows)]
+    {
+        *runtime_identity
+            .lock()
+            .map_err(|_| "Android process identity lock failed")? = Some(identity.clone());
+    }
+    write_runtime_record(
         &record,
         &Record {
             version: 1,
@@ -1448,6 +1664,234 @@ async fn ready(boot: Boot) -> Result<(Arc<Connection>, (u32, u32)), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn recovery_record(process: Identity) -> Record {
+        Record {
+            version: 1,
+            device_id: "00000000-0000-0000-0000-000000000001".into(),
+            generation: auth::new_id().unwrap(),
+            generation_key: auth::new_id().unwrap(),
+            process,
+            launching: false,
+            console_port: 5588,
+            grpc_port: 19000,
+            adb_port: 15047,
+        }
+    }
+
+    #[tokio::test]
+    async fn recovered_stop_removes_the_already_gone_record_without_touching_a_reused_pid() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir_all(root.path().join("runtime")).unwrap();
+        let live = Identity::read(std::process::id()).unwrap();
+        let mut stale = live.clone();
+        stale.created += 1;
+        for (force, launching) in [(false, false), (true, false), (false, true), (true, true)] {
+            let mut record = recovery_record(stale.clone());
+            record.launching = launching;
+            let path = root
+                .path()
+                .join("runtime")
+                .join(format!("{}.json", record.device_id));
+            storage::write(&path, &record).unwrap();
+            let status = stop_recovered(root.path().into(), record.device_id, force)
+                .await
+                .unwrap();
+            assert_eq!(status.phase, Phase::Stopped);
+            assert!(!status.process_alive);
+            assert!(!path.exists());
+            assert!(live.still_matches().unwrap());
+        }
+    }
+
+    #[test]
+    fn recovery_cleanup_preserves_changed_or_corrupt_records() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("runtime.json");
+        let mut process = Identity::read(std::process::id()).unwrap();
+        process.created += 1;
+        let expected = recovery_record(process);
+        for change in 0..5 {
+            let mut replacement = expected.clone();
+            match change {
+                0 => replacement.generation = auth::new_id().unwrap(),
+                1 => replacement.process.created += 1,
+                2 => replacement.generation_key = auth::new_id().unwrap(),
+                3 => replacement.grpc_port += 1,
+                _ => replacement.launching = true,
+            }
+            storage::write(&path, &replacement).unwrap();
+            let before = fs::read(&path).unwrap();
+            assert!(remove_recovered_record(&path, &expected.device_id, &expected).is_err());
+            assert!(fs::read(&path).unwrap() == before);
+        }
+        fs::write(&path, b"{corrupt").unwrap();
+        assert!(remove_recovered_record(&path, &expected.device_id, &expected).is_err());
+        assert!(fs::read(&path).unwrap() == b"{corrupt");
+        storage::write(&path, &expected).unwrap();
+        remove_recovered_record(&path, &expected.device_id, &expected).unwrap();
+        assert!(!path.exists());
+        remove_recovered_record(&path, &expected.device_id, &expected).unwrap();
+    }
+
+    #[test]
+    fn recovery_cleanup_serializes_replacement_after_record_comparison() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("runtime.json");
+        let mut process = Identity::read(std::process::id()).unwrap();
+        process.created += 1;
+        let expected = recovery_record(process);
+        let mut replacement = expected.clone();
+        replacement.generation = auth::new_id().unwrap();
+        write_runtime_record(&path, &expected).unwrap();
+        let (checked, ready) = std::sync::mpsc::sync_channel(0);
+        let (attempted, blocked) = std::sync::mpsc::sync_channel(0);
+        std::thread::scope(|scope| {
+            let writer_path = &path;
+            let writer_record = &replacement;
+            let writer = scope.spawn(move || {
+                ready.recv().unwrap();
+                assert!(matches!(
+                    RUNTIME_RECORD_PUBLICATION.try_lock(),
+                    Err(std::sync::TryLockError::WouldBlock)
+                ));
+                attempted.send(()).unwrap();
+                write_runtime_record(writer_path, writer_record).unwrap();
+            });
+            remove_recovered_record_after_check(&path, &expected.device_id, &expected, || {
+                checked.send(()).unwrap();
+                blocked.recv_timeout(Duration::from_secs(5)).unwrap();
+            })
+            .unwrap();
+            writer.join().unwrap();
+        });
+        let current = previous(&path, &expected.device_id).unwrap().unwrap();
+        assert!(current == replacement);
+        assert!(remove_recovered_record(&path, &expected.device_id, &expected).is_err());
+        assert!(previous(&path, &expected.device_id).unwrap().unwrap() == replacement);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn recovered_stop_removes_an_unreaped_zombie_record() {
+        struct OwnedChild(std::process::Child);
+        impl Drop for OwnedChild {
+            fn drop(&mut self) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+        let mut child = OwnedChild(
+            std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "android::process_identity::tests::identity_fixture",
+                    "--ignored",
+                ])
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .unwrap(),
+        );
+        let record = recovery_record(Identity::read(child.0.id()).unwrap());
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir_all(root.path().join("runtime")).unwrap();
+        let path = root
+            .path()
+            .join("runtime")
+            .join(format!("{}.json", record.device_id));
+        storage::write(&path, &record).unwrap();
+        child.0.kill().unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while fs::read_to_string(format!("/proc/{}/stat", record.process.pid))
+            .unwrap()
+            .rsplit_once(") ")
+            .and_then(|(_, fields)| fields.split_whitespace().next())
+            != Some("Z")
+        {
+            assert!(Instant::now() < deadline);
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(unsafe { libc::kill(record.process.pid as i32, 0) }, 0);
+        let status = stop_recovered(root.path().into(), record.device_id, false)
+            .await
+            .unwrap();
+        assert_eq!(status.phase, Phase::Stopped);
+        assert!(!status.process_alive);
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn discovery_requires_unique_owned_avd_and_port_fields() {
+        let root = tempfile::tempdir().unwrap();
+        for path in ["sdk/emulator", "avd/sb_fixture.avd", "discovery"] {
+            fs::create_dir_all(root.path().join(path)).unwrap();
+        }
+        let executable = root.path().join("sdk/emulator/qemu-fixture");
+        fs::write(&executable, b"fixture").unwrap();
+        let plan = Launch {
+            root: root.path().into(),
+            emulator: executable.clone(),
+            discovery: root.path().join("discovery"),
+            device_id: auth::new_id().unwrap(),
+            avd_name: "sb_fixture".into(),
+            gpu: "host".into(),
+            memory: 2048,
+            cores: 2,
+            adb_port: 15047,
+        };
+        let identity = Identity {
+            pid: 42,
+            executable: executable.canonicalize().unwrap(),
+            created: 1,
+            boot: String::new(),
+        };
+        let ini = plan.discovery.join("pid_42.ini");
+        let valid = format!(
+            "avd.id=sb_fixture\navd.dir={}\ngrpc.port=19000\n",
+            root.path().join("avd/sb_fixture.avd").display()
+        );
+        fs::write(&ini, &valid).unwrap();
+        validate_discovery(&plan, &identity, 19000).unwrap();
+        for invalid in [
+            valid.replace("sb_fixture\n", "sb_other\n"),
+            valid.replace("19000", "19001"),
+            format!("{valid}avd.id=sb_fixture\n"),
+            format!("{valid}grpc.port=19000\n"),
+            valid.replace(
+                &root.path().join("avd/sb_fixture.avd").display().to_string(),
+                &root.path().join("sdk/emulator").display().to_string(),
+            ),
+        ] {
+            fs::write(&ini, invalid).unwrap();
+            assert!(validate_discovery(&plan, &identity, 19000).is_err());
+        }
+        fs::write(&ini, &valid).unwrap();
+        let helper = Identity::read(std::process::id()).unwrap();
+        fs::write(
+            plan.discovery.join(format!("pid_{}.ini", helper.pid)),
+            "avd.id=stale-helper\ngrpc.port=19001\n",
+        )
+        .unwrap();
+        let stale_helper = validate_discovery(&plan, &helper, 19000).map(|()| helper);
+        assert!(stale_helper.is_err());
+        let qemu = validate_discovery(&plan, &identity, 19000).map(|()| identity.clone());
+        let selected = select_runtime_identity([
+            stale_helper,
+            Err("Exited or recycled helper process".into()),
+            qemu,
+        ])
+        .unwrap();
+        assert_eq!(selected, Some(identity.clone()));
+        assert!(select_runtime_identity([Ok(identity.clone()), Ok(identity.clone())]).is_err());
+        assert!(select_runtime_identity([Err("Stale advertisement".into())])
+            .unwrap()
+            .is_none());
+        let mut outside = identity;
+        outside.executable = std::env::current_exe().unwrap();
+        assert!(validate_discovery(&plan, &outside, 19000).is_err());
+    }
 
     #[tokio::test]
     async fn actor_rechecks_queued_start_and_stop_authority_before_process_effects() {

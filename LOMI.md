@@ -277,14 +277,33 @@ or acronym.
   that could replace an incompatible server. Rust's bounded smart-socket transport
   verifies the device and private generation on the same connection as each action.
 - Android transport uses one authenticated gRPC screenshot source and one binary
-  Tauri Channel per device, shared by visible canvases outside React state.
+  destination per device, shared by visible canvases outside React state. macOS
+  and Linux use Tauri Channel; Windows prefers a bounded read-only WebView2
+  SharedBuffer per frame and falls back only when that interface is unavailable.
+  Close each native mapping after posting and release its JavaScript mapping
+  after synchronous drawing or cancellation. Bind delivery to the trusted main
+  document generation; navigation cancels streams without initializing Android.
   Frame v4 carries process UUID, independent subscription epoch, sequence,
-  dimensions and rotation. Keep one pending IPC frame and one latest Rust frame;
-  stale ACK/unsubscribe cannot affect a replacement epoch. A two-second missing
-  ACK cancels the source. Hidden views and native main-window minimization cancel
-  image transfer without stopping Android. Release visible GPU buffers on unmount.
+  dimensions and rotation. Keep one pending IPC frame and one latest Rust frame.
+  Native Linux x86_64 explicitly opts into lossless RLE32 (encoding 2) in the
+  existing bounded v4 packet with its 68-byte header. Little-endian u32 control
+  words use the high bit for repeats and the lower 31 bits for pixel count;
+  repeats of at least four equal pixels carry one RGBA word, while literal runs
+  carry their RGBA words. Require an encoded payload at most 7/8 of raw RGBA and
+  a smaller wire packet; otherwise send raw encoding 0. Subscribers without the
+  RLE32 argument retain legacy deflate/raw negotiation. The deflate fallback
+  uses DecompressionStream with bounded 4096-byte input chunks. Validate header,
+  generation, epoch, dimensions and output bounds before drawing; reject packet
+  aliasing, cancel retired decodes, and reuse decoded storage only within its
+  stream after drawing. IPC budget counters retain logical raw bytes.
+  Stale ACK/unsubscribe cannot affect a replacement epoch. A two-second missing
+  ACK cancels the source; Windows UI delivery has its own two-second deadline.
+  Pace frames on a fixed 30 Hz schedule with missed ticks skipped, retaining
+  only the latest waiting source frame. Hidden views and native main-window minimization cancel
+  image transfer without stopping Android. Release renderer resources on unmount.
   The qualified source budget is 921,600 RGBA pixels at 30 FPS, at most 1280
-  on either edge, with retained WebGL textures. Hardware display dimensions
+  on either edge, with retained renderer resources: Canvas2D on native Linux
+  x86_64 and WebGL elsewhere. Hardware display dimensions
   are separate (at most 4096 per edge and 8,294,400 pixels); preserve the SDK
   profile's resolution and density while scaling the preview at its source.
   Zoom and scroll belong to each retained domain view, not the device or React
@@ -294,8 +313,11 @@ or acronym.
   100% means preview pixels; offer actual-size wording only when the
   complete hardware display fits the preview budget. Explicit screenshots
   use a separately bounded full-resolution PNG response, never the frame IPC.
-  Render the largest visible view at source resolution before sharing its canvas;
-  secondary framebuffers may match their physical display size. Never copy a
+  Render the largest visible view at source resolution before sharing its canvas.
+  Native Linux x86_64 uses a Canvas2D primary with synchronous putImageData over
+  a clamped view of frame pixels, then drawImage from that full-resolution primary
+  canvas into secondary views. Other hosts retain WebGL. Secondary framebuffers
+  may match their physical display size. Never copy a
   downscaled framebuffer into a larger view or confuse framebuffer and source
   dimensions when reporting transport measurements.
   Android's catalog normalizes multiple provider tags (including 16 KB pages),
@@ -326,11 +348,11 @@ or acronym.
   the directory lock and descriptors. Native Exit cleanup is only an emergency
   fallback. Closing the Settings tab does not cancel consciously started installation.
 - Android Stage 0 and the integrated product passed
-  on the recorded Apple M3/macOS ARM64 host, including a thirty-minute shared-view
-  trial after framebuffer optimization. Qualification uses 720x1280, Host GPU and
-  cold boot; local packaging has only an ad hoc signature, not notarization.
-  The modern-profile/zoom extension passed on Android 17 (API 37.2), Google
-  Play and Pixel 10 Pro XL at 1344x2992, with a scaled preview. The
+  on the recorded Apple M3/macOS ARM64 and Windows 11 Pro/x64 hosts, including
+  thirty-minute shared-view trials. Qualification uses 720x1280, Host GPU and
+  cold boot. Local Mac packaging has an ad hoc signature, without notarization.
+  The Mac modern-profile/zoom extension passed on Android 17 (API 37.2), Google
+  Play and Pixel 10 Pro XL at 1344x2992, with a scaled preview. The Mac
   thirty-minute trial preceded the viewport cleanup correction; the later
   executable passed a two-minute regression. Do not generalize these results
   to every catalog image. One-phone budgets are +0.5 CPU cores, +128 MiB
@@ -340,12 +362,18 @@ or acronym.
   transport budget. Thirty minutes must not show sustained memory growth;
   the p95 input-to-image target is 150 ms. Record source, framebuffer, CSS and
   DPR separately and stop builds during measurements.
-  Other platforms remain unverified and native commands gate installation, device creation/wipe,
+  Linux and Intel Mac remain unverified. Native commands gate installation, device creation/wipe,
   open intents and Start on the toolchain qualification flag. Read, Stop and
   recovery remain available. In particular, Windows' launcher spawns a separate
   QEMU child; qualify both process identities and cleanup before enabling it.
-  Only the recorded macOS ARM64 host is natively qualified. See
-  `tests/native/ANDROID.md` for isolated fixture setup. On Windows,
+  The recorded Windows trial used AOSP Android 16/API 36 x86_64 and verified
+  native Job Object cleanup, committed Unicode input, read-only SharedBuffer
+  transport, paired CPU/GPU budgets and fifty input-to-image samples. Its
+  thirty-minute CPU sampler had a rounding error; separate precise steady-state
+  CPU trials passed, without retroactively validating the rounded CPU data.
+  Windows GPU evidence uses observed cumulative per-process engine busy timers
+  and conservative per-group bounds, with sampling limitations recorded.
+  See `tests/native/ANDROID.md` for results and isolated fixture setup. On Windows,
   `tests/native/android-windows-preflight.ps1` records read-only host, WHPX
   availability and artifact checks before any download. A successful preflight
   does not qualify native Android on Windows or enable its platform guards.
@@ -366,6 +394,26 @@ or acronym.
 - `src-tauri/src/main.rs` contains a startup workaround for WebKitGTK's Wayland
   Error 71 on NVIDIA. Keep it scoped to that environment, preserve explicit user
   overrides, and set the process environment before Tauri starts GUI threads.
+  `linux_graphics.rs` also defaults `WEBKIT_SKIA_ENABLE_CPU_RENDERING=1` and
+  `WEBKIT_DISABLE_COMPOSITING_MODE=1` for the same loaded-NVIDIA-module Wayland
+  candidate. This is a process-wide WebKit page policy, not Android-only. Preserve
+  every caller value, including empty, `0` and non-Unicode values. Keep the
+  DMA-BUF compatibility opt-in, Nouveau Kopper and explicit-sync policies
+  independent. On the recorded Ubuntu/NVIDIA host, the integrated two-view
+  trial met the CPU, frame-rate, IPC and memory budgets at 720x1280. A separate
+  hook-free thirty-minute memory observation showed an early rise, late plateau
+  and decreases; no sustained upward memory trend was observed through the end
+  of that workload. This accepted observation is not a lifetime memory bound. Post-trial native input passed
+  fifty samples at p95 138 ms. Manual Stop/Start recovery retained guest data;
+  preserve its distinction from the failed automatic fixture run. Normal release
+  builds and final owned-process/ADB/lease cleanup completed. Linux Android
+  qualification remains false with comparable GPU evidence unresolved. Detailed results, build pins and limitations are in
+  `tests/native/ANDROID.md`.
+- On Linux, only the built-in Lomi theme may use an opaque WebView background
+  after confirming an opaque, square shell covers the viewport. Keep custom
+  themes transparent. Clear the WebView background before changing theme CSS
+  or restoring a preview, and serialize later updates through the native theme
+  queue with generation checks. Preserve the native window's startup behavior.
 - On Windows, closing the main window runs the shared guarded quit flow. macOS
   and Linux retain close-to-background behavior. `windows_instance.rs` elects
   one GUI process per application identifier and Windows session before native

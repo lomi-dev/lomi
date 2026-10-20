@@ -33,7 +33,10 @@ control("ack", {
   script: `
 const deviceId=${JSON.stringify(deviceId)};
 if(document.visibilityState!=='visible')throw Error('Keep the product window visible');
-await wait(()=>document.querySelector('.android-screen')?.width>0);
+const phoneName=(await invoke('android_state')).devices.devices.find(device=>device.id===deviceId)?.name;
+if(!phoneName)throw Error('The requested fixture phone is missing');
+const pane=await wait(()=>[...document.querySelectorAll('.android-pane')].find(pane=>
+ pane.getAttribute('aria-label')===phoneName&&pane.getClientRects().length&&pane.querySelector('.android-screen')?.width>0));
 await sleep(500);
 const original=window.fetch;
 const ackUrl=window.__TAURI_INTERNALS__.convertFileSrc('android_ack_frame','ipc');
@@ -64,9 +67,17 @@ try{
  const stale=held[0];
  await wait(async()=> (await stream())?.phase==='disconnected',5000);
  const timedOut=await stream();
- if(!document.querySelector('.android-pane-error')?.textContent.includes('acknowledgement timed out'))
-  throw Error('The product did not expose the actionable ACK timeout');
- click('Reconnect');
+ if(timedOut?.error!=='Android image acknowledgement timed out. Reconnect the panel.')
+  throw Error('The native stream did not report the expected ACK timeout');
+ // Native status updates before its event reaches the runtime and React commits.
+ // The current UI keeps the detailed error in notifications, not a pane banner.
+ const reconnect=await wait(()=>{
+  if(!pane.isConnected)throw Error('The measured phone pane was replaced');
+  const placeholder=pane.querySelector('.android-placeholder');
+  if(!placeholder?.getClientRects().length||!placeholder.textContent.includes('The screen is disconnected.'))return false;
+  return [...placeholder.querySelectorAll('button')].find(button=>button.textContent.trim()==='Reconnect'&&!button.disabled&&button.getClientRects().length);
+ },3000);
+ reconnect.click();
  const next=await wait(()=>held.find(ack=>ack.epoch!==stale.epoch),4000);
  const pending=await stream();
  if(next.generation!==stale.generation||pending.ipcFrames!==1)

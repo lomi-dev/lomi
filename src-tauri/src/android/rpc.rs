@@ -47,6 +47,28 @@ fn bounded(path: &Path, limit: usize) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
+fn publish_registration(registration: &Path, public_key: &[u8]) -> Result<(), String> {
+    let parent = registration
+        .parent()
+        .ok_or("Missing Android JWK directory")?;
+    let mut temporary = tempfile::NamedTempFile::new_in(parent).map_err(|e| e.to_string())?;
+    temporary.write_all(public_key).map_err(|e| e.to_string())?;
+    temporary.as_file().sync_all().map_err(|e| e.to_string())?;
+    #[cfg(target_os = "linux")]
+    {
+        // The emulator's Linux JWK watcher observes CREATE/MODIFY/DELETE, but not
+        // MOVED_TO. renameat2-based persist_noclobber can therefore go unnoticed.
+        // Link the complete, synced public key atomically without overwriting; an
+        // unsupported hard link fails closed. Dropping the temporary removes its name.
+        fs::hard_link(temporary.path(), registration).map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(target_os = "linux"))]
+    temporary
+        .persist_noclobber(registration)
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 impl Connection {
     /// The caller derives these values from its owned Child and native port allocator.
     /// None of the paths, endpoint or authority are accepted from a webview.
@@ -107,14 +129,7 @@ impl Connection {
             .ok_or("Missing authority identity")?;
         let registration = jwks.join(format!("lomi-{id}.jwk"));
         let public_key = key.to_string().into_bytes();
-        let mut temporary = tempfile::NamedTempFile::new_in(&jwks).map_err(|e| e.to_string())?;
-        temporary
-            .write_all(&public_key)
-            .map_err(|e| e.to_string())?;
-        temporary.as_file().sync_all().map_err(|e| e.to_string())?;
-        temporary
-            .persist_noclobber(&registration)
-            .map_err(|e| e.to_string())?;
+        publish_registration(&registration, &public_key)?;
         // Install the cleanup owner before any fallible connection or authentication work.
         let endpoint = tonic::transport::Endpoint::from_shared(format!("http://127.0.0.1:{port}"))
             .map_err(|e| e.to_string())?
@@ -206,6 +221,122 @@ impl Drop for Connection {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn public_key() -> Vec<u8> {
+        Authority::new("00000000-0000-0000-0000-000000000001".into())
+            .unwrap()
+            .public_jwk()
+            .to_string()
+            .into_bytes()
+    }
+
+    #[test]
+    fn registration_publishes_only_the_complete_public_key() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("final.jwk");
+        let key = public_key();
+        publish_registration(&path, &key).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), key);
+        let value: serde_json::Value = serde_json::from_slice(&key).unwrap();
+        assert_eq!(value["keys"][0]["kty"], "EC");
+        assert!(value["keys"][0].get("d").is_none());
+        assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn registration_does_not_overwrite_or_leak_on_failure() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("final.jwk");
+        let existing = b"existing registration";
+        fs::write(&path, existing).unwrap();
+        assert!(publish_registration(&path, &public_key()).is_err());
+        assert_eq!(fs::read(&path).unwrap(), existing);
+        assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
+        fs::remove_file(&path).unwrap();
+        fs::create_dir(&path).unwrap();
+        assert!(publish_registration(&path, &public_key()).is_err());
+        assert!(path.is_dir());
+        assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
+        assert_eq!(fs::read_dir(&path).unwrap().count(), 0);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn registration_notifies_the_emulators_linux_jwk_watcher() {
+        use std::{
+            ffi::CString,
+            os::{
+                fd::{AsRawFd, FromRawFd, OwnedFd},
+                unix::ffi::OsStrExt,
+            },
+        };
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("final.jwk");
+        let key = public_key();
+        let raw = unsafe { libc::inotify_init1(libc::IN_NONBLOCK | libc::IN_CLOEXEC) };
+        assert!(
+            raw >= 0,
+            "inotify_init1: {}",
+            std::io::Error::last_os_error()
+        );
+        // The owned descriptor removes the inotify watch on every exit/panic path.
+        let watcher = unsafe { OwnedFd::from_raw_fd(raw) };
+        let name = CString::new(directory.path().as_os_str().as_bytes()).unwrap();
+        let mask = libc::IN_CREATE | libc::IN_MODIFY | libc::IN_DELETE;
+        let watch = unsafe { libc::inotify_add_watch(watcher.as_raw_fd(), name.as_ptr(), mask) };
+        assert!(
+            watch >= 0,
+            "inotify_add_watch: {}",
+            std::io::Error::last_os_error()
+        );
+        publish_registration(&path, &key).unwrap();
+        let mut ready = libc::pollfd {
+            fd: watcher.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        assert_eq!(
+            unsafe { libc::poll(&mut ready, 1, 2000) },
+            1,
+            "No JWK watcher event"
+        );
+        let mut bytes = [0u8; 8192];
+        let length =
+            unsafe { libc::read(watcher.as_raw_fd(), bytes.as_mut_ptr().cast(), bytes.len()) };
+        assert!(
+            length > 0,
+            "inotify read: {}",
+            std::io::Error::last_os_error()
+        );
+        let mut offset = 0;
+        let mut published = false;
+        while offset + std::mem::size_of::<libc::inotify_event>() <= length as usize {
+            // inotify records need not align with a Rust byte buffer's address.
+            let event = unsafe {
+                std::ptr::read_unaligned(bytes.as_ptr().add(offset).cast::<libc::inotify_event>())
+            };
+            let start = offset + std::mem::size_of::<libc::inotify_event>();
+            let end = start + event.len as usize;
+            assert!(end <= length as usize);
+            let name = bytes[start..end].split(|byte| *byte == 0).next().unwrap();
+            if event.wd == watch
+                && name == b"final.jwk"
+                && event.mask & (libc::IN_CREATE | libc::IN_MODIFY) != 0
+            {
+                let observed = fs::read(&path).unwrap();
+                assert_eq!(observed, key);
+                let value: serde_json::Value = serde_json::from_slice(&observed).unwrap();
+                assert_eq!(value["keys"][0]["crv"], "P-256");
+                published = true;
+            }
+            offset = end;
+        }
+        assert!(
+            published,
+            "The emulator's watcher did not observe the complete final JWK"
+        );
+        assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
+    }
+
     #[test]
     fn hardware_display_is_independent_of_the_stream_budget() {
         let mut status = EmulatorStatus::default();

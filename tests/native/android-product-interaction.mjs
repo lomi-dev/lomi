@@ -50,12 +50,22 @@ const native=async(phase,u,v)=>{
   await invoke('android_probe_native_pointer',{phase,x:r.x+r.width*u,y:r.y+r.height*v});
 };
 const check=async(turn,u,v)=>{
-  const doc=await read(),orientation=Number(doc.documentElement.getAttribute('rotation'));
-  const actual=label(doc)?.match(/^Touch ([0-9]+),([0-9]+) action ([0-9]+)$/)?.slice(1).map(Number);
   const expected=[Math.round((turn%2?height:width)*u),Math.round((turn%2?width:height)*v),1];
-  if(orientation!==turn||!actual||actual[2]!==1||actual.slice(0,2).some((n,i)=>Math.abs(n-expected[i])>2))
-    throw Error(JSON.stringify({turn,orientation,expected,actual}));
-  return {turn,actual,expected};
+  const started=performance.now(),deadline=started+5000;
+  let attempts=0;
+  for(;;){
+    // The ADB guest read can precede queued production gRPC input. Poll the
+    // actual guest result instead of assuming that an input RPC is displayed.
+    const doc=await read(),orientation=Number(doc.documentElement.getAttribute('rotation'));
+    const actual=label(doc)?.match(/^Touch ([0-9]+),([0-9]+) action ([0-9]+)$/)?.slice(1).map(Number);
+    attempts++;
+    if(orientation===turn&&actual&&actual[2]===1&&actual.slice(0,2).every((n,i)=>Math.abs(n-expected[i])<=2))
+      return {turn,actual,expected};
+    const remaining=deadline-performance.now();
+    if(remaining<=0)
+      throw Error(JSON.stringify({turn,orientation,expected,actual:actual??null,attempts,elapsedMs:performance.now()-started}));
+    await sleep(Math.min(100,remaining));
+  }
 };
 for(let turn=0;turn<4;turn++){
   if(turn){click('Android actions');await sleep(150);click('Rotate phone');await sleep(1800);}

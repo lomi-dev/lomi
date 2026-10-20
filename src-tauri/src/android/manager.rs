@@ -18,6 +18,8 @@ use tokio::sync::watch;
 /// discovery, timers, JVM, ADB, or any Android child process.
 #[derive(Default)]
 pub struct Android {
+    #[cfg(windows)]
+    document: Arc<std::sync::atomic::AtomicU64>,
     loaded: Mutex<Initialization>,
 }
 
@@ -31,6 +33,20 @@ struct Initialization {
 }
 
 impl Android {
+    #[cfg(windows)]
+    pub(super) fn frame_document(&self) -> Arc<std::sync::atomic::AtomicU64> {
+        self.document.clone()
+    }
+
+    #[cfg(windows)]
+    pub(super) fn document_started(&self) {
+        self.document.fetch_add(1, Ordering::AcqRel);
+        if let Some(manager) = self.loaded() {
+            manager.streams.hide_all();
+            super::input::Router::release_from_host(manager);
+        }
+    }
+
     pub fn get(&self, root: PathBuf) -> Result<Arc<Manager>, String> {
         let mut loaded = self
             .loaded
@@ -861,6 +877,19 @@ impl Manager {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(windows)]
+    #[test]
+    fn document_invalidation_does_not_initialize_android() {
+        let android = super::Android::default();
+        let document = android.frame_document();
+        assert_eq!(document.load(super::Ordering::Acquire), 0);
+        android.document_started();
+        assert_eq!(document.load(super::Ordering::Acquire), 1);
+        assert!(android.loaded().is_none());
+        android.document_started();
+        assert_eq!(document.load(super::Ordering::Acquire), 2);
+        assert!(android.loaded().is_none());
+    }
     use super::*;
 
     #[tokio::test]

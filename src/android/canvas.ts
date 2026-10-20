@@ -1,7 +1,17 @@
 import type { AndroidFrame } from "./frame";
 
+export interface AndroidRenderer {
+  readonly element: HTMLCanvasElement;
+  draw(
+    frame: AndroidFrame,
+    source?: HTMLCanvasElement,
+    target?: { width: number; height: number },
+  ): void;
+  dispose(): void;
+}
+
 /** Owns only a visible view's GPU resources; device/stream ownership lives elsewhere. */
-export class AndroidCanvas {
+export class AndroidCanvas implements AndroidRenderer {
   readonly element = document.createElement("canvas");
   private readonly gl: WebGLRenderingContext;
   private readonly program: WebGLProgram;

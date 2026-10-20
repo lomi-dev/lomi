@@ -33,8 +33,19 @@ pub fn require_qualification() -> Result<(), String> {
     qualification(Host::native()?)
 }
 
+/// Debug native trials may exercise an unqualified host only with the same
+/// isolated directory and accepted license required by the product fixture.
+/// Normal application builds always use the distribution qualification flag.
+pub(super) fn qualified(host: Host) -> Result<bool, String> {
+    #[cfg(all(debug_assertions, feature = "android-probe"))]
+    if super::fixture::directory()?.is_some() {
+        return Ok(true);
+    }
+    Ok(super::bootstrap::distribution(host)?.qualified)
+}
+
 fn qualification(host: Host) -> Result<(), String> {
-    if super::bootstrap::distribution(host)?.qualified {
+    if qualified(host)? {
         Ok(())
     } else {
         Err(format!(
@@ -81,6 +92,34 @@ fn native_acceleration() -> (&'static str, Result<(), String>) {
     ("KVM", result)
 }
 
+#[cfg(any(windows, test))]
+#[repr(C, align(8))]
+#[derive(Default)]
+struct HypervisorCapability {
+    present: i32,
+    reserved: u32,
+}
+
+#[cfg(any(windows, test))]
+fn interpret_hypervisor_capability(status: i32, written: u32, present: i32) -> Result<(), String> {
+    if status < 0 {
+        return Err(format!(
+            "Windows Hypervisor Platform capability query failed (WHvGetCapability HRESULT=0x{:08X}). Update or repair Windows Hypervisor Platform, then retry.",
+            status as u32
+        ));
+    }
+    if written != std::mem::size_of::<i32>() as u32 {
+        return Err(format!(
+            "Windows Hypervisor Platform returned an unexpected capability size (WHvGetCapability HRESULT=0x{:08X}, written={written}; expected 4 bytes). Update or repair Windows Hypervisor Platform, then retry.",
+            status as u32
+        ));
+    }
+    if present == 0 {
+        return Err("Windows Hypervisor Platform reports no running hypervisor (WHvGetCapability HypervisorPresent=false). Enable CPU virtualization in UEFI/BIOS and Windows Hypervisor Platform in Windows Features, then restart Windows. In a host VM, enable nested virtualization. These changes require an administrator; Lomi cannot enable them automatically.".into());
+    }
+    Ok(())
+}
+
 #[cfg(windows)]
 fn native_acceleration() -> (&'static str, Result<(), String>) {
     use windows_sys::Win32::{
@@ -97,50 +136,101 @@ fn native_acceleration() -> (&'static str, Result<(), String>) {
             LOAD_LIBRARY_SEARCH_SYSTEM32,
         )
     };
-    let available = if library.is_null() {
-        false
+    let result = if library.is_null() {
+        let error = std::io::Error::last_os_error();
+        Err(format!("Windows Hypervisor Platform could not load WinHvPlatform.dll from System32: {error}. Install or repair Windows Hypervisor Platform in Windows Features, then restart Windows. These changes require an administrator; Lomi cannot enable them automatically."))
     } else {
         let query = unsafe { GetProcAddress(library, c"WHvGetCapability".as_ptr().cast()) };
-        let mut present: i32 = 0;
-        let mut written = 0_u32;
-        let available = query.is_some_and(|query| {
+        let result = if let Some(query) = query {
             type Query =
                 unsafe extern "system" fn(i32, *mut std::ffi::c_void, u32, *mut u32) -> i32;
             let query: Query = unsafe { std::mem::transmute(query) };
-            // WHvCapabilityCodeHypervisorPresent = 0, returned payload is BOOL.
-            unsafe {
-                query(0, (&mut present as *mut i32).cast(), 4, &mut written) >= 0
-                    && written == 4
-                    && present != 0
-            }
-        });
+            let mut capability = HypervisorCapability::default();
+            let mut written = 0_u32;
+            // WHvCapabilityCodeHypervisorPresent = 0 returns a four-byte BOOL,
+            // but WHvGetCapability requires an output buffer of at least 8 bytes.
+            let status = unsafe {
+                query(
+                    0,
+                    (&mut capability as *mut HypervisorCapability).cast(),
+                    std::mem::size_of_val(&capability) as u32,
+                    &mut written,
+                )
+            };
+            interpret_hypervisor_capability(status, written, capability.present)
+        } else {
+            let error = std::io::Error::last_os_error();
+            Err(format!("Windows Hypervisor Platform loaded WinHvPlatform.dll, but WHvGetCapability is absent: {error}. Update or repair Windows Hypervisor Platform, then retry."))
+        };
         unsafe {
             FreeLibrary(library);
         }
-        available
+        result
     };
-    (
-        "Windows Hypervisor Platform",
-        if available {
-            Ok(())
-        } else {
-            Err("Enable CPU virtualization in UEFI/BIOS and Windows Hypervisor Platform in Windows Features, then restart Windows. These changes require an administrator; Lomi cannot enable them automatically.".into())
-        },
-    )
+    ("Windows Hypervisor Platform", result)
 }
 
 #[cfg(test)]
 mod tests {
     #[test]
+    fn windows_capability_buffer_covers_the_api_minimum() {
+        assert!(std::mem::size_of::<super::HypervisorCapability>() >= 8);
+        assert!(std::mem::align_of::<super::HypervisorCapability>() >= 8);
+    }
+
+    #[test]
+    fn windows_capability_accepts_nonzero_bool_payloads() {
+        for present in [1, -1] {
+            assert!(super::interpret_hypervisor_capability(0, 4, present).is_ok());
+        }
+    }
+
+    #[test]
+    fn windows_capability_distinguishes_query_failure_from_absence() {
+        let error =
+            super::interpret_hypervisor_capability(0x80070057_u32 as i32, 0, 0).unwrap_err();
+        assert!(error.contains("HRESULT=0x80070057"));
+        assert!(!error.contains("HypervisorPresent=false"));
+        let error = super::interpret_hypervisor_capability(0, 4, 0).unwrap_err();
+        assert!(error.contains("HypervisorPresent=false"));
+        assert!(error.contains("nested virtualization"));
+    }
+
+    #[test]
+    fn windows_capability_rejects_unexpected_payload_sizes_before_reading_bool() {
+        for written in [0, 3, 8, u32::MAX] {
+            for present in [0, 1] {
+                let error =
+                    super::interpret_hypervisor_capability(0, written, present).unwrap_err();
+                assert!(error.contains("unexpected capability size"));
+                assert!(error.contains(&format!("written={written}")));
+                assert!(!error.contains("HypervisorPresent=false"));
+            }
+        }
+    }
+
+    #[test]
     fn downloadable_tools_do_not_qualify_an_untested_runtime() {
         use super::Host;
-        assert!(super::qualification(Host::MacArm64).is_ok());
-        for host in [Host::MacX64, Host::LinuxX64, Host::WindowsX64] {
+        for host in [Host::MacArm64, Host::WindowsX64] {
+            assert!(
+                super::super::bootstrap::distribution(host)
+                    .unwrap()
+                    .qualified
+            );
+            assert!(super::qualification(host).is_ok());
+        }
+        for host in [Host::MacX64, Host::LinuxX64] {
             assert!(
                 !super::super::bootstrap::distribution(host)
                     .unwrap()
                     .qualified
             );
+            #[cfg(all(debug_assertions, feature = "android-probe"))]
+            if super::super::fixture::directory().unwrap().is_some() {
+                assert!(super::qualification(host).is_ok());
+                continue;
+            }
             assert!(super::qualification(host)
                 .unwrap_err()
                 .contains("unavailable"));

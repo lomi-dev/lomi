@@ -8,12 +8,17 @@ import {
   stat,
 } from "node:fs/promises";
 import { createHash } from "node:crypto";
-import { join, resolve, basename } from "node:path";
+import { join, resolve, basename, isAbsolute } from "node:path";
 import { homedir } from "node:os";
 import { newProject, newSession, newWorkspace } from "../../src/model.ts";
 
-if (process.platform !== "darwin" || process.arch !== "arm64")
-  throw Error("The product fixture has only been qualified on macOS ARM64.");
+const windows = process.platform === "win32" && process.arch === "x64";
+const mac = process.platform === "darwin" && process.arch === "arm64";
+const linux = process.platform === "linux" && process.arch === "x64";
+if (!windows && !mac && !linux)
+  throw Error(
+    "The isolated product fixture supports macOS ARM64, Windows x64 and Linux x64.",
+  );
 const managed = await realpath(process.argv[2]);
 const trial = resolve(managed, "..");
 if (
@@ -42,7 +47,11 @@ if (
   );
 
 const repository = resolve(import.meta.dirname, "../..");
-const binary = join(repository, "src-tauri/target/release/lomi");
+const binary = join(
+  repository,
+  "src-tauri/target/debug",
+  windows ? "lomi.exe" : "lomi",
+);
 const reuse = process.argv.includes("--reuse-binary");
 const digest = async () =>
   createHash("sha256")
@@ -55,6 +64,9 @@ if (
   reuse &&
   (previous.managed !== managed ||
     previous.repository !== repository ||
+    previous.buildProfile !== "debug" ||
+    previous.platform !== process.platform ||
+    previous.architecture !== process.arch ||
     previous.binarySha256 !== (await digest()))
 )
   throw Error("The previous product fixture executable does not match.");
@@ -62,14 +74,30 @@ const identifier =
   previous?.identifier ?? `dev.lomi.android-product-${Date.now()}`;
 if (!/^dev\.lomi\.android-product-\d+$/.test(identifier))
   throw Error("Invalid fixture identity");
-const appData = join(homedir(), "Library/Application Support", identifier);
+if (windows && !process.env.APPDATA)
+  throw Error(
+    "Windows APPDATA is required for the isolated application directory.",
+  );
+const appData = windows
+  ? join(process.env.APPDATA, identifier)
+  : linux
+    ? join(
+        process.env.XDG_DATA_HOME && isAbsolute(process.env.XDG_DATA_HOME)
+          ? process.env.XDG_DATA_HOME
+          : join(homedir(), ".local/share"),
+        identifier,
+      )
+    : join(homedir(), "Library/Application Support", identifier);
 await mkdir(appData, { recursive: true, mode: 0o700 });
 await mkdir(join(root, "workspace"), { recursive: true });
 if (!reuse) {
-  const project = newProject(join(root, "workspace"), "local:zsh");
-  project.workspaces.push(
-    newWorkspace(project.path, "local:zsh", "Other workspace"),
-  );
+  const shell = windows
+    ? "local:powershell"
+    : linux
+      ? "local:bash"
+      : "local:zsh";
+  const project = newProject(join(root, "workspace"), shell);
+  project.workspaces.push(newWorkspace(project.path, shell, "Other workspace"));
   await writeFile(
     join(appData, "session.json"),
     JSON.stringify({
@@ -104,10 +132,11 @@ const env = { ...process.env, LOMI_ANDROID_PRODUCT_DIRECTORY: managed };
 delete env.LOMI_ANDROID_PROBE_DIRECTORY;
 if (!reuse) {
   const build = spawn(
-    "pnpm",
+    process.execPath,
     [
-      "tauri",
+      join(repository, "node_modules/@tauri-apps/cli/tauri.js"),
       "build",
+      "--debug",
       "--no-bundle",
       "--features",
       "android-probe",
@@ -116,7 +145,10 @@ if (!reuse) {
     ],
     { cwd: repository, env, stdio: "inherit" },
   );
-  const code = await new Promise((resolve) => build.on("exit", resolve));
+  const code = await new Promise((resolve, reject) => {
+    build.once("error", reject);
+    build.once("exit", resolve);
+  });
   if (code !== 0) throw Error(`Product fixture build failed: ${code}`);
 }
 const child = spawn(binary, [], { cwd: repository, env, stdio: "inherit" });
@@ -128,6 +160,9 @@ await writeFile(
       appData,
       managed,
       repository,
+      buildProfile: "debug",
+      platform: process.platform,
+      architecture: process.arch,
       binarySha256: await digest(),
       pid: child.pid,
       startedAt: new Date().toISOString(),

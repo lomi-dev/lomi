@@ -24,6 +24,7 @@ pub struct InstallerChild {
 #[derive(Debug)]
 pub struct Outcome {
     pub success: bool,
+    pub status: ExitStatus,
     pub output: String,
     pub stop_reason: Option<&'static str>,
 }
@@ -92,6 +93,7 @@ impl InstallerChild {
             }
             return Ok(Some(Outcome {
                 success: exit.success() && self.stop_reason.is_none(),
+                status: exit,
                 output: self.output(),
                 stop_reason: self.stop_reason,
             }));
@@ -196,6 +198,15 @@ mod tests {
     }
 
     #[test]
+    fn installer_failure_retains_the_child_exit_status() {
+        let mut child = fixture("fail", Duration::from_secs(5));
+        let result = finish(&mut child);
+        assert!(!result.success);
+        assert_eq!(result.status.code(), Some(23));
+        assert!(result.stop_reason.is_none());
+    }
+
+    #[test]
     fn installer_parent_exit_cannot_leave_a_writer_or_mutator_behind() {
         let mut child = fixture("orphan", Duration::from_secs(5));
         let outcome = finish(&mut child);
@@ -229,6 +240,7 @@ mod tests {
                 println!("LAST OUTPUT");
             }
             "wait" => thread::sleep(Duration::from_secs(60)),
+            "fail" => std::process::exit(23),
             "orphan" => {
                 let child = Command::new(std::env::current_exe().unwrap())
                     .args([

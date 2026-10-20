@@ -12,6 +12,7 @@ import {
 import { listen } from "@tauri-apps/api/event";
 import { watch } from "@tauri-apps/plugin-fs";
 import { api, errorMessage, native } from "./api";
+import { opaqueWindowBackground } from "./window-background";
 import {
   builtinPreferences,
   type Appearance,
@@ -58,6 +59,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     synchronizing = useRef(0),
     applied = useRef<AppearancePreference>("system");
   const previewAppearance = useRef<AppearancePreference>("system");
+  const builtin = useRef(false),
+    previewBuiltin = useRef(false);
   const restorePreview = useRef<null | (() => Promise<void>)>(null);
   const latestPreferences = useRef(preferences);
   latestPreferences.current = preferences;
@@ -75,6 +78,19 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     });
     nativeQueue.current = operation.catch(() => {});
     return operation;
+  };
+  const syncBackground = (isBuiltin: boolean, request: number) => {
+    if (!native) return Promise.resolve();
+    const operation = nativeQueue.current.then(async () => {
+      if (!mounted.current || request !== generation.current) return;
+      await api("sync_theme_webview_background", {
+        background: isBuiltin ? opaqueWindowBackground() : null,
+      });
+    });
+    nativeQueue.current = operation.catch(() => {});
+    // Failure leaves the transparent background established by sync(). The
+    // committed theme remains usable even when this optional optimization fails.
+    return operation.catch(console.error);
   };
   const apply = useCallback(
     async (
@@ -112,7 +128,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         if (mounted.current && request === generation.current) setReady(true);
       });
       if (!mounted.current || request !== generation.current) return false;
+      builtin.current = bundle === null;
       applied.current = prepared.appearance;
+      await syncBackground(builtin.current, request);
+      if (!mounted.current || request !== generation.current) return false;
       setFixedAppearance(
         prepared.manifest.appearance === "light" ||
           prepared.manifest.appearance === "dark"
@@ -189,10 +208,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
             ++generation.current,
           ).catch((error) => setError(errorMessage(error)));
         else void reload();
-      } else if (media.matches !== (applied.current === "dark"))
-        void sync(applied.current).catch((error) =>
-          setError(errorMessage(error)),
-        );
+      } else if (media.matches !== (applied.current === "dark")) {
+        const request = generation.current;
+        void sync(applied.current)
+          .then(() => syncBackground(builtin.current, request))
+          .catch((error) => setError(errorMessage(error)));
+      }
     };
     window.addEventListener("focus", reload);
     media.addEventListener("change", changed);
@@ -275,7 +296,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         }
         previewing.current = null;
         await prepared.commit();
+        if (!mounted.current || request !== generation.current) return;
+        builtin.current = bundle === null;
         applied.current = prepared.appearance;
+        await syncBackground(builtin.current, request);
+        if (!mounted.current || request !== generation.current) return;
         setPreferences(next);
         setDirectory(
           JSON.stringify(
@@ -306,28 +331,68 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const first = !restorePreview.current;
     if (first) {
       previewAppearance.current = applied.current;
+      previewBuiltin.current = builtin.current;
       restorePreview.current = holdThemePreview();
     }
+    const restore = restorePreview.current;
     try {
       if (await apply(bundle, preferences, request)) {
         previewing.current = bundle;
         setError("");
       }
     } catch (error) {
-      if (first) {
-        await restorePreview.current?.();
+      if (
+        first &&
+        restore &&
+        mounted.current &&
+        request === generation.current &&
+        restorePreview.current === restore
+      ) {
+        await sync(previewAppearance.current);
+        if (
+          !mounted.current ||
+          request !== generation.current ||
+          restorePreview.current !== restore
+        )
+          throw error;
+        await restore();
+        if (
+          !mounted.current ||
+          request !== generation.current ||
+          restorePreview.current !== restore
+        )
+          throw error;
         restorePreview.current = null;
+        builtin.current = previewBuiltin.current;
+        await syncBackground(builtin.current, request);
       }
       throw error;
     }
   };
   const cancelPreview = async () => {
-    if (restorePreview.current) {
-      ++generation.current;
+    const restore = restorePreview.current;
+    if (restore) {
+      const request = ++generation.current;
       abort.current?.abort();
-      await restorePreview.current();
+      await sync(previewAppearance.current);
+      if (
+        !mounted.current ||
+        request !== generation.current ||
+        restorePreview.current !== restore
+      )
+        return;
+      await restore();
+      if (
+        !mounted.current ||
+        request !== generation.current ||
+        restorePreview.current !== restore
+      )
+        return;
       restorePreview.current = null;
-      await sync((applied.current = previewAppearance.current));
+      applied.current = previewAppearance.current;
+      builtin.current = previewBuiltin.current;
+      await syncBackground(builtin.current, request);
+      if (!mounted.current || request !== generation.current) return;
     }
     previewing.current = null;
     await reload();
