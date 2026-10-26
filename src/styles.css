@@ -1753,6 +1753,18 @@ svg {
 .tree-message[data-explorer-drop-target="true"] {
   background: var(--color-primary-container);
 }
+.tree-row[data-explorer-drop-target="true"][data-explorer-drop-kind="move"],
+.project-tree-heading[data-explorer-drop-target="true"][data-explorer-drop-kind="move"],
+.file-tree[data-explorer-drop-target="true"][data-explorer-drop-kind="move"],
+.tree-message[data-explorer-drop-target="true"][data-explorer-drop-kind="move"] {
+  position: relative;
+}
+.tree-row[data-explorer-drop-target="true"][data-explorer-drop-kind="move"]::after,
+.project-tree-heading[data-explorer-drop-target="true"][data-explorer-drop-kind="move"]::after,
+.file-tree[data-explorer-drop-target="true"][data-explorer-drop-kind="move"]::after,
+.tree-message[data-explorer-drop-target="true"][data-explorer-drop-kind="move"]::after {
+  content: "Drop to move here";
+}
 .tree-row[data-cut="true"] .tree-entry > :not(.tree-cut-mark) {
   color: var(--color-muted-text);
   filter: grayscale(1);
@@ -2263,6 +2275,9 @@ svg {
 }
 .drop-target::after {
   content: "Drop to paste paths";
+}
+.drop-target::after,
+[data-explorer-drop-target="true"][data-explorer-drop-kind="move"]::after {
   pointer-events: none;
   position: absolute;
   inset: var(--border-width);

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { newProject, newSession } from "../../src/model";
 import { mockDesktop } from "./desktop";
 import { expectRecordedNotification } from "./application-notification-helpers";
@@ -60,6 +60,8 @@ async function setup(
     native.explorerWatchers = new Map();
     let watcherId = 1000;
     let entries = initialEntries;
+    const normalizeRelative = (path: string) =>
+      navigator.platform.startsWith("Win") ? path.replaceAll("\\", "/") : path;
     native.setExplorerEntries = (next: typeof initialEntries) => {
       entries = next;
     };
@@ -174,7 +176,7 @@ async function setup(
         );
       if (native.operationError) throw new Error(native.operationError);
       const { operation, relative, root } = args;
-      const source = operation.source ?? relative;
+      const source = normalizeRelative(operation.source ?? relative);
       const oldPath =
         `${(operation.sourceRoot ?? root).replace(/\/$/, "")}/${source}`.replace(
           /\/$/,
@@ -192,8 +194,8 @@ async function setup(
       if (["delete", "trash"].includes(operation.kind)) {
         entries = entries.filter(
           (entry) =>
-            entry.relative !== source &&
-            !entry.relative.startsWith(source + "/"),
+            normalizeRelative(entry.relative) !== source &&
+            !normalizeRelative(entry.relative).startsWith(source + "/"),
         );
         for (const key of Object.keys(native.editorFiles))
           if (key === oldPath || key.startsWith(oldPath + "/"))
@@ -205,10 +207,13 @@ async function setup(
           ? [...source.split("/").slice(0, -1), operation.name].join("/")
           : operation.kind === "duplicate"
             ? source.replace(/(\.[^/.]+)?$/, " copy$1")
-            : [relative, operation.name ?? source.split("/").at(-1)]
+            : [
+                normalizeRelative(relative),
+                operation.name ?? source.split("/").at(-1),
+              ]
                 .filter(Boolean)
                 .join("/");
-      if (entries.some((entry) => entry.relative === target))
+      if (entries.some((entry) => normalizeRelative(entry.relative) === target))
         throw new Error("A file or folder with that name already exists.");
       const moving = ["rename", "move"].includes(operation.kind);
       if (operation.kind.startsWith("new"))
@@ -222,26 +227,33 @@ async function setup(
           operation.sourceRoot.replace(/\/$/, "") !== root &&
           native.externalEntries.some(
             (entry: { relative: string }) =>
-              entry.relative === source ||
-              entry.relative.startsWith(source + "/"),
+              normalizeRelative(entry.relative) === source ||
+              normalizeRelative(entry.relative).startsWith(source + "/"),
           )
             ? native.externalEntries
             : entries;
         const copied = sourceEntries
           .filter(
             (entry) =>
-              entry.relative === source ||
-              entry.relative.startsWith(source + "/"),
+              normalizeRelative(entry.relative) === source ||
+              normalizeRelative(entry.relative).startsWith(source + "/"),
           )
           .map((entry) => ({
             ...entry,
-            relative: target + entry.relative.slice(source.length),
+            relative:
+              navigator.platform.startsWith("Win") &&
+              /^(?:[a-z]:[\\/]|\\\\|\/\/)/i.test(root)
+                ? (
+                    target +
+                    normalizeRelative(entry.relative).slice(source.length)
+                  ).replaceAll("/", "\\")
+                : target + entry.relative.slice(source.length),
           }));
         if (moving)
           entries = entries.filter(
             (entry) =>
-              entry.relative !== source &&
-              !entry.relative.startsWith(source + "/"),
+              normalizeRelative(entry.relative) !== source &&
+              !normalizeRelative(entry.relative).startsWith(source + "/"),
           );
         entries.push(...copied);
         for (const [path, content] of Object.entries(native.editorFiles))
@@ -278,6 +290,38 @@ async function menu(page: Page, name: string, item: string) {
     .getByRole("button", { name, exact: true })
     .click({ button: "right" });
   await page.getByRole("menuitem", { name: item, exact: true }).click();
+}
+
+async function beginPointerDrag(
+  page: Page,
+  source: Locator,
+  target: Locator,
+  targetPoint?: { x: number; y: number },
+) {
+  const sourceBounds = await source.boundingBox();
+  const targetBounds = await target.boundingBox();
+  if (!sourceBounds || !targetBounds)
+    throw new Error("Explorer drag source or target is not visible");
+  await page.mouse.move(
+    sourceBounds.x + sourceBounds.width / 2,
+    sourceBounds.y + sourceBounds.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    targetPoint?.x ?? targetBounds.x + targetBounds.width / 2,
+    targetPoint?.y ?? targetBounds.y + targetBounds.height / 2,
+    { steps: 8 },
+  );
+}
+
+async function pointerDrop(
+  page: Page,
+  source: Locator,
+  target: Locator,
+  targetPoint?: { x: number; y: number },
+) {
+  await beginPointerDrag(page, source, target, targetPoint);
+  await page.mouse.up();
 }
 
 async function dispatchClipboardEvent(
@@ -867,6 +911,501 @@ test("dragging out of an Explorer entry clears pointer focus suppression", async
   const rename = tree.getByRole("textbox", { name: "Rename name" });
   await expect(rename).toHaveValue("README.md");
   await rename.press("Escape");
+});
+
+test("Explorer pointer moves show the folder drop target and refresh the tree", async ({
+  page,
+}, testInfo) => {
+  await setup(page);
+  const tree = page.locator(".file-tree");
+  const source = tree.locator(
+    '.tree-row[data-explorer-directory=""] .tree-entry[title="/project/README.md"]',
+  );
+  const destination = tree.locator('[data-explorer-folder="src"]');
+
+  await beginPointerDrag(page, source, destination);
+  await expect(destination).toHaveAttribute(
+    "data-explorer-drop-target",
+    "true",
+  );
+  await expect(destination).toHaveAttribute("data-explorer-drop-kind", "move");
+  const hoverStyle = await destination.evaluate((element) => {
+    const explorer = getComputedStyle(element, "::after");
+    const terminal = document.createElement("div");
+    terminal.className = "drop-target";
+    document.body.append(terminal);
+    const terminalOverlay = getComputedStyle(terminal, "::after");
+    const read = (style: CSSStyleDeclaration) => ({
+      borderTopStyle: style.borderTopStyle,
+      borderTopColor: style.borderTopColor,
+      backgroundColor: style.backgroundColor,
+    });
+    const result = {
+      explorer: read(explorer),
+      terminal: read(terminalOverlay),
+    };
+    terminal.remove();
+    return result;
+  });
+  expect(hoverStyle.explorer).toEqual(hoverStyle.terminal);
+  expect(hoverStyle.explorer.borderTopStyle).toBe("dashed");
+  expect(hoverStyle.explorer.backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
+  await page.locator(".explorer-panel").screenshot({
+    path: testInfo.outputPath("explorer-pointer-drop-hover.png"),
+  });
+
+  await page.mouse.up();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__nativeTest.calls.filter(
+            (call: any) => call.command === "file_operation",
+          ).length,
+      ),
+    )
+    .toBe(1);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__nativeTest.calls
+            .filter((call: any) => call.command === "file_operation")
+            .at(-1)?.args,
+      ),
+    )
+    .toMatchObject({
+      root: "/project",
+      relative: "src",
+      operation: {
+        kind: "move",
+        sourceRoot: "/project",
+        source: "README.md",
+      },
+    });
+  await expect(
+    tree.locator('.tree-entry[title="/project/README.md"]'),
+  ).toHaveCount(0);
+  await expect(
+    tree.locator('.tree-entry[title="/project/src/README.md"]'),
+  ).toBeVisible();
+  await expect(destination).not.toHaveAttribute("data-explorer-drop-target");
+});
+
+test("Explorer pointer moves relocate a dirty folder and preserve editor history", async ({
+  page,
+}) => {
+  await setup(page, true, [
+    { relative: "src", directory: true },
+    { relative: "src/main.ts", directory: false },
+    { relative: "modules", directory: true },
+    { relative: "README.md", directory: false },
+  ]);
+  const tree = page.locator(".file-tree");
+  await tree.getByRole("button", { name: "Expand src", exact: true }).click();
+  await tree.getByRole("button", { name: "main.ts", exact: true }).dblclick();
+  const content = page.locator(".cm-content");
+  await content.focus();
+  await page.keyboard.press("Control+End");
+  await page.keyboard.insertText("unsaved folder move");
+  await expect(content).toContainText("unsaved folder move");
+
+  await pointerDrop(
+    page,
+    tree.locator('[data-explorer-folder="src"]'),
+    tree.locator('[data-explorer-folder="modules"]'),
+  );
+  await expect(page.locator(".editor-path")).toContainText(
+    "modules/src/main.ts",
+  );
+  await expect(content).toContainText("unsaved folder move");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__nativeTest.calls
+            .filter((call: any) => call.command === "file_operation")
+            .at(-1)?.args,
+      ),
+    )
+    .toMatchObject({
+      root: "/project",
+      relative: "modules",
+      operation: {
+        kind: "move",
+        sourceRoot: "/project",
+        source: "src",
+      },
+    });
+  await expect(tree.locator('.tree-entry[title="/project/src"]')).toHaveCount(
+    0,
+  );
+  await expect(
+    tree.locator('.tree-entry[title="/project/modules/src/main.ts"]'),
+  ).toBeVisible();
+
+  await content.focus();
+  await page.keyboard.press("Control+z");
+  await expect(content).not.toContainText("unsaved folder move");
+  await page.keyboard.press("Control+Shift+z");
+  await expect(content).toContainText("unsaved folder move");
+  await page.keyboard.press("Control+s");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__nativeTest.editorFiles[
+            "/project/modules/src/main.ts"
+          ].content,
+      ),
+    )
+    .toContain("unsaved folder move");
+  expect(
+    await page.evaluate(
+      () =>
+        (window as any).__nativeTest.calls.filter(
+          (call: any) => call.command === "file_operation",
+        ).length,
+    ),
+  ).toBe(1);
+});
+
+test("Explorer pointer moves send nested files and folders to both root targets", async ({
+  page,
+}) => {
+  await setup(page, false, [
+    { relative: "src", directory: true },
+    { relative: "src/nested", directory: true },
+    { relative: "src/nested/file.txt", directory: false },
+  ]);
+  const tree = page.locator(".file-tree");
+  await tree.getByRole("button", { name: "Expand src", exact: true }).click();
+  await tree
+    .getByRole("button", { name: "Expand nested", exact: true })
+    .click();
+
+  const nestedFile = tree.locator(
+    '.tree-entry[title="/project/src/nested/file.txt"]',
+  );
+  await pointerDrop(page, nestedFile, page.locator(".project-tree-heading"));
+  await expect(
+    tree.locator('.tree-entry[title="/project/file.txt"]'),
+  ).toBeVisible();
+
+  const bounds = await tree.boundingBox();
+  if (!bounds) throw new Error("Explorer tree is not visible");
+  const whitespace = {
+    x: bounds.x + 30,
+    y: bounds.y + bounds.height - 12,
+  };
+  expect(
+    await page.evaluate(({ x, y }) => {
+      const tree = document.querySelector(".file-tree");
+      return document.elementFromPoint(x, y)?.closest(".file-tree") === tree;
+    }, whitespace),
+  ).toBe(true);
+  await pointerDrop(
+    page,
+    tree.locator('[data-explorer-folder="src/nested"]'),
+    tree,
+    whitespace,
+  );
+
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__nativeTest.calls.filter(
+            (call: any) => call.command === "file_operation",
+          ).length,
+      ),
+    )
+    .toBe(2);
+  const operations = await page.evaluate(() =>
+    (window as any).__nativeTest.calls
+      .filter((call: any) => call.command === "file_operation")
+      .map((call: any) => call.args),
+  );
+  expect(
+    operations.map((args: any) => [args.relative, args.operation]),
+  ).toEqual([
+    [
+      "",
+      {
+        kind: "move",
+        sourceRoot: "/project",
+        source: "src/nested/file.txt",
+      },
+    ],
+    ["", { kind: "move", sourceRoot: "/project", source: "src/nested" }],
+  ]);
+  await expect(
+    tree.locator('.tree-entry[title="/project/nested"]'),
+  ).toBeVisible();
+  await expect(
+    tree.locator('.tree-entry[title="/project/src/nested"]'),
+  ).toHaveCount(0);
+});
+
+test("Windows pointer moves preserve expanded folders and selection at nested and root destinations", async ({
+  page,
+}) => {
+  const project = newProject("C:/project", "local:bash");
+  await setup(
+    page,
+    false,
+    [
+      { relative: "src", directory: true },
+      { relative: "src\\nested", directory: true },
+      { relative: "src\\nested\\main.ts", directory: false },
+      { relative: "modules", directory: true },
+    ],
+    false,
+    "windows",
+    { ...newSession(), projects: [project], activeProjectId: project.id },
+  );
+  const tree = page.locator(".file-tree");
+  await tree.getByRole("button", { name: "Expand src", exact: true }).click();
+  await tree
+    .getByRole("button", { name: "Expand nested", exact: true })
+    .click();
+  const nested = tree.getByRole("button", { name: "nested", exact: true });
+  await nested.click();
+
+  await pointerDrop(
+    page,
+    nested,
+    tree.getByRole("button", { name: "modules", exact: true }),
+  );
+  await expect(
+    tree.getByRole("button", { name: "main.ts", exact: true }),
+  ).toBeVisible();
+  await expect(nested).toHaveAttribute("aria-pressed", "true");
+
+  await pointerDrop(page, nested, page.locator(".project-tree-heading"));
+  await expect(
+    tree.getByRole("button", { name: "main.ts", exact: true }),
+  ).toBeVisible();
+  await expect(nested).toHaveAttribute("aria-pressed", "true");
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (window as any).__nativeTest.calls
+          .filter((call: any) => call.command === "file_operation")
+          .map((call: any) => call.args),
+      ),
+    )
+    .toMatchObject([
+      {
+        root: "C:/project",
+        relative: "modules",
+        operation: { kind: "move", source: "src\\nested" },
+      },
+      {
+        root: "C:/project",
+        relative: "",
+        operation: { kind: "move", source: "modules\\nested" },
+      },
+    ]);
+});
+
+test("Explorer rejects same-parent, self, and descendant pointer drops", async ({
+  page,
+}) => {
+  await setup(page, false, [
+    { relative: "src", directory: true },
+    { relative: "src/main.ts", directory: false },
+    { relative: "src/child", directory: true },
+    { relative: "src/child/leaf.ts", directory: false },
+  ]);
+  const tree = page.locator(".file-tree");
+  await tree.getByRole("button", { name: "Expand src", exact: true }).click();
+  await tree.getByRole("button", { name: "Expand child", exact: true }).click();
+
+  await pointerDrop(
+    page,
+    tree.locator('.tree-entry[title="/project/src/main.ts"]'),
+    tree.locator('[data-explorer-folder="src"]'),
+  );
+  const sourceFolder = tree.locator('[data-explorer-folder="src"]');
+  const sourceBounds = await sourceFolder.boundingBox();
+  if (!sourceBounds) throw new Error("Explorer source folder is not visible");
+  await pointerDrop(page, sourceFolder, sourceFolder, {
+    x: sourceBounds.x + sourceBounds.width - 8,
+    y: sourceBounds.y + sourceBounds.height / 2,
+  });
+  await pointerDrop(
+    page,
+    sourceFolder,
+    tree.locator('[data-explorer-folder="src/child"]'),
+  );
+  await page.waitForTimeout(100);
+
+  await expect(
+    page.locator('.tree-entry[title="/project/src/main.ts"]'),
+  ).toBeVisible();
+  await expect(
+    page.locator('.tree-entry[title="/project/src/child/leaf.ts"]'),
+  ).toBeVisible();
+  await expect(sourceFolder.locator(".tree-entry")).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
+  await expect(page.locator(".cm-content")).toHaveCount(0);
+  expect(
+    await page.evaluate(
+      () =>
+        (window as any).__nativeTest.calls.filter(
+          (call: any) => call.command === "file_operation",
+        ).length,
+    ),
+  ).toBe(0);
+});
+
+test("Explorer drag cancellation clears hover without activating entries", async ({
+  page,
+}) => {
+  await setup(page);
+  const tree = page.locator(".file-tree");
+  const source = tree.locator('.tree-entry[title="/project/README.md"]');
+  const folder = tree.locator('[data-explorer-folder="src"]');
+
+  await beginPointerDrag(page, source, folder);
+  await expect(folder).toHaveAttribute("data-explorer-drop-target", "true");
+  await page.keyboard.press("Escape");
+  await page.mouse.up();
+  await expect(folder).not.toHaveAttribute("data-explorer-drop-target");
+  await expect(page.locator(".file-drag-ghost")).toHaveCount(0);
+
+  await beginPointerDrag(page, source, folder);
+  await expect(folder).toHaveAttribute("data-explorer-drop-target", "true");
+  await page.evaluate(() =>
+    document.dispatchEvent(
+      new PointerEvent("pointercancel", { bubbles: true }),
+    ),
+  );
+  await page.mouse.up();
+  await expect(folder).not.toHaveAttribute("data-explorer-drop-target");
+  await expect(page.locator(".file-drag-ghost")).toHaveCount(0);
+  await expect(folder.locator(".tree-entry")).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+  await expect(page.locator(".cm-content")).toHaveCount(0);
+  expect(
+    await page.evaluate(
+      () =>
+        (window as any).__nativeTest.calls.filter(
+          (call: any) => call.command === "file_operation",
+        ).length,
+    ),
+  ).toBe(0);
+});
+
+test("Explorer pointer hover spring-expands before dropping into a child folder", async ({
+  page,
+}) => {
+  await setup(page, false, [
+    { relative: "src", directory: true },
+    { relative: "src/nested", directory: true },
+    { relative: "README.md", directory: false },
+  ]);
+  await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
+  await page.clock.pauseAt(new Date("2026-01-02T00:00:00Z"));
+  const tree = page.locator(".file-tree");
+  const source = tree.locator('.tree-entry[title="/project/README.md"]');
+  const parent = tree.locator('[data-explorer-folder="src"]');
+
+  await beginPointerDrag(page, source, parent);
+  await expect(parent).toHaveAttribute("data-explorer-drop-target", "true");
+  await page.clock.runFor(1000);
+  await expect(
+    tree.getByRole("button", { name: "Collapse src", exact: true }),
+  ).toBeVisible();
+  const child = tree.locator('[data-explorer-folder="src/nested"]');
+  await expect(child).toBeVisible();
+  const childBounds = await child.boundingBox();
+  if (!childBounds)
+    throw new Error("Spring-expanded child folder is not visible");
+  await page.mouse.move(
+    childBounds.x + childBounds.width / 2,
+    childBounds.y + childBounds.height / 2,
+    { steps: 4 },
+  );
+  await expect(child).toHaveAttribute("data-explorer-drop-target", "true");
+  await page.mouse.up();
+
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__nativeTest.calls
+            .filter((call: any) => call.command === "file_operation")
+            .at(-1)?.args,
+      ),
+    )
+    .toMatchObject({
+      root: "/project",
+      relative: "src/nested",
+      operation: {
+        kind: "move",
+        sourceRoot: "/project",
+        source: "README.md",
+      },
+    });
+  await expect(
+    tree.locator('.tree-entry[title="/project/src/nested/README.md"]'),
+  ).toBeVisible();
+});
+
+test("Explorer collision keeps the source and ignores another drop while busy", async ({
+  page,
+}) => {
+  await setup(page, false, [
+    { relative: "src", directory: true },
+    { relative: "src/README.md", directory: false },
+    { relative: "README.md", directory: false },
+  ]);
+  await page.evaluate(() => {
+    const native = (window as any).__nativeTest;
+    native.operationDelay = 500;
+    native.operationError = "A file or folder with that name already exists.";
+  });
+  const tree = page.locator(".file-tree");
+  await tree.getByRole("button", { name: "Expand src", exact: true }).click();
+  const source = tree.locator('.tree-entry[title="/project/README.md"]');
+  const destination = tree.locator('[data-explorer-folder="src"]');
+  await pointerDrop(page, source, destination);
+  await expect(page.locator("[data-explorer-root]")).toHaveAttribute(
+    "aria-busy",
+    "true",
+  );
+
+  await pointerDrop(
+    page,
+    tree.locator('.tree-entry[title="/project/src/README.md"]'),
+    page.locator(".project-tree-heading"),
+  );
+  await expectRecordedNotification(
+    page,
+    "A file or folder with that name already exists.",
+  );
+  await expect(page.locator("[data-explorer-root]")).toHaveAttribute(
+    "aria-busy",
+    "false",
+  );
+  await expect(source).toBeVisible();
+  await expect(
+    tree.locator('.tree-entry[title="/project/src/README.md"]'),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () =>
+        (window as any).__nativeTest.calls.filter(
+          (call: any) => call.command === "file_operation",
+        ).length,
+    ),
+  ).toBe(1);
 });
 
 test("automatically refreshes visible directories without Git and releases collapsed watches", async ({

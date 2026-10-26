@@ -17,6 +17,7 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { api, errorMessage, windows } from "./api";
 import type { FileEntry, GitCommitSummary, GitStatus } from "./api";
 import { basename } from "./model";
+import { isWindowsPath, pathBasename } from "./file-path";
 import { beginFileDrag } from "./file-drag";
 import { IconButton } from "./ui";
 
@@ -24,7 +25,12 @@ import ProjectSearch from "./ProjectSearch";
 import type { SearchMatch } from "./ProjectSearch";
 import type { FileOperation } from "./explorer-model";
 import { useExplorerDrop } from "./explorer-drop";
-import { explorerGitStatuses, gitFilePath, parentPath } from "./explorer-model";
+import {
+  explorerGitStatuses,
+  gitFilePath,
+  normalizePath,
+  parentPath,
+} from "./explorer-model";
 import { useExplorerActions, type ExplorerClipboard } from "./ExplorerActions";
 
 const isCutItem = (
@@ -120,7 +126,10 @@ export default function Explorer(props: Props) {
     setSelection(
       relativePath === undefined
         ? undefined
-        : { root: props.root, relativePath },
+        : {
+            root: props.root,
+            relativePath: normalizePath(relativePath, props.root),
+          },
     );
   useEffect(() => {
     setSelection(undefined);
@@ -200,7 +209,9 @@ export default function Explorer(props: Props) {
     onSearch: search,
     onRefresh: refresh,
     onExpand: (relative) =>
-      setExpanded((previous) => new Set(previous).add(relative)),
+      setExpanded((previous) =>
+        new Set(previous).add(normalizePath(relative, props.root)),
+      ),
   });
   const onContext: typeof actions.onContext = (event, entry, background) => {
     cancelPendingActivation();
@@ -223,15 +234,48 @@ export default function Explorer(props: Props) {
     ...props,
     hidden: searchOpen,
     busy: actions.busy,
+    onMove: (source, destination) => {
+      const sourceRoot = normalizePath(source.root, source.root);
+      const activeRoot = normalizePath(props.root, props.root);
+      const compareRoot = (path: string) =>
+        isWindowsPath(source.root) ? path.toLowerCase() : path;
+      if (compareRoot(sourceRoot) !== compareRoot(activeRoot)) return;
+
+      const oldPrefix = normalizePath(source.relative, source.root);
+      if (!oldPrefix) return;
+      const destinationPath = normalizePath(destination, props.root);
+      const newPrefix = normalizePath(
+        `${destinationPath ? `${destinationPath}/` : ""}${pathBasename(source.relative, source.root)}`,
+        props.root,
+      );
+      const remap = (relative: string) => {
+        const path = normalizePath(relative, props.root);
+        return path === oldPrefix || path.startsWith(`${oldPrefix}/`)
+          ? `${newPrefix}${path.slice(oldPrefix.length)}`
+          : path;
+      };
+
+      setExpanded((previous) => new Set([...previous].map(remap)));
+      setSelection((previous) => {
+        if (previous?.root !== props.root) return previous;
+        const relativePath = remap(previous.relativePath);
+        return relativePath === previous.relativePath
+          ? previous
+          : { ...previous, relativePath };
+      });
+    },
     onExpand: (relative) =>
-      setExpanded((previous) => new Set(previous).add(relative)),
+      setExpanded((previous) =>
+        new Set(previous).add(normalizePath(relative, props.root)),
+      ),
     onRefresh: refresh,
   });
   const toggle = (path: string) =>
     setExpanded((previous) => {
       const next = new Set(previous);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
+      const normalized = normalizePath(path, props.root);
+      if (next.has(normalized)) next.delete(normalized);
+      else next.add(normalized);
       return next;
     });
   return (
@@ -488,7 +532,9 @@ function Directory(props: DirectoryProps) {
         </div>
       )}
       {visible.map((entry) => {
-        const open = expanded.has(entry.relativePath);
+        const relativePath = normalizePath(entry.relativePath, root);
+        const open = expanded.has(relativePath);
+        const selected = selectedPath === relativePath;
         return (
           <div key={entry.relativePath}>
             {props.rename?.relative === entry.relativePath ? (
@@ -517,9 +563,7 @@ function Directory(props: DirectoryProps) {
                     ? "true"
                     : undefined
                 }
-                data-selected={
-                  selectedPath === entry.relativePath ? "true" : undefined
-                }
+                data-selected={selected ? "true" : undefined}
                 onContextMenu={(event) => {
                   onSelect(entry.relativePath);
                   props.onContext(event, entry);
@@ -537,7 +581,11 @@ function Directory(props: DirectoryProps) {
                 onPointerDown={(event) => {
                   cancelPendingActivation();
                   if (!(event.target as HTMLElement).closest(".tree-toggle"))
-                    beginFileDrag(event, entry.path, onError);
+                    beginFileDrag(event, entry.path, onError, {
+                      root,
+                      relative: entry.relativePath,
+                      isDirectory: entry.isDirectory,
+                    });
                 }}
               >
                 {entry.isDirectory ? (
@@ -572,7 +620,7 @@ function Directory(props: DirectoryProps) {
                   )}
                   title={entry.path}
                   aria-expanded={entry.isDirectory ? open : undefined}
-                  aria-pressed={selectedPath === entry.relativePath}
+                  aria-pressed={selected}
                   aria-description={
                     isCutItem(props.clipboard, root, entry.relativePath)
                       ? "Cut item"
