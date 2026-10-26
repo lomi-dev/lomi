@@ -155,6 +155,8 @@ import SplitView from "./SplitView";
 import { usePaneMotion } from "./pane-motion";
 import { usePointerFocus } from "./usePointerFocus";
 import { useWindowZoom, changeWindowZoom } from "./useWindowZoom";
+import { openExternalFile, type ResolvedExternalFile } from "./external-files";
+import { useExternalFiles } from "./useExternalFiles";
 import TabBar, { SettingsTabButton } from "./TabBar";
 import { SETTINGS_TAB_ID, useSettingsTab } from "./useSettingsTab";
 import FileEditorStatus from "./FileEditorStatus";
@@ -896,6 +898,38 @@ export default function Workbench() {
   const updater = useUpdater(!!info, async () => {
     if (closing.current || fileOperationBusy.current) return null;
     return prepareClose(false);
+  });
+  useExternalFiles({
+    enabled: native,
+    ready: !!session && !!info,
+    blocked: () =>
+      closing.current ||
+      updater.busy.current ||
+      sessionPublication.current ||
+      fileOperationBusy.current,
+    process: async (path, isCurrent) => {
+      const state = currentSession.current;
+      if (!state || !info) return false;
+      const location = await api<ResolvedExternalFile>(
+        "resolve_external_file",
+        { path, roots: state.projects.map((project) => project.path) },
+      );
+      if (!isCurrent()) return false;
+      if (
+        closing.current ||
+        updater.busy.current ||
+        sessionPublication.current ||
+        fileOperationBusy.current
+      )
+        return false;
+      const latestSession = currentSession.current;
+      if (!latestSession) return false;
+      setSession(openExternalFile(latestSession, location));
+      settings.leave();
+      setTerminalOverview(false);
+      return true;
+    },
+    onError: setError,
   });
   useEffect(() => {
     if (!native) return;

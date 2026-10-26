@@ -124,6 +124,23 @@ export async function mockDesktop(
             JSON.stringify(editorFiles),
         ),
         fileReadError: "",
+        externalFileRequests: JSON.parse(
+          localStorage.getItem("test-external-files") ?? "[]",
+        ).map((path: string, index: number) => ({ id: index + 1, path })),
+        externalFileSequence: JSON.parse(
+          localStorage.getItem("test-external-files") ?? "[]",
+        ).length,
+        externalFileError: "",
+        externalFileResolveDelay: 0,
+        openExternalFiles: async (paths: string[]) => {
+          const mock = desktop.__nativeTest;
+          for (const path of paths)
+            mock.externalFileRequests.push({
+              id: ++mock.externalFileSequence,
+              path,
+            });
+          await emitEvent("external-files-pending");
+        },
         failFileSave: false,
         fileSaveDelay: 0,
         failZoom: false,
@@ -788,6 +805,46 @@ export async function mockDesktop(
             return;
           }
           if (command === "resolve_editor_file") return args.relative;
+          if (command === "external_files_pending")
+            return [...desktop.__nativeTest.externalFileRequests];
+          if (command === "external_files_ack") {
+            desktop.__nativeTest.externalFileRequests =
+              desktop.__nativeTest.externalFileRequests.filter(
+                (request: { id: number }) => !args.ids.includes(request.id),
+              );
+            return;
+          }
+          if (command === "resolve_external_file") {
+            const mock = desktop.__nativeTest;
+            if (mock.externalFileResolveDelay)
+              await new Promise((resolve) =>
+                setTimeout(resolve, mock.externalFileResolveDelay),
+              );
+            if (mock.externalFileError) throw new Error(mock.externalFileError);
+            const normalize = (path: string) =>
+              platform === "windows" ? path.replaceAll("\\", "/") : path;
+            const path = normalize(args.path);
+            const compare = (path: string) =>
+              platform === "windows" ? path.toLowerCase() : path;
+            const root =
+              [...args.roots]
+                .sort((a: string, b: string) => b.length - a.length)
+                .find((candidate: string) =>
+                  compare(path).startsWith(
+                    `${compare(normalize(candidate).replace(/\/$/, ""))}/`,
+                  ),
+                ) ?? path.slice(0, path.lastIndexOf("/"));
+            const relative = path.slice(
+              normalize(root).replace(/\/$/, "").length + 1,
+            );
+            return {
+              root,
+              relative:
+                platform === "windows"
+                  ? relative.replaceAll("/", "\\")
+                  : relative,
+            };
+          }
           if (command === "watch_editor_files") return;
           if (command === "watch_explorer_directories") return 2;
           if (command === "save_new_editor_file") {

@@ -171,7 +171,14 @@ fn present(app: &AppHandle) {
 }
 
 pub(crate) fn plugin() -> impl Plugin<Wry> {
-    DeferredExit(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+    DeferredExit(tauri_plugin_single_instance::init(|app, args, cwd| {
+        crate::external_files::enqueue(
+            app,
+            crate::external_files::arguments(
+                args.into_iter().skip(1).map(Into::into),
+                Path::new(&cwd),
+            ),
+        );
         request(app);
     }))
 }

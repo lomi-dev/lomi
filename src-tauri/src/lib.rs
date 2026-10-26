@@ -66,6 +66,7 @@ mod remote_browser_capture_probe;
 mod remote_probe;
 pub use cli_titles::print_agy_title;
 mod editor_preferences;
+mod external_files;
 mod files;
 mod git;
 mod keybindings;
@@ -162,6 +163,7 @@ fn show_ready_window(window: Window, background: [u8; 3]) -> Result<bool, String
         .map_err(|error| error.to_string())?;
     #[cfg(target_os = "linux")]
     linux_instance::ready(window.app_handle());
+    external_files::ready(window.app_handle());
     Ok(true)
 }
 
@@ -192,7 +194,7 @@ pub fn run() {
         Some(instance) => instance,
         None => return,
     };
-    let builder = tauri::Builder::default();
+    let builder = tauri::Builder::default().manage(external_files::Requests::default());
     #[cfg(target_os = "linux")]
     let builder = builder
         .manage(linux_instance::Reopen::default())
@@ -267,6 +269,13 @@ pub fn run() {
         .register_asynchronous_uri_scheme_protocol("theme", themes::protocol)
         .register_asynchronous_uri_scheme_protocol("plugin", plugins::protocol)
         .setup(|app| {
+            external_files::enqueue(
+                app.handle(),
+                external_files::arguments(
+                    std::env::args_os().skip(1),
+                    &std::env::current_dir().unwrap_or_else(|_| shell::home()),
+                ),
+            );
             #[cfg(target_os = "linux")]
             linux_instance::wait_for_previous_owner(app.handle())?;
             app.state::<agent_runtime::AgentRuntime>()
@@ -364,6 +373,9 @@ pub fn run() {
                 return probe(invoke);
             }
             let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+                external_files::external_files_pending,
+                external_files::external_files_ack,
+                external_files::resolve_external_file,
                 cli_integrations::inspect_cli_integrations,
                 cli_integrations::dismiss_cli_integrations,
                 cli_integrations::enable_cli_integration,
@@ -637,6 +649,15 @@ pub fn run() {
         .build(context)
         .expect("failed to build Lomi");
     app.run(|app, event| {
+        #[cfg(target_os = "macos")]
+        if let tauri::RunEvent::Opened { urls } = &event {
+            external_files::enqueue(
+                app,
+                urls.iter()
+                    .filter_map(|url| url.to_file_path().ok())
+                    .collect(),
+            );
+        }
         #[cfg(target_os = "macos")]
         macos::handle_run_event(app, &event);
         if let tauri::RunEvent::ExitRequested { api, code, .. } = &event {

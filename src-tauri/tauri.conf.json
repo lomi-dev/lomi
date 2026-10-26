@@ -59,6 +59,23 @@
       "resources/remote-terminal/index.cjs": "remote-terminal/index.cjs",
       "resources/remote-terminal/index.cjs.sha256": "remote-terminal/index.cjs.sha256",
       "resources/remote-terminal/THIRD-PARTY-NOTICES": "remote-terminal/THIRD-PARTY-NOTICES"
+    },
+    "linux": {
+      "deb": {
+        "desktopTemplate": "desktop/lomi.desktop"
+      },
+      "rpm": {
+        "desktopTemplate": "desktop/lomi.desktop"
+      }
+    },
+    "windows": {
+      "nsis": {
+        "installerHooks": "windows/file-associations.nsh"
+      },
+      "wix": {
+        "fragmentPaths": ["windows/file-associations.wxs"],
+        "componentRefs": ["LomiFileAssociations"]
+      }
     }
   },
   "plugins": {

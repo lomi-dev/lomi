@@ -9,6 +9,8 @@ mod agent_usage_smoke;
 mod desktop_smoke;
 #[path = "explorer-clipboard-support.rs"]
 mod explorer_clipboard_smoke;
+#[path = "external-files-support.rs"]
+mod external_files_smoke;
 #[path = "image-support.rs"]
 mod image_smoke;
 #[cfg(target_os = "linux")]
@@ -43,6 +45,18 @@ pub fn terminal_regression_startup_plugin() -> Option<tauri::plugin::TauriPlugin
 }
 
 pub fn page(webview: &tauri::Webview, payload: &tauri::webview::PageLoadPayload<'_>) {
+    match external_files_smoke::handles(&webview.app_handle()) {
+        Ok(true) => {
+            external_files_smoke::page(webview, payload);
+            return;
+        }
+        Err(error) => {
+            eprintln!("External file smoke isolation failed: {error}");
+            webview.app_handle().exit(1);
+            return;
+        }
+        Ok(false) => {}
+    }
     if std::env::var_os("LOMI_TERMINAL_REGRESSION_DIRECTORY").is_some() {
         terminal_regression::page(webview, payload);
         return;
@@ -128,6 +142,9 @@ pub async fn plugin_smoke_result(
 ) -> Result<serde_json::Value, String> {
     if window.label() != "main" {
         return Err("Unknown test caller.".into());
+    }
+    if external_files_smoke::handles(&app)? {
+        return external_files_smoke::result(&app, &stage, data);
     }
     #[cfg(target_os = "linux")]
     if std::env::var_os("LOMI_LINUX_INSTANCE_DIRECTORY").is_some() {

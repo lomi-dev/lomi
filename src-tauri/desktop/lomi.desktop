@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name={{name}}
+Comment={{comment}}
+Exec={{exec}} %F
+StartupWMClass={{exec}}
+Icon={{icon}}
+Terminal=false
+Type=Application
+Categories={{categories}}
+MimeType=text/plain;text/markdown;text/javascript;text/x-c;text/x-c++;text/x-go;text/x-java;text/x-python;text/x-rust;text/x-shellscript;text/x-sql;text/x-yaml;application/octet-stream;application/x-zerosize;application/json;application/xml;application/javascript;application/toml;application/yaml;image/png;image/jpeg;image/webp;image/gif;image/svg+xml;image/avif;image/x-icon;image/vnd.microsoft.icon;image/bmp;image/tiff;image/x-tga;image/vnd-ms.dds;image/x-portable-bitmap;image/x-portable-graymap;image/x-portable-pixmap;image/x-portable-anymap;image/qoi;image/vnd.radiance;image/x-exr;image/x-farbfeld;

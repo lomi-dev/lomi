@@ -452,8 +452,13 @@ or acronym.
   main window without recreating its webview or PTYs. Keep D-Bus ownership through
   final Exit cleanup. Before initializing services, the next Linux primary waits
   up to five seconds for existing Chat AI and Agent runtime owner locks to retire;
-  probe both together without creating storage. Launcher arguments and working
-  directories are ignored.
+  probe both together without creating storage. `external_files.rs` retains OS
+  file-open requests until the restored frontend acknowledges them. Launchers
+  resolve relative paths against their own working directory before forwarding;
+  macOS receives document URLs through `RunEvent::Opened`. File requests select
+  an existing editor or open a file tab in the deepest matching local project,
+  falling back to the file's parent folder without starting a terminal. Keep
+  system file associations optional and preserve the user's default apps.
 - `src-tauri/src/macos/traffic_lights.rs` caches weak native window references.
   Do not query or clone Tauri window dispatchers on every main-loop iteration:
   doing so can wake that same loop and consume a CPU core while idle. Remove

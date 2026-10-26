@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <DirectoryRef Id="TARGETDIR">
+      <Component Id="LomiFileAssociations" Guid="{5B8FB0E8-CC13-48A5-9144-A18B8AA0FC1F}">
+        <RegistryKey
+          Root="HKLM"
+          Key="Software\Classes\Applications\lomi.exe\shell\open\command"
+        >
+          <RegistryValue
+            Type="string"
+            Value="&quot;[INSTALLDIR]lomi.exe&quot; &quot;%1&quot;"
+            KeyPath="yes"
+          />
+        </RegistryKey>
+        <RegistryKey
+          Root="HKLM"
+          Key="Software\Classes\*\shell\dev.lomi.desktop.open"
+        >
+          <RegistryValue Type="string" Name="MUIVerb" Value="Open with Lomi" />
+          <RegistryValue Type="string" Name="Icon" Value="[INSTALLDIR]lomi.exe,0" />
+        </RegistryKey>
+        <RegistryKey
+          Root="HKLM"
+          Key="Software\Classes\*\shell\dev.lomi.desktop.open\command"
+        >
+          <RegistryValue Type="string" Value="&quot;[INSTALLDIR]lomi.exe&quot; &quot;%1&quot;" />
+        </RegistryKey>
+      </Component>
+    </DirectoryRef>
+  </Fragment>
+</Wix>
