@@ -852,7 +852,9 @@ impl Drop for RecoveryCeiling {
 }
 
 pub(crate) fn install_recovery_ceiling() -> Result<RecoveryCeiling, String> {
-    let registry = shared();
+    install_recovery_ceiling_in(shared())
+}
+fn install_recovery_ceiling_in(registry: Shared) -> Result<RecoveryCeiling, String> {
     let mut state = registry.lock().map_err(|_| UNAVAILABLE)?;
     state.recovery_ceilings = state.recovery_ceilings.checked_add(1).ok_or(UNAVAILABLE)?;
     drop(state);
@@ -941,19 +943,26 @@ fn activate_in(registry: Shared, path: &Path, run: &str, generation: u64) -> Res
 }
 
 /// Install the process-local project fence for a managed native Attempt.
-/// Durable Host participation is recorded before `register_native_intent` is
-/// called, so startup never mistakes older host-boundary records for bridge
-/// participants.
+/// Shared Host participation is an optional additional protocol; the local
+/// project lease remains authoritative for Lomi-owned writes in either mode.
 pub(crate) fn activate_attempt(root: &Path, run: &str, generation: u64) -> Result<Lease, String> {
     #[cfg(target_os = "macos")]
     {
-        activate(root, run, generation)
+        activate_attempt_in(shared(), root, run, generation)
     }
     #[cfg(not(target_os = "macos"))]
     {
         let _ = (root, run, generation);
         Err("Managed native task execution requires the supported macOS host boundary.".into())
     }
+}
+fn activate_attempt_in(
+    registry: Shared,
+    root: &Path,
+    run: &str,
+    generation: u64,
+) -> Result<Lease, String> {
+    activate_in(registry, root, run, generation)
 }
 
 #[cfg(target_os = "macos")]
@@ -1130,5 +1139,63 @@ impl Lease {
         {
             false
         }
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    fn registry() -> Shared {
+        Arc::new(Mutex::new(Registry::default()))
+    }
+
+    #[test]
+    fn managed_attempt_lease_blocks_local_writes_and_releases_after_drop() {
+        let project = tempfile::tempdir().unwrap();
+        let project_path = project.path();
+        let path = project_path.join("managed.txt");
+        let registry = registry();
+
+        let lease = activate_attempt_in(registry.clone(), project_path, "task-local", 1).unwrap();
+        assert!(lease.check("task-local", 1).is_ok());
+        assert!(admit_in(registry.clone(), &[&path], None, false).is_err());
+
+        drop(lease);
+        assert!(admit_in(registry, &[&path], None, false).is_ok());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn managed_attempt_entry_point_uses_the_local_project_fence() {
+        let project = tempfile::tempdir().unwrap();
+        let path = project.path().join("managed.txt");
+
+        let lease = activate_attempt(project.path(), "task-local-entry", 1).unwrap();
+        assert!(admit(&[&path]).is_err());
+
+        drop(lease);
+        assert!(admit(&[&path]).is_ok());
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn managed_attempt_entry_point_denies_unqualified_platforms() {
+        let project = tempfile::tempdir().unwrap();
+        assert!(activate_attempt(project.path(), "task-unsupported", 1).is_err());
+    }
+
+    #[test]
+    fn recovery_ceiling_blocks_attempt_leases_and_local_writes() {
+        let project = tempfile::tempdir().unwrap();
+        let project_path = project.path();
+        let path = project_path.join("managed.txt");
+        let registry = registry();
+        let ceiling = install_recovery_ceiling_in(registry.clone()).unwrap();
+
+        assert!(activate_attempt_in(registry.clone(), project_path, "task-local", 1).is_err());
+        assert!(admit_in(registry, &[&path], None, false).is_err());
+
+        drop(ceiling);
     }
 }

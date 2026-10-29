@@ -12,7 +12,9 @@ pub(super) struct AuthConfig {
 
 impl AuthConfig {
     pub fn from_build() -> Result<Self, String> {
-        let host_identity_origin = option_env!("LOMI_HOST_IDENTITY_ORIGIN");
+        let host_identity_origin = crate::desktop_runtime::shared_host_enabled()
+            .then_some(option_env!("LOMI_HOST_IDENTITY_ORIGIN"))
+            .flatten();
         if cfg!(debug_assertions) {
             Self::for_build(
                 true,
@@ -32,7 +34,8 @@ impl AuthConfig {
     }
 
     pub fn is_host_identity_origin(&self) -> bool {
-        option_env!("LOMI_HOST_IDENTITY_ORIGIN") == Some(self.origin.as_str())
+        crate::desktop_runtime::shared_host_enabled()
+            && option_env!("LOMI_HOST_IDENTITY_ORIGIN") == Some(self.origin.as_str())
     }
 
     fn for_build(

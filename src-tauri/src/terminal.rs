@@ -2277,3 +2277,175 @@ pub async fn terminal_contexts(
         .await
         .map_err(|error| error.to_string())?
 }
+
+#[cfg(all(test, unix))]
+mod local_runtime_tests {
+    use super::*;
+    use tauri::ipc::InvokeResponseBody;
+
+    enum Event {
+        Output(Vec<u8>),
+        Exited(Option<u32>),
+    }
+
+    struct LocalTerminal {
+        terminals: Terminals,
+        events: Receiver<Event>,
+        _directory: tempfile::TempDir,
+    }
+
+    impl Drop for LocalTerminal {
+        fn drop(&mut self) {
+            self.terminals.stop_all();
+        }
+    }
+
+    fn start_local_shell() -> LocalTerminal {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().canonicalize().unwrap();
+        let cwd = root.to_str().unwrap().to_owned();
+        let profile = Profile {
+            id: "local-test-shell".into(),
+            name: "Local test shell".into(),
+            kind: "sh".into(),
+            program: "/bin/sh".into(),
+            distro: None,
+            home: cwd.clone(),
+        };
+        let shells = Shells {
+            profiles: vec![profile],
+            integration: root.join("shell-integration"),
+        };
+        let mut command = portable_pty::CommandBuilder::new("/bin/sh");
+        command.env_clear();
+        command.env("PATH", "/usr/bin:/bin");
+        command.env("TERM", "xterm-256color");
+        command.cwd(&root);
+        let (sender, events) = mpsc::channel();
+        let output_sender = sender.clone();
+        let output = Channel::<Response>::new(move |body| {
+            let InvokeResponseBody::Raw(bytes) = body else {
+                panic!("Terminal output must remain binary");
+            };
+            let _ = output_sender.send(Event::Output(bytes));
+            Ok(())
+        });
+        let exited = Channel::<Exit>::new(move |body| {
+            let InvokeResponseBody::Json(json) = body else {
+                panic!("Terminal exit must carry its status");
+            };
+            let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+            let code = value["code"].as_u64().map(|code| code as u32);
+            let _ = sender.send(Event::Exited(code));
+            Ok(())
+        });
+        let terminals = Terminals::default();
+        assert!(terminals.remote_sink.lock().unwrap().is_none());
+        let started = terminals
+            .start_prepared(
+                &shells,
+                StartRequest {
+                    id: "local-terminal".into(),
+                    profile_id: "local-test-shell".into(),
+                    cwd: cwd.clone(),
+                    cols: 80,
+                    rows: 24,
+                    agent_ticket: None,
+                    cli_launch: None,
+                    account_id: None,
+                },
+                output,
+                exited,
+                None,
+                Some(PreparedTerminal {
+                    command: (command, cwd.clone()),
+                    completion: Arc::new(AtomicBool::new(false)),
+                    drain_healthy: None,
+                    admission: None,
+                    #[cfg(target_os = "macos")]
+                    owned_boundary: None,
+                }),
+            )
+            .unwrap();
+        assert_eq!(started.cwd, cwd);
+        assert_eq!(started.profile_id, "local-test-shell");
+        LocalTerminal {
+            terminals,
+            events,
+            _directory: directory,
+        }
+    }
+
+    fn drain(terminal: &LocalTerminal) -> (Vec<u8>, Option<u32>) {
+        let deadline = Instant::now() + Duration::from_secs(15);
+        let mut output = Vec::new();
+        let mut eof = false;
+        let mut exit = None;
+        loop {
+            let event = terminal
+                .events
+                .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+                .expect("The local PTY did not finish");
+            match event {
+                Event::Output(bytes) if bytes.is_empty() => eof = true,
+                Event::Output(bytes) => {
+                    assert!(!eof, "Output arrived after EOF");
+                    terminal
+                        .terminals
+                        .acknowledge("local-terminal", bytes.len());
+                    output.extend(bytes);
+                    assert!(output.len() < 1024 * 1024);
+                }
+                Event::Exited(code) => {
+                    assert!(exit.is_none(), "The exit status was sent twice");
+                    exit = Some(code);
+                }
+            }
+            if eof {
+                if let Some(code) = exit {
+                    return (output, code);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn local_pty_streams_input_resizes_and_drains_without_a_host() {
+        let terminal = start_local_shell();
+        assert!(terminal
+            .terminals
+            .contexts_with(Session::context)
+            .unwrap()
+            .contains_key("local-terminal"));
+        terminal
+            .terminals
+            .get("local-terminal")
+            .unwrap()
+            .resize("local-terminal".into(), size(101, 41).unwrap(), None)
+            .unwrap();
+        terminal
+            .terminals
+            .write(
+                "local-terminal",
+                "stty size; printf '\\114\\117\\115\\111\\055\\114\\117\\103\\101\\114\\055\\117\\113\\n'; i=0; while [ \"$i\" -lt 5000 ]; do printf '0123456789abcdef0123456789abcdef\\n'; i=$((i+1)); done; exit 7\n",
+            )
+            .unwrap();
+        let (bytes, code) = drain(&terminal);
+        let output = String::from_utf8_lossy(&bytes);
+        assert!(output.contains("41 101"));
+        assert!(output.contains("LOMI-LOCAL-OK"));
+        assert!(bytes.len() > HIGH_WATER);
+        assert_eq!(code, Some(7));
+        assert!(terminal.terminals.get("local-terminal").is_err());
+        assert!(terminal.terminals.remote_sink.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn closing_a_local_terminal_retires_its_session_without_host_ipc() {
+        let terminal = start_local_shell();
+        terminal.terminals.close("local-terminal").unwrap();
+        let _ = drain(&terminal);
+        assert!(terminal.terminals.get("local-terminal").is_err());
+        assert!(terminal.terminals.sessions.lock().unwrap().is_empty());
+    }
+}

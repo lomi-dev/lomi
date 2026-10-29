@@ -96,6 +96,7 @@ interface SettingsNavigationProps {
   page: SettingsPageId;
   requestRevision: number;
   remoteAvailable: boolean;
+  remoteDisabledReason: string;
   onSelect: (page: SettingsPageId) => void;
 }
 
@@ -104,6 +105,7 @@ export default function SettingsNavigation({
   page,
   requestRevision,
   remoteAvailable,
+  remoteDisabledReason,
   onSelect,
 }: SettingsNavigationProps) {
   const navigation = useRef<HTMLElement>(null);
@@ -150,9 +152,14 @@ export default function SettingsNavigation({
                   className={`settings-nav-item${id === "account" ? " settings-nav-account" : id === "about" ? " settings-nav-about" : ""}`}
                   aria-current={page === id ? "page" : undefined}
                   disabled={id === "remote" && !remoteAvailable}
+                  aria-description={
+                    id === "remote" && !remoteAvailable
+                      ? remoteDisabledReason
+                      : undefined
+                  }
                   title={
                     id === "remote" && !remoteAvailable
-                      ? "Sign in to use remote sharing"
+                      ? remoteDisabledReason
                       : undefined
                   }
                   onClick={() => onSelect(id)}

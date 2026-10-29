@@ -963,6 +963,14 @@ fn journal_path(app: &AppHandle) -> Result<PathBuf, String> {
         .join("git-native-effects.json"))
 }
 
+pub(crate) fn pending_host_effect(app: &AppHandle) -> Result<bool, String> {
+    let journal = read_journal(&journal_path(app)?)?;
+    Ok(journal
+        .operations
+        .values()
+        .any(|pending| pending.request_sent))
+}
+
 fn read_journal(path: &Path) -> Result<GitEffectJournal, String> {
     let metadata = match fs::symlink_metadata(path) {
         Ok(metadata) => metadata,

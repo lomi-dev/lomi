@@ -1,26 +1,49 @@
 use crate::files::{directory, main_window};
 use serde::{Deserialize, Serialize};
+#[cfg(windows)]
+use std::thread;
 use std::{
     collections::{HashMap, HashSet},
+    ffi::OsString,
     fs,
     io::Read,
     path::{Component, Path, PathBuf},
     process::{Child, Command, Output, Stdio},
     sync::{Mutex, OnceLock},
+    time::{Duration, Instant},
 };
 use tauri::{AppHandle, Webview, Window};
 
 mod diff;
 pub mod history;
+pub(crate) mod local;
 mod observation;
 
+const MUTATION_STDOUT_LIMIT: usize = 2 * 1024 * 1024;
+const MUTATION_STDERR_LIMIT: usize = 64 * 1024;
+const MUTATION_DEADLINE: Duration = Duration::from_secs(120);
+
+// Explicit desktop mutations use the user's Git and credential setup. Read-only
+// observations keep using the separately sandboxed `configured_command` path.
 fn mutation_command(root: &Path, args: &[&str]) -> Command {
+    mutation_command_with_environment(root, args, std::env::vars_os())
+}
+
+fn mutation_command_with_environment(
+    root: &Path,
+    args: &[&str],
+    environment: impl Iterator<Item = (OsString, OsString)>,
+) -> Command {
     let mut command = Command::new("git");
     command
         .arg("-C")
         .arg(root)
         .args(args)
+        .env_clear()
+        .envs(environment.filter(|(name, _)| safe_mutation_environment_name(name)))
         .env("GIT_OPTIONAL_LOCKS", "0")
+        .env("GIT_NO_LAZY_FETCH", "1")
+        .env("GIT_NO_REPLACE_OBJECTS", "1")
         .env("LC_ALL", "C")
         .env("GIT_TERMINAL_PROMPT", "0");
     #[cfg(windows)]
@@ -29,6 +52,308 @@ fn mutation_command(root: &Path, args: &[&str]) -> Command {
         command.creation_flags(0x08000000);
     }
     command
+}
+
+fn safe_mutation_environment_name(name: &std::ffi::OsStr) -> bool {
+    #[cfg(windows)]
+    let key = name.to_string_lossy().to_ascii_uppercase();
+    #[cfg(not(windows))]
+    let key = name.to_string_lossy();
+    (!key.starts_with("GIT_")
+        || matches!(
+            key.as_ref(),
+            "GIT_AUTHOR_NAME"
+                | "GIT_AUTHOR_EMAIL"
+                | "GIT_AUTHOR_DATE"
+                | "GIT_COMMITTER_NAME"
+                | "GIT_COMMITTER_EMAIL"
+                | "GIT_COMMITTER_DATE"
+                | "GIT_CONFIG_GLOBAL"
+                | "GIT_CONFIG_SYSTEM"
+                | "GIT_CONFIG_NOSYSTEM"
+                | "GIT_SSH"
+                | "GIT_SSH_COMMAND"
+                | "GIT_SSH_VARIANT"
+                | "GIT_ASKPASS"
+        ))
+        && !key.starts_with("DYLD_")
+        && key != "LD_PRELOAD"
+}
+
+#[cfg(windows)]
+fn read_limited<R: Read>(reader: R, limit: usize) -> std::io::Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    reader.take((limit + 1) as u64).read_to_end(&mut bytes)?;
+    Ok(bytes)
+}
+
+fn run_mutation_command(command: &mut Command, deadline: Duration) -> Result<Output, String> {
+    let _ = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut tree = lomi_control_core::process_tree::Tree::spawn(command)
+        .map_err(|error| format!("Cannot run Git: {error}"))?;
+    let (Some(stdout), Some(stderr)) = (tree.child.stdout.take(), tree.child.stderr.take()) else {
+        terminate_mutation_tree(&mut tree);
+        return Err(unknown_mutation_outcome(
+            "Git did not provide bounded output streams",
+        ));
+    };
+    #[cfg(unix)]
+    return run_mutation_command_unix(tree, stdout, stderr, deadline);
+    #[cfg(windows)]
+    return run_mutation_command_windows(tree, stdout, stderr, deadline);
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = (stdout, stderr, deadline);
+        terminate_mutation_tree(&mut tree);
+        Err(unknown_mutation_outcome(
+            "bounded process ownership is unavailable",
+        ))
+    }
+}
+
+fn unknown_mutation_outcome(reason: &str) -> String {
+    format!(
+        "Git operation outcome is unknown because {reason}. Refresh Git status before trying again."
+    )
+}
+
+fn terminate_mutation_tree(tree: &mut lomi_control_core::process_tree::Tree) {
+    let _ = tree.kill();
+    loop {
+        match tree.try_wait() {
+            Ok(Some(_)) => return,
+            Ok(None) | Err(_) => std::thread::sleep(Duration::from_millis(10)),
+        }
+    }
+}
+
+#[cfg(unix)]
+fn set_nonblocking<R: std::os::fd::AsRawFd>(stream: &R) -> std::io::Result<()> {
+    use std::os::fd::AsRawFd;
+    let fd = stream.as_raw_fd();
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+    if flags < 0 || unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn drain_nonblocking<R: Read>(
+    stream: &mut R,
+    output: &mut Vec<u8>,
+    limit: usize,
+    retain: bool,
+) -> Result<bool, &'static str> {
+    use std::io::ErrorKind;
+    let mut bytes = [0; 8192];
+    for _ in 0..8 {
+        match stream.read(&mut bytes) {
+            Ok(0) => return Ok(true),
+            Ok(count) => {
+                if retain {
+                    if output.len() + count > limit {
+                        return Err("Git output exceeded its safety limit");
+                    }
+                    output.extend_from_slice(&bytes[..count]);
+                }
+            }
+            Err(error) if error.kind() == ErrorKind::WouldBlock => return Ok(false),
+            Err(error) if error.kind() == ErrorKind::Interrupted => continue,
+            Err(_) => return Err("Git output could not be read completely"),
+        }
+    }
+    Ok(false)
+}
+
+#[cfg(unix)]
+fn run_mutation_command_unix(
+    mut tree: lomi_control_core::process_tree::Tree,
+    mut stdout: std::process::ChildStdout,
+    mut stderr: std::process::ChildStderr,
+    deadline: Duration,
+) -> Result<Output, String> {
+    if set_nonblocking(&stdout).is_err() || set_nonblocking(&stderr).is_err() {
+        terminate_mutation_tree(&mut tree);
+        return Err(unknown_mutation_outcome(
+            "Git output streams could not be made nonblocking",
+        ));
+    }
+    let started = Instant::now();
+    let mut exited_at = None;
+    let mut exit = None;
+    let mut stdout_done = false;
+    let mut stderr_done = false;
+    let mut stdout_bytes = Vec::new();
+    let mut stderr_bytes = Vec::new();
+    let mut interrupted = None;
+
+    loop {
+        if started.elapsed() >= deadline {
+            interrupted.get_or_insert("the deadline expired");
+        }
+        if tree.abandoned_descendants {
+            interrupted.get_or_insert("Git left an unowned descendant");
+        }
+        let retain = interrupted.is_none();
+        if !stdout_done {
+            match drain_nonblocking(
+                &mut stdout,
+                &mut stdout_bytes,
+                MUTATION_STDOUT_LIMIT,
+                retain,
+            ) {
+                Ok(done) => stdout_done = done,
+                Err(reason) => {
+                    interrupted.get_or_insert(reason);
+                }
+            }
+        }
+        if !stderr_done {
+            match drain_nonblocking(
+                &mut stderr,
+                &mut stderr_bytes,
+                MUTATION_STDERR_LIMIT,
+                retain,
+            ) {
+                Ok(done) => stderr_done = done,
+                Err(reason) => {
+                    interrupted.get_or_insert(reason);
+                }
+            }
+        }
+        if interrupted.is_some() {
+            let _ = tree.kill();
+        }
+        if exit.is_none() {
+            match tree.try_wait() {
+                Ok(Some(status)) => {
+                    exited_at = Some(Instant::now());
+                    exit = Some(status);
+                }
+                Ok(None) => {}
+                Err(_) => {
+                    interrupted.get_or_insert("Git process ownership became uncertain");
+                    let _ = tree.kill();
+                }
+            }
+        }
+        if exit.is_some() && stdout_done && stderr_done {
+            break;
+        }
+        if exited_at.is_some_and(|at| at.elapsed() >= Duration::from_millis(100)) {
+            interrupted.get_or_insert("Git left output open after its process tree exited");
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+
+    if let Some(reason) = interrupted {
+        return Err(unknown_mutation_outcome(reason));
+    }
+    let status =
+        exit.ok_or_else(|| unknown_mutation_outcome("Git process status was unavailable"))?;
+    Ok(Output {
+        status,
+        stdout: stdout_bytes,
+        stderr: stderr_bytes,
+    })
+}
+
+#[cfg(windows)]
+fn run_mutation_command_windows(
+    mut tree: lomi_control_core::process_tree::Tree,
+    stdout: std::process::ChildStdout,
+    stderr: std::process::ChildStderr,
+    deadline: Duration,
+) -> Result<Output, String> {
+    let mut stdout_reader = Some(thread::spawn(move || {
+        read_limited(stdout, MUTATION_STDOUT_LIMIT)
+    }));
+    let mut stderr_reader = Some(thread::spawn(move || {
+        read_limited(stderr, MUTATION_STDERR_LIMIT)
+    }));
+    let started = Instant::now();
+    let mut exited_at = None;
+    let mut exit = None;
+    let mut stdout_bytes = None;
+    let mut stderr_bytes = None;
+    let mut interrupted = None;
+
+    loop {
+        if started.elapsed() >= deadline {
+            interrupted.get_or_insert("the deadline expired");
+        }
+        if stdout_bytes.is_none()
+            && stdout_reader
+                .as_ref()
+                .is_some_and(|reader| reader.is_finished())
+        {
+            match stdout_reader.take().unwrap().join() {
+                Ok(Ok(bytes)) if bytes.len() <= MUTATION_STDOUT_LIMIT => stdout_bytes = Some(bytes),
+                _ => {
+                    interrupted.get_or_insert("stdout could not be bounded");
+                }
+            }
+        }
+        if stderr_bytes.is_none()
+            && stderr_reader
+                .as_ref()
+                .is_some_and(|reader| reader.is_finished())
+        {
+            match stderr_reader.take().unwrap().join() {
+                Ok(Ok(bytes)) if bytes.len() <= MUTATION_STDERR_LIMIT => stderr_bytes = Some(bytes),
+                _ => {
+                    interrupted.get_or_insert("stderr could not be bounded");
+                }
+            }
+        }
+        if tree.abandoned_descendants {
+            interrupted.get_or_insert("Git left an unowned descendant");
+        }
+        if interrupted.is_some() {
+            let _ = tree.kill();
+        }
+        if exit.is_none() {
+            match tree.try_wait() {
+                Ok(Some(status)) => {
+                    exited_at = Some(Instant::now());
+                    exit = Some(status);
+                }
+                Ok(None) => {}
+                Err(_) => {
+                    interrupted.get_or_insert("Git process ownership became uncertain");
+                    let _ = tree.kill();
+                }
+            }
+        }
+        if exit.is_some() && stdout_bytes.is_some() && stderr_bytes.is_some() {
+            break;
+        }
+        if exited_at.is_some_and(|at| at.elapsed() >= Duration::from_millis(100)) {
+            interrupted.get_or_insert("Git left output open after its process tree exited");
+            break;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+
+    if let Some(reason) = interrupted {
+        return Err(unknown_mutation_outcome(reason));
+    }
+    let status =
+        exit.ok_or_else(|| unknown_mutation_outcome("Git process status was unavailable"))?;
+    let stdout =
+        stdout_bytes.ok_or_else(|| unknown_mutation_outcome("Git stdout was unavailable"))?;
+    let stderr =
+        stderr_bytes.ok_or_else(|| unknown_mutation_outcome("Git stderr was unavailable"))?;
+    Ok(Output {
+        status,
+        stdout,
+        stderr,
+    })
 }
 
 // Configuration overrides are defense in depth. The platform process policy
@@ -225,6 +550,13 @@ fn observed_status(
             "--ignore-submodules=dirty",
         ],
     )?);
+    changes.retain(|change| {
+        !local::private_staging_path(Path::new(&change.path))
+            && !change
+                .original_path
+                .as_deref()
+                .is_some_and(|path| local::private_staging_path(Path::new(path)))
+    });
     observe_submodules(&canonical, &mut changes, budget, depth, include_untracked)?;
     Ok(Some(GitStatus {
         root,
@@ -606,12 +938,21 @@ pub async fn git_fetch(
 ) -> Result<(), String> {
     main_window(&window)?;
     crate::shared_host::trusted_full_window(&window, &webview)?;
-    let host = host.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        crate::native_git_effects::fetch(&app, &host, &root, remote.as_deref())
-    })
-    .await
-    .map_err(|error| error.to_string())?
+    if crate::desktop_runtime::shared_host_enabled() {
+        let host = host.inner().clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            crate::native_git_effects::fetch(&app, &host, &root, remote.as_deref())
+        })
+        .await
+        .map_err(|error| error.to_string())?
+    } else {
+        tauri::async_runtime::spawn_blocking(move || {
+            crate::desktop_runtime::ensure_local_git_write_safe(&app, &root)?;
+            local::fetch(&root, remote.as_deref())
+        })
+        .await
+        .map_err(|error| error.to_string())?
+    }
 }
 
 #[tauri::command]
@@ -626,12 +967,21 @@ pub async fn git_push(
 ) -> Result<(), String> {
     main_window(&window)?;
     crate::shared_host::trusted_full_window(&window, &webview)?;
-    let host = host.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        crate::native_git_effects::push(&app, &host, &root, remote.as_deref(), force)
-    })
-    .await
-    .map_err(|error| error.to_string())?
+    if crate::desktop_runtime::shared_host_enabled() {
+        let host = host.inner().clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            crate::native_git_effects::push(&app, &host, &root, remote.as_deref(), force)
+        })
+        .await
+        .map_err(|error| error.to_string())?
+    } else {
+        tauri::async_runtime::spawn_blocking(move || {
+            crate::desktop_runtime::ensure_local_git_write_safe(&app, &root)?;
+            local::push(&root, remote.as_deref(), force)
+        })
+        .await
+        .map_err(|error| error.to_string())?
+    }
 }
 
 fn exact_status(root: &str) -> Result<GitStatus, String> {
@@ -662,9 +1012,7 @@ pub(crate) fn checked_repository(root: &Path, args: &[&str]) -> Result<Vec<u8>, 
             std::env::join_paths([parent]).map_err(|error| error.to_string())?,
         );
     }
-    let output = command
-        .output()
-        .map_err(|error| format!("Cannot run Git: {error}"))?;
+    let output = run_mutation_command(&mut command, MUTATION_DEADLINE)?;
     if !output.status.success() {
         return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
     }
@@ -727,12 +1075,21 @@ pub async fn git_stage(
 ) -> Result<(), String> {
     main_window(&window)?;
     crate::shared_host::trusted_full_window(&window, &webview)?;
-    let host = host.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        crate::native_git_effects::stage(&app, &host, &root, &paths, stage)
-    })
-    .await
-    .map_err(|error| error.to_string())?
+    if crate::desktop_runtime::shared_host_enabled() {
+        let host = host.inner().clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            crate::native_git_effects::stage(&app, &host, &root, &paths, stage)
+        })
+        .await
+        .map_err(|error| error.to_string())?
+    } else {
+        tauri::async_runtime::spawn_blocking(move || {
+            crate::desktop_runtime::ensure_local_git_write_safe(&app, &root)?;
+            local::stage(&root, &paths, stage)
+        })
+        .await
+        .map_err(|error| error.to_string())?
+    }
 }
 
 #[tauri::command]
@@ -759,10 +1116,19 @@ pub async fn git_commit(
 ) -> Result<(), String> {
     main_window(&window)?;
     crate::shared_host::trusted_full_window(&window, &webview)?;
-    let host = host.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        crate::native_git_effects::commit(&app, &host, &root, &message)
-    })
-    .await
-    .map_err(|error| error.to_string())?
+    if crate::desktop_runtime::shared_host_enabled() {
+        let host = host.inner().clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            crate::native_git_effects::commit(&app, &host, &root, &message)
+        })
+        .await
+        .map_err(|error| error.to_string())?
+    } else {
+        tauri::async_runtime::spawn_blocking(move || {
+            crate::desktop_runtime::ensure_local_git_write_safe(&app, &root)?;
+            local::commit(&root, &message)
+        })
+        .await
+        .map_err(|error| error.to_string())?
+    }
 }

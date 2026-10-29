@@ -28,12 +28,6 @@ jobs:
             args: ""
 
     runs-on: ${{ matrix.platform }}
-    env:
-      LOMI_HOST_IDENTITY_ORIGIN: ${{ vars.LOMI_HOST_IDENTITY_ORIGIN }}
-      LOMI_HOST_REMOTE_API_ORIGIN: ${{ vars.LOMI_HOST_REMOTE_API_ORIGIN }}
-      LOMI_HOST_RELAY_ENDPOINT: ${{ vars.LOMI_HOST_RELAY_ENDPOINT }}
-      LOMI_HOST_CLIENT_ID: ${{ vars.LOMI_HOST_CLIENT_ID }}
-      LOMI_HOST_REMOTE_WEB_ORIGIN: ${{ vars.LOMI_HOST_REMOTE_WEB_ORIGIN }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # actions/checkout@v4
         with:
@@ -83,24 +77,6 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: node scripts/check-release.mjs "$RELEASE_TAG"
-
-      - name: require public host authentication pins
-        shell: bash
-        run: |
-          node --input-type=module <<'JS'
-          const required = [
-            'LOMI_HOST_IDENTITY_ORIGIN',
-            'LOMI_HOST_REMOTE_API_ORIGIN',
-            'LOMI_HOST_RELAY_ENDPOINT',
-            'LOMI_HOST_CLIENT_ID',
-            'LOMI_HOST_REMOTE_WEB_ORIGIN',
-          ];
-          const missing = required.filter((name) => !(process.env[name] ?? '').trim());
-          if (missing.length) {
-            console.error(`Configure these repository variables before publishing: ${missing.join(', ')}`);
-            process.exitCode = 1;
-          }
-          JS
 
       - name: install frontend dependencies
         run: pnpm install --frozen-lockfile

@@ -341,7 +341,9 @@ impl Push {
         }
     }
     pub fn state(&self, auth: &crate::auth::AuthController) -> PushState {
-        let binding = auth.remote_binding().ok();
+        let binding = crate::desktop_runtime::shared_host_enabled()
+            .then(|| auth.remote_binding().ok())
+            .flatten();
         let c = self.inner.lock().unwrap();
         let cache = binding.as_ref().and_then(|b| {
             c.file.cache.as_ref().filter(|v| {
@@ -389,6 +391,9 @@ impl Push {
         );
     }
     pub async fn refresh(&self, app: &AppHandle) -> Result<PushState, PushRequestError> {
+        if !crate::desktop_runtime::shared_host_enabled() {
+            return Err(PushRequestError::local("FEATURE_DISABLED"));
+        }
         let auth = app.state::<crate::auth::AuthController>();
         let b = auth
             .remote_binding()
@@ -538,7 +543,9 @@ pub(crate) fn retire_owner(app: &AppHandle, _user: &str, session: &str) -> Resul
 pub(crate) fn capture(app: &AppHandle) -> Admission {
     let auth = app.state::<crate::auth::AuthController>();
     let local = auth.local_notification_binding().ok();
-    let cloud = auth.remote_binding().ok();
+    let cloud = crate::desktop_runtime::shared_host_enabled()
+        .then(|| auth.remote_binding().ok())
+        .flatten();
     let push = app.state::<Push>();
     let c = push.inner.lock().unwrap();
     if c.path.is_none() {
@@ -683,6 +690,9 @@ pub async fn push_set_current_source_enabled(
     enabled: bool,
 ) -> Result<PushState, PushRequestError> {
     trusted(&window, true)?;
+    if !crate::desktop_runtime::shared_host_enabled() {
+        return Err(PushRequestError::local("FEATURE_DISABLED"));
+    }
     let auth = app.state::<crate::auth::AuthController>();
     let binding = auth
         .remote_binding()

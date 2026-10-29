@@ -9,6 +9,7 @@ fn main() {
         eprintln!("{error}");
         std::process::exit(4);
     }
+    #[cfg(feature = "remote-host")]
     if let Some(code) = lomi_host::internal_native_entry() {
         std::process::exit(code);
     }
@@ -72,7 +73,7 @@ fn main() {
     }
     if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--internal-host-status"))
     {
-        #[cfg(target_os = "macos")]
+        #[cfg(all(target_os = "macos", feature = "remote-host"))]
         {
             let mut args = std::env::args_os().skip(2);
             let (Some(profile), Some(expected_pid), None) = (args.next(), args.next(), args.next())
@@ -95,11 +96,14 @@ fn main() {
                 expected_pid,
             ));
         }
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(not(all(target_os = "macos", feature = "remote-host")))]
         std::process::exit(2);
     }
     if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--internal-git-worker"))
     {
+        #[cfg(not(feature = "remote-host"))]
+        std::process::exit(2);
+        #[cfg(feature = "remote-host")]
         std::process::exit(if std::env::args_os().nth(2).is_none() {
             lomi_host::internal_git_worker()
         } else {

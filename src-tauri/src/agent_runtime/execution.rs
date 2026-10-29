@@ -45,7 +45,7 @@ struct Binding<'a> {
     active: Active,
     identity: (u64, u64),
     #[cfg(target_os = "macos")]
-    native_intent: crate::project_write_guard::NativeIntentHandle,
+    native_intent: Option<crate::project_write_guard::NativeIntentHandle>,
 }
 
 impl Binding<'_> {
@@ -59,7 +59,9 @@ impl Binding<'_> {
         }
 
         #[cfg(target_os = "macos")]
-        self.native_intent.check_for_execution()?;
+        if let Some(intent) = &self.native_intent {
+            intent.check_for_execution()?;
+        }
 
         self.state.with(self.app, |i| {
             let s = i.store.as_ref().unwrap();
@@ -563,6 +565,7 @@ fn run(
     let cli = task
         .cli
         .ok_or("The archived native CLI family is unknown; execution is unavailable.")?;
+    super::service::ensure_managed_task_execution(cli)?;
 
     let storage_root = app
         .path()
@@ -609,9 +612,15 @@ fn run(
     #[cfg(target_os = "macos")]
     let mut operation_guard = OwnedOperation::new(state, app, context.clone());
     #[cfg(target_os = "macos")]
-    let native_intent = lease.register_native_intent(&attempt.operation_id, &storage_root)?;
+    let native_intent = if crate::desktop_runtime::shared_host_enabled() {
+        Some(lease.register_native_intent(&attempt.operation_id, &storage_root)?)
+    } else {
+        None
+    };
     #[cfg(target_os = "macos")]
-    state.track_native_recovery_intent(id, &attempt.operation_id, native_intent.clone())?;
+    if let Some(intent) = &native_intent {
+        state.track_native_recovery_intent(id, &attempt.operation_id, intent.clone())?;
+    }
 
     let b = Binding {
         state,
@@ -831,13 +840,15 @@ fn run(
             }
 
             #[cfg(target_os = "macos")]
-            state.with(app, |i| {
-                i.store
-                    .as_mut()
-                    .unwrap()
-                    .mark_native_writer_bind_attempted(&attempt.operation_id)
-            })?;
-            b.native_intent.mark_bind_attempted()?;
+            if let Some(intent) = &b.native_intent {
+                state.with(app, |i| {
+                    i.store
+                        .as_mut()
+                        .unwrap()
+                        .mark_native_writer_bind_attempted(&attempt.operation_id)
+                })?;
+                intent.mark_bind_attempted()?;
+            }
 
             Ok(())
         },
@@ -1431,6 +1442,16 @@ pub(super) fn finalize_recovered_terminal_attempts(
         .store
         .as_ref()
         .ok_or("Runtime storage is unavailable.")?;
+    let unresolved_local_host_participants = if super::service::host_recovery_enabled() {
+        std::collections::HashSet::new()
+    } else {
+        store
+            .native_operations()?
+            .into_iter()
+            .filter(|operation| operation.native_writer_participant)
+            .map(|operation| operation.operation_id)
+            .collect::<std::collections::HashSet<_>>()
+    };
     let mut candidates = Vec::new();
     for task in store.tasks()? {
         let Some(attempt_id) = task.active_attempt_id.as_deref() else {
@@ -1445,6 +1466,9 @@ pub(super) fn finalize_recovered_terminal_attempts(
         let Some(attempt) = task.attempts.iter().find(|a| a.attempt_id == attempt_id) else {
             continue;
         };
+        if unresolved_local_host_participants.contains(&attempt.operation_id) {
+            continue;
+        }
         if task.generation != attempt.generation
             || task.active_account_id.as_deref() != Some(attempt.account_id.as_str())
             || !matches!(attempt.state.as_str(), "completed" | "stopped")
@@ -1575,10 +1599,37 @@ fn finish_record(
     }
 
     s.reconcile_processes()?;
+    let processes_settled = s.processes_settled(id)?;
+    let helpers_settled = s.helpers_settled(Some(id))?;
 
-    if !s.processes_settled(id)? || !s.helpers_settled(Some(id))? {
+    if !processes_settled || !helpers_settled {
         return Err("Native process group ownership remains unresolved; shutdown and binding changes are fenced.".into());
     }
+
+    let settled_task = s.task(id)?;
+    let operation_id = settled_task
+        .attempts
+        .iter()
+        .find(|attempt| attempt.attempt_id == active.attempt)
+        .map(|attempt| attempt.operation_id.as_str());
+    let native_operation = operation_id
+        .map(|operation_id| s.native_operations())
+        .transpose()?
+        .and_then(|operations| {
+            operations
+                .into_iter()
+                .find(|operation| Some(operation.operation_id.as_str()) == operation_id)
+        });
+
+    release_settled_local_project_lease(
+        i,
+        &settled_task,
+        &active.attempt,
+        native_operation.as_ref(),
+        processes_settled,
+        helpers_settled,
+        super::service::host_recovery_enabled(),
+    );
 
     i.active.remove(id);
 
@@ -1586,6 +1637,190 @@ fn finish_record(
 
     active.done.store(true, Ordering::SeqCst);
     Ok(())
+}
+
+fn release_settled_local_project_lease(
+    inner: &mut super::service::Inner,
+    task: &Task,
+    attempt_id: &str,
+    native_operation: Option<&NativeOperation>,
+    processes_settled: bool,
+    helpers_settled: bool,
+    host_recovery_enabled: bool,
+) -> bool {
+    let Some(attempt) = task
+        .attempts
+        .iter()
+        .find(|attempt| attempt.attempt_id == attempt_id)
+    else {
+        return false;
+    };
+    let Some(operation) = native_operation else {
+        return false;
+    };
+    let terminal_task = matches!(task.state, TaskState::Completed | TaskState::Stopped);
+    let terminal_attempt = matches!(attempt.state.as_str(), "completed" | "stopped" | "rejected");
+    let effects_reviewed = attempt.effects_state == "settled"
+        || (attempt.state == "stopped" && attempt.effects_state == "reviewed");
+    let local_boundary_settled = operation.host_boundary_owned
+        && !operation.native_writer_participant
+        && operation.state == "reviewed"
+        && operation.task_id.as_deref() == Some(task.task_id.as_str())
+        && operation.attempt_id.as_deref() == Some(attempt_id)
+        && operation.generation == Some(attempt.generation);
+
+    if host_recovery_enabled
+        || !processes_settled
+        || !helpers_settled
+        || !terminal_task
+        || !terminal_attempt
+        || !effects_reviewed
+        || task.generation != attempt.generation
+        || task.active_attempt_id.is_some()
+        || task.active_account_id.is_some()
+        || !local_boundary_settled
+    {
+        return false;
+    }
+
+    inner.recovery_projects.remove(&task.task_id);
+    true
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod local_project_release_tests {
+    use super::*;
+
+    fn settled_fixture(
+        cwd: &str,
+        task_state: TaskState,
+        attempt_state: &str,
+        effects_state: &str,
+    ) -> (Task, NativeOperation) {
+        let attempt = Attempt {
+            attempt_id: "attempt-local".into(),
+            operation_id: "operation-local".into(),
+            account_id: "account-local".into(),
+            auth_revision: 1,
+            generation: 1,
+            input: "test input".into(),
+            continuation_method: "new_session".into(),
+            state: attempt_state.into(),
+            output: String::new(),
+            native_ref: None,
+            version: Some("test-version".into()),
+            effects_state: effects_state.into(),
+        };
+        let task = Task {
+            task_id: "task-local".into(),
+            cwd: cwd.into(),
+            title: "Local task".into(),
+            cli: Some(TitleCli::Codex),
+            availability_reason: None,
+            model: "test-model".into(),
+            reasoning_effort: None,
+            revision: 2,
+            history_revision: 1,
+            generation: 1,
+            state: task_state,
+            next_account_id: attempt.account_id.clone(),
+            active_account_id: None,
+            active_attempt_id: None,
+            status_message: "settled".into(),
+            attempts: vec![attempt],
+            history: vec![],
+            grants: vec![],
+            switches: vec![],
+        };
+        let operation = NativeOperation {
+            host_boundary_owned: true,
+            native_writer_participant: false,
+            native_writer_finish_observed: false,
+            native_writer_ack_pending: false,
+            native_writer_bind_attempted: false,
+            native_writer_bind_rejected: false,
+            native_writer_no_start_observed: false,
+            physical_account_root: Some("/tmp/lomi-test-account".into()),
+            operation_id: "operation-local".into(),
+            cli: TitleCli::Codex,
+            purpose: "attempt".into(),
+            account_id: "account-local".into(),
+            auth_revision: 1,
+            task_id: Some("task-local".into()),
+            attempt_id: Some("attempt-local".into()),
+            generation: Some(1),
+            cwd: cwd.into(),
+            boot: "test-boot".into(),
+            state: "reviewed".into(),
+        };
+        (task, operation)
+    }
+
+    #[test]
+    fn completed_stopped_and_pre_attempt_rejected_local_runs_release_the_lease() {
+        for (task_state, attempt_state) in [
+            (TaskState::Completed, "completed"),
+            (TaskState::Stopped, "stopped"),
+            (TaskState::Stopped, "rejected"),
+        ] {
+            let project = tempfile::tempdir().unwrap();
+            let path = project.path().join("managed.txt");
+            let lease =
+                crate::project_write_guard::activate_attempt(project.path(), "task-local", 1)
+                    .unwrap();
+            let mut inner = super::super::service::Inner::default();
+            inner.recovery_projects.insert("task-local".into(), lease);
+            let (task, operation) = settled_fixture(
+                project.path().to_str().unwrap(),
+                task_state,
+                attempt_state,
+                "settled",
+            );
+
+            assert!(crate::project_write_guard::admit(&[&path]).is_err());
+            assert!(release_settled_local_project_lease(
+                &mut inner,
+                &task,
+                "attempt-local",
+                Some(&operation),
+                true,
+                true,
+                false,
+            ));
+            assert!(crate::project_write_guard::admit(&[&path]).is_ok());
+            let next_attempt =
+                crate::project_write_guard::activate_attempt(project.path(), "task-local", 2)
+                    .expect("a settled local attempt must admit its next attempt");
+            drop(next_attempt);
+        }
+    }
+
+    #[test]
+    fn unproved_local_effects_keep_the_project_lease() {
+        let project = tempfile::tempdir().unwrap();
+        let path = project.path().join("managed.txt");
+        let lease =
+            crate::project_write_guard::activate_attempt(project.path(), "task-local", 1).unwrap();
+        let mut inner = super::super::service::Inner::default();
+        inner.recovery_projects.insert("task-local".into(), lease);
+        let (task, operation) = settled_fixture(
+            project.path().to_str().unwrap(),
+            TaskState::RecoveryRequired,
+            "recovery_required",
+            "uncertain",
+        );
+
+        assert!(!release_settled_local_project_lease(
+            &mut inner,
+            &task,
+            "attempt-local",
+            Some(&operation),
+            true,
+            true,
+            false,
+        ));
+        assert!(crate::project_write_guard::admit(&[&path]).is_err());
+    }
 }
 
 pub(super) fn unqualified_observed_tools(

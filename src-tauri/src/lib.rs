@@ -136,6 +136,7 @@ pub fn canonical_host_entry() -> Option<i32> {
 #[path = "remote/activity.rs"]
 mod activity;
 mod desktop_file_effects;
+mod desktop_runtime;
 mod editor_preferences;
 mod external_files;
 mod files;
@@ -175,6 +176,7 @@ struct AppInfo {
     home: String,
     platform: String,
     terminal_renderer: &'static str,
+    workspace_backend: &'static str,
     profiles: Vec<shell::Profile>,
 }
 
@@ -193,6 +195,7 @@ fn app_info(window: Window, shells: State<'_, terminal::Shells>) -> Result<AppIn
         directory: directory.to_string_lossy().into_owned(),
         home: shell::home().to_string_lossy().into_owned(),
         platform: std::env::consts::OS.into(),
+        workspace_backend: desktop_runtime::workspace_backend(),
         terminal_renderer: terminal_renderer::select(
             std::env::consts::OS,
             std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").as_deref(),
@@ -361,6 +364,39 @@ pub fn run() {
                 integration,
             });
 
+            let recovery_app = app.handle().clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                let warning = match desktop_file_effects::pending_local_trash_warning(&recovery_app)
+                {
+                    Ok(warning) => warning,
+                    Err(error) => Some(format!(
+                        "Local Trash recovery records could not be read: {error}"
+                    )),
+                };
+                if let (Some(warning), Some(window)) = (warning, recovery_app.get_window("main")) {
+                    let body: String = warning
+                        .chars()
+                        .map(|character| {
+                            if character.is_control() {
+                                ' '
+                            } else {
+                                character
+                            }
+                        })
+                        .take(3900)
+                        .collect();
+                    let _ = notifications::record_app_notification(
+                        window,
+                        recovery_app,
+                        notifications::NotificationKind::Attention,
+                        notifications::ApplicationNotificationSource::App,
+                        "File recovery needs attention".into(),
+                        body,
+                        None,
+                    );
+                }
+            });
+
             #[cfg(not(target_os = "macos"))]
             window_lifecycle::install_tray(app)?;
             agent_control::initialize_startup(app.handle().clone());
@@ -377,7 +413,14 @@ pub fn run() {
                     .reject("Web pages cannot call application commands.");
                 return true;
             }
+            if !desktop_runtime::shared_host_enabled()
+                && desktop_runtime::remote_command(invoke.message.command())
+            {
+                invoke.resolver.reject(desktop_runtime::REMOTE_DISABLED);
+                return true;
+            }
             let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+                desktop_runtime::desktop_runtime_info,
                 external_files::external_files_pending,
                 external_files::external_files_ack,
                 external_files::resolve_external_file,

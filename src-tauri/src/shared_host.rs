@@ -294,6 +294,7 @@ const MACOS_HOST_RESTART_REQUIRED: &str = "The previous local Host must be stopp
 
 #[cfg(target_os = "macos")]
 pub(crate) fn connect_or_start_local_host(profile: &Path) -> Result<HostClient, String> {
+    crate::desktop_runtime::require_shared_host()?;
     lomi_platform::service_macos::custody::prepare_current_user_host_profile(profile)
         .map_err(|_| MACOS_ADMIN_INSTALL_REQUIRED.to_owned())?;
     let executable =
@@ -381,6 +382,7 @@ impl Drop for NativeGitBridge<'_> {
     }
 }
 
+#[cfg(feature = "remote-host")]
 impl lomi_control_core::broker::GitMutationHost for NativeGitBridge<'_> {
     fn prepare_guarded(
         &mut self,
@@ -789,6 +791,16 @@ fn native_git_terminal(state: LocalNativeGitState) -> bool {
             | LocalNativeGitState::Failed
             | LocalNativeGitState::OutcomeUnknown
     )
+}
+
+pub(crate) fn pending_native_git_effect(app: &tauri::AppHandle) -> Result<bool, String> {
+    let outbox = read_native_git_outbox(&native_git_outbox_path(app)?)?;
+    Ok(outbox.operations.values().any(|entry| {
+        entry.phase == NativeGitOutboxPhase::ExecuteSent
+            || entry.terminal_result.as_ref().is_some_and(|receipt| {
+                receipt.state == LocalNativeGitState::OutcomeUnknown || !receipt.custody_settled
+            })
+    }))
 }
 
 fn valid_native_git_outbox_result(
@@ -2600,6 +2612,7 @@ impl SharedHost {
     }
 
     fn client(&self, view: &str) -> Result<Arc<Mutex<HostClient>>, String> {
+        crate::desktop_runtime::require_shared_host()?;
         let mut clients = self
             .clients
             .lock()
@@ -4279,6 +4292,13 @@ pub fn canonical_host_entry(args: &[std::ffi::OsString]) -> Option<i32> {
     use std::ffi::OsStr;
     let is =
         |index: usize, value: &str| args.get(index).is_some_and(|arg| arg == OsStr::new(value));
+
+    if !crate::desktop_runtime::shared_host_enabled() {
+        return (is(0, "--internal-pty-worker")
+            || is(0, "--internal-scm")
+            || is(0, "--profile-dir") && is(2, "daemon") && is(3, "run"))
+        .then_some(2);
+    }
 
     #[cfg(unix)]
     if is(0, "--internal-pty-worker") {

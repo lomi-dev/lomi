@@ -12,7 +12,7 @@ import SettingsNavigation from "./SettingsNavigation";
 import AboutSettingsPage from "./AboutSettingsPage";
 import TerminalSettingsPage from "./TerminalSettingsPage";
 import { DisclosureSummary, IconButton } from "./ui";
-import { errorMessage, native } from "./api";
+import { errorMessage } from "./api";
 import {
   bindingConflict,
   formatShortcut,
@@ -51,14 +51,17 @@ export interface SettingsPanelProps {
   active: boolean;
   requestedPage: SettingsPageId | null;
   requestRevision: number;
+  remoteAvailable: boolean;
+  remoteDisabledReason?: string;
 }
 
 export default function SettingsPanel({
   active,
   requestedPage,
   requestRevision,
+  remoteAvailable,
+  remoteDisabledReason = "Remote is disabled in this version of Lomi.",
 }: SettingsPanelProps) {
-  const remoteAvailable = native;
   const [page, setPage] = useState<SettingsPageId>(
     requestedPage ?? defaultSettingsPage,
   );
@@ -146,6 +149,7 @@ export default function SettingsPanel({
           page={page}
           requestRevision={requestRevision}
           remoteAvailable={remoteAvailable}
+          remoteDisabledReason={remoteDisabledReason}
           onSelect={setPage}
         />
         {page === "notifications" ? (
@@ -154,7 +158,10 @@ export default function SettingsPanel({
           </Suspense>
         ) : page === "remote" ? (
           <Suspense fallback={<SettingsLoading title="Remote" />}>
-            <RemoteSettingsPage available={remoteAvailable} />
+            <RemoteSettingsPage
+              available={remoteAvailable}
+              disabledReason={remoteDisabledReason}
+            />
           </Suspense>
         ) : page === "account" ? (
           <Suspense fallback={<SettingsLoading title="Account" />}>

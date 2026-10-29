@@ -4,7 +4,7 @@ import {
   isPermissionGranted,
   requestPermission,
 } from "@tauri-apps/plugin-notification";
-import { api, native } from "../api";
+import { api, getInfo, native } from "../api";
 import { SettingRow, SettingsNotice, SettingsSection } from "../settings-ui";
 import type { AuthState } from "./model";
 
@@ -98,6 +98,7 @@ function useNativeState<
   command: string,
   event: string,
   refreshCommand = command,
+  enabled = true,
 ) {
   const [state, setState] = useState<T | null>(null);
   const [error, setError] = useState("");
@@ -118,7 +119,7 @@ function useNativeState<
   };
   useEffect(() => {
     mounted.current = true;
-    if (!native || !accountId)
+    if (!native || !accountId || !enabled)
       return () => {
         mounted.current = false;
       };
@@ -162,7 +163,7 @@ function useNativeState<
     };
     // The enclosing account/session key remounts this component on ownership changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accountId, command, event, refreshCommand]);
+  }, [accountId, command, event, refreshCommand, enabled]);
   return { state, accept, error, setError, mounted, loading };
 }
 
@@ -208,6 +209,19 @@ export default function NotificationSettings({
   auth: AuthState | null;
 }) {
   const accountId = auth?.user?.id ?? null;
+  const [remoteEnabled, setRemoteEnabled] = useState(false);
+  useEffect(() => {
+    if (!native) return;
+    let active = true;
+    void getInfo()
+      .then((info) => {
+        if (active) setRemoteEnabled(info.workspaceBackend === "shared-host");
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
   const local = useNativeState<LocalState>(
     accountId,
     "desktop_notifications_get_state",
@@ -218,6 +232,7 @@ export default function NotificationSettings({
     "push_get_state",
     "push-state-changed",
     "push_refresh_state",
+    remoteEnabled,
   );
   const [localBusy, setLocalBusy] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
@@ -234,7 +249,11 @@ export default function NotificationSettings({
     push.error ||
     (push.state?.errorCode ? message(push.state.errorCode, true) : "");
   const canCloud =
-    native && onlineAccount && !!push.state?.available && !pushError;
+    remoteEnabled &&
+    native &&
+    onlineAccount &&
+    !!push.state?.available &&
+    !pushError;
   const canEnableCloud = canCloud && !!push.state?.featureEnabled;
 
   const permission = async (prompt: boolean) => {
@@ -360,6 +379,9 @@ export default function NotificationSettings({
         <Toggle
           id="completion-push-enabled"
           label="Push notifications on my phones"
+          description={
+            !remoteEnabled ? "Phone notifications require Remote." : undefined
+          }
           checked={
             !!push.state?.preferences.enabled && !!currentSource?.enabled
           }
@@ -371,7 +393,12 @@ export default function NotificationSettings({
           }
           change={(enabled) => void runCloud(enabled)}
         />
-        {!onlineAccount && (
+        {!remoteEnabled && (
+          <SettingsNotice role="status">
+            Remote is disabled. Notifications on this computer remain available.
+          </SettingsNotice>
+        )}
+        {remoteEnabled && !onlineAccount && (
           <SettingsNotice>
             {auth?.status === "offline" && qualified
               ? "Reconnect your Lomi account to manage phone notifications."
@@ -382,7 +409,7 @@ export default function NotificationSettings({
                   : "Sign in to Lomi to manage phone notifications."}
           </SettingsNotice>
         )}
-        {onlineAccount && !pushError && !canCloud && (
+        {remoteEnabled && onlineAccount && !pushError && !canCloud && (
           <SettingsNotice role="status">
             {push.loading
               ? "Loading phone notification settings…"
@@ -403,7 +430,7 @@ export default function NotificationSettings({
               Enable receiving in the Lomi app on your phone.
             </SettingsNotice>
           )}
-        {onlineAccount && pushError && (
+        {remoteEnabled && onlineAccount && pushError && (
           <SettingsNotice tone="error" role="alert">
             {pushError}
           </SettingsNotice>

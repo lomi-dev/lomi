@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { native } from "./api";
-import type { Session, ShellProfile } from "./model";
+import type { AppInfo, Session, ShellProfile } from "./model";
 import {
   importSharedWorkspace,
   setSharedHostWorkspaceSharing,
@@ -21,6 +21,7 @@ export function useRemoteWorkspaces(
     previousRootPath: string,
     rootPath: string,
   ) => void | Promise<void>,
+  workspaceBackend: AppInfo["workspaceBackend"] | undefined,
 ) {
   const [state, setState] = useState<RemoteState>();
   const [error, setError] = useState("");
@@ -29,9 +30,22 @@ export function useRemoteWorkspaces(
     SharedHostDesktopUncertaintyWarning[]
   >([]);
   const refreshRef = useRef<() => Promise<void>>(async () => {});
+  const available = native && workspaceBackend === "shared-host";
+  const disabledReason = !native
+    ? "Remote sharing requires the Lomi desktop app."
+    : workspaceBackend !== "shared-host"
+      ? "Remote is disabled in this version of Lomi."
+      : "Remote sharing status is unavailable.";
 
   useEffect(() => {
-    if (!native) return;
+    if (!available) {
+      setState(undefined);
+      setError("");
+      setBusy(undefined);
+      setUncertaintyWarnings([]);
+      refreshRef.current = async () => {};
+      return;
+    }
     let alive = true;
     let refreshing = false;
     const refresh = async () => {
@@ -55,7 +69,10 @@ export function useRemoteWorkspaces(
           current.current?.projects.flatMap((project) =>
             project.workspaces.map(
               (workspace) =>
-                [workspace.id, { projectId: project.id, path: project.path }] as const,
+                [
+                  workspace.id,
+                  { projectId: project.id, path: project.path },
+                ] as const,
             ),
           ) ?? [],
         );
@@ -129,7 +146,9 @@ export function useRemoteWorkspaces(
           enabled: hostStatus.sharing === "enabled",
           message: null,
           workspaces: hostWorkspaces.map((workspace) => ({
-            id: localByCanonical.get(workspace.workspaceId) ?? workspace.workspaceId,
+            id:
+              localByCanonical.get(workspace.workspaceId) ??
+              workspace.workspaceId,
             name: workspace.name,
             shared: workspace.sharing === "enabled",
             message: null,
@@ -138,6 +157,7 @@ export function useRemoteWorkspaces(
         setError("");
       } catch (cause) {
         if (alive) {
+          setState(undefined);
           setError(cause instanceof Error ? cause.message : String(cause));
         }
       } finally {
@@ -152,13 +172,10 @@ export function useRemoteWorkspaces(
       clearInterval(timer);
       if (refreshRef.current === refresh) refreshRef.current = async () => {};
     };
-  }, [current, _session, relocateWorkspaceRoot]);
+  }, [available, current, _session, relocateWorkspaceRoot]);
 
   const share = async (workspaceId: string, shared: boolean) => {
-    if (!native) {
-      setError("Remote sharing requires the Lomi desktop app.");
-      return;
-    }
+    if (!available) return;
     const session = current.current;
     const project = session?.projects.find((candidate) =>
       candidate.workspaces.some((workspace) => workspace.id === workspaceId),
@@ -184,13 +201,17 @@ export function useRemoteWorkspaces(
         (candidate) => candidate.workspaceId === workspace.id,
       );
       if (!binding)
-        throw new Error("The workspace has no authoritative local Host binding.");
+        throw new Error(
+          "The workspace has no authoritative local Host binding.",
+        );
       if (binding.state === "retired")
         throw new Error(
           "The local Host retired this workspace. Its local project and drafts are preserved.",
         );
       if (binding.state === "pending")
-        throw new Error("The local Host is still resolving this workspace binding.");
+        throw new Error(
+          "The local Host is still resolving this workspace binding.",
+        );
       if (binding.state === "missing") {
         if (binding.previousRootPath)
           throw new Error(
@@ -201,6 +222,7 @@ export function useRemoteWorkspaces(
       await setSharedHostWorkspaceSharing(workspace.id, shared);
       await refreshRef.current();
     } catch (cause) {
+      setState(undefined);
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setBusy(undefined);
@@ -210,7 +232,7 @@ export function useRemoteWorkspaces(
   const acknowledgeUncertaintyWarning = async (
     warning: SharedHostDesktopUncertaintyWarning,
   ) => {
-    if (!native) return;
+    if (!available) return;
     try {
       const workspaceIds =
         current.current?.projects.flatMap((project) =>
@@ -222,19 +244,24 @@ export function useRemoteWorkspaces(
       });
       setUncertaintyWarnings(response.uncertaintyWarnings);
       if (response.bindings) await refreshRef.current();
-      else setError(response.bindingError ?? "The local Host is unavailable.");
+      else {
+        setState(undefined);
+        setError(response.bindingError ?? "The local Host is unavailable.");
+      }
     } catch (cause) {
+      setState(undefined);
       setError(cause instanceof Error ? cause.message : String(cause));
     }
   };
 
   return {
-    state,
-    error,
-    busy,
+    state: available ? state : undefined,
+    error: available ? error : "",
+    busy: available ? busy : undefined,
     share,
-    uncertaintyWarnings,
+    uncertaintyWarnings: available ? uncertaintyWarnings : [],
     acknowledgeUncertaintyWarning,
-    available: native,
+    available,
+    disabledReason,
   };
 }

@@ -34,6 +34,12 @@ pub struct EditorError {
     message: String,
 }
 
+impl std::fmt::Display for EditorError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
 impl EditorError {
     pub(crate) fn new(kind: &'static str, message: impl Into<String>) -> Self {
         Self {
@@ -349,6 +355,79 @@ fn write_host(app: &tauri::AppHandle, request: &SaveFile) -> Result<String, Edit
     }
 }
 
+fn native_file_error(error: lomi_native_files::NativeFileError) -> EditorError {
+    use lomi_native_files::NativeFileErrorKind;
+    let kind = match error.kind {
+        NativeFileErrorKind::Io => "io",
+        NativeFileErrorKind::Unsupported => "unsupported",
+        NativeFileErrorKind::TooLarge => "tooLarge",
+        NativeFileErrorKind::Conflict => "conflict",
+        NativeFileErrorKind::ReadOnly => "readOnly",
+        NativeFileErrorKind::OpenFile => "openFile",
+        NativeFileErrorKind::Uncertain => "uncertain",
+    };
+    EditorError::new(kind, error.message)
+}
+
+fn ensure_local_host_effects_clear(
+    app: &tauri::AppHandle,
+    paths: &[PathBuf],
+    recursive: bool,
+) -> Result<(), EditorError> {
+    let conflict = crate::native_file_effects::local_host_effect_conflicts(app, paths, recursive)
+        .map_err(|message| EditorError::new("io", message))?;
+    if conflict {
+        Err(EditorError::new(
+            "conflict",
+            "A previous Host file operation affecting this path is unresolved and has been retained. Resolve it in a Remote Host-enabled build before saving locally.",
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn write_local(app: &tauri::AppHandle, request: &SaveFile) -> Result<String, EditorError> {
+    let (path, relative) = resolve(&request.root, &request.relative)?;
+    let root = super::directory(&request.root).map_err(EditorError::io)?;
+    let root = root
+        .to_str()
+        .ok_or_else(|| EditorError::new("unsupported", "The project folder path is invalid."))?;
+    ensure_local_host_effects_clear(app, std::slice::from_ref(&path), false)?;
+    let _admission = crate::project_write_guard::admit(&[&path])
+        .map_err(|message| EditorError::new("codingRunActive", message))?;
+    save_local_file(&path, root, &relative, &request.content, &request.revision)
+}
+
+fn save_local_file(
+    path: &Path,
+    root: &str,
+    relative: &str,
+    content: &str,
+    expected_revision: &str,
+) -> Result<String, EditorError> {
+    let result = lomi_native_files::save(
+        lomi_native_files::NativeSaveRequest::FileNoFollow(lomi_native_files::NativeSaveFile {
+            root: root.to_owned(),
+            relative: relative.to_owned(),
+            expected_revision: expected_revision.to_owned(),
+        }),
+        content,
+        || Ok(()),
+    )
+    .map_err(native_file_error)?;
+    match result {
+        lomi_native_files::NativeSaveResult::File(file)
+            if file.path == path.to_str().unwrap_or_default() && file.relative == relative =>
+        {
+            Ok(file.revision)
+        }
+        _ => Err(EditorError::new(
+            "uncertain",
+            "The file was saved with invalid metadata. Check the disk version before saving again.",
+        )),
+    }
+}
+
 fn canonical_new_path(path: &Path) -> Result<PathBuf, EditorError> {
     if path.try_exists().map_err(EditorError::io)? {
         fs::canonicalize(path).map_err(EditorError::io)
@@ -520,6 +599,153 @@ fn write_new_host(
     }
 }
 
+fn write_new_local(
+    app: &tauri::AppHandle,
+    selected_path: &Path,
+    content: &str,
+    open_files: &[FileLocation],
+) -> Result<SavedEditorFile, EditorError> {
+    let path = canonical_new_path(selected_path)?;
+    if open_files.len() > 256 {
+        return Err(EditorError::new(
+            "tooLarge",
+            "Too many editor files are open to safely save this file.",
+        ));
+    }
+    let native_open_files = open_files
+        .iter()
+        .map(|file| {
+            Ok(lomi_native_files::NativeFileLocation {
+                root: file.root.clone(),
+                relative: file.relative.clone(),
+            })
+        })
+        .collect::<Result<Vec<_>, EditorError>>()?;
+    ensure_local_host_effects_clear(app, std::slice::from_ref(&path), false)?;
+    let _admission = crate::project_write_guard::admit(&[&path])
+        .map_err(|message| EditorError::new("codingRunActive", message))?;
+    save_new_local_path(&path, content, native_open_files)
+}
+
+#[cfg(test)]
+mod local_save_tests {
+    use super::*;
+    use sha2::{Digest, Sha256};
+
+    fn revision(bytes: &[u8]) -> String {
+        format!("{:x}", Sha256::digest(bytes))
+    }
+
+    #[test]
+    fn local_editor_save_preserves_utf16_encoding_and_checks_revision() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().canonicalize().unwrap();
+        let path = root.join("notes.txt");
+        let original = [0xff, 0xfe, b'o', 0, b'l', 0, b'd', 0];
+        fs::write(&path, original).unwrap();
+        let expected = revision(&original);
+        let root = root.to_str().unwrap();
+
+        let saved = save_local_file(&path, root, "notes.txt", "new", &expected).unwrap();
+        assert_eq!(saved, revision(&fs::read(&path).unwrap()));
+        assert_eq!(
+            fs::read(&path).unwrap(),
+            [0xff, 0xfe, b'n', 0, b'e', 0, b'w', 0]
+        );
+
+        fs::write(&path, b"outside change").unwrap();
+        let before = fs::read(&path).unwrap();
+        let error = save_local_file(&path, root, "notes.txt", "stale", &expected).unwrap_err();
+        assert_eq!(error.kind, "conflict");
+        assert_eq!(fs::read(&path).unwrap(), before);
+    }
+
+    #[test]
+    fn local_save_as_protects_open_files_and_creates_new_files() {
+        let directory = tempfile::tempdir().unwrap();
+        let root_path = directory.path().canonicalize().unwrap();
+        let root = root_path.to_str().unwrap().to_owned();
+        let existing = root_path.join("open.txt");
+        fs::write(&existing, b"kept").unwrap();
+        let open_files = vec![lomi_native_files::NativeFileLocation {
+            root: root.clone(),
+            relative: "open.txt".into(),
+        }];
+        let error = save_new_local_path(&existing, "replacement", open_files).unwrap_err();
+        assert_eq!(error.kind, "openFile");
+        assert_eq!(fs::read(&existing).unwrap(), b"kept");
+
+        let new_file = root_path.join("new.txt");
+        let saved = save_new_local_path(&new_file, "created", Vec::new()).unwrap();
+        assert_eq!(saved.location.root, root);
+        assert_eq!(saved.location.relative, "new.txt");
+        assert_eq!(fs::read(&new_file).unwrap(), b"created");
+    }
+}
+
+fn save_new_local_path(
+    path: &Path,
+    content: &str,
+    native_open_files: Vec<lomi_native_files::NativeFileLocation>,
+) -> Result<SavedEditorFile, EditorError> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| EditorError::new("io", "The file has no parent directory."))?;
+    let unicode = || EditorError::new("unsupported", "This filename is not valid Unicode.");
+    let root = parent.to_str().ok_or_else(unicode)?.to_owned();
+    let relative = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(unicode)?
+        .to_owned();
+    let expected_revision = if path.try_exists().map_err(EditorError::io)? {
+        if !path.is_file() {
+            return Err(EditorError::new(
+                "unsupported",
+                "Only regular files can be opened in the editor.",
+            ));
+        }
+        let current = read(&root, &relative, None)?;
+        if current.read_only {
+            return Err(EditorError::new(
+                "readOnly",
+                "This file is read-only. Your changes are still in the editor.",
+            ));
+        }
+        let _ = encode(content, current.encoding)?;
+        Some(current.revision)
+    } else {
+        let _ = encode(content, Encoding::Utf8)?;
+        None
+    };
+    let result = lomi_native_files::save(
+        lomi_native_files::NativeSaveRequest::NewChecked(lomi_native_files::NativeSaveNewChecked {
+            request: lomi_native_files::NativeSaveNew {
+                absolute_path: path.to_path_buf(),
+                open_files: native_open_files,
+            },
+            expected_revision,
+        }),
+        content,
+        || Ok(()),
+    )
+    .map_err(native_file_error)?;
+    match result {
+        lomi_native_files::NativeSaveResult::New(saved)
+            if saved.file.path == path.to_str().unwrap_or_default()
+                && saved.file.relative == relative
+                && saved.location.root == root
+                && saved.location.relative == relative =>
+        {
+            Ok(saved_editor_file_from_native(saved))
+        }
+        _ => Err(EditorError::new(
+            "uncertain",
+            "The file was saved with invalid metadata. Check the disk version before saving again.",
+        )),
+    }
+}
+
 fn saved_editor_file_from_native(
     saved: lomi_native_files::NativeSavedEditorFile,
 ) -> SavedEditorFile {
@@ -571,7 +797,11 @@ pub async fn save_new_editor_file(
         let path = path.into_path().map_err(EditorError::io)?;
         let state = app.state::<EditorFiles>();
         let _guard = state.writes.lock().map_err(EditorError::io)?;
-        write_new_host(&app, &path, &content, &open_files).map(Some)
+        if crate::desktop_runtime::shared_host_enabled() {
+            write_new_host(&app, &path, &content, &open_files).map(Some)
+        } else {
+            write_new_local(&app, &path, &content, &open_files).map(Some)
+        }
     })
     .await
     .map_err(EditorError::io)?
@@ -614,7 +844,11 @@ pub async fn save_editor_file(
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<EditorFiles>();
         let _guard = state.writes.lock().map_err(EditorError::io)?;
-        write_host(&app, &request)
+        if crate::desktop_runtime::shared_host_enabled() {
+            write_host(&app, &request)
+        } else {
+            write_local(&app, &request)
+        }
     })
     .await
     .map_err(EditorError::io)?

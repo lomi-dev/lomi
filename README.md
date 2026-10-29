@@ -108,6 +108,16 @@ pnpm install --frozen-lockfile
 pnpm tauri dev
 ```
 
+The default desktop runs local terminals, files, Git, and coding tools without
+installing or starting Lomi Remote Host. Remote connections and sharing are
+disabled in this build. Shared source libraries are still needed at build time.
+
+To build the separate Host-backed variant, enable `remote-host` with
+`pnpm tauri dev --features remote-host`. That variant requires its configured
+Remote services and, on macOS, the signed administrator-installed Host. The
+workspace backend is fixed for each application process; failed Remote
+operations never fall back to local execution.
+
 See [AGENTS.md](AGENTS.md) for the source layout, development commands and
 validation requirements.
 

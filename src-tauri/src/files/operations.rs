@@ -109,16 +109,27 @@ pub async fn file_operation(
             .writes
             .lock()
             .map_err(|_| "File writes are unavailable.")?;
-        crate::desktop_file_effects::file_operation(
-            &app,
-            &window,
-            &webview,
-            &root,
-            &relative,
-            operation,
-            expected_path,
-            deadline,
-        )
+        if crate::desktop_runtime::shared_host_enabled() {
+            crate::desktop_file_effects::file_operation(
+                &app,
+                &window,
+                &webview,
+                &root,
+                &relative,
+                operation,
+                expected_path,
+                deadline,
+            )
+        } else {
+            crate::desktop_file_effects::file_operation_local(
+                &app,
+                &root,
+                &relative,
+                operation,
+                expected_path,
+                deadline,
+            )
+        }
     })
     .await
     .map_err(|error| error.to_string())?
@@ -152,13 +163,11 @@ pub async fn git_pull(
     window: Window,
     webview: tauri::Webview,
     app: tauri::AppHandle,
-    host: tauri::State<'_, super::super::shared_host::SharedHost>,
     root: String,
     rebase: bool,
 ) -> Result<(), String> {
     main_window(&window)?;
     crate::shared_host::trusted_full_window(&window, &webview)?;
-    let host = host.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let state = window.state::<super::editor::EditorFiles>();
         // Hold the editor write lock through pull to serialize worktree mutations.
@@ -166,7 +175,13 @@ pub async fn git_pull(
             .writes
             .lock()
             .map_err(|_| "File writes are unavailable.")?;
-        crate::native_git_effects::pull(&app, &host, &root, rebase)
+        if crate::desktop_runtime::shared_host_enabled() {
+            let host = app.state::<super::super::shared_host::SharedHost>();
+            crate::native_git_effects::pull(&app, host.inner(), &root, rebase)
+        } else {
+            crate::desktop_runtime::ensure_local_git_write_safe(&app, &root)?;
+            crate::git::local::pull(&root, rebase)
+        }
     })
     .await
     .map_err(|error| error.to_string())?
@@ -191,14 +206,24 @@ pub async fn git_discard(
             .writes
             .lock()
             .map_err(|_| "File writes are unavailable.")?;
-        crate::desktop_file_effects::git_discard(
-            &app,
-            &window,
-            &webview,
-            &root,
-            change.into(),
-            deadline,
-        )
+        if crate::desktop_runtime::shared_host_enabled() {
+            crate::desktop_file_effects::git_discard(
+                &app,
+                &window,
+                &webview,
+                &root,
+                change.into(),
+                deadline,
+            )
+        } else {
+            crate::desktop_runtime::ensure_local_git_write_safe(&app, &root)?;
+            crate::git::local::discard(&root, &change)?;
+            Ok(FileChange {
+                old_path: None,
+                new_path: None,
+                warning: None,
+            })
+        }
     })
     .await
     .map_err(|error| error.to_string())?
@@ -224,9 +249,19 @@ pub async fn ignore_project_item(
             .writes
             .lock()
             .map_err(|_| "File writes are unavailable.")?;
-        crate::desktop_file_effects::git_ignore(
-            &app, &window, &webview, &root, &relative, local, deadline,
-        )
+        if crate::desktop_runtime::shared_host_enabled() {
+            crate::desktop_file_effects::git_ignore(
+                &app, &window, &webview, &root, &relative, local, deadline,
+            )
+        } else {
+            crate::desktop_runtime::ensure_local_git_write_safe(&app, &root)?;
+            crate::git::local::ignore(&root, &relative, local)?;
+            Ok(FileChange {
+                old_path: None,
+                new_path: None,
+                warning: None,
+            })
+        }
     })
     .await
     .map_err(|error| error.to_string())?

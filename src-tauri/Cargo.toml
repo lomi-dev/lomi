@@ -33,6 +33,8 @@ debug = "line-tables-only"
 incremental = false
 
 [features]
+default = []
+remote-host = ["lomi-control-core/remote-host"]
 experimental-macos-coalition-cleanup = ["lomi-terminal/experimental-macos-coalition-cleanup"]
 
 [build-dependencies]

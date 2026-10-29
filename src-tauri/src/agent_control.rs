@@ -60,6 +60,34 @@ fn unavailable() -> String {
     "Agent control is unavailable. Reopen its Settings page.".into()
 }
 
+#[cfg(unix)]
+fn ensure_local_host_effects_clear(
+    app: &tauri::AppHandle,
+    paths: &[std::path::PathBuf],
+    recursive: bool,
+) -> Result<(), lomi_control_protocol::ErrorCode> {
+    let conflicts = crate::native_file_effects::local_host_effect_conflicts(app, paths, recursive)
+        .map_err(|_| lomi_control_protocol::ErrorCode::StorageUnavailable)?;
+    if conflicts {
+        Err(lomi_control_protocol::ErrorCode::TargetBusy)
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(unix)]
+fn ensure_all_local_host_effects_clear(
+    app: &tauri::AppHandle,
+) -> Result<(), lomi_control_protocol::ErrorCode> {
+    if crate::native_file_effects::any_local_host_effect_pending(app)
+        .map_err(|_| lomi_control_protocol::ErrorCode::StorageUnavailable)?
+    {
+        Err(lomi_control_protocol::ErrorCode::TargetBusy)
+    } else {
+        Ok(())
+    }
+}
+
 fn startup_preferences_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     app.path()
         .app_data_dir()
@@ -1453,6 +1481,10 @@ pub async fn agent_control_artifact_export(
         let app = window.app_handle().clone();
         tauri::async_runtime::spawn_blocking(move || {
             crate::files::agent::with_writer(&app, || {
+                if !crate::desktop_runtime::shared_host_enabled() {
+                    ensure_all_local_host_effects_clear(&app)?;
+                    return broker.commit_artifact_export(&operation_id, &nonce);
+                }
                 let publish: lomi_control_core::broker::ArtifactExportPublisher = Arc::new({
                     let app = app.clone();
                     move |root,
@@ -1502,6 +1534,10 @@ pub async fn agent_control_files_mutate(
         let app = window.app_handle().clone();
         tauri::async_runtime::spawn_blocking(move || {
             crate::files::agent::with_writer(&app, || {
+                if !crate::desktop_runtime::shared_host_enabled() {
+                    ensure_all_local_host_effects_clear(&app)?;
+                    return broker.commit_files_mutate(&operation_id, &nonce);
+                }
                 let publish: lomi_control_core::broker::FilesProjectMutationPublisher = Arc::new({
                     let app = app.clone();
                     move |root, principal, operation, mutation, check| {
@@ -1537,8 +1573,18 @@ pub async fn agent_control_editor_save_file(
     {
         let broker = state.required().map_err(|_| ErrorCode::ControlRevoked)?;
         let app = window.app_handle().clone();
+        let local_path = std::path::PathBuf::from(&body.source_path);
         tauri::async_runtime::spawn_blocking(move || {
             crate::files::agent::with_writer(&app, || {
+                if !crate::desktop_runtime::shared_host_enabled() {
+                    ensure_local_host_effects_clear(&app, &[local_path], false)?;
+                    return broker.commit_editor_save(
+                        &operation_id,
+                        &nonce,
+                        body,
+                        crate::files::agent::encode_preserving,
+                    );
+                }
                 broker.commit_editor_save_with_host(
                     &operation_id,
                     &nonce,
@@ -2123,8 +2169,9 @@ pub async fn agent_control_git_mutation_prepare(
     nonce: String,
 ) -> Result<lomi_control_protocol::git::GitMutationPlan, lomi_control_protocol::ErrorCode> {
     use lomi_control_protocol::ErrorCode;
+    let _ = &host;
     crate::files::main_window(&window).map_err(|_| ErrorCode::ScopeDenied)?;
-    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64", feature = "remote-host"))]
     {
         let broker = state.required().map_err(|_| ErrorCode::ControlRevoked)?;
         let shared_host = host.inner().clone();
@@ -2143,9 +2190,29 @@ pub async fn agent_control_git_mutation_prepare(
             })
             .await?
     }
+    #[cfg(all(
+        target_os = "macos",
+        target_arch = "aarch64",
+        not(feature = "remote-host")
+    ))]
+    {
+        let broker = state.required().map_err(|_| ErrorCode::ControlRevoked)?;
+        let app = window.app_handle().clone();
+        broker
+            .native_worker(move |broker| {
+                broker.prepare_git_mutation(&operation_id, &nonce, |root| {
+                    crate::desktop_runtime::ensure_local_git_write_safe(&app, root)
+                        .map_err(|_| ErrorCode::TargetBusy)?;
+                    crate::git::mutation_guard(root).map_err(|_| ErrorCode::TargetBusy)
+                })
+            })
+            .await?
+    }
     #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
     {
-        let _ = (state, host, operation_id, nonce);
+        let _ = (state, operation_id, nonce);
+        #[cfg(feature = "remote-host")]
+        let _ = host;
         Err(ErrorCode::HostUnqualified)
     }
 }
@@ -2184,8 +2251,9 @@ pub async fn agent_control_git_mutation_decide(
     approved: bool,
 ) -> Result<(), lomi_control_protocol::ErrorCode> {
     use lomi_control_protocol::ErrorCode;
+    let _ = &host;
     crate::files::main_window(&window).map_err(|_| ErrorCode::ScopeDenied)?;
-    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64", feature = "remote-host"))]
     {
         let shared_host = host.inner().clone();
         let app = window.app_handle().clone();
@@ -2200,9 +2268,25 @@ pub async fn agent_control_git_mutation_decide(
             })
             .await?
     }
+    #[cfg(all(
+        target_os = "macos",
+        target_arch = "aarch64",
+        not(feature = "remote-host")
+    ))]
+    {
+        state
+            .required()
+            .map_err(|_| ErrorCode::ControlRevoked)?
+            .native_worker(move |broker| {
+                broker.decide_git_mutation(&operation_id, &nonce, &plan_hash, approved)
+            })
+            .await?
+    }
     #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
     {
-        let _ = (state, host, operation_id, nonce, plan_hash, approved);
+        let _ = (state, operation_id, nonce, plan_hash, approved);
+        #[cfg(feature = "remote-host")]
+        let _ = host;
         Err(ErrorCode::HostUnqualified)
     }
 }
@@ -2216,8 +2300,9 @@ pub async fn agent_control_git_mutation_commit(
     plan_hash: String,
 ) -> Result<lomi_control_protocol::git::GitMutated, lomi_control_protocol::ErrorCode> {
     use lomi_control_protocol::ErrorCode;
+    let _ = &host;
     crate::files::main_window(&window).map_err(|_| ErrorCode::ScopeDenied)?;
-    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64", feature = "remote-host"))]
     {
         let shared_host = host.inner().clone();
         let app = window.app_handle().clone();
@@ -2238,9 +2323,32 @@ pub async fn agent_control_git_mutation_commit(
             })
             .await?
     }
+    #[cfg(all(
+        target_os = "macos",
+        target_arch = "aarch64",
+        not(feature = "remote-host")
+    ))]
+    {
+        let app = window.app_handle().clone();
+        state
+            .required()
+            .map_err(|_| ErrorCode::ControlRevoked)?
+            .native_worker(move |broker| {
+                crate::files::agent::with_writer(&app, || {
+                    broker.commit_git_mutation(&operation_id, &nonce, &plan_hash, |root| {
+                        crate::desktop_runtime::ensure_local_git_write_safe(&app, root)
+                            .map_err(|_| ErrorCode::TargetBusy)?;
+                        crate::git::mutation_guard(root).map_err(|_| ErrorCode::TargetBusy)
+                    })
+                })
+            })
+            .await?
+    }
     #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
     {
-        let _ = (state, host, operation_id, nonce, plan_hash);
+        let _ = (state, operation_id, nonce, plan_hash);
+        #[cfg(feature = "remote-host")]
+        let _ = host;
         Err(ErrorCode::HostUnqualified)
     }
 }

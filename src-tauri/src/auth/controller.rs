@@ -300,6 +300,9 @@ impl AuthController {
         body: Option<&serde_json::Value>,
         expected: Option<&RemoteBinding>,
     ) -> Result<(RemoteBinding, serde_json::Value), PushRequestError> {
+        if !crate::desktop_runtime::shared_host_enabled() {
+            return Err(PushRequestError::local("FEATURE_DISABLED"));
+        }
         let (token, binding) = {
             let core = self
                 .inner
@@ -497,6 +500,7 @@ impl AuthController {
         path: &str,
         body: Option<&serde_json::Value>,
     ) -> Result<(RemoteBinding, serde_json::Value), String> {
+        crate::desktop_runtime::require_shared_host()?;
         let (token, binding) = {
             let core = self.inner.core.lock().map_err(|_| "Account unavailable.")?;
             let binding = remote_binding(&core)?;
@@ -526,6 +530,9 @@ impl AuthController {
         path: &str,
         body: Option<&serde_json::Value>,
     ) -> Result<(RemoteBinding, serde_json::Value), RemoteHttpError> {
+        if !crate::desktop_runtime::shared_host_enabled() {
+            return Err(RemoteHttpError::local_code("REMOTE_DISABLED"));
+        }
         if !self
             .inner
             .config

@@ -309,6 +309,12 @@ export default function Workbench() {
   );
   const { bindings } = preferences;
   const [info, setInfo] = useState<AppInfo>();
+  const workspaceBackend = info?.workspaceBackend ?? "local";
+  const sharedHostBackend = native && workspaceBackend === "shared-host";
+  const closeWorkspaceTerminals = (
+    ids: string[],
+    workspaceIds?: string | Readonly<Record<string, string>>,
+  ) => closeTerminals(ids, workspaceIds, workspaceBackend);
   const defaultProfileId = info
     ? defaultTerminalProfile(info, terminalPreferences.value.windowsShell)
     : "";
@@ -491,6 +497,7 @@ export default function Workbench() {
     currentSession,
     info?.profiles,
     relocateAuthoritativeWorkspaceRoot,
+    workspaceBackend,
   );
   const applySharedHostWorkspaceState = useCallback(
     async (
@@ -575,7 +582,7 @@ export default function Workbench() {
   );
   useEffect(() => {
     if (
-      !native ||
+      !sharedHostBackend ||
       !info ||
       !sharedActiveWorkspaceId ||
       !sharedActiveWorkspaceName ||
@@ -626,6 +633,8 @@ export default function Workbench() {
       if (!isCurrent(attempt)) return;
       attempt.failed = true;
       clearAttempt(attempt);
+      if (sharedHostView.current?.workspaceId === workspaceId)
+        sharedHostView.current = undefined;
       setSharedWorkspaceStreamStatus({
         workspaceId,
         status: message ? "unavailable" : "reconnecting",
@@ -727,7 +736,10 @@ export default function Workbench() {
           (candidate) => candidate.workspaceId === workspaceId,
         );
         if (!binding) {
-          fail(attempt, "The workspace has no authoritative local Host binding.");
+          fail(
+            attempt,
+            "The workspace has no authoritative local Host binding.",
+          );
           return;
         }
         if (binding.state === "retired") {
@@ -850,7 +862,7 @@ export default function Workbench() {
     applySharedHostWorkspaceState,
     defaultProfileId,
     info,
-    native,
+    sharedHostBackend,
     setSession,
     sharedActiveProjectPath,
     sharedActiveWorkspaceId,
@@ -1744,7 +1756,11 @@ export default function Workbench() {
   const change = (transform: (state: Session) => Session, animate = false) =>
     setSession((state) => (state ? transform(state) : state), animate);
   const sharedHostPaneOwnership = (workspaceId: string, paneId: string) => {
-    if (!native || isAgentTerminal(paneId) || localPanelIds.has(paneId))
+    if (
+      !sharedHostBackend ||
+      isAgentTerminal(paneId) ||
+      localPanelIds.has(paneId)
+    )
       return { kind: "local" as const };
     const view = sharedHostView.current;
     if (!view || view.workspaceId !== workspaceId)
@@ -1793,6 +1809,10 @@ export default function Workbench() {
     targetPaneId: string,
     side: TabDropSide,
   ) => {
+    if (!sharedHostBackend)
+      throw new Error(
+        "Shared terminal operations are unavailable in this build.",
+      );
     const gate = sharedHostPaneMoveGate(
       workspaceId,
       sourcePaneId,
@@ -1955,6 +1975,10 @@ export default function Workbench() {
     desktopTabId: string,
     name: string,
   ) => {
+    if (!sharedHostBackend)
+      throw new Error(
+        "Shared terminal operations are unavailable in this build.",
+      );
     const view = sharedHostView.current;
     if (!view || view.workspaceId !== workspaceId)
       throw new Error(
@@ -2102,7 +2126,8 @@ export default function Workbench() {
         `Terminal ${workspace.tabs.length + 1}`,
       );
       const addedPane = panes(added.layout)[0];
-      if (addedPane) stageSharedHostCreate(addedPane.id, { kind: "create" });
+      if (sharedHostBackend && addedPane)
+        stageSharedHostCreate(addedPane.id, { kind: "create" });
       return updateWorkspace(state, workspace.id, (workspace) => ({
         ...workspace,
         tabs: [...workspace.tabs, added],
@@ -2346,7 +2371,7 @@ export default function Workbench() {
         .find((candidate) => candidate.id === project.id)
         ?.workspaces.find((candidate) => candidate.id === workspace.id);
       if (!current) return;
-      closeTerminals(
+      closeWorkspaceTerminals(
         current.tabs.flatMap((tab) =>
           ids.has(tab.id) && tab.type === "terminal"
             ? panes(tab.layout).map((pane) => pane.id)
@@ -2913,7 +2938,7 @@ export default function Workbench() {
             initialTab?.type === "terminal"
               ? panes(initialTab.layout)[0]
               : undefined;
-          if (initialPane)
+          if (sharedHostBackend && initialPane)
             stageSharedHostCreate(initialPane.id, { kind: "create" });
         }
         const next = {
@@ -2997,7 +3022,8 @@ export default function Workbench() {
               const selection = active(next);
               if (selection?.tab.type === "terminal") {
                 const pane = panes(selection.tab.layout)[0];
-                if (pane) stageSharedHostCreate(pane.id, { kind: "create" });
+                if (sharedHostBackend && pane)
+                  stageSharedHostCreate(pane.id, { kind: "create" });
               }
               return next;
             }),
@@ -3042,6 +3068,14 @@ export default function Workbench() {
           active={settings.active}
           requestedPage={settings.page}
           requestRevision={settings.requestRevision}
+          remoteAvailable={sharedHostBackend}
+          remoteDisabledReason={
+            sharedHostBackend
+              ? undefined
+              : native
+                ? "Remote sharing requires the shared-host build."
+                : "Remote sharing requires the Lomi desktop app."
+          }
         />
       </Suspense>
     </main>
@@ -3095,7 +3129,7 @@ export default function Workbench() {
           if (!(await prepareAndroidRemoval(androidIds))) return;
           const remaining = current();
           if (!remaining) return;
-          closeTerminals(
+          closeWorkspaceTerminals(
             remaining.tabs.flatMap((tab) =>
               tab.type === "terminal"
                 ? panes(tab.layout).map((pane) => pane.id)
@@ -3265,9 +3299,11 @@ export default function Workbench() {
       </HostContext.Provider>
     );
   const { project, workspace, tab } = selected;
-  const remoteWorkspace = remoteWorkspaces.state?.workspaces.find(
-    (remote) => remote.id === workspace.id,
-  );
+  const remoteWorkspace = sharedHostBackend
+    ? remoteWorkspaces.state?.workspaces.find(
+        (remote) => remote.id === workspace.id,
+      )
+    : undefined;
   const panel = activePanel(tab);
   const editorDocument =
     panel?.type === "file" ? loadedEditor(panel) : undefined;
@@ -3280,7 +3316,7 @@ export default function Workbench() {
     (sum, repository) => sum + repository.changes.length,
     0,
   );
-  const sidebarPanels: SidebarPanel[] = native
+  const sidebarPanels: SidebarPanel[] = sharedHostBackend
     ? ["files", "git"]
     : git.repositories.length ||
         git.errors.length ||
@@ -3408,11 +3444,12 @@ export default function Workbench() {
     );
     if (pane.type === "terminal" && pane.profileId !== undefined)
       added.profileId = pane.profileId;
-    stageSharedHostCreate(added.id, {
-      kind: "split",
-      targetPaneId: pane.id,
-      axis,
-    });
+    if (sharedHostBackend)
+      stageSharedHostCreate(added.id, {
+        kind: "split",
+        targetPaneId: pane.id,
+        axis,
+      });
     setPaneNotice("");
     change(
       (state) =>
@@ -3445,7 +3482,7 @@ export default function Workbench() {
       return;
     try {
       if (!(await prepareAndroidRemoval(closeIds))) return;
-      if (pane.type === "terminal") closeTerminals([id], workspace.id);
+      if (pane.type === "terminal") closeWorkspaceTerminals([id], workspace.id);
       change(
         (state) =>
           updateTab(state, current.id, (tab) => {
@@ -3494,7 +3531,7 @@ export default function Workbench() {
     const closeIds = new Set([id]);
     if (!(await closeGuard.confirm(closeIds, [id]))) return;
     try {
-      closeTerminals([id], workspace.id);
+      closeWorkspaceTerminals([id], workspace.id);
       modifyTab((tab) => {
         let activePaneId = tab.activePaneId;
         const layout = mapLayout(tab.layout, (pane) => {
@@ -3507,7 +3544,8 @@ export default function Workbench() {
           if (pane.type === "terminal" && pane.profileId !== undefined)
             added.profileId = pane.profileId;
           if (selectedProfileId) added.profileId = selectedProfileId;
-          stageSharedHostCreate(added.id, { kind: "create" });
+          if (sharedHostBackend)
+            stageSharedHostCreate(added.id, { kind: "create" });
           if (activePaneId === id) activePaneId = added.id;
           return added;
         });
@@ -3529,7 +3567,7 @@ export default function Workbench() {
         const closeIds = new Set(ids);
         if (!(await closeGuard.confirm(closeIds, ids))) return;
         try {
-          closeTerminals(ids, workspace.id);
+          closeWorkspaceTerminals(ids, workspace.id);
           const layout = mapLayout(tab.layout, () => newPane(project.path));
           modifyTab((tab) => ({
             ...tab,
@@ -3619,7 +3657,7 @@ export default function Workbench() {
             ),
           ),
       );
-      closeTerminals(
+      closeWorkspaceTerminals(
         Object.keys(removedTerminalWorkspaces),
         removedTerminalWorkspaces,
       );
@@ -3864,7 +3902,7 @@ export default function Workbench() {
                   (candidate) => candidate.id === id,
                 );
                 const containsSharedTerminal =
-                  native &&
+                  sharedHostBackend &&
                   movedTab?.type === "terminal" &&
                   layoutPanes(movedTab.layout).some(
                     (pane) =>
@@ -3882,7 +3920,7 @@ export default function Workbench() {
                   (candidate) => candidate.id === targetId,
                 );
                 const hostPanes =
-                  native && sourceTab?.type === "terminal"
+                  sharedHostBackend && sourceTab?.type === "terminal"
                     ? layoutPanes(sourceTab.layout).filter(
                         (pane) =>
                           pane.type === "terminal" && !isAgentTerminal(pane.id),
@@ -3933,7 +3971,7 @@ export default function Workbench() {
                   (candidate) => candidate.id === id,
                 );
                 const containsSharedTerminal =
-                  native &&
+                  sharedHostBackend &&
                   movedTab?.type === "terminal" &&
                   layoutPanes(movedTab.layout).some(
                     (pane) =>
@@ -3962,7 +4000,7 @@ export default function Workbench() {
                   (candidate) => candidate.id === targetId,
                 );
                 const sourceHostPanes =
-                  native && sourceTab?.type === "terminal"
+                  sharedHostBackend && sourceTab?.type === "terminal"
                     ? layoutPanes(sourceTab.layout).filter(
                         (pane) =>
                           pane.type === "terminal" && !isAgentTerminal(pane.id),
@@ -4026,7 +4064,7 @@ export default function Workbench() {
                   initial: tabTitle(candidate),
                   submit: (title) => {
                     const shared =
-                      native &&
+                      sharedHostBackend &&
                       candidate.type === "terminal" &&
                       layoutPanes(candidate.layout).some(
                         (pane) =>
@@ -4086,7 +4124,7 @@ export default function Workbench() {
                   }
                 >
                   {panel === "files" ? (
-                    native ? (
+                    sharedHostBackend ? (
                       <HostWorkspacePanels
                         key={`host-files-${workspace.id}`}
                         panel="files"
@@ -4112,7 +4150,7 @@ export default function Workbench() {
                         onError={setError}
                       />
                     )
-                  ) : native ? (
+                  ) : sharedHostBackend ? (
                     <HostWorkspacePanels
                       key={`host-git-${workspace.id}`}
                       panel="git"
@@ -4173,7 +4211,10 @@ export default function Workbench() {
                             throw new Error(
                               "Save or discard unsaved editor changes before discarding Git changes.",
                             );
-                          const result = await api<FileChange>("git_discard", { root, change });
+                          const result = await api<FileChange>("git_discard", {
+                            root,
+                            change,
+                          });
                           if (result.warning) setError(result.warning);
                         } finally {
                           resume?.();
@@ -4296,7 +4337,7 @@ export default function Workbench() {
                     layout={tab.layout}
                     profile={profile}
                     sharedHost={
-                      native
+                      sharedHostBackend
                         ? {
                             workspaceId: workspace.id,
                             workspaceName: workspace.name,
@@ -4538,7 +4579,7 @@ export default function Workbench() {
                           ))
                         )
                           return;
-                        closeTerminals(
+                        closeWorkspaceTerminals(
                           removed
                             .filter((pane) => pane.type === "terminal")
                             .map((pane) => pane.id),
@@ -4643,20 +4684,21 @@ export default function Workbench() {
             {pluginSidebarToggles}
             <Slot name="statusbar" />
             {cliIntegrations.bar}
-            {sharedWorkspaceStreamStatus?.workspaceId === workspace.id && (
-              <span
-                className="remote-workspace-status"
-                role="status"
-                aria-live="polite"
-                title={sharedWorkspaceStreamStatus.message}
-              >
-                <span className="remote-workspace-status-label">
-                  {sharedWorkspaceStreamStatus.message ??
-                    "Workspace connection lost · reconnecting…"}
+            {sharedHostBackend &&
+              sharedWorkspaceStreamStatus?.workspaceId === workspace.id && (
+                <span
+                  className="remote-workspace-status"
+                  role="status"
+                  aria-live="polite"
+                  title={sharedWorkspaceStreamStatus.message}
+                >
+                  <span className="remote-workspace-status-label">
+                    {sharedWorkspaceStreamStatus.message ??
+                      "Workspace connection lost · reconnecting…"}
+                  </span>
                 </span>
-              </span>
-            )}
-            {remoteWorkspace?.shared && (
+              )}
+            {sharedHostBackend && remoteWorkspace?.shared && (
               <RemoteWorkspaceStatus
                 available={remoteWorkspaces.available}
                 key={workspace.id}

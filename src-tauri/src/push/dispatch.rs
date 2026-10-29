@@ -458,6 +458,9 @@ pub(super) fn start(app: AppHandle) {
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
     });
+    if !crate::desktop_runtime::shared_host_enabled() {
+        return;
+    }
     tauri::async_runtime::spawn(async move {
         let mut checking = HashMap::new();
         let mut last_refresh = Instant::now() - Duration::from_secs(60);

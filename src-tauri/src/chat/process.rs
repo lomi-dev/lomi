@@ -358,6 +358,40 @@ impl Drop for Process {
     }
 }
 
+#[cfg(test)]
+mod local_runtime_tests {
+    use super::*;
+
+    #[test]
+    fn bundled_chat_runtime_handshakes_without_a_host_or_provider_request() {
+        let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let suffix = if cfg!(windows) { ".exe" } else { "" };
+        let node = directory.join(format!(
+            "binaries/lomi-node-{}{suffix}",
+            env!("LOMI_AI_TARGET")
+        ));
+        let bundle = directory.join("resources/ai-runtime/index.cjs");
+        let (process, events) = Process::start(&node, &bundle).unwrap();
+        let ready = events.recv_timeout(Duration::from_secs(10)).unwrap();
+        assert_eq!(ready.r#type, "ready");
+        assert_eq!(ready.request_id, "handshake");
+        assert_eq!(ready.sequence, 0);
+        assert!(ready.payload["node"].as_str().unwrap().starts_with("24."));
+        process.stop();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if process.child.lock().unwrap().try_wait().unwrap().is_some() {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "The bundled runtime did not stop"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+}
+
 pub fn valid_id(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= 100

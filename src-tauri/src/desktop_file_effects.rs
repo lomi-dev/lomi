@@ -4,8 +4,9 @@
 //! sent, recovery uses Host status and never resends the mutation.
 
 use lomi_files::desktop::{
-    DesktopFileChange, DesktopFileErrorCode, DesktopFileOperation, DesktopGitChange,
-    DesktopMutationError, DesktopMutationRequest, DesktopTrashError, DesktopTrashTicket,
+    DesktopFileChange, DesktopFileErrorCode, DesktopFileIdentity, DesktopFileKind,
+    DesktopFileOperation, DesktopGitChange, DesktopMutationError, DesktopMutationRequest,
+    DesktopTrashError, DesktopTrashTicket,
 };
 use lomi_remote_protocol::{
     ipc::{
@@ -20,10 +21,10 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, HashSet},
-    fs::{self, OpenOptions},
+    fs::{self, File, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
-    sync::{Mutex, OnceLock},
+    sync::{Mutex, MutexGuard, OnceLock},
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -44,6 +45,9 @@ const RECOVERY_RETRY: Duration = Duration::from_secs(1);
 const STATUS_POLLS: usize = 4;
 const STATUS_INTERVAL: Duration = Duration::from_millis(200);
 const MUTATION_TIMEOUT: Duration = Duration::from_secs(120);
+const LOCAL_TRASH_LIMIT_BYTES: u64 = 1024 * 1024;
+const LOCAL_TRASH_LIMIT_ENTRIES: usize = 64;
+static LOCAL_TRASH_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 #[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -133,6 +137,46 @@ struct RecoverySummary {
     warning: Option<String>,
 }
 
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct LocalTrashEntry {
+    operation_id: String,
+    root: PathBuf,
+    original_path: PathBuf,
+    staging_directory: PathBuf,
+    staged_path: PathBuf,
+    expected_identity: DesktopFileIdentity,
+    expected_kind: DesktopFileKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ticket: Option<DesktopTrashTicket>,
+    #[serde(default)]
+    transfer_attempted: bool,
+}
+
+#[derive(Clone, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct LocalTrashJournal {
+    version: u32,
+    operations: BTreeMap<String, LocalTrashEntry>,
+}
+
+enum LocalTrashReconstruction {
+    NoEffect { empty_stage_remains: bool },
+    Ticket(DesktopTrashTicket),
+    Unknown(String),
+}
+
+enum LocalTrashAttempt {
+    Complete,
+    NotStarted(String),
+    Pending(String),
+}
+
+struct LocalTrashLock {
+    _local: MutexGuard<'static, ()>,
+    _file: File,
+}
+
 fn revision(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
@@ -173,6 +217,555 @@ fn app_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 
 fn outbox_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     Ok(app_data_dir(app)?.join("desktop-file-outbox.json"))
+}
+
+fn local_trash_journal_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    Ok(app_data_dir(app)?.join("local-desktop-trash-recovery.json"))
+}
+
+fn read_local_trash_journal(path: &Path) -> Result<LocalTrashJournal, String> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(LocalTrashJournal {
+                version: 1,
+                operations: BTreeMap::new(),
+            })
+        }
+        Err(error) => return Err(error.to_string()),
+    };
+    if !metadata.is_file()
+        || metadata.file_type().is_symlink()
+        || metadata.len() > LOCAL_TRASH_LIMIT_BYTES
+    {
+        return Err("The local Trash recovery journal is invalid or too large.".into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if metadata.uid() != unsafe { libc::geteuid() }
+            || metadata.nlink() != 1
+            || metadata.mode() & 0o077 != 0
+        {
+            return Err("The local Trash recovery journal is not owner-private.".into());
+        }
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        if metadata.file_attributes() & 0x400 != 0 {
+            return Err("The local Trash recovery journal is not a regular file.".into());
+        }
+    }
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        options.custom_flags(windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OPEN_REPARSE_POINT);
+    }
+    let mut file = options.open(path).map_err(|error| error.to_string())?;
+    let opened = file.metadata().map_err(|error| error.to_string())?;
+    if !opened.is_file() || opened.file_type().is_symlink() {
+        return Err("The local Trash recovery journal changed while it was opened.".into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if opened.dev() != metadata.dev()
+            || opened.ino() != metadata.ino()
+            || opened.uid() != unsafe { libc::geteuid() }
+            || opened.nlink() != 1
+            || opened.mode() & 0o077 != 0
+        {
+            return Err("The local Trash recovery journal changed while it was opened.".into());
+        }
+    }
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    Read::by_ref(&mut file)
+        .take(LOCAL_TRASH_LIMIT_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| error.to_string())?;
+    if bytes.len() as u64 > LOCAL_TRASH_LIMIT_BYTES {
+        return Err("The local Trash recovery journal is too large.".into());
+    }
+    let journal: LocalTrashJournal = serde_json::from_slice(&bytes)
+        .map_err(|_| "The local Trash recovery journal is invalid.")?;
+    if journal.version != 1 || journal.operations.len() > LOCAL_TRASH_LIMIT_ENTRIES {
+        return Err("The local Trash recovery journal has an unsupported version or size.".into());
+    }
+    for (key, entry) in &journal.operations {
+        validate_local_trash_entry(key, entry)?;
+    }
+    Ok(journal)
+}
+
+fn write_local_trash_journal(path: &Path, journal: &LocalTrashJournal) -> Result<(), String> {
+    crate::files::write_json(path, journal, LOCAL_TRASH_LIMIT_BYTES as usize)
+}
+
+fn validate_local_trash_entry(key: &str, entry: &LocalTrashEntry) -> Result<(), String> {
+    let operation_id =
+        lomi_remote_protocol::ipc::NativeIntentId::try_from(entry.operation_id.clone())
+            .map_err(|_| "The local Trash operation ID is invalid.")?;
+    let expected_staging = entry
+        .original_path
+        .parent()
+        .ok_or("The local Trash source has no parent directory.")?
+        .join(
+            lomi_files::desktop::desktop_staging_name(&entry.operation_id)
+                .map_err(desktop_error_message)?,
+        );
+    let relative = entry
+        .original_path
+        .strip_prefix(&entry.root)
+        .map_err(|_| "The local Trash source is outside its project root.")?;
+    lomi_files::desktop::validate_desktop_root(&entry.root).map_err(desktop_error_message)?;
+    lomi_files::desktop::validate_desktop_relative(
+        relative
+            .to_str()
+            .ok_or("The local Trash source path is invalid.")?,
+        false,
+    )
+    .map_err(desktop_error_message)?;
+    if String::from(operation_id) != entry.operation_id
+        || key != entry.operation_id
+        || !entry.original_path.is_absolute()
+        || entry.original_path == entry.root
+        || entry.staging_directory != expected_staging
+        || entry.staged_path
+            != expected_staging.join(
+                entry
+                    .original_path
+                    .file_name()
+                    .ok_or("The local Trash source path is invalid.")?,
+            )
+        || !entry.expected_identity.is_valid()
+        || entry.transfer_attempted && entry.ticket.is_none()
+    {
+        return Err("The local Trash recovery entry is invalid.".into());
+    }
+    if let Some(ticket) = &entry.ticket {
+        ticket.validate_shape().map_err(desktop_error_message)?;
+        if ticket.operation_id != entry.operation_id
+            || ticket.root != entry.root
+            || ticket.original_path != entry.original_path
+            || ticket.staging_directory != entry.staging_directory
+            || ticket.staged_path != entry.staged_path
+            || ticket.entry_identity != entry.expected_identity
+            || ticket.kind != entry.expected_kind
+        {
+            return Err("The local Trash recovery ticket does not match its intent.".into());
+        }
+    }
+    Ok(())
+}
+
+fn local_trash_intent(
+    request: &DesktopMutationRequest,
+    source: &lomi_files::desktop::DesktopSourcePrecondition,
+) -> Result<LocalTrashEntry, String> {
+    let original_path = request
+        .expected_path
+        .clone()
+        .ok_or("The local Trash request did not retain its source path.")?;
+    let staging_directory = original_path
+        .parent()
+        .ok_or("The local Trash source has no parent directory.")?
+        .join(
+            lomi_files::desktop::desktop_staging_name(&request.operation_id)
+                .map_err(desktop_error_message)?,
+        );
+    let staged_path = staging_directory.join(
+        original_path
+            .file_name()
+            .ok_or("The local Trash source path is invalid.")?,
+    );
+    Ok(LocalTrashEntry {
+        operation_id: request.operation_id.clone(),
+        root: request.root.clone(),
+        original_path,
+        staging_directory,
+        staged_path,
+        expected_identity: source.identity.clone(),
+        expected_kind: source.kind,
+        ticket: None,
+        transfer_attempted: false,
+    })
+}
+
+fn local_trash_lock(app: &tauri::AppHandle) -> Result<LocalTrashLock, String> {
+    let local = LOCAL_TRASH_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .map_err(|_| "Local Trash recovery is unavailable.")?;
+    let parent = app_data_dir(app)?;
+    let path = parent.join("local-desktop-trash-recovery.lock");
+    let mut options = OpenOptions::new();
+    options.read(true).write(true).create(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        options.custom_flags(windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OPEN_REPARSE_POINT);
+    }
+    let file = options
+        .open(&path)
+        .map_err(|_| "Local Trash recovery is unavailable.")?;
+    let metadata = file
+        .metadata()
+        .map_err(|_| "Local Trash recovery is unavailable.")?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() {
+        return Err("The local Trash recovery lock is invalid.".into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if metadata.uid() != unsafe { libc::geteuid() }
+            || metadata.nlink() != 1
+            || metadata.mode() & 0o077 != 0
+        {
+            return Err("The local Trash recovery lock is not owner-private.".into());
+        }
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        if metadata.file_attributes() & 0x400 != 0 {
+            return Err("The local Trash recovery lock is invalid.".into());
+        }
+    }
+    file.lock()
+        .map_err(|_| "Local Trash recovery could not acquire its lock.")?;
+    Ok(LocalTrashLock {
+        _local: local,
+        _file: file,
+    })
+}
+
+fn reconstruct_local_trash_ticket(entry: &LocalTrashEntry) -> LocalTrashReconstruction {
+    let unknown = |message: &str| LocalTrashReconstruction::Unknown(message.to_owned());
+    let Some(parent_path) = entry.original_path.parent() else {
+        return unknown("the original parent path is missing");
+    };
+    let Some(original_name) = entry.original_path.file_name() else {
+        return unknown("the original item name is missing");
+    };
+    let Some(staging_name) = entry.staging_directory.file_name() else {
+        return unknown("the staging directory name is missing");
+    };
+    let root = match lomi_files::desktop::DesktopDirectoryPin::open(&entry.root) {
+        Ok(root) => root,
+        Err(_) => return unknown("the project root identity could not be verified"),
+    };
+    let parent = match lomi_files::desktop::DesktopDirectoryPin::open(parent_path) {
+        Ok(parent) => parent,
+        Err(_) => return unknown("the original parent identity could not be verified"),
+    };
+    let mut check = || Ok(());
+    let staging = match parent.exact_child(staging_name, &mut check) {
+        Ok(Some(staging)) if staging.kind == DesktopFileKind::Directory => staging,
+        Ok(None) => {
+            return match parent.exact_child(original_name, &mut check) {
+                Ok(Some(source))
+                    if source.identity == entry.expected_identity
+                        && source.kind == entry.expected_kind =>
+                {
+                    LocalTrashReconstruction::NoEffect {
+                        empty_stage_remains: false,
+                    }
+                }
+                _ => unknown("the source and its staging directory could not be reconciled"),
+            }
+        }
+        Ok(Some(_)) => return unknown("the staging path is not a directory"),
+        Err(_) => return unknown("the staging directory could not be inspected safely"),
+    };
+    let staging_pin = match lomi_files::desktop::DesktopDirectoryPin::open(&entry.staging_directory)
+    {
+        Ok(staging_pin) if staging_pin.witness().identity == staging.identity => staging_pin,
+        _ => return unknown("the staging directory identity changed"),
+    };
+    let staged_source = match staging_pin.exact_child(original_name, &mut check) {
+        Ok(Some(source))
+            if source.identity == entry.expected_identity && source.kind == entry.expected_kind =>
+        {
+            source
+        }
+        Ok(None) => {
+            return match parent.exact_child(original_name, &mut check) {
+                Ok(Some(source))
+                    if source.identity == entry.expected_identity
+                        && source.kind == entry.expected_kind =>
+                {
+                    LocalTrashReconstruction::NoEffect {
+                        empty_stage_remains: true,
+                    }
+                }
+                _ => unknown("the staged item is missing and the original path changed"),
+            }
+        }
+        Ok(Some(_)) => return unknown("the staged item identity or kind changed"),
+        Err(_) => return unknown("the staged item could not be inspected safely"),
+    };
+    let ticket = DesktopTrashTicket {
+        version: 1,
+        operation_id: entry.operation_id.clone(),
+        root: entry.root.clone(),
+        original_path: entry.original_path.clone(),
+        staging_directory: entry.staging_directory.clone(),
+        staged_path: entry.staged_path.clone(),
+        root_identity: root.witness().identity.clone(),
+        parent_identity: parent.witness().identity.clone(),
+        staging_identity: staging_pin.witness().identity.clone(),
+        entry_identity: staged_source.identity,
+        kind: staged_source.kind,
+    };
+    if ticket.validate_shape().is_err() {
+        return unknown("the reconstructed Trash ticket did not validate");
+    }
+    LocalTrashReconstruction::Ticket(ticket)
+}
+
+fn finish_local_trash_transfer<E: std::fmt::Display>(
+    ticket: &DesktopTrashTicket,
+    transfer: impl FnOnce(&Path) -> Result<(), E>,
+) -> Result<(), String> {
+    match lomi_files::desktop::finish_desktop_trash(ticket, transfer) {
+        Ok(()) => Ok(()),
+        Err(DesktopTrashError::Before(code)) => Err(format!(
+            "The local Trash ticket could not be validated ({code:?})."
+        )),
+        Err(DesktopTrashError::Transfer(error)) => {
+            Err(format!("The system Trash transfer failed: {error}."))
+        }
+        Err(DesktopTrashError::Uncertain) => {
+            Err("The system Trash transfer outcome could not be confirmed.".into())
+        }
+    }
+}
+
+fn local_trash_write_paths(entry: &LocalTrashEntry) -> Vec<PathBuf> {
+    vec![
+        entry.original_path.clone(),
+        entry.staging_directory.clone(),
+        entry.staged_path.clone(),
+    ]
+}
+
+fn admit_local_trash_entry(
+    app: &tauri::AppHandle,
+    entry: &LocalTrashEntry,
+) -> Result<crate::project_write_guard::WriteAdmission, String> {
+    let paths = local_trash_write_paths(entry);
+    let recursive = entry.expected_kind == DesktopFileKind::Directory;
+    if crate::native_file_effects::local_host_effect_conflicts(app, &paths, recursive)? {
+        return Err("A previous Host effect affecting this Trash item is unresolved and retained. Resolve it in a Remote Host-enabled build before continuing.".into());
+    }
+    let path_refs: Vec<_> = paths.iter().map(PathBuf::as_path).collect();
+    crate::project_write_guard::admit(&path_refs)
+}
+
+fn attempt_local_trash_once_with_guard<G, E: std::fmt::Display>(
+    journal: &mut LocalTrashJournal,
+    key: &str,
+    acquire_guard: impl FnOnce(&LocalTrashEntry) -> Result<G, String>,
+    mut persist: impl FnMut(&LocalTrashJournal) -> Result<(), String>,
+    transfer: impl FnOnce(&Path) -> Result<(), E>,
+) -> LocalTrashAttempt {
+    let Some(previous) = journal.operations.get(key).cloned() else {
+        return LocalTrashAttempt::NotStarted(
+            "The local Trash recovery intent disappeared before transfer.".into(),
+        );
+    };
+    if previous.transfer_attempted {
+        return LocalTrashAttempt::Pending(
+            "A previous system Trash transfer was attempted; Lomi will not retry it automatically."
+                .into(),
+        );
+    }
+    let Some(ticket) = previous.ticket.as_ref() else {
+        return LocalTrashAttempt::NotStarted(
+            "The local Trash ticket has not been reconstructed yet.".into(),
+        );
+    };
+    let _guard = match acquire_guard(&previous) {
+        Ok(guard) => guard,
+        Err(error) => {
+            return LocalTrashAttempt::NotStarted(format!(
+                "Lomi skipped the Trash transfer because it could not acquire the item's Host-effect and project-write admission: {error}"
+            ));
+        }
+    };
+    if let Some(entry) = journal.operations.get_mut(key) {
+        entry.transfer_attempted = true;
+    }
+    if let Err(error) = persist(journal) {
+        journal.operations.insert(key.to_owned(), previous);
+        return LocalTrashAttempt::NotStarted(format!(
+            "Lomi could not persist the one-shot transfer attempt, so no transfer was started: {error}"
+        ));
+    }
+    match finish_local_trash_transfer(ticket, transfer) {
+        Ok(()) => {
+            journal.operations.remove(key);
+            if let Err(error) = persist(journal) {
+                journal.operations.insert(
+                    key.to_owned(),
+                    LocalTrashEntry {
+                        transfer_attempted: true,
+                        ..previous
+                    },
+                );
+                LocalTrashAttempt::Pending(format!(
+                    "The system Trash transfer completed, but Lomi could not confirm that its recovery record was cleared: {error}"
+                ))
+            } else {
+                LocalTrashAttempt::Complete
+            }
+        }
+        Err(error) => LocalTrashAttempt::Pending(error),
+    }
+}
+
+fn attempt_local_trash_once<E: std::fmt::Display>(
+    journal: &mut LocalTrashJournal,
+    key: &str,
+    persist: impl FnMut(&LocalTrashJournal) -> Result<(), String>,
+    transfer: impl FnOnce(&Path) -> Result<(), E>,
+) -> LocalTrashAttempt {
+    attempt_local_trash_once_with_guard(journal, key, |_| Ok(()), persist, transfer)
+}
+
+fn local_trash_recovery_warning(
+    entry: &LocalTrashEntry,
+    journal_path: &Path,
+    detail: &str,
+) -> String {
+    format!(
+        "{detail} Local Trash recovery record: '{}'. Recorded staged path (check whether it still exists): '{}'. Lomi never automatically repeats a transfer once its attempt is recorded.",
+        journal_path.display(),
+        entry.staged_path.display()
+    )
+}
+
+fn recover_local_trash_locked(app: &tauri::AppHandle) -> Result<Option<String>, String> {
+    let path = local_trash_journal_path(app)?;
+    let mut journal = read_local_trash_journal(&path)?;
+    let keys: Vec<_> = journal.operations.keys().cloned().collect();
+    let mut warnings = None;
+    for key in keys {
+        let Some(mut entry) = journal.operations.get(&key).cloned() else {
+            continue;
+        };
+        if entry.transfer_attempted {
+            append_warning(
+                &mut warnings,
+                Some(local_trash_recovery_warning(
+                    &entry,
+                    &path,
+                    "A one-shot system Trash attempt is recorded, but completion is not confirmed.",
+                )),
+            );
+            continue;
+        }
+        if entry.ticket.is_none() {
+            match reconstruct_local_trash_ticket(&entry) {
+                LocalTrashReconstruction::Ticket(ticket) => {
+                    entry.ticket = Some(ticket);
+                    journal.operations.insert(key.clone(), entry.clone());
+                    write_local_trash_journal(&path, &journal).map_err(|error| {
+                        local_trash_recovery_warning(
+                            &entry,
+                            &path,
+                            &format!("The staged item is preserved, but its recovered ticket could not be saved: {error}"),
+                        )
+                    })?;
+                }
+                LocalTrashReconstruction::NoEffect {
+                    empty_stage_remains,
+                } => {
+                    journal.operations.remove(&key);
+                    write_local_trash_journal(&path, &journal)?;
+                    if empty_stage_remains {
+                        append_warning(
+                            &mut warnings,
+                            Some(format!(
+                                "The original item was not moved into Trash. An empty private staging directory remains at '{}'.",
+                                entry.staging_directory.display()
+                            )),
+                        );
+                    }
+                    continue;
+                }
+                LocalTrashReconstruction::Unknown(detail) => {
+                    append_warning(
+                        &mut warnings,
+                        Some(local_trash_recovery_warning(
+                            &entry,
+                            &path,
+                            &format!("Local Trash recovery needs review because {detail}."),
+                        )),
+                    );
+                    continue;
+                }
+            }
+        }
+        let result = attempt_local_trash_once_with_guard(
+            &mut journal,
+            &key,
+            |entry| admit_local_trash_entry(app, entry),
+            |journal| write_local_trash_journal(&path, journal),
+            |staged| trash::delete(staged).map_err(|error| error.to_string()),
+        );
+        match result {
+            LocalTrashAttempt::Complete => {}
+            LocalTrashAttempt::NotStarted(detail) | LocalTrashAttempt::Pending(detail) => {
+                let entry = journal.operations.get(&key).unwrap_or(&entry);
+                append_warning(
+                    &mut warnings,
+                    Some(local_trash_recovery_warning(entry, &path, &detail)),
+                );
+            }
+        }
+    }
+    Ok(warnings)
+}
+
+pub(crate) fn recover_local_trash(app: &tauri::AppHandle) -> Result<Option<String>, String> {
+    let _lock = local_trash_lock(app)?;
+    recover_local_trash_locked(app)
+}
+
+pub(crate) fn pending_local_trash_warning(
+    app: &tauri::AppHandle,
+) -> Result<Option<String>, String> {
+    let _lock = local_trash_lock(app)?;
+    let path = local_trash_journal_path(app)?;
+    let journal = read_local_trash_journal(&path)?;
+    let mut warning = None;
+    for entry in journal.operations.values() {
+        append_warning(
+            &mut warning,
+            Some(local_trash_recovery_warning(
+                entry,
+                &path,
+                "An interrupted Trash operation needs review.",
+            )),
+        );
+    }
+    Ok(warning)
 }
 
 fn path_overlaps(left: &Path, right: &Path) -> bool {
@@ -321,6 +914,214 @@ fn request_for_operation(
     };
     lomi_files::desktop::validate_desktop_request(&request).map_err(desktop_error_message)?;
     Ok((request, expected_source_path, source_is_directory))
+}
+
+fn new_local_operation_id() -> Result<String, String> {
+    use ring::rand::SecureRandom;
+    let mut bytes = [0; 16];
+    ring::rand::SystemRandom::new()
+        .fill(&mut bytes)
+        .map_err(|_| "Secure randomness is unavailable for the file operation.")?;
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    lomi_remote_protocol::ipc::NativeIntentId::from_bytes(bytes)
+        .map(String::from)
+        .map_err(|_| "The local file operation ID is invalid.".into())
+}
+
+fn request_for_local_operation(
+    app: &tauri::AppHandle,
+    root: &str,
+    relative: &str,
+    operation: Operation,
+    expected_path: Option<String>,
+) -> Result<(DesktopMutationRequest, Option<PathBuf>, Option<bool>), String> {
+    let root = crate::files::directory(root)?;
+    crate::files::operations::validate_relative(relative)?;
+    let control_root = app_data_dir(app)?;
+    if path_overlaps(&root, &control_root) {
+        return Err("Desktop file operations cannot target Lomi's private app data.".into());
+    }
+
+    let operation = match operation {
+        Operation::NewFile { name } => {
+            lomi_files::desktop::validate_desktop_name(&name).map_err(desktop_error_message)?;
+            DesktopFileOperation::NewFile { name }
+        }
+        Operation::NewFolder { name } => {
+            lomi_files::desktop::validate_desktop_name(&name).map_err(desktop_error_message)?;
+            DesktopFileOperation::NewFolder { name }
+        }
+        Operation::Rename { name } => {
+            lomi_files::desktop::validate_desktop_name(&name).map_err(desktop_error_message)?;
+            DesktopFileOperation::Rename { name }
+        }
+        Operation::Copy {
+            source_root,
+            source,
+        } => {
+            crate::files::operations::validate_relative(&source)?;
+            if source.is_empty() {
+                return Err("Copy or move items inside the project.".into());
+            }
+            let source_root = crate::files::directory(&source_root)?;
+            if path_overlaps(&source_root, &control_root) {
+                return Err("Lomi's private app data cannot be used as a copy source.".into());
+            }
+            let source_path =
+                crate::files::operations::entry_path(&canonical_text(&source_root)?, &source)?;
+            let source = canonical_relative(&source_root, &source_path)?;
+            DesktopFileOperation::Copy {
+                source_root,
+                source,
+            }
+        }
+        Operation::Move {
+            source_root,
+            source,
+        } => {
+            crate::files::operations::validate_relative(&source)?;
+            if source.is_empty() {
+                return Err("Copy or move items inside the project.".into());
+            }
+            let source_root = crate::files::directory(&source_root)?;
+            if path_overlaps(&source_root, &control_root) {
+                return Err("Lomi's private app data cannot be used as a move source.".into());
+            }
+            let source_path =
+                crate::files::operations::entry_path(&canonical_text(&source_root)?, &source)?;
+            let source = canonical_relative(&source_root, &source_path)?;
+            DesktopFileOperation::Move {
+                source_root,
+                source,
+            }
+        }
+        Operation::Duplicate => DesktopFileOperation::Duplicate,
+        Operation::Trash => DesktopFileOperation::Trash,
+        Operation::Delete => DesktopFileOperation::Delete,
+    };
+
+    let selected_path = match &operation {
+        DesktopFileOperation::NewFile { .. }
+        | DesktopFileOperation::NewFolder { .. }
+        | DesktopFileOperation::Copy { .. }
+        | DesktopFileOperation::Move { .. } => {
+            crate::files::inside(&canonical_text(&root)?, relative)?
+        }
+        DesktopFileOperation::Rename { .. }
+        | DesktopFileOperation::Duplicate
+        | DesktopFileOperation::Trash
+        | DesktopFileOperation::Delete => {
+            crate::files::operations::entry_path(&canonical_text(&root)?, relative)?
+        }
+        DesktopFileOperation::GitDiscard { .. } | DesktopFileOperation::GitIgnore { .. } => {
+            return Err("Git actions must use their bound workspace request.".into());
+        }
+    };
+    if expected_path
+        .as_deref()
+        .is_some_and(|expected| selected_path != Path::new(expected))
+    {
+        return Err("The selected path changed. Please try the operation again.".into());
+    }
+
+    let expected_source_path = match &operation {
+        DesktopFileOperation::Copy {
+            source_root,
+            source,
+        }
+        | DesktopFileOperation::Move {
+            source_root,
+            source,
+        } => Some(crate::files::operations::entry_path(
+            &canonical_text(source_root)?,
+            source,
+        )?),
+        DesktopFileOperation::Rename { .. }
+        | DesktopFileOperation::Trash
+        | DesktopFileOperation::Delete => Some(selected_path.clone()),
+        DesktopFileOperation::Duplicate => Some(selected_path.clone()),
+        _ => None,
+    };
+    let source_is_directory = expected_source_path
+        .as_ref()
+        .map(|path| fs::symlink_metadata(path).map(|meta| meta.is_dir()))
+        .transpose()
+        .map_err(|error| error.to_string())?;
+    let relative_path = canonical_relative(&root, &selected_path)?;
+    let request = DesktopMutationRequest {
+        version: 1,
+        operation_id: new_local_operation_id()?,
+        root,
+        relative_path,
+        expected_path: Some(selected_path),
+        control_roots: vec![control_root],
+        operation,
+    };
+    lomi_files::desktop::validate_desktop_request(&request).map_err(desktop_error_message)?;
+    Ok((request, expected_source_path, source_is_directory))
+}
+
+fn local_mutation_scopes(
+    request: &DesktopMutationRequest,
+    expected_source_path: Option<&Path>,
+) -> Result<(Vec<PathBuf>, bool), String> {
+    let selected = request
+        .expected_path
+        .as_deref()
+        .ok_or("The local desktop file request did not retain its selected path.")?;
+    let mut scopes = Vec::with_capacity(3);
+    let mut recursive = false;
+    match &request.operation {
+        DesktopFileOperation::NewFile { name } | DesktopFileOperation::NewFolder { name } => {
+            scopes.push(selected.join(name));
+        }
+        DesktopFileOperation::Rename { name } => {
+            scopes.push(selected.to_path_buf());
+            scopes.push(
+                selected
+                    .parent()
+                    .ok_or("The selected item has no parent directory.")?
+                    .join(name),
+            );
+            recursive = fs::symlink_metadata(selected)
+                .map(|metadata| metadata.is_dir())
+                .unwrap_or(false);
+        }
+        DesktopFileOperation::Copy { .. } | DesktopFileOperation::Move { .. } => {
+            let source = expected_source_path.ok_or("The local file source path is invalid.")?;
+            scopes.push(source.to_path_buf());
+            let name = source
+                .file_name()
+                .ok_or("The local file source path is invalid.")?;
+            scopes.push(selected.join(name));
+            recursive = fs::symlink_metadata(source)
+                .map(|metadata| metadata.is_dir())
+                .unwrap_or(false);
+        }
+        DesktopFileOperation::Duplicate => {
+            scopes.push(selected.to_path_buf());
+            scopes.push(
+                selected
+                    .parent()
+                    .ok_or("The selected item has no parent directory.")?
+                    .to_path_buf(),
+            );
+            recursive = fs::symlink_metadata(selected)
+                .map(|metadata| metadata.is_dir())
+                .unwrap_or(false);
+        }
+        DesktopFileOperation::Trash | DesktopFileOperation::Delete => {
+            scopes.push(selected.to_path_buf());
+            recursive = fs::symlink_metadata(selected)
+                .map(|metadata| metadata.is_dir())
+                .unwrap_or(false);
+        }
+        DesktopFileOperation::GitDiscard { .. } | DesktopFileOperation::GitIgnore { .. } => {
+            return Err("Git actions must use their bound workspace request.".into());
+        }
+    }
+    Ok((scopes, recursive))
 }
 
 fn expected_result_paths(
@@ -1920,6 +2721,61 @@ fn outbox_has_unresolved_scope(
     Ok(false)
 }
 
+fn entry_has_pending_host_effect(entry: &DesktopOutboxEntry) -> bool {
+    (entry.phase == DesktopPhase::ExecuteSent && entry.receipt.is_none())
+        || entry.receipt.as_ref().is_some_and(|receipt| {
+            matches!(receipt, DesktopReceipt::OutcomeUnknown)
+                && !(entry.acknowledged && entry.binding_effects_settled)
+        })
+        || (entry.binding_snapshot.is_some()
+            && !entry.binding_effects_settled
+            && entry
+                .receipt
+                .as_ref()
+                .is_some_and(|receipt| matches!(receipt, DesktopReceipt::Succeeded(_))))
+}
+
+/// Reads the Host outbox without running recovery, acknowledging receipts, or
+/// deleting staged operations. Local writes are fenced only by overlapping
+/// effects when their stored request provides a usable scope.
+pub(crate) fn local_scope_has_pending_host_effect(
+    app: &tauri::AppHandle,
+    paths: &[PathBuf],
+) -> Result<bool, String> {
+    let path = outbox_path(app)?;
+    let outbox = read_outbox(&path)?;
+    outbox_conflicts_local_scope(&outbox, paths)
+}
+
+fn outbox_conflicts_local_scope(outbox: &DesktopOutbox, paths: &[PathBuf]) -> Result<bool, String> {
+    for entry in outbox.operations.values() {
+        if !entry_has_pending_host_effect(entry) {
+            continue;
+        }
+        if paths.is_empty() {
+            return Ok(true);
+        }
+        let pending_scopes = project_write_scopes(entry)?;
+        if paths.iter().any(|prospective| {
+            pending_scopes
+                .iter()
+                .any(|pending| path_overlaps(prospective, pending))
+        }) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+pub(crate) fn any_pending_host_effect(app: &tauri::AppHandle) -> Result<bool, String> {
+    let path = outbox_path(app)?;
+    let outbox = read_outbox(&path)?;
+    Ok(outbox
+        .operations
+        .values()
+        .any(entry_has_pending_host_effect))
+}
+
 pub(crate) fn file_operation(
     app: &tauri::AppHandle,
     window: &tauri::Window,
@@ -1946,6 +2802,172 @@ pub(crate) fn file_operation(
         source_is_directory,
         deadline,
     )
+}
+
+pub(crate) fn file_operation_local(
+    app: &tauri::AppHandle,
+    root: &str,
+    relative: &str,
+    operation: Operation,
+    expected_path: Option<String>,
+    deadline: Instant,
+) -> Result<FileChange, String> {
+    if Instant::now() >= deadline {
+        return Err("The desktop file operation deadline expired.".into());
+    }
+    let _local_trash_guard = local_trash_lock(app)?;
+    let mut warning = recover_local_trash_locked(app)?;
+    let (request, expected_source_path, _) =
+        request_for_local_operation(app, root, relative, operation, expected_path)?;
+    let (scopes, recursive) = local_mutation_scopes(&request, expected_source_path.as_deref())?;
+    if crate::native_file_effects::local_host_effect_conflicts(app, &scopes, recursive)? {
+        return Err("A previous Host file operation affecting these paths is unresolved and has been retained. Resolve it in a Remote Host-enabled build before continuing.".into());
+    }
+    let scope_refs: Vec<_> = scopes.iter().map(PathBuf::as_path).collect();
+    let _admission = crate::project_write_guard::admit(&scope_refs)?;
+    let source_precondition_path = matches!(
+        &request.operation,
+        DesktopFileOperation::Rename { .. }
+            | DesktopFileOperation::Move { .. }
+            | DesktopFileOperation::Trash
+            | DesktopFileOperation::Delete
+    )
+    .then_some(expected_source_path.as_deref())
+    .flatten();
+    let source_precondition = source_precondition_path
+        .map(lomi_files::desktop::desktop_source_precondition)
+        .transpose()
+        .map_err(desktop_error_message)?;
+    let mut local_trash = None;
+    if matches!(&request.operation, DesktopFileOperation::Trash) {
+        let source = source_precondition
+            .as_ref()
+            .ok_or("The local Trash source identity could not be captured.")?;
+        let entry = local_trash_intent(&request, source)?;
+        let path = local_trash_journal_path(app)?;
+        let mut journal = read_local_trash_journal(&path)?;
+        let key = entry.operation_id.clone();
+        if journal.operations.len() >= LOCAL_TRASH_LIMIT_ENTRIES
+            && !journal.operations.contains_key(&key)
+        {
+            return Err("Local Trash recovery has reached its bounded limit. Resolve a retained recovery record before moving more items to Trash.".into());
+        }
+        validate_local_trash_entry(&key, &entry)?;
+        journal.operations.insert(key.clone(), entry);
+        write_local_trash_journal(&path, &journal)?;
+        local_trash = Some((path, journal, key));
+    }
+    let mut check = |_| {
+        if Instant::now() >= deadline {
+            Err(DesktopFileErrorCode::DeadlineExceeded)
+        } else {
+            Ok(())
+        }
+    };
+    let result = match source_precondition.as_ref() {
+        Some(expected_source) => lomi_files::desktop::apply_desktop_mutation_with_source(
+            &request,
+            expected_source,
+            &mut check,
+        ),
+        None => lomi_files::desktop::apply_desktop_mutation(&request, &mut check),
+    };
+    let result = match result {
+        Ok(result) => result,
+        Err(DesktopMutationError::Before(code)) => {
+            if let Some((path, mut journal, key)) = local_trash.take() {
+                journal.operations.remove(&key);
+                if let Err(error) = write_local_trash_journal(&path, &journal) {
+                    return Err(format!(
+                        "{}. The no-effect recovery intent remains in '{}': {error}",
+                        desktop_error_message(code),
+                        path.display()
+                    ));
+                }
+            }
+            return Err(desktop_error_message(code));
+        }
+        Err(DesktopMutationError::Uncertain) => {
+            if let Some((path, journal, key)) = local_trash.as_ref() {
+                let entry = journal
+                    .operations
+                    .get(key)
+                    .ok_or("The uncertain local Trash operation lost its recovery intent.")?;
+                return Err(local_trash_recovery_warning(
+                    entry,
+                    path,
+                    "The local Trash outcome is uncertain; Lomi retained its pre-operation intent and will inspect it without repeating the mutation.",
+                ));
+            }
+            return Err("The local file operation outcome is uncertain. Review the affected paths before retrying.".into());
+        }
+    };
+
+    if let Some((path, mut journal, key)) = local_trash {
+        let Some(ticket) = result.trash.as_ref() else {
+            let entry = journal
+                .operations
+                .get(&key)
+                .ok_or("The local Trash operation lost its recovery intent.")?;
+            return Err(local_trash_recovery_warning(
+                entry,
+                &path,
+                "The local Trash engine removed the source but returned no transfer ticket; its pre-operation intent remains for manual recovery.",
+            ));
+        };
+        let Some(entry) = journal.operations.get_mut(&key) else {
+            return Err("The local Trash recovery intent disappeared after staging.".into());
+        };
+        entry.ticket = Some(ticket.clone());
+        if let Err(error) = validate_local_trash_entry(&key, entry) {
+            return Err(local_trash_recovery_warning(
+                entry,
+                &path,
+                &format!("The staged item did not produce a valid recovery ticket: {error}. No Trash transfer was attempted."),
+            ));
+        }
+        if let Err(error) = write_local_trash_journal(&path, &journal) {
+            let entry = journal.operations.get(&key).unwrap();
+            append_warning(
+                &mut warning,
+                Some(local_trash_recovery_warning(
+                    entry,
+                    &path,
+                    &format!("The item is staged, but its exact ticket could not be confirmed in the local journal: {error}. No Trash transfer was attempted."),
+                )),
+            );
+        } else {
+            match attempt_local_trash_once_with_guard(
+                &mut journal,
+                &key,
+                |entry| admit_local_trash_entry(app, entry),
+                |journal| write_local_trash_journal(&path, journal),
+                |staged| trash::delete(staged).map_err(|error| error.to_string()),
+            ) {
+                LocalTrashAttempt::Complete => {}
+                LocalTrashAttempt::NotStarted(detail) | LocalTrashAttempt::Pending(detail) => {
+                    let entry = journal.operations.get(&key).unwrap_or_else(|| {
+                        unreachable!("an unfinished local Trash attempt retains its journal entry")
+                    });
+                    append_warning(
+                        &mut warning,
+                        Some(local_trash_recovery_warning(entry, &path, &detail)),
+                    );
+                }
+            }
+        }
+    }
+    Ok(FileChange {
+        old_path: result
+            .old_path
+            .as_ref()
+            .map(|path| path.to_string_lossy().into_owned()),
+        new_path: result
+            .new_path
+            .as_ref()
+            .map(|path| path.to_string_lossy().into_owned()),
+        warning,
+    })
 }
 
 pub(crate) fn git_discard(
@@ -2135,4 +3157,307 @@ fn execute_request(
         change.warning = warning;
         Ok(change)
     })
+}
+
+#[cfg(test)]
+mod local_effect_tests {
+    use super::*;
+
+    fn trash_request(
+        root: &Path,
+        operation_id: &str,
+    ) -> (
+        DesktopMutationRequest,
+        lomi_files::desktop::DesktopSourcePrecondition,
+    ) {
+        let root = root.canonicalize().unwrap();
+        let original_path = root.join("to-trash.txt");
+        fs::write(&original_path, b"temporary test content").unwrap();
+        let source = lomi_files::desktop::desktop_source_precondition(&original_path).unwrap();
+        (
+            DesktopMutationRequest {
+                version: 1,
+                operation_id: operation_id.into(),
+                root: root.clone(),
+                relative_path: "to-trash.txt".into(),
+                expected_path: Some(original_path),
+                control_roots: Vec::new(),
+                operation: DesktopFileOperation::Trash,
+            },
+            source,
+        )
+    }
+
+    fn staged_local_trash() -> (tempfile::TempDir, LocalTrashEntry) {
+        let directory = tempfile::tempdir().unwrap();
+        let (request, source) =
+            trash_request(directory.path(), "00000000-0000-4000-8000-000000000003");
+        let mut entry = local_trash_intent(&request, &source).unwrap();
+        let change =
+            lomi_files::desktop::apply_desktop_mutation_with_source(&request, &source, |_| Ok(()))
+                .unwrap();
+        entry.ticket = change.trash;
+        validate_local_trash_entry(&entry.operation_id, &entry).unwrap();
+        (directory, entry)
+    }
+
+    fn delete_entry(path: &Path, phase: DesktopPhase) -> DesktopOutboxEntry {
+        let root = path.parent().unwrap().to_path_buf();
+        let relative = path
+            .strip_prefix(&root)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_owned();
+        let operation_id = "00000000-0000-4000-8000-000000000001".to_owned();
+        DesktopOutboxEntry {
+            operation_id: NativeIntentId::try_from(operation_id.clone()).unwrap(),
+            request_hash: "a".repeat(64),
+            request: DesktopMutationRequest {
+                version: 1,
+                operation_id,
+                root,
+                relative_path: relative,
+                expected_path: Some(path.to_path_buf()),
+                control_roots: Vec::new(),
+                operation: DesktopFileOperation::Delete,
+            },
+            expected_source_path: None,
+            source_is_directory: None,
+            phase,
+            receipt: None,
+            acknowledgement_pending: false,
+            acknowledged: false,
+            binding_effects_settled: false,
+            uncertainty_warning_acknowledged: false,
+            trash_transfer_attempted: false,
+            trash_transfer_complete: false,
+            binding_snapshot: None,
+            unknown_disposition: None,
+            last_recovery_attempt_ms: None,
+            created_at_ms: 1,
+        }
+    }
+
+    #[test]
+    fn local_scope_fences_overlapping_host_outbox_entries_only() {
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().join("src/main.rs");
+        let entry = delete_entry(&target, DesktopPhase::ExecuteSent);
+        let mut outbox = DesktopOutbox::default();
+        outbox
+            .operations
+            .insert(operation_key(entry.operation_id), entry);
+        let before = serde_json::to_vec(&outbox).unwrap();
+
+        assert!(outbox_conflicts_local_scope(&outbox, std::slice::from_ref(&target)).unwrap());
+        assert!(
+            !outbox_conflicts_local_scope(&outbox, &[directory.path().join("README.md")]).unwrap()
+        );
+        assert!(outbox_conflicts_local_scope(&outbox, &[]).unwrap());
+        assert_eq!(serde_json::to_vec(&outbox).unwrap(), before);
+    }
+
+    #[test]
+    fn local_scope_ignores_host_stage_that_was_never_executed() {
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().join("src/main.rs");
+        let entry = delete_entry(&target, DesktopPhase::Staging);
+        let outbox = DesktopOutbox {
+            version: 1,
+            operations: BTreeMap::from([(operation_key(entry.operation_id), entry)]),
+            uncertainty_warnings: BTreeMap::new(),
+        };
+        assert!(!outbox_conflicts_local_scope(&outbox, std::slice::from_ref(&target)).unwrap());
+    }
+
+    #[test]
+    fn local_desktop_engine_checks_source_identity_before_rename() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().canonicalize().unwrap();
+        let source = root.join("before.txt");
+        fs::write(&source, b"original").unwrap();
+        let expected = lomi_files::desktop::desktop_source_precondition(&source).unwrap();
+        let request = DesktopMutationRequest {
+            version: 1,
+            operation_id: "00000000-0000-4000-8000-000000000002".into(),
+            root: root.clone(),
+            relative_path: "before.txt".into(),
+            expected_path: Some(source.clone()),
+            control_roots: Vec::new(),
+            operation: DesktopFileOperation::Rename {
+                name: "after.txt".into(),
+            },
+        };
+        fs::rename(&source, root.join("held.txt")).unwrap();
+        fs::write(&source, b"replacement").unwrap();
+
+        let result = lomi_files::desktop::apply_desktop_mutation_with_source(
+            &request,
+            &expected,
+            |_| Ok(()),
+        );
+        assert!(matches!(
+            result,
+            Err(DesktopMutationError::Before(DesktopFileErrorCode::Changed))
+        ));
+        assert_eq!(fs::read(&source).unwrap(), b"replacement");
+        assert!(!root.join("after.txt").exists());
+    }
+
+    #[test]
+    fn local_trash_intent_reconstructs_ticket_after_crash_before_ticket_write() {
+        let directory = tempfile::tempdir().unwrap();
+        let (request, source) =
+            trash_request(directory.path(), "00000000-0000-4000-8000-000000000004");
+        let entry = local_trash_intent(&request, &source).unwrap();
+        let applied =
+            lomi_files::desktop::apply_desktop_mutation_with_source(&request, &source, |_| Ok(()))
+                .unwrap();
+        let expected = applied.trash.unwrap();
+
+        match reconstruct_local_trash_ticket(&entry) {
+            LocalTrashReconstruction::Ticket(ticket) => assert_eq!(ticket, expected),
+            LocalTrashReconstruction::NoEffect { .. } => {
+                panic!("the staged item should produce a recoverable ticket")
+            }
+            LocalTrashReconstruction::Unknown(reason) => panic!("{reason}"),
+        }
+        assert!(!request.expected_path.unwrap().exists());
+        assert!(expected.staged_path.exists());
+    }
+
+    #[test]
+    fn failed_local_trash_transfer_is_recorded_and_never_retried() {
+        let (directory, entry) = staged_local_trash();
+        let key = entry.operation_id.clone();
+        let mut journal = LocalTrashJournal {
+            version: 1,
+            operations: BTreeMap::from([(key.clone(), entry)]),
+        };
+        let path = directory.path().join("local-trash-journal.json");
+        write_local_trash_journal(&path, &journal).unwrap();
+        let mut transfer_calls = 0;
+        let result = attempt_local_trash_once(
+            &mut journal,
+            &key,
+            |journal| write_local_trash_journal(&path, journal),
+            |_| {
+                transfer_calls += 1;
+                Err("injected transfer failure")
+            },
+        );
+        assert!(matches!(result, LocalTrashAttempt::Pending(_)));
+        assert_eq!(transfer_calls, 1);
+        let mut durable = read_local_trash_journal(&path).unwrap();
+        assert!(durable.operations[&key].transfer_attempted);
+        let retry = attempt_local_trash_once(
+            &mut durable,
+            &key,
+            |_| panic!("a recorded transfer attempt must not be rewritten"),
+            |_| {
+                transfer_calls += 1;
+                Err("must not run")
+            },
+        );
+        assert!(matches!(retry, LocalTrashAttempt::Pending(_)));
+        assert_eq!(transfer_calls, 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn local_trash_recovery_keeps_project_a_staged_item_when_a_lease_blocks_it() {
+        let (project_a, entry) = staged_local_trash();
+        let project_b = tempfile::tempdir().unwrap();
+        let b_file = project_b.path().join("unrelated.txt");
+        fs::write(&b_file, b"project B remains usable").unwrap();
+
+        let active_a =
+            crate::project_write_guard::activate(project_a.path(), "active-project-a-task", 1)
+                .unwrap();
+        let _unrelated_b_admission = crate::project_write_guard::admit(&[&b_file]).unwrap();
+
+        let key = entry.operation_id.clone();
+        let mut journal = LocalTrashJournal {
+            version: 1,
+            operations: BTreeMap::from([(key.clone(), entry)]),
+        };
+        let journal_path = project_a.path().join("local-trash-journal.json");
+        write_local_trash_journal(&journal_path, &journal).unwrap();
+        let mut transfer_calls = 0;
+        let result = attempt_local_trash_once_with_guard(
+            &mut journal,
+            &key,
+            |entry| {
+                let paths = local_trash_write_paths(entry);
+                let path_refs: Vec<_> = paths.iter().map(PathBuf::as_path).collect();
+                crate::project_write_guard::admit(&path_refs)
+            },
+            |journal| write_local_trash_journal(&journal_path, journal),
+            |_| {
+                transfer_calls += 1;
+                Ok::<(), String>(())
+            },
+        );
+
+        assert!(matches!(result, LocalTrashAttempt::NotStarted(_)));
+        assert_eq!(transfer_calls, 0);
+        assert!(!journal.operations[&key].transfer_attempted);
+        assert!(
+            !read_local_trash_journal(&journal_path).unwrap().operations[&key].transfer_attempted
+        );
+        assert!(journal.operations[&key].staged_path.exists());
+        assert!(b_file.exists());
+        drop(_unrelated_b_admission);
+        drop(active_a);
+    }
+
+    #[test]
+    fn local_trash_does_not_transfer_when_attempt_persistence_fails() {
+        let (_directory, entry) = staged_local_trash();
+        let key = entry.operation_id.clone();
+        let mut journal = LocalTrashJournal {
+            version: 1,
+            operations: BTreeMap::from([(key.clone(), entry)]),
+        };
+        let mut transfer_calls = 0;
+        let result = attempt_local_trash_once(
+            &mut journal,
+            &key,
+            |_| Err("injected journal failure".into()),
+            |_| {
+                transfer_calls += 1;
+                Ok::<(), String>(())
+            },
+        );
+        assert!(matches!(result, LocalTrashAttempt::NotStarted(_)));
+        assert_eq!(transfer_calls, 0);
+        assert!(!journal.operations[&key].transfer_attempted);
+        assert!(journal.operations[&key].ticket.is_some());
+    }
+
+    #[test]
+    fn local_trash_record_is_cleared_only_after_confirmed_transfer() {
+        let (_directory, entry) = staged_local_trash();
+        let key = entry.operation_id.clone();
+        let mut journal = LocalTrashJournal {
+            version: 1,
+            operations: BTreeMap::from([(key.clone(), entry)]),
+        };
+        let mut snapshots = Vec::new();
+        let result = attempt_local_trash_once(
+            &mut journal,
+            &key,
+            |journal| {
+                snapshots.push(journal.clone());
+                Ok(())
+            },
+            |staged| fs::remove_file(staged).map_err(|error| error.to_string()),
+        );
+        assert!(matches!(result, LocalTrashAttempt::Complete));
+        assert!(journal.operations.is_empty());
+        assert_eq!(snapshots.len(), 2);
+        assert!(snapshots[0].operations[&key].transfer_attempted);
+        assert!(snapshots[1].operations.is_empty());
+    }
 }

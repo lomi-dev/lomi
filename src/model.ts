@@ -20,6 +20,7 @@ export interface AppInfo {
   directory: string;
   home: string;
   platform: string;
+  workspaceBackend: "local" | "shared-host";
   terminalRenderer?: "webgl" | "dom";
   profiles: ShellProfile[];
 }

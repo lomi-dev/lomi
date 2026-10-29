@@ -120,7 +120,9 @@ function locateHostPane(
     tabId: string,
   ): { tabId: string; pane: SharedHostPane } | undefined => {
     if (layout.kind === "pane")
-      return layout.pane.paneId === paneId ? { tabId, pane: layout.pane } : undefined;
+      return layout.pane.paneId === paneId
+        ? { tabId, pane: layout.pane }
+        : undefined;
     return find(layout.first, tabId) ?? find(layout.second, tabId);
   };
   for (const tab of state.tabs) {
@@ -916,7 +918,9 @@ export class TerminalRuntime {
     if (this.snapshot.status === "error")
       throw new Error(this.snapshot.error ?? "Terminal could not start.");
     if (this.hostBinding && this.snapshot.status !== "running")
-      throw new Error("The shared host terminal is unavailable. Restart it explicitly to create a new shell.");
+      throw new Error(
+        "The shared host terminal is unavailable. Restart it explicitly to create a new shell.",
+      );
   }
 
   configureSharedHostBinding(binding?: SharedHostTerminalBinding) {
@@ -1024,7 +1028,8 @@ export class TerminalRuntime {
 
   private async startSharedHost() {
     const binding = this.hostBinding;
-    if (!binding) throw new Error("The shared terminal workspace is unavailable.");
+    if (!binding)
+      throw new Error("The shared terminal workspace is unavailable.");
     await importSharedWorkspace(
       binding.workspaceId,
       binding.workspaceName,
@@ -1083,13 +1088,16 @@ export class TerminalRuntime {
           profileId,
         );
       }
-      const newPaneId = receipt.result?.kind === "terminal" ? receipt.result.paneId : "";
+      const newPaneId =
+        receipt.result?.kind === "terminal" ? receipt.result.paneId : "";
       if (!newPaneId)
         throw new Error("Local host did not confirm terminal creation.");
       state = await sharedWorkspaceState(binding.workspaceId);
       located = locateHostPane(state, newPaneId);
       if (!located)
-        throw new Error("The created terminal is not present in the host workspace.");
+        throw new Error(
+          "The created terminal is not present in the host workspace.",
+        );
       alias = {
         desktopPaneId: this.paneId,
         desktopTabId: binding.desktopTabId,
@@ -1237,7 +1245,8 @@ export class TerminalRuntime {
       this.loseSharedHostLease();
       this.update({
         status: "error",
-        error: "The shared terminal connection was lost. Reopen the terminal to reconnect.",
+        error:
+          "The shared terminal connection was lost. Reopen the terminal to reconnect.",
       });
       return;
     }
@@ -1250,7 +1259,8 @@ export class TerminalRuntime {
         this.hostPendingFrameBytes = 0;
         this.update({
           status: "error",
-          error: "The shared terminal snapshot arrived too quickly. Reopen the terminal to retry.",
+          error:
+            "The shared terminal snapshot arrived too quickly. Reopen the terminal to retry.",
         });
         return;
       }
@@ -1384,7 +1394,10 @@ export class TerminalRuntime {
 
   private setSharedHostInputEnabled() {
     try {
-      setInputEnabled(this.terminal, Boolean(this.hostLease && this.hostFocused));
+      setInputEnabled(
+        this.terminal,
+        Boolean(this.hostLease && this.hostFocused),
+      );
     } catch (error) {
       this.loseSharedHostLease();
       reportError(errorMessage(error));
@@ -1392,7 +1405,8 @@ export class TerminalRuntime {
   }
 
   setSharedHostFocused(focused: boolean) {
-    if (!this.hostBinding || this.disposed || this.hostFocused === focused) return;
+    if (!this.hostBinding || this.disposed || this.hostFocused === focused)
+      return;
     this.hostFocused = focused;
     if (focused) void this.claimSharedHostControl();
     else void this.releaseSharedHostControl();
@@ -2079,13 +2093,14 @@ export async function prepareOwnedTerminalClose(ids: readonly string[]) {
 export function closeTerminals(
   ids: string[],
   workspaceIds?: string | Readonly<Record<string, string>>,
-  closeSharedHost = true,
+  backend: "local" | "shared-host" | "detach" = "shared-host",
 ) {
   for (const id of ids) {
     const workspaceId =
       typeof workspaceIds === "string" ? workspaceIds : workspaceIds?.[id];
-    runtimes.get(id)?.dispose(workspaceId ? false : closeSharedHost);
-    if (workspaceId && closeSharedHost)
+    const closeThroughHost = backend === "shared-host" && !!workspaceId;
+    runtimes.get(id)?.dispose(backend !== "detach" && !closeThroughHost);
+    if (closeThroughHost)
       void closeHostTerminal(workspaceId, id).catch((error) =>
         reportError(errorMessage(error)),
       );
@@ -2125,6 +2140,6 @@ export function observeTerminalContexts(
 }
 if (import.meta.hot)
   import.meta.hot.dispose(() => {
-    closeTerminals([...runtimes.keys()], undefined, false);
+    closeTerminals([...runtimes.keys()], undefined, "detach");
     void detachSharedHostView().catch(() => {});
   });

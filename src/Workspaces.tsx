@@ -91,6 +91,7 @@ export default function Workspaces({
     available: boolean;
     state?: RemoteState;
     error: string;
+    disabledReason: string;
     busy?: string;
     uncertaintyWarnings: SharedHostDesktopUncertaintyWarning[];
     acknowledgeUncertaintyWarning: (
@@ -531,6 +532,17 @@ export default function Workspaces({
                   disabled:
                     !(menuShared ? remote.available : sharingAvailable) ||
                     !!remote.busy,
+                  description: remote.busy
+                    ? "A sharing change is in progress."
+                    : menuShared
+                      ? remote.available
+                        ? undefined
+                        : remote.disabledReason
+                      : sharingAvailable
+                        ? undefined
+                        : remote.error ||
+                          remote.disabledReason ||
+                          "Remote sharing is unavailable until host status loads.",
                   run: () => {
                     if (!(menuShared ? remote.available : sharingAvailable))
                       return;
@@ -770,13 +782,12 @@ function StartRemoteSharingDialog({
             windows signed in to this account? They can request access to this
             workspace’s shared terminal tree and project files. After you
             approve a request, they can view files, create files and folders,
-            rename or remove entries, inspect Git status,
-            diffs and history, stage changes, commit, fetch, fast-forward pull,
-            and push. They can also create, control, resize, and close shared
-            terminals.
-            {" "}Editor buffers, chat, browser panes, plugins, and AI-controlled
-            terminals stay private. Sharing does not start a shell; choose
-            Create terminal to start one.
+            rename or remove entries, inspect Git status, diffs and history,
+            stage changes, commit, fetch, fast-forward pull, and push. They can
+            also create, control, resize, and close shared terminals. Editor
+            buffers, chat, browser panes, plugins, and AI-controlled terminals
+            stay private. Sharing does not start a shell; choose Create terminal
+            to start one.
             {!signedIn && " Sign in to use remote sharing."}
           </p>
           {attempted && error && <p role="alert">{error}</p>}

@@ -582,6 +582,42 @@ impl Store {
     }
 }
 
+#[cfg(test)]
+mod native_writer_record_tests {
+    use super::*;
+
+    #[test]
+    fn host_participation_and_pending_ack_survive_durable_encoding() {
+        let operation = NativeOperation {
+            host_boundary_owned: true,
+            native_writer_participant: true,
+            native_writer_finish_observed: true,
+            native_writer_ack_pending: true,
+            native_writer_bind_attempted: true,
+            native_writer_bind_rejected: false,
+            native_writer_no_start_observed: false,
+            physical_account_root: Some("/tmp/lomi-test-account".into()),
+            operation_id: "operation-1".into(),
+            cli: crate::cli_catalog::TitleCli::Codex,
+            purpose: "attempt".into(),
+            account_id: "account-1".into(),
+            auth_revision: 1,
+            task_id: Some("task-1".into()),
+            attempt_id: Some("attempt-1".into()),
+            generation: Some(1),
+            cwd: "/tmp/lomi-test-project".into(),
+            boot: "test-boot".into(),
+            state: "reviewed".into(),
+        };
+
+        let encoded = encode(&operation).unwrap();
+        let decoded: NativeOperation = serde_json::from_str(&encoded).unwrap();
+        assert!(decoded.native_writer_participant);
+        assert!(decoded.native_writer_finish_observed);
+        assert!(decoded.native_writer_ack_pending);
+    }
+}
+
 pub(crate) fn workspace(path: &Path) -> Result<(String, (u64, u64)), String> {
     let p = dunce::canonicalize(path).map_err(|_| "Choose an existing project directory.")?;
 
@@ -1268,7 +1304,7 @@ impl Store {
             }
             Some(NativeOperation {
                 host_boundary_owned: true,
-                native_writer_participant: true,
+                native_writer_participant: crate::desktop_runtime::shared_host_enabled(),
                 native_writer_finish_observed: false,
                 native_writer_ack_pending: false,
                 native_writer_bind_attempted: false,

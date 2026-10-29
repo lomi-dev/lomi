@@ -71,8 +71,11 @@ impl Context {
         };
         let mut boundary = Boundary::create(&base, scope, spec)?;
         #[cfg(target_os = "macos")]
-        let native_intent =
-            crate::project_write_guard::native_intent_for_parent(&self.parent_operation_id);
+        let native_intent = crate::desktop_runtime::shared_host_enabled()
+            .then(|| {
+                crate::project_write_guard::native_intent_for_parent(&self.parent_operation_id)
+            })
+            .flatten();
         let preparation = (|| {
             if cancel.load(Ordering::SeqCst) {
                 return Err("The native client is stopping.".into());
@@ -86,13 +89,15 @@ impl Context {
                     return Err("The native client is stopping.".into());
                 }
                 #[cfg(target_os = "macos")]
-                if purpose == Purpose::Attempt {
-                    native_intent
-                        .as_ref()
-                        .ok_or("The Attempt has no registered canonical host intent.")?
-                        .bind_job(&self.storage_root, &self.parent_operation_id)?;
-                } else if let Some(intent) = &native_intent {
-                    intent.before_helper_release(&purpose)?;
+                if crate::desktop_runtime::shared_host_enabled() {
+                    if purpose == Purpose::Attempt {
+                        native_intent
+                            .as_ref()
+                            .ok_or("The Attempt has no registered canonical host intent.")?
+                            .bind_job(&self.storage_root, &self.parent_operation_id)?;
+                    } else if let Some(intent) = &native_intent {
+                        intent.before_helper_release(&purpose)?;
+                    }
                 }
                 if cancel.load(Ordering::SeqCst) {
                     return Err("The native client is stopping.".into());

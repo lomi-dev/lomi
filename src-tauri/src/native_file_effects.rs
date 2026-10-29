@@ -383,6 +383,82 @@ pub(crate) fn recover_pending(
     }
 }
 
+/// Checks old Host-owned effects without querying the Host or changing their
+/// recovery journal. Effects with path-scoped keys are matched to the local
+/// write; MCP project effects do not retain their paths in this journal, so
+/// they conservatively fence local writes until explicitly recovered.
+pub(crate) fn local_scope_has_pending_host_effect(
+    app: &AppHandle,
+    paths: &[PathBuf],
+    recursive: bool,
+) -> Result<bool, String> {
+    let path = journal_path(app).map_err(|error| error.to_string())?;
+    let journal = read_journal(&path).map_err(|error| error.to_string())?;
+    let path_keys = paths
+        .iter()
+        .map(|path| destination_key(path).map_err(|error| error.to_string()))
+        .collect::<Result<BTreeSet<_>, _>>()?;
+    Ok(journal_conflicts_local_scope(
+        &journal, &path_keys, recursive,
+    ))
+}
+
+fn journal_conflicts_local_scope(
+    journal: &EditorEffectJournal,
+    path_keys: &BTreeSet<String>,
+    recursive: bool,
+) -> bool {
+    for (key, pending) in &journal.operations {
+        if !pending.execute_sent {
+            continue;
+        }
+        match pending.expected_result {
+            ExpectedResult::File | ExpectedResult::New => {
+                if path_keys.contains(key) || recursive {
+                    return true;
+                }
+            }
+            ExpectedResult::ProjectMutation | ExpectedResult::ArtifactCreated => {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+pub(crate) fn any_pending_host_effect(app: &AppHandle) -> Result<bool, String> {
+    let path = journal_path(app).map_err(|error| error.to_string())?;
+    let journal = read_journal(&path).map_err(|error| error.to_string())?;
+    Ok(journal
+        .operations
+        .values()
+        .any(|pending| pending.execute_sent))
+}
+
+pub(crate) fn local_host_effect_conflicts(
+    app: &AppHandle,
+    paths: &[PathBuf],
+    recursive: bool,
+) -> Result<bool, String> {
+    if crate::desktop_runtime::pending_host_git_effect(app)? {
+        return Ok(true);
+    }
+    if local_scope_has_pending_host_effect(app, paths, recursive)? {
+        return Ok(true);
+    }
+    crate::desktop_file_effects::local_scope_has_pending_host_effect(app, paths)
+}
+
+pub(crate) fn any_local_host_effect_pending(app: &AppHandle) -> Result<bool, String> {
+    if crate::desktop_runtime::pending_host_git_effect(app)? {
+        return Ok(true);
+    }
+    if any_pending_host_effect(app)? {
+        return Ok(true);
+    }
+    crate::desktop_file_effects::any_pending_host_effect(app)
+}
+
 /// Publish a normalized, no-exec project mutation through the canonical Host.
 /// Its journal key is scoped to the MCP principal and operation so an
 /// unresolved operation does not lock all future mutations of the same root.
@@ -1808,6 +1884,76 @@ fn clear_operation(
     // outbox entry; it does not change the already confirmed save result.
     let _ = flush_acknowledgements(app, path, journal);
     Ok(())
+}
+
+#[cfg(test)]
+mod local_scope_tests {
+    use super::*;
+
+    fn pending(expected_result: ExpectedResult, execute_sent: bool) -> PendingEditorEffect {
+        PendingEditorEffect {
+            operation_id: NativeIntentId::try_from(
+                "00000000-0000-4000-8000-000000000001".to_owned(),
+            )
+            .unwrap(),
+            request_fingerprint: "a".repeat(64),
+            recovery_fingerprint: None,
+            expected_result,
+            execute_sent,
+        }
+    }
+
+    #[test]
+    fn local_scope_fences_matching_paths_and_preserves_unrelated_journals() {
+        let destination = PathBuf::from("/tmp/lomi-pending-scope-test.txt");
+        let key = destination_key(&destination).unwrap();
+        let unrelated = destination_key(Path::new("/tmp/lomi-unrelated.txt")).unwrap();
+        let journal = EditorEffectJournal {
+            version: 3,
+            operations: BTreeMap::from([(key.clone(), pending(ExpectedResult::File, true))]),
+            acknowledgements: BTreeSet::new(),
+        };
+        let before = serde_json::to_vec(&journal).unwrap();
+        assert!(journal_conflicts_local_scope(
+            &journal,
+            &BTreeSet::from([key]),
+            false
+        ));
+        assert!(!journal_conflicts_local_scope(
+            &journal,
+            &BTreeSet::from([unrelated]),
+            false
+        ));
+        assert!(journal_conflicts_local_scope(
+            &journal,
+            &BTreeSet::new(),
+            true
+        ));
+        assert_eq!(serde_json::to_vec(&journal).unwrap(), before);
+    }
+
+    #[test]
+    fn local_scope_fences_unscoped_host_mutations_but_ignores_staged_only_effects() {
+        let mut journal = EditorEffectJournal {
+            version: 3,
+            operations: BTreeMap::from([(
+                "b".repeat(64),
+                pending(ExpectedResult::ProjectMutation, true),
+            )]),
+            acknowledgements: BTreeSet::new(),
+        };
+        assert!(journal_conflicts_local_scope(
+            &journal,
+            &BTreeSet::from([destination_key(Path::new("/tmp/elsewhere")).unwrap()]),
+            false
+        ));
+        journal.operations.values_mut().next().unwrap().execute_sent = false;
+        assert!(!journal_conflicts_local_scope(
+            &journal,
+            &BTreeSet::new(),
+            true
+        ));
+    }
 }
 
 fn flush_acknowledgements(

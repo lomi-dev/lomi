@@ -95,7 +95,6 @@ pub(crate) struct Inner {
     pub recovery_projects: HashMap<String, crate::project_write_guard::Lease>,
     #[cfg(target_os = "macos")]
     pub native_recovery_intents: HashMap<String, NativeRecoveryIntent>,
-    #[cfg(target_os = "macos")]
     pub native_recovery_ceiling: Option<crate::project_write_guard::RecoveryCeiling>,
     pub pending_finishes: HashMap<String, (Active, Result<(), String>)>,
     pub pending_observations: HashMap<String, Task>,
@@ -174,26 +173,26 @@ impl AgentRuntime {
             }
             inner.store = Some(store);
 
-            #[cfg(target_os = "macos")]
-            {
-                super::execution::finalize_recovered_terminal_attempts(&mut inner)?;
-                let participants = inner
-                    .store
-                    .as_ref()
-                    .unwrap()
-                    .native_operations()?
-                    .into_iter()
-                    .filter(|operation| {
-                        operation.native_writer_participant
-                            && !operation.native_writer_finish_observed
-                            && !operation.native_writer_ack_pending
-                    })
-                    .collect::<Vec<_>>();
-                if !participants.is_empty() {
-                    inner.native_recovery_ceiling =
-                        Some(crate::project_write_guard::install_recovery_ceiling()?);
-                }
-                for operation in participants {
+            let host_recovery_enabled = host_recovery_enabled();
+            let participants = inner
+                .store
+                .as_ref()
+                .unwrap()
+                .native_operations()?
+                .into_iter()
+                .filter(|operation| operation.native_writer_participant)
+                .collect::<Vec<_>>();
+            if participants.iter().any(|operation| {
+                native_writer_requires_recovery_ceiling(operation, host_recovery_enabled)
+            }) {
+                inner.native_recovery_ceiling =
+                    Some(crate::project_write_guard::install_recovery_ceiling()?);
+            }
+            if host_recovery_enabled {
+                #[cfg(target_os = "macos")]
+                for operation in participants.iter().filter(|operation| {
+                    !operation.native_writer_finish_observed && !operation.native_writer_ack_pending
+                }) {
                     let task_id = operation
                         .task_id
                         .clone()
@@ -213,7 +212,24 @@ impl AgentRuntime {
                         return Err("A native writer participant ID is duplicated.".into());
                     }
                 }
+            } else {
+                let store = inner.store.as_mut().unwrap();
+                let recovery_message = "This Attempt still has an unresolved Host writer participant. No Host was contacted. Reopen a Host-enabled build to recover it; project writes remain fenced.";
+                let task_ids = participants
+                    .iter()
+                    .filter_map(|operation| operation.task_id.as_deref())
+                    .collect::<HashSet<_>>();
+                for task_id in task_ids {
+                    let mut task = store.task(task_id)?;
+                    if task.status_message != recovery_message {
+                        task.status_message = recovery_message.into();
+                        task.revision += 1;
+                        store.update_task(&task, None, None)?;
+                    }
+                }
             }
+            #[cfg(target_os = "macos")]
+            super::execution::finalize_recovered_terminal_attempts(&mut inner)?;
         }
 
         #[cfg(target_os = "macos")]
@@ -307,6 +323,9 @@ impl AgentRuntime {
 
     #[cfg(target_os = "macos")]
     fn drain_settled_native_intents(&self) {
+        if !crate::desktop_runtime::shared_host_enabled() {
+            return;
+        }
         let prebind = {
             let Ok(mut inner) = self.inner.lock() else {
                 return;
@@ -1073,6 +1092,9 @@ impl AgentRuntime {
         _task_id: &str,
         _attempt_id: &str,
     ) {
+        if !crate::desktop_runtime::shared_host_enabled() {
+            return;
+        }
         self.drain_settled_native_intents();
     }
 
@@ -1256,6 +1278,7 @@ Ok(result)}
             }
 
             let a = target(s, &r.account_id, r.auth_revision, None)?;
+            ensure_managed_task_execution(a.cli)?;
 
             model(a.cli, &r.model, r.reasoning_effort.as_deref())?;
 
@@ -1456,6 +1479,8 @@ Ok(result)}
 
         let s=i.store.as_mut().unwrap();
 
+        ensure_host_participant_recovery_mode(s, Some(&r.task_id))?;
+
         if let Some(old)=s.replay(&r.operation_id,&r)?{
 return Ok(old);
 }
@@ -1565,8 +1590,9 @@ freeze.3=true;
 
             t.next_account_id = r.account_id.clone();
 
-            let eligibility = target(s, &r.account_id, r.auth_revision, Some(&t))
-                .and_then(|a| continuation(s, &t, &a));
+            let target_account = target(s, &r.account_id, r.auth_revision, Some(&t))?;
+            ensure_managed_task_execution(target_account.cli)?;
+            let eligibility = continuation(s, &t, &target_account);
 
             let (mut method, mut reason) = match eligibility {
                 Ok(v) => (v, None),
@@ -2005,6 +2031,18 @@ else{
 ).collect()
 }
 
+pub(super) fn ensure_managed_task_execution(cli: TitleCli) -> Result<(), String> {
+    let capability = capabilities()
+        .into_iter()
+        .find(|capability| capability.cli == cli)
+        .ok_or("This CLI has no managed task capability.")?;
+    if capability.managed_execution {
+        Ok(())
+    } else {
+        Err(capability.reason.into())
+    }
+}
+
 pub(crate) fn account_terminal<T>(
     state: &AgentRuntime,
     app: &AppHandle,
@@ -2280,9 +2318,12 @@ pub(super) fn prepare_switch_commit(
 ) -> Result<(Task, bool), String> {
     let s = i.store.as_mut().unwrap();
 
+    ensure_host_participant_recovery_mode(s, Some(&r.task_id))?;
+
     if let Some(old) = s.replay(&r.operation_id, r)? {
         return Ok((old, false));
     }
+    ensure_host_participant_recovery_mode(s, None)?;
     let mut t = s.task(&r.task_id)?;
 
     expected(t.revision, r.expected_revision)?;
@@ -2314,6 +2355,7 @@ pub(super) fn prepare_switch_commit(
         return Err("Review a prepared switch to this exact account revision.".into());
     }
     let a = target(s, &r.account_id, r.auth_revision, Some(&t))?;
+    ensure_managed_task_execution(a.cli)?;
 
     if account_control_reserved(s, &i.account_leases, &a.account_id)? {
         return Err("The target account namespace is leased.".into());
@@ -2391,9 +2433,12 @@ pub(super) fn prepare_send(
 ) -> Result<(Task, bool), String> {
     let s = i.store.as_mut().unwrap();
 
+    ensure_host_participant_recovery_mode(s, Some(&r.task_id))?;
+
     if let Some(old) = s.replay(&r.operation_id, &r)? {
         return Ok((old, false));
     }
+    ensure_host_participant_recovery_mode(s, None)?;
 
     if closing || i.closing_tasks.contains(&r.task_id) {
         return Err("This task is preparing to close.".into());
@@ -2417,6 +2462,7 @@ pub(super) fn prepare_send(
     }
 
     let a = target(s, &r.account_id, r.auth_revision, Some(&t))?;
+    ensure_managed_task_execution(a.cli)?;
 
     if account_control_reserved(s, &i.account_leases, &a.account_id)? {
         return Err("The target account namespace is leased by another process.".into());
@@ -2569,6 +2615,101 @@ pub(super) fn switch_dispatch_allowed(switch: &SwitchOperation) -> Result<(), St
     Ok(())
 }
 
+#[cfg(test)]
+mod local_host_recovery_tests {
+    use super::*;
+
+    fn participant() -> super::super::types::NativeOperation {
+        super::super::types::NativeOperation {
+            host_boundary_owned: true,
+            native_writer_participant: true,
+            native_writer_finish_observed: true,
+            native_writer_ack_pending: true,
+            native_writer_bind_attempted: true,
+            native_writer_bind_rejected: false,
+            native_writer_no_start_observed: false,
+            physical_account_root: Some("/tmp/lomi-test-account".into()),
+            operation_id: "operation-1".into(),
+            cli: TitleCli::Codex,
+            purpose: "attempt".into(),
+            account_id: "account-1".into(),
+            auth_revision: 1,
+            task_id: Some("task-1".into()),
+            attempt_id: Some("attempt-1".into()),
+            generation: Some(1),
+            cwd: "/tmp/lomi-test-project".into(),
+            boot: "test-boot".into(),
+            state: "reviewed".into(),
+        }
+    }
+
+    #[test]
+    fn persisted_host_participant_remains_unresolved_locally_until_host_acknowledges() {
+        let operation = participant();
+
+        assert!(local_host_participant_needs_recovery(&operation, false));
+        assert!(!local_host_participant_needs_recovery(&operation, true));
+        assert!(native_writer_requires_recovery_ceiling(&operation, false));
+        assert!(!native_writer_requires_recovery_ceiling(&operation, true));
+
+        let settled_local_operation = super::super::types::NativeOperation {
+            native_writer_participant: false,
+            native_writer_finish_observed: false,
+            native_writer_ack_pending: false,
+            ..operation
+        };
+        assert!(!local_host_participant_needs_recovery(
+            &settled_local_operation,
+            false
+        ));
+    }
+
+    #[test]
+    fn restored_host_ack_pending_record_does_not_install_a_hosted_recovery_ceiling() {
+        let operation = participant();
+        assert!(operation.native_writer_finish_observed);
+        assert!(operation.native_writer_ack_pending);
+        assert!(!native_writer_requires_recovery_ceiling(&operation, true));
+    }
+
+    #[test]
+    fn managed_task_gate_matches_reported_capability() {
+        for capability in capabilities() {
+            assert_eq!(
+                ensure_managed_task_execution(capability.cli).is_ok(),
+                capability.managed_execution,
+                "{:?}",
+                capability.cli
+            );
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn persisted_host_participant_remains_fenced_on_non_macos_platforms() {
+        let operation = participant();
+        assert!(!host_recovery_enabled());
+        assert!(native_writer_requires_recovery_ceiling(
+            &operation,
+            host_recovery_enabled()
+        ));
+        assert!(local_host_participant_needs_recovery(
+            &operation,
+            host_recovery_enabled()
+        ));
+    }
+
+    #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+    #[test]
+    fn unsupported_kernel_has_no_managed_execution_capability() {
+        assert!(!super::super::native_evidence::native_host_kernel_admitted());
+        assert!(capabilities()
+            .iter()
+            .all(|capability| !capability.managed_execution));
+        assert!(ensure_managed_task_execution(TitleCli::Kimi).is_err());
+    }
+}
+
 impl AgentRuntime {
     pub(crate) fn account_recover(
         &self,
@@ -2605,6 +2746,41 @@ pub(super) fn account_control_reserved(
     account: &str,
 ) -> Result<bool, String> {
     Ok(leases.contains(account) || store.unresolved_accounts()?.iter().any(|id| id == account))
+}
+
+fn ensure_host_participant_recovery_mode(
+    store: &Store,
+    task_id: Option<&str>,
+) -> Result<(), String> {
+    let host_enabled = host_recovery_enabled();
+    let unresolved = store.native_operations()?.into_iter().any(|operation| {
+        local_host_participant_needs_recovery(&operation, host_enabled)
+            && task_id.is_none_or(|task| operation.task_id.as_deref() == Some(task))
+    });
+    if unresolved {
+        return Err("A persisted Host writer participant remains unresolved. Reopen a Host-enabled build to recover it; no input was replayed and project writes remain fenced.".into());
+    }
+    Ok(())
+}
+
+pub(super) fn host_recovery_enabled() -> bool {
+    cfg!(target_os = "macos") && crate::desktop_runtime::shared_host_enabled()
+}
+
+fn native_writer_requires_recovery_ceiling(
+    operation: &super::types::NativeOperation,
+    host_enabled: bool,
+) -> bool {
+    operation.native_writer_participant
+        && (!host_enabled
+            || (!operation.native_writer_finish_observed && !operation.native_writer_ack_pending))
+}
+
+fn local_host_participant_needs_recovery(
+    operation: &super::types::NativeOperation,
+    host_enabled: bool,
+) -> bool {
+    operation.native_writer_participant && !host_enabled
 }
 
 struct AdmittedHelper {

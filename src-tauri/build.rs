@@ -69,6 +69,10 @@ fn configure_host_auth_bootstrap() {
         })
         .collect();
     let configured = values.iter().filter(|value| value.is_some()).count();
+    if std::env::var_os("CARGO_FEATURE_REMOTE_HOST").is_none() {
+        println!("cargo:rustc-env=LOMI_HOST_AUTH_BOOTSTRAP_CONFIGURED=0");
+        return;
+    }
     if configured != 0 && configured != VARIABLES.len() {
         panic!("Set all five Lomi host authentication bootstrap variables together.");
     }

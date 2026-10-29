@@ -35,8 +35,10 @@ const authProviderLabels: Record<SharedHostAuthProvider, string> = {
 
 export default function RemoteSettingsPage({
   available,
+  disabledReason,
 }: {
   available: boolean;
+  disabledReason: string;
 }) {
   const [state, setState] = useState<RemoteState | null>(null);
   const [error, setError] = useState("");
@@ -58,7 +60,16 @@ export default function RemoteSettingsPage({
   const loginOperationId = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!native) return;
+    if (!native || !available) {
+      setState(null);
+      setError("");
+      setHostStatus(null);
+      setAuthSetup(null);
+      setLoginStatus(null);
+      setLoginPresentation(null);
+      setAuthError("");
+      return;
+    }
     let current = true;
     let refreshing = false;
     const refresh = async () => {
@@ -104,6 +115,7 @@ export default function RemoteSettingsPage({
       } catch (cause) {
         if (current) {
           setHostStatus(null);
+          setState(null);
           setError(errorMessage(cause));
         }
       } finally {
@@ -116,10 +128,10 @@ export default function RemoteSettingsPage({
       current = false;
       clearInterval(timer);
     };
-  }, []);
+  }, [available]);
 
   useEffect(() => {
-    if (!native) return;
+    if (!native || !available) return;
     let current = true;
     let refreshing = false;
     const refresh = async () => {
@@ -142,7 +154,12 @@ export default function RemoteSettingsPage({
         if (status?.phase === "ready") setLoginPresentation(null);
         setAuthError("");
       } catch (cause) {
-        if (current) setAuthError(errorMessage(cause));
+        if (current) {
+          setAuthSetup(null);
+          setLoginStatus(null);
+          setLoginPresentation(null);
+          setAuthError(errorMessage(cause));
+        }
       } finally {
         refreshing = false;
       }
@@ -153,10 +170,10 @@ export default function RemoteSettingsPage({
       current = false;
       clearInterval(timer);
     };
-  }, [authRevision]);
+  }, [authRevision, available]);
 
   const configureAuth = async () => {
-    if (!selectedAuthProvider || authBusy) return;
+    if (!available || !selectedAuthProvider || authBusy) return;
     setAuthBusy(true);
     setAuthError("");
     try {
@@ -176,7 +193,7 @@ export default function RemoteSettingsPage({
   };
 
   const startLogin = async () => {
-    if (authBusy) return;
+    if (!available || authBusy) return;
     setAuthBusy(true);
     setAuthError("");
     try {
@@ -193,7 +210,7 @@ export default function RemoteSettingsPage({
   };
 
   const revealLoginPresentation = async () => {
-    if (presentationBusy) return;
+    if (!available || presentationBusy) return;
     setPresentationBusy(true);
     setAuthError("");
     try {
@@ -206,7 +223,7 @@ export default function RemoteSettingsPage({
   };
 
   const signOut = async () => {
-    if (authBusy) return;
+    if (!available || authBusy) return;
     setAuthBusy(true);
     setAuthError("");
     try {
@@ -225,19 +242,18 @@ export default function RemoteSettingsPage({
   return (
     <SettingsPage
       title="Remote"
-      description="Connect to another Lomi host or manage this device’s shared workspaces."
+      description={
+        available
+          ? "Connect to another Lomi host or manage this device’s shared workspaces."
+          : undefined
+      }
     >
-      {!available && (
-        <SettingsNotice>
-          Remote sharing requires the Lomi desktop app.
-        </SettingsNotice>
-      )}
-      {error && (
+      {available && error && (
         <SettingsNotice tone="error" role="alert">
           {error}
         </SettingsNotice>
       )}
-      {hostStatus?.state === "administratorInstallRequired" && (
+      {available && hostStatus?.state === "administratorInstallRequired" && (
         <SettingsNotice tone="error" role="alert">
           Local Host startup requires the signed Lomi Remote administrator
           installation for this macOS account. Run the signed installer with{" "}
@@ -249,6 +265,8 @@ export default function RemoteSettingsPage({
         <SettingsNotice>
           Remote hosting is available in the desktop app.
         </SettingsNotice>
+      ) : !available ? (
+        <SettingsNotice>{disabledReason}</SettingsNotice>
       ) : (
         <>
           {state?.message && <SettingsNotice>{state.message}</SettingsNotice>}
@@ -279,7 +297,9 @@ export default function RemoteSettingsPage({
               <>
                 <p className="settings-help">
                   Set up the host using this device’s selected{" "}
-                  {selectedAuthProvider ? authProviderLabels[selectedAuthProvider] : "secret storage"}{" "}
+                  {selectedAuthProvider
+                    ? authProviderLabels[selectedAuthProvider]
+                    : "secret storage"}{" "}
                   secret provider. Public service addresses are supplied by the
                   trusted desktop build.
                 </p>

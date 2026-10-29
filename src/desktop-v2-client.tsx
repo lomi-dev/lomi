@@ -33,35 +33,52 @@ export function DesktopRemoteV2Client({
 }: DesktopRemoteV2ClientProps) {
   const [accountId, setAccountId] = useState<string>();
   const [authReady, setAuthReady] = useState(false);
-  const [connection, setConnection] = useState<RemoteV2ConnectionRequest | null>(null);
+  const [connection, setConnection] =
+    useState<RemoteV2ConnectionRequest | null>(null);
   const [reconnectRequest, setReconnectRequest] = useState(0);
   const [windowError, setWindowError] = useState("");
   const platform = useMemo(() => createDesktopRemoteV2PlatformAdapter(), []);
 
   useEffect(() => {
+    if (!native || !available) {
+      setAccountId(undefined);
+      setAuthReady(false);
+      setConnection(null);
+      return;
+    }
     let active = true;
     let receivedAuthEvent = false;
     let eventRevision = 0;
     let unlisten: (() => void) | undefined;
     void (async () => {
-      unlisten = await listen<AuthStateEvent>("auth-state-changed", ({ payload }) => {
-        receivedAuthEvent = true;
-        eventRevision += 1;
-        const signedIn = payload.status === "signed-in" || payload.status === "signedin";
-        const next = signedIn && typeof payload.user?.id === "string"
-          && ACCOUNT_ID.test(payload.user.id)
-          ? payload.user.id
-          : undefined;
-        setAccountId(next);
-        setAuthReady(true);
-      });
+      unlisten = await listen<AuthStateEvent>(
+        "auth-state-changed",
+        ({ payload }) => {
+          receivedAuthEvent = true;
+          eventRevision += 1;
+          const signedIn =
+            payload.status === "signed-in" || payload.status === "signedin";
+          const next =
+            signedIn &&
+            typeof payload.user?.id === "string" &&
+            ACCOUNT_ID.test(payload.user.id)
+              ? payload.user.id
+              : undefined;
+          setAccountId(next);
+          setAuthReady(true);
+        },
+      );
       if (!active) {
         unlisten();
         return;
       }
       const revisionBeforeSnapshot = eventRevision;
       const initialAccountId = await desktopRemoteV2AccountId();
-      if (active && !receivedAuthEvent && eventRevision === revisionBeforeSnapshot) {
+      if (
+        active &&
+        !receivedAuthEvent &&
+        eventRevision === revisionBeforeSnapshot
+      ) {
         setAccountId(initialAccountId);
       }
       if (active) setAuthReady(true);
@@ -72,10 +89,14 @@ export function DesktopRemoteV2Client({
       active = false;
       unlisten?.();
     };
-  }, []);
+  }, [available]);
 
   const stopWorkspace = useCallback((windowIdentityId: string) => {
-    setConnection((current) => current?.registration.windowIdentityId === windowIdentityId ? null : current);
+    setConnection((current) =>
+      current?.registration.windowIdentityId === windowIdentityId
+        ? null
+        : current,
+    );
   }, []);
   const reconnect = useCallback(() => {
     clearViewRestorationIntent();
@@ -90,21 +111,40 @@ export function DesktopRemoteV2Client({
   }, []);
 
   if (!native) {
-    return <SettingsNotice>Remote workspace viewing is available in the desktop app.</SettingsNotice>;
+    return (
+      <SettingsNotice>
+        Remote workspace viewing is available in the desktop app.
+      </SettingsNotice>
+    );
   }
   if (!available) {
-    return <SettingsNotice>The identity, Remote API, and relay services are not configured in this build.</SettingsNotice>;
+    return (
+      <SettingsNotice>
+        The identity, Remote API, and relay services are not configured in this
+        build.
+      </SettingsNotice>
+    );
   }
   if (entry === "workspace" && !initialTarget) {
-    return <SettingsNotice>This remote workspace reference is invalid. Open a workspace again from its current view.</SettingsNotice>;
+    return (
+      <SettingsNotice>
+        This remote workspace reference is invalid. Open a workspace again from
+        its current view.
+      </SettingsNotice>
+    );
   }
   if (!authReady) {
-    return <SettingsNotice>Checking the signed-in Lomi account…</SettingsNotice>;
+    return (
+      <SettingsNotice>Checking the signed-in Lomi account…</SettingsNotice>
+    );
   }
   if (!accountId) {
-    return <SettingsNotice>
-      Sign in to your Lomi account on this device to view workspaces shared by another Lomi host.
-    </SettingsNotice>;
+    return (
+      <SettingsNotice>
+        Sign in to your Lomi account on this device to view workspaces shared by
+        another Lomi host.
+      </SettingsNotice>
+    );
   }
 
   return (
@@ -114,12 +154,16 @@ export function DesktopRemoteV2Client({
         display: "flex",
         flexDirection: "column",
         width: "100%",
-        height: entry === "workspace" ? "100dvh" : connection ? "75dvh" : "auto",
+        height:
+          entry === "workspace" ? "100dvh" : connection ? "75dvh" : "auto",
         minHeight: 0,
         overflow: "hidden",
       }}
     >
-      <div hidden={!!connection} style={{ flex: "1 1 auto", minHeight: 0, overflow: "auto" }}>
+      <div
+        hidden={!!connection}
+        style={{ flex: "1 1 auto", minHeight: 0, overflow: "auto" }}
+      >
         <RemoteV2PairingPanel
           accountId={accountId}
           platform={platform}
@@ -129,7 +173,11 @@ export function DesktopRemoteV2Client({
           reconnectRequest={reconnectRequest}
         />
       </div>
-      {windowError && <p className="error px-4 text-[13px]" role="alert">{windowError}</p>}
+      {windowError && (
+        <p className="error px-4 text-[13px]" role="alert">
+          {windowError}
+        </p>
+      )}
       {connection && (
         <RemoteV2Workspace
           key={`${connection.registration.windowIdentityId}:${connection.workspace.workspaceId}`}
@@ -139,10 +187,9 @@ export function DesktopRemoteV2Client({
             setConnection(null);
           }}
           onReconnect={reconnect}
-          onOpenView={() => openView(
-            connection.host.hostId,
-            connection.workspace.workspaceId,
-          )}
+          onOpenView={() =>
+            openView(connection.host.hostId, connection.workspace.workspaceId)
+          }
         />
       )}
     </div>

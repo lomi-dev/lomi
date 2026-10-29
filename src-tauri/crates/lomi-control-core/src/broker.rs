@@ -31,11 +31,13 @@ use tokio::{
 };
 mod browsers;
 mod chat_close;
+#[cfg(feature = "remote-host")]
 mod native_git;
 mod operations;
 mod request_admission;
 pub use browsers::{BrowserNavigationDispatch, BrowserStart};
 pub use chat_close::ChatCloseDispatch;
+#[cfg(feature = "remote-host")]
 pub use native_git::{GitMutationHost, GitMutationHostPrepare, GitMutationHostPrepared};
 pub use operations::NativePermit;
 pub use request_admission::{SessionEffectPermit, SessionRequestAdmission, SessionRequestPolicy};
@@ -58,7 +60,14 @@ mod files;
 mod files_mutate;
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 mod git;
-#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+#[cfg(all(feature = "remote-host", target_os = "macos", target_arch = "aarch64"))]
+mod git_mutate;
+#[cfg(all(
+    not(feature = "remote-host"),
+    target_os = "macos",
+    target_arch = "aarch64"
+))]
+#[path = "broker/git_mutate_local.rs"]
 mod git_mutate;
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 mod git_observations;

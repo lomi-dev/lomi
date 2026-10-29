@@ -21,6 +21,14 @@ or acronym.
 - Rust implements the native application in `src-tauri/src/`.
 - React and TypeScript implement the interface in `src/`.
 - Vite serves the frontend during development and builds it into `dist/`.
+- The default desktop owns local terminals, file operations, Git, and coding
+  tools without an installed Lomi Remote Host. `desktop_runtime.rs` exposes the
+  immutable `workspaceBackend` capability through `app_info`. The opt-in
+  `remote-host` Cargo feature retains the shared Host workspace backend;
+  Remote UI and native Remote commands are disabled in the default build.
+  Never switch backends after an operation has started or replay an uncertain
+  Host effect locally. Preserve pending Host journals and writer participants
+  for explicit recovery in a Host-enabled build.
 - Plain CSS defines the interface and theme in `src/styles.css`.
 - `src/model.ts` owns the persisted layout and pure layout transformations.
   Workspace tabs are terminals with pane layouts, file editors with project-relative
@@ -265,6 +273,9 @@ or acronym.
   or editor buffers and restore by loading fresh comparisons.
   `src-tauri/src/git/history.rs` provides paginated history and commit details.
   History and commit tabs are read-only; merge diffs use the first parent.
+  On non-Unix builds, rebase pulls require no untracked or ignored paths until
+  filesystem-equivalent path identity is qualified; move, remove, or commit
+  those files, or use merge pull. Merge pull refuses ignored-file overwrites.
 - Android is an explicit built-in tab/pane with a device UUID, no PTY or shell.
   `src/android/service.ts` connects domain references to a lazily imported runtime;
   `AndroidPane.tsx` and `AndroidSettingsPage.tsx` are separate lazy entry points.

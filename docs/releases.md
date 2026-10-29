@@ -8,20 +8,25 @@ did not exist when this workflow was prepared on 2026-09-11.
 
 ## Release workflow
 
-### Canonical source and host configuration
+### Shared sources and optional Host configuration
 
-Desktop release builds require the canonical host and Remote UI repositories as
-siblings of each desktop checkout. Configure these repository variables before
-using the release workflow:
+Desktop release builds use shared libraries from the canonical host and Remote
+UI repositories as siblings of each desktop checkout. They do not require an
+installed or running Host. Configure these repository variables before using
+the release workflow:
 
 - `LOMI_REMOTE_CORE_REPOSITORY`: the canonical host repository as
   `owner/repository`. Set this to the established repository location; the
   workflow does not assume an unpublished repository name.
 - `LOMI_REMOTE_CORE_SHA`: a full 40- or 64-hex commit SHA from that repository.
 - `REMOTE_WEB_SHA`: a full 40- or 64-hex commit SHA from `lomi-dev/remote-web`.
-- `LOMI_HOST_IDENTITY_ORIGIN`, `LOMI_HOST_REMOTE_API_ORIGIN`,
-  `LOMI_HOST_RELAY_ENDPOINT`, and `LOMI_HOST_CLIENT_ID`: the public host
-  authentication bootstrap pins required by release builds.
+
+The default release owns its local workspace services and disables Remote.
+For a separate `--features remote-host` release, also supply the five public
+bootstrap pins together: `LOMI_HOST_IDENTITY_ORIGIN`,
+`LOMI_HOST_REMOTE_API_ORIGIN`, `LOMI_HOST_RELAY_ENDPOINT`,
+`LOMI_HOST_CLIENT_ID`, and `LOMI_HOST_REMOTE_WEB_ORIGIN`. Host-backed release
+builds reject missing pins; local release builds do not require them.
 
 Before enabling desktop release builds, publish the canonical host source to
 its own Git repository and set its actual owner/repository and full commit SHA.
@@ -33,7 +38,7 @@ commit, and places the sources beside the desktop checkout without replacing an
 existing sibling. The desktop repository's `GITHUB_TOKEN` is used by default.
 If the source repositories are private and that token cannot read them, set the
 existing `CANONICAL_SOURCE_TOKEN` repository secret to a token with read access
-to those repositories. The four host bootstrap values are public application
+to those repositories. The five host bootstrap values are public application
 configuration, not signing credentials. `LOMI_HOST_CLIENT_ID` identifies host
 enrollment; the desktop OAuth consumer client remains separate.
 
