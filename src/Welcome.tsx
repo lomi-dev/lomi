@@ -14,11 +14,11 @@ export default function Welcome({
       <div className="welcome-content">
         <header className="welcome-heading">
           <span className="welcome-brandmark" aria-hidden="true">
-            <img src="/app-icon.png" width="44" height="44" alt="" />
+            <img src="/app-icon.png" width="36" height="36" alt="" />
           </span>
           <div>
             <h1>Welcome to Lomi</h1>
-            <p>A place for your files, terminal, and next idea.</p>
+            <p>Open a project to work with your files and terminals.</p>
           </div>
         </header>
 
@@ -34,13 +34,13 @@ export default function Welcome({
               onOpenFolder();
             }}
           >
-            <FolderOpen size={22} aria-hidden="true" />
+            <FolderOpen size={20} aria-hidden="true" />
             <span className="welcome-action-copy">
               <strong id="welcome-open-folder">
                 Open folder or repository
               </strong>
               <span id="welcome-open-folder-description">
-                Pick a local folder to explore its files and open a terminal.
+                Explore local files and open a terminal.
               </span>
             </span>
             <ArrowRight size={16} aria-hidden="true" />
@@ -56,37 +56,16 @@ export default function Welcome({
               onNewFile();
             }}
           >
-            <FilePlus2 size={22} aria-hidden="true" />
+            <FilePlus2 size={20} aria-hidden="true" />
             <span className="welcome-action-copy">
               <strong id="welcome-new-file">Create a new file</strong>
               <span id="welcome-new-file-description">
-                Choose a folder, then start with a blank file. Save when ready.
+                Choose a folder and start with a blank file.
               </span>
             </span>
             <ArrowRight size={16} aria-hidden="true" />
           </button>
         </div>
-
-        <ol className="welcome-steps" role="list" aria-label="Getting started">
-          <li>
-            <span className="welcome-step-number" aria-hidden="true">
-              1
-            </span>
-            <span>Choose your folder</span>
-          </li>
-          <li>
-            <span className="welcome-step-number" aria-hidden="true">
-              2
-            </span>
-            <span>Edit files or run commands</span>
-          </li>
-          <li>
-            <span className="welcome-step-number" aria-hidden="true">
-              3
-            </span>
-            <span>Return to your saved layout</span>
-          </li>
-        </ol>
       </div>
     </main>
   );

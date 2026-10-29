@@ -1,20 +1,25 @@
-.account-actions {
+.account-actions,
+.account-access-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-8);
   margin-top: var(--space-16);
 }
+.account-access-actions {
+  margin-top: 0;
+}
 .account-verification {
   display: grid;
   justify-items: start;
   gap: var(--space-12);
-  padding: var(--space-20);
-  border: 1px solid var(--color-outline);
-  border-radius: var(--radius-control);
-  background: var(--color-surface);
+  max-width: 60ch;
+  padding: var(--space-16);
+  border: var(--border-width) solid var(--color-outline);
+  border-radius: var(--radius-menu);
+  background: var(--color-surface-container);
   font-size: var(--font-size-13);
-  line-height: 1.65;
+  line-height: 1.6;
 }
 .account-verification p {
   margin: 0;
@@ -30,4 +35,12 @@
 }
 .account-verification > .account-actions {
   margin-top: var(--space-4);
+}
+.account-settings .settings-section-body > .account-actions:first-child {
+  margin-block: 0 var(--space-16);
+}
+
+.account-verification .account-email {
+  color: var(--color-surface-text);
+  font-weight: 600;
 }

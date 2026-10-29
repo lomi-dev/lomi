@@ -7,8 +7,16 @@ export interface PaneTabDropOptions {
   strip: RefObject<HTMLDivElement | null>;
   tabs: Tab[];
   sourceTabId: string;
-  canDrop: (id: string, destination: PaneTabDestination) => boolean;
+  canDrop: (
+    id: string,
+    destination: PaneTabDestination,
+  ) => boolean | string;
   onDrop: (id: string, destination: PaneTabDestination) => void;
+  canMove?: (
+    id: string,
+    targetId: string,
+    side: TabDropSide,
+  ) => boolean | string;
 }
 
 interface Props {
@@ -160,16 +168,20 @@ export function usePaneDrag(props: Props) {
           (hoveredTab &&
             hoveredTab.type !== "diff" &&
             hoveredTab.type !== "commit");
-        const allowed =
-          !!supported &&
-          !(proposed.type === "tab" && proposed.tabId === sourceTabId) &&
-          options.canDrop(id, proposed);
+        const permission =
+          supported &&
+          !(proposed.type === "tab" && proposed.tabId === sourceTabId)
+            ? options.canDrop(id, proposed)
+            : false;
+        const allowed = permission === true;
         if (allowed) tabDestination = proposed;
         ghost.textContent = allowed
           ? proposed.type === "new-tab"
             ? "Move panel to a new tab"
             : `Move panel to ${tabTitle(hoveredTab!)}`
-          : "Cannot move panel here";
+          : typeof permission === "string"
+            ? permission
+            : "Cannot move panel here";
         indicator.removeAttribute("style");
         indicator.textContent = "";
         delete indicator.dataset.side;
@@ -246,7 +258,11 @@ export function usePaneDrag(props: Props) {
       )
         return;
       const moved = movePane(layout, id, target.layout.id, side, area);
-      const allowed = moved !== layout;
+      const permission =
+        moved !== layout
+          ? (options?.canMove?.(id, target.layout.id, side) ?? true)
+          : false;
+      const allowed = moved !== layout && permission === true;
       const proposed = allowed
         ? layoutPositions(moved, area).find(({ layout }) => layout.id === id)!
             .bounds
@@ -257,7 +273,9 @@ export function usePaneDrag(props: Props) {
       indicator.dataset.side = side;
       indicator.textContent = allowed
         ? "Move panel here"
-        : "Not enough room for these panels";
+        : typeof permission === "string"
+          ? permission
+          : "Not enough room for these panels";
       Object.assign(indicator.style, {
         left: `${area.left + proposed.left}px`,
         top: `${area.top + proposed.top}px`,

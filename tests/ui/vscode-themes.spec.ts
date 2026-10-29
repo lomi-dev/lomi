@@ -35,6 +35,7 @@ test("imports VS Code data, applies it, reports limits and exports without chang
   await page.evaluate((manifest) => {
     (window as any).__nativeTest.vscodeThemes = [manifest];
   }, manifest);
+  await page.getByText("Manage themes", { exact: true }).click();
   await page
     .getByRole("button", { name: "Import VS Code", exact: true })
     .click();
@@ -98,10 +99,8 @@ test("exports both Lomi modes and resolves editor, terminal, CSS and syntax over
   await page.goto("/?window=settings&page=themes");
   const result = await page.evaluate(async (manifest) => {
     const { exportVSCodeThemes } = await import("/src/theme/vscode-export.ts");
-    const { builtinTheme, deepmonoTheme } =
-      await import("/src/theme/format.ts");
+    const { builtinTheme } = await import("/src/theme/format.ts");
     const defaults = await exportVSCodeThemes(builtinTheme, null);
-    const deepmono = await exportVSCodeThemes(deepmonoTheme, null);
     const customized = await exportVSCodeThemes(
       {
         ...manifest,
@@ -119,21 +118,16 @@ test("exports both Lomi modes and resolves editor, terminal, CSS and syntax over
       },
       null,
     );
-    return { defaults, deepmono, customized };
+    return { defaults, customized };
   }, manifest);
   expect(result.defaults.map((t: any) => t.theme.type)).toEqual([
     "dark",
     "light",
   ]);
-  expect(result.defaults[0].theme.colors["editor.background"]).toBe("#101114");
+  expect(result.defaults[0].theme.colors["editor.background"]).toBe("#0e1115");
   expect(result.defaults[1].theme.colors["editor.background"]).not.toBe(
-    "#101114",
+    "#0e1115",
   );
-  expect(
-    result.deepmono.map(
-      (entry: any) => entry.theme.colors["editor.background"],
-    ),
-  ).toEqual(["#101010", "#f4f4f4"]);
   const exported = result.customized[0].theme;
   expect(exported.colors["terminal.ansiBlue"]).toBe("#fedcba");
   expect(exported.colors["editor.background"]).toBe("#123456");

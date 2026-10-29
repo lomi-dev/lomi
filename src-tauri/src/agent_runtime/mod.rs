@@ -12,6 +12,8 @@ mod grok_artifact;
 mod host_boundary;
 #[cfg(target_os = "macos")]
 mod host_child;
+#[cfg(target_os = "macos")]
+pub(crate) use host_boundary::Purpose as NativeHostPurpose;
 #[cfg(all(feature = "native-smoke", target_os = "macos"))]
 pub(crate) mod host_smoke;
 #[cfg(unix)]
@@ -23,6 +25,7 @@ mod mcp_policy;
 pub(crate) mod migration;
 mod native_accounts;
 mod native_artifact;
+mod native_evidence;
 #[cfg(unix)]
 mod native_history;
 #[cfg(unix)]
@@ -57,6 +60,11 @@ mod store;
 mod transfer;
 mod types;
 pub(crate) use commands::*;
+pub(crate) use native_evidence::helper_reply as native_evidence_helper_reply;
+pub(crate) use native_evidence::{
+    capture_prelaunch as capture_native_job_prelaunch, verify_native_job, NativeCompletionEvidence,
+    NativeEvidenceUnknown, NativeJobBinding,
+};
 pub(crate) use service::account_terminal;
 pub(crate) use service::AgentRuntime;
 #[cfg(target_os = "macos")]

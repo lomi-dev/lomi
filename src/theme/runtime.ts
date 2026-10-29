@@ -459,9 +459,7 @@ export async function prepareTheme(
     themeAssetUrl(bundle!.id, path, currentRevision);
   const style = document.createElement("style");
   style.dataset.themeLayer = "tokens";
-  style.dataset.themeBuiltin = String(
-    !bundle || bundle.id === "@builtin-deepmono",
-  );
+  style.dataset.themeBuiltin = String(!bundle);
   style.textContent = compileTheme(resolved, asset);
   const links: HTMLLinkElement[] = [];
   const cancelLoads = new Set<() => void>();

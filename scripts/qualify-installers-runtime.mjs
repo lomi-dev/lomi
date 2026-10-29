@@ -30,7 +30,7 @@ const target = {
 assert.equal(metadata.target, target);
 assert.equal(metadata.version, manifest.version);
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
-for (const directory of [ai, join(resolve(resources), "remote-terminal")]) {
+for (const directory of [ai]) {
   const bundle = await readFile(join(directory, "index.cjs"));
   const expected = (
     await readFile(join(directory, "index.cjs.sha256"), "utf8")

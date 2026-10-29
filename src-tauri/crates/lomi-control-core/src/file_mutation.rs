@@ -1,7 +1,21 @@
-//! Non-overwriting project entry creation at a pinned directory descriptor.
-use crate::{atomic_file::ReplaceError, project_files::ProjectDirectory};
+//! Compatibility wrappers for neutral project filesystem mutations.
+use crate::{
+    atomic_file::ReplaceError,
+    project_files::{to_native_error, to_protocol_error, ProjectDirectory},
+};
 use lomi_control_protocol::{files::FileEntryKind, ErrorCode};
-use std::{fs::File, os::unix::fs::MetadataExt, path::Path};
+use lomi_native_project_files::{
+    NativeProjectEntryKind, NativeProjectMutation, NativeProjectMutationError,
+};
+#[cfg(test)]
+use std::os::unix::fs::MetadataExt;
+
+fn mutation_error(error: NativeProjectMutationError) -> ReplaceError {
+    match error {
+        NativeProjectMutationError::Before(code) => ReplaceError::Before(to_protocol_error(code)),
+        NativeProjectMutationError::Uncertain => ReplaceError::Uncertain,
+    }
+}
 
 /// New files are empty and private. Content changes use the revisioned editor.
 pub fn create(
@@ -11,83 +25,25 @@ pub fn create(
     kind: &FileEntryKind,
     check: impl Fn() -> Result<(), ErrorCode>,
 ) -> Result<(), ReplaceError> {
-    crate::project_files::validate_relative(relative)?;
-    let path = Path::new(relative);
-    let parent_name = path
-        .parent()
-        .and_then(Path::to_str)
-        .ok_or(ErrorCode::ScopeDenied)?;
-    let leaf = path.file_name().ok_or(ErrorCode::ScopeDenied)?;
-    check()?;
-    let parent = project.open_directory(parent_name)?;
-    let metadata = parent
-        .metadata()
-        .map_err(|_| ErrorCode::StorageUnavailable)?;
-    let same_parent = || {
-        project.check()?;
-        let current = project
-            .open_directory(parent_name)?
-            .metadata()
-            .map_err(|_| ErrorCode::StorageUnavailable)?;
-        if (current.dev(), current.ino()) != (metadata.dev(), metadata.ino()) {
-            return Err(ErrorCode::RevisionConflict);
-        }
-        Ok(())
+    let kind = match kind {
+        FileEntryKind::File => NativeProjectEntryKind::File,
+        FileEntryKind::Directory => NativeProjectEntryKind::Directory,
     };
-    if project.list(parent_name, &check)?.revision != expected_parent_revision {
-        return Err(ErrorCode::RevisionConflict.into());
-    }
-    check()?;
-    same_parent()?;
-    use rustix::fs::{mkdirat, openat, Mode, OFlags};
-    let created: Option<File> = match kind {
-        FileEntryKind::File => Some(
-            openat(
-                &parent,
-                leaf,
-                OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::WRONLY,
-                Mode::from_raw_mode(0o600),
-            )
-            .map(File::from)
-            .map_err(before)?,
-        ),
-        FileEntryKind::Directory => {
-            mkdirat(&parent, leaf, Mode::from_raw_mode(0o700)).map_err(before)?;
-            None
-        }
-    };
-    // Creation has happened. Do not remove the new entry on cancellation or a
-    // sync error: a user may already have opened it or written to it.
-    if let Some(file) = created {
-        file.sync_all().map_err(|_| ReplaceError::Uncertain)?;
-    } else {
-        let created: File = openat(
-            &parent,
-            leaf,
-            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
-            Mode::empty(),
+    project
+        .native()
+        .apply(
+            NativeProjectMutation::Create {
+                relative_path: relative.to_owned(),
+                kind,
+                expected_parent_revision: expected_parent_revision.to_owned(),
+            },
+            || check().map_err(to_native_error),
         )
-        .map(File::from)
-        .map_err(|_| ReplaceError::Uncertain)?;
-        created.sync_all().map_err(|_| ReplaceError::Uncertain)?;
-    }
-    parent.sync_all().map_err(|_| ReplaceError::Uncertain)?;
-    same_parent().map_err(|_| ReplaceError::Uncertain)?;
-    Ok(())
+        .map(|_| ())
+        .map_err(mutation_error)
 }
 
-fn before(error: rustix::io::Errno) -> ReplaceError {
-    ReplaceError::Before(if error == rustix::io::Errno::EXIST {
-        ErrorCode::RevisionConflict
-    } else if error == rustix::io::Errno::ACCESS || error == rustix::io::Errno::PERM {
-        ErrorCode::ScopeDenied
-    } else {
-        ErrorCode::StorageUnavailable
-    })
-}
-
-/// Rename one bounded regular file without replacing a destination. Cross-device
-/// moves have no copy/delete fallback, so failure leaves the source intact.
+/// Rename one bounded regular file without replacing a destination.
 pub fn move_file(
     project: &ProjectDirectory,
     source: &str,
@@ -96,135 +52,22 @@ pub fn move_file(
     expected_parent_revision: &str,
     check: impl Fn() -> Result<(), ErrorCode>,
 ) -> Result<(), ReplaceError> {
-    use crate::atomic_file::{open_file, snapshot, stamp};
-    use std::{ffi::CString, os::unix::ffi::OsStrExt};
-    for path in [source, destination] {
-        crate::project_files::validate_relative(path)?;
-    }
-    if source == destination {
-        return Err(ErrorCode::RevisionConflict.into());
-    }
-    check()?;
-    let source = Path::new(source);
-    let destination = Path::new(destination);
-    let source_parent_name = source
-        .parent()
-        .and_then(Path::to_str)
-        .ok_or(ErrorCode::ScopeDenied)?;
-    let destination_parent_name = destination
-        .parent()
-        .and_then(Path::to_str)
-        .ok_or(ErrorCode::ScopeDenied)?;
-    let source_name = CString::new(source.file_name().ok_or(ErrorCode::ScopeDenied)?.as_bytes())
-        .map_err(|_| ErrorCode::ScopeDenied)?;
-    let destination_name = CString::new(
-        destination
-            .file_name()
-            .ok_or(ErrorCode::ScopeDenied)?
-            .as_bytes(),
-    )
-    .map_err(|_| ErrorCode::ScopeDenied)?;
-    let source_parent = project.open_directory(source_parent_name)?;
-    let destination_parent = project.open_directory(destination_parent_name)?;
-    let parent_identity = |file: &File| -> Result<_, ErrorCode> {
-        let m = file.metadata().map_err(|_| ErrorCode::StorageUnavailable)?;
-        Ok((m.dev(), m.ino()))
-    };
-    let source_identity = parent_identity(&source_parent)?;
-    let destination_identity = parent_identity(&destination_parent)?;
-    let verify_parents = || {
-        project.check()?;
-        if parent_identity(&project.open_directory(source_parent_name)?)? != source_identity
-            || parent_identity(&project.open_directory(destination_parent_name)?)?
-                != destination_identity
-        {
-            return Err(ErrorCode::RevisionConflict);
-        }
-        Ok(())
-    };
-    if project.list(destination_parent_name, &check)?.revision != expected_parent_revision {
-        return Err(ErrorCode::RevisionConflict.into());
-    }
-    let mut original = open_file(&source_parent, &source_name)?;
-    if original
-        .metadata()
-        .map_err(|_| ErrorCode::StorageUnavailable)?
-        .len()
-        > 4 * 1024 * 1024
-    {
-        return Err(ErrorCode::ResourceExhausted.into());
-    }
-    let (revision, metadata) = snapshot(&mut original, &check)?;
-    if revision != expected_disk_revision {
-        return Err(ErrorCode::RevisionConflict.into());
-    }
-    let (current_revision, current_metadata) =
-        snapshot(&mut open_file(&source_parent, &source_name)?, &check)?;
-    if current_revision != revision || stamp(&metadata) != stamp(&current_metadata) {
-        return Err(ErrorCode::RevisionConflict.into());
-    }
-    check()?;
-    verify_parents()?;
-    rename_exclusive(
-        &source_parent,
-        &source_name,
-        &destination_parent,
-        &destination_name,
-    )?;
-    // After rename, uncertainty must never become a replay or a rollback.
-    source_parent
-        .sync_all()
-        .map_err(|_| ReplaceError::Uncertain)?;
-    destination_parent
-        .sync_all()
-        .map_err(|_| ReplaceError::Uncertain)?;
-    verify_parents().map_err(|_| ReplaceError::Uncertain)?;
-    let moved = open_file(&destination_parent, &destination_name)
-        .map_err(|_| ReplaceError::Uncertain)?
-        .metadata()
-        .map_err(|_| ReplaceError::Uncertain)?;
-    if (moved.dev(), moved.ino()) != (metadata.dev(), metadata.ino()) {
-        return Err(ReplaceError::Uncertain);
-    }
-    Ok(())
-}
-
-pub(crate) fn rename_exclusive(
-    source: &File,
-    source_name: &std::ffi::CStr,
-    destination: &File,
-    destination_name: &std::ffi::CStr,
-) -> Result<(), ReplaceError> {
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    {
-        use rustix::fs::{renameat_with, RenameFlags};
-        renameat_with(
-            source,
-            source_name,
-            destination,
-            destination_name,
-            RenameFlags::NOREPLACE,
+    project
+        .native()
+        .apply(
+            NativeProjectMutation::RenameMoveFile {
+                relative_path: source.to_owned(),
+                target_relative_path: destination.to_owned(),
+                expected_disk_revision: expected_disk_revision.to_owned(),
+                expected_parent_revision: expected_parent_revision.to_owned(),
+            },
+            || check().map_err(to_native_error),
         )
-        .map_err(|e| {
-            if e == rustix::io::Errno::XDEV
-                || e == rustix::io::Errno::NOSYS
-                || e == rustix::io::Errno::NOTSUP
-            {
-                ErrorCode::UnsupportedCapability.into()
-            } else {
-                before(e)
-            }
-        })
-    }
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-    {
-        let _ = (source, source_name, destination, destination_name);
-        Err(ErrorCode::HostUnqualified.into())
-    }
+        .map(|_| ())
+        .map_err(mutation_error)
 }
 
-/// Directory revisions describe immediate entries, not a recursive content
-/// snapshot. Renaming preserves every descendant and does not inspect its bytes.
+/// Directory moves are nonrecursive and preserve all descendants in place.
 pub fn move_directory(
     project: &ProjectDirectory,
     source: &str,
@@ -233,92 +76,19 @@ pub fn move_directory(
     expected_parent_revision: &str,
     check: impl Fn() -> Result<(), ErrorCode>,
 ) -> Result<(), ReplaceError> {
-    use std::{ffi::CString, os::unix::ffi::OsStrExt};
-    for path in [source, destination] {
-        crate::project_files::validate_relative(path)?;
-    }
-    if source == destination || destination.starts_with(&format!("{source}/")) {
-        return Err(ErrorCode::ScopeDenied.into());
-    }
-    check()?;
-    let source_path = Path::new(source);
-    let destination_path = Path::new(destination);
-    let source_parent_name = source_path
-        .parent()
-        .and_then(Path::to_str)
-        .ok_or(ErrorCode::ScopeDenied)?;
-    let destination_parent_name = destination_path
-        .parent()
-        .and_then(Path::to_str)
-        .ok_or(ErrorCode::ScopeDenied)?;
-    let source_name = CString::new(
-        source_path
-            .file_name()
-            .ok_or(ErrorCode::ScopeDenied)?
-            .as_bytes(),
-    )
-    .map_err(|_| ErrorCode::ScopeDenied)?;
-    let destination_name = CString::new(
-        destination_path
-            .file_name()
-            .ok_or(ErrorCode::ScopeDenied)?
-            .as_bytes(),
-    )
-    .map_err(|_| ErrorCode::ScopeDenied)?;
-    let source_parent = project.open_directory(source_parent_name)?;
-    let destination_parent = project.open_directory(destination_parent_name)?;
-    let directory = project.open_directory(source)?;
-    let identity = |file: &File| -> Result<_, ErrorCode> {
-        let m = file.metadata().map_err(|_| ErrorCode::StorageUnavailable)?;
-        Ok((m.dev(), m.ino()))
-    };
-    let source_parent_identity = identity(&source_parent)?;
-    let destination_parent_identity = identity(&destination_parent)?;
-    let source_identity = identity(&directory)?;
-    let verify_parents = || {
-        project.check()?;
-        if identity(&project.open_directory(source_parent_name)?)? != source_parent_identity
-            || identity(&project.open_directory(destination_parent_name)?)?
-                != destination_parent_identity
-        {
-            return Err(ErrorCode::RevisionConflict);
-        }
-        Ok(())
-    };
-    if project.list(source, &check)?.revision != expected_directory_revision
-        || project.list(destination_parent_name, &check)?.revision != expected_parent_revision
-    {
-        return Err(ErrorCode::RevisionConflict.into());
-    }
-    check()?;
-    verify_parents()?;
-    if identity(&project.open_directory(source)?)? != source_identity {
-        return Err(ErrorCode::RevisionConflict.into());
-    }
-    rename_exclusive(
-        &source_parent,
-        &source_name,
-        &destination_parent,
-        &destination_name,
-    )?;
-    source_parent
-        .sync_all()
-        .map_err(|_| ReplaceError::Uncertain)?;
-    destination_parent
-        .sync_all()
-        .map_err(|_| ReplaceError::Uncertain)?;
-    verify_parents().map_err(|_| ReplaceError::Uncertain)?;
-    if identity(
-        &project
-            .open_directory(destination)
-            .map_err(|_| ReplaceError::Uncertain)?,
-    )
-    .map_err(|_| ReplaceError::Uncertain)?
-        != source_identity
-    {
-        return Err(ReplaceError::Uncertain);
-    }
-    Ok(())
+    project
+        .native()
+        .apply(
+            NativeProjectMutation::RenameMoveDirectory {
+                relative_path: source.to_owned(),
+                target_relative_path: destination.to_owned(),
+                expected_directory_revision: expected_directory_revision.to_owned(),
+                expected_parent_revision: expected_parent_revision.to_owned(),
+            },
+            || check().map_err(to_native_error),
+        )
+        .map(|_| ())
+        .map_err(mutation_error)
 }
 
 #[cfg(test)]

@@ -1,68 +1,80 @@
 .welcome {
+  min-width: 0;
   padding: var(--space-30);
   container-type: inline-size;
   container-name: welcome;
 }
 
 .welcome-content {
-  max-width: 640px;
+  max-width: 460px;
+  min-width: 0;
   flex-shrink: 0;
 }
 
 .welcome-heading {
-  gap: var(--space-20);
-  margin-bottom: var(--space-30);
+  align-items: flex-start;
+  gap: var(--space-12);
+  margin-bottom: var(--space-24);
+}
+
+.welcome-heading > div {
+  min-width: 0;
 }
 
 .welcome-brandmark {
   display: grid;
   place-items: center;
   flex: 0 0 auto;
-  width: 64px;
-  height: 64px;
-  border: var(--border-width) solid var(--color-outline);
-  border-radius: var(--radius-menu);
-  background: var(--color-surface-container);
+  width: 36px;
+  height: 36px;
+}
+
+.welcome-heading img {
+  border-radius: var(--radius-control);
 }
 
 .welcome-heading h1 {
-  margin-bottom: var(--space-8);
+  margin-bottom: var(--space-6);
   font-size: var(--font-size-22);
   font-weight: 600;
+  text-wrap: pretty;
 }
 
 .welcome-heading p {
+  max-width: 38ch;
   text-wrap: pretty;
 }
 
 .welcome-actions {
-  gap: var(--space-12);
+  gap: var(--space-8);
 }
 
 .welcome-action {
-  min-height: 88px;
-  padding: var(--space-20);
+  min-height: 68px;
+  gap: var(--space-12);
+  padding: var(--space-14) var(--space-16);
+  border: var(--border-width) solid var(--color-outline);
   border-radius: var(--radius-menu);
   background: var(--color-surface);
   cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease;
 }
 
 .welcome-action > svg:first-child {
   flex: 0 0 auto;
-  box-sizing: content-box;
-  padding: var(--space-10);
-  border-radius: var(--radius-control);
-  background: var(--color-surface-container);
+  color: var(--color-surface-variant-text);
 }
 
 .welcome-action-primary {
   border-color: var(--color-outline);
   background: var(--color-surface-container);
+  color: var(--color-surface-text);
 }
 
 .welcome-action-primary > svg:first-child {
-  background: var(--color-primary-container);
-  color: var(--color-accent-text);
+  color: var(--color-surface-text);
 }
 
 .welcome-action > svg:last-child {
@@ -72,22 +84,11 @@
 
 .welcome-action-copy {
   gap: var(--space-4);
+  overflow-wrap: anywhere;
 }
 
 .welcome-action-copy > span {
   text-wrap: pretty;
-}
-
-.welcome-steps {
-  justify-content: space-between;
-  gap: var(--space-10) var(--space-16);
-  margin-top: var(--space-24);
-  padding-top: var(--space-16);
-  border-color: var(--color-outline);
-}
-
-.welcome-step-number {
-  color: var(--color-surface-variant-text);
 }
 
 .empty-message {
@@ -99,10 +100,10 @@
 .empty-message > svg {
   box-sizing: content-box;
   flex: 0 0 auto;
-  padding: var(--space-16);
-  border: var(--border-width) solid var(--color-outline);
-  border-radius: var(--radius-menu);
-  background: var(--color-surface-container);
+  padding: var(--space-8);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .empty-message :is(h1, h2) {
@@ -163,8 +164,8 @@
 }
 
 .agents-count-presets button[aria-pressed="true"] {
-  border-color: var(--color-primary);
-  background: var(--color-primary-container);
+  border-color: var(--color-accent-text);
+  background: var(--lomi-selection, var(--color-primary-container));
   color: var(--color-accent-text);
 }
 
@@ -256,8 +257,9 @@
 
 .agent-control-request {
   padding: var(--space-16);
-  border-radius: var(--radius-control);
-  background: var(--color-surface);
+  border: var(--border-width) solid var(--color-outline);
+  border-radius: var(--radius-menu);
+  background: var(--color-surface-container);
   font-size: var(--font-size-12);
   line-height: 1.6;
 }
@@ -370,45 +372,14 @@
   }
 
   .welcome-heading {
-    gap: var(--space-16);
     margin-bottom: var(--space-18);
-  }
-
-  .welcome-brandmark {
-    width: 52px;
-    height: 52px;
-  }
-
-  .welcome-heading h1 {
-    margin-bottom: var(--space-4);
-    font-size: var(--font-size-22);
-  }
-
-  .welcome-action {
-    min-height: 76px;
-    padding: var(--space-12) var(--space-16);
-  }
-
-  .welcome-steps {
-    margin-top: var(--space-16);
-    padding-top: var(--space-12);
   }
 }
 
-@container welcome (width < 440px) {
+@container welcome (width < 360px) {
   .welcome-heading {
-    align-items: flex-start;
+    flex-direction: column;
     gap: var(--space-12);
-  }
-
-  .welcome-brandmark {
-    width: 44px;
-    height: 44px;
-  }
-
-  .welcome-heading img {
-    width: 36px;
-    height: 36px;
   }
 
   .welcome-heading h1 {
@@ -416,16 +387,27 @@
   }
 
   .welcome-action {
-    gap: var(--space-8);
+    align-items: flex-start;
+    gap: var(--space-10);
     padding: var(--space-12);
   }
 
-  .welcome-action > svg:first-child {
-    padding: var(--space-6);
+  .welcome-action > svg {
+    margin-top: var(--space-2);
   }
 
-  .welcome-steps {
-    flex-direction: column;
-    gap: var(--space-8);
+  .welcome-action > svg:last-child {
+    display: none;
+  }
+}
+
+.welcome-action:hover:not([aria-disabled="true"]) {
+  border-color: var(--color-outline);
+  background: var(--color-surface-container);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .welcome-action {
+    transition: none;
   }
 }

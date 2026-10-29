@@ -376,36 +376,41 @@ function DocumentEditor({
               ? "Reload file from disk?"
               : "Overwrite disk version?"
           }
+          closeDisabled={busy}
           onClose={() => {
             if (!busy) setConfirmation(null);
           }}
         >
-          <p>
-            {confirmation === "reload"
-              ? "Reloading replaces the editor contents and clears its undo history. Any unsaved edits to this file will be discarded."
-              : "Saving replaces the version currently on disk with your editor contents. Changes made by another program will be replaced."}
-          </p>
-          <p className="editor-confirm-path">{document.path}</p>
-          <div className="dialog-actions">
-            <button
-              className="button"
-              autoFocus
-              disabled={busy}
-              onClick={() => setConfirmation(null)}
-            >
-              Cancel
-            </button>
-            <button
-              className="button button-primary button-danger"
-              disabled={busy}
-              onClick={() => void confirm()}
-            >
-              {busy
-                ? "Working…"
-                : confirmation === "reload"
-                  ? "Reload file"
-                  : "Overwrite file"}
-            </button>
+          <div className="dialog-layout">
+            <div className="dialog-content">
+              <p>
+                {confirmation === "reload"
+                  ? "Reloading replaces the editor contents and clears its undo history. Any unsaved edits to this file will be discarded."
+                  : "Saving replaces the version currently on disk with your editor contents. Changes made by another program will be replaced."}
+              </p>
+              <p className="editor-confirm-path">{document.path}</p>
+            </div>
+            <div className="dialog-actions">
+              <button
+                className="button"
+                autoFocus
+                disabled={busy}
+                onClick={() => setConfirmation(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="button button-primary button-danger"
+                disabled={busy}
+                onClick={() => void confirm()}
+              >
+                {busy
+                  ? "Working…"
+                  : confirmation === "reload"
+                    ? "Reload file"
+                    : "Overwrite file"}
+              </button>
+            </div>
           </div>
         </Modal>
       )}

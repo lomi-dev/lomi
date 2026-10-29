@@ -222,15 +222,14 @@ test("Lua files detect their language, highlight syntax, indent, comment, and sa
   await expect(languageButton(page)).toHaveText("Lua");
   const token = (text: string) =>
     page.locator(".cm-line span[class]").getByText(text, { exact: true });
-  await expect(token("local").first()).toHaveCSS("font-weight", "700");
+  await expect(token("local").first()).toHaveCSS("font-weight", "600");
   await expect(token("block comment")).toHaveCSS("font-style", "normal");
   const color = (text: string) =>
     token(text)
       .first()
       .evaluate((element) => getComputedStyle(element).color);
-  // Lomi intentionally shares the info color between keywords and numbers;
-  // keyword weight still distinguishes them, while strings use success green.
-  expect(await color("local")).toBe(await color("42"));
+  // Lomi gives keywords, numbers and strings distinct semantic colors.
+  expect(await color("local")).not.toBe(await color("42"));
   expect(await color("42")).not.toBe(await color('"Zażółć 🦀"'));
   expect(await color("long string")).toBe(await color('"Zażółć 🦀"'));
   await page.screenshot({ path: testInfo.outputPath("lua-editor.png") });
@@ -238,7 +237,7 @@ test("Lua files detect their language, highlight syntax, indent, comment, and sa
   await selectLanguage(page, "Plain text");
   await expect(page.locator(".cm-line span[class]")).toHaveCount(0);
   await selectLanguage(page, "Lua");
-  await expect(token("local").first()).toHaveCSS("font-weight", "700");
+  await expect(token("local").first()).toHaveCSS("font-weight", "600");
   expect(await editorText(page)).toBe(content);
   await replaceText(page, "if true then");
   await selectSize(page, "Indent Using Spaces", 2);
@@ -283,7 +282,7 @@ test("Lua files detect their language, highlight syntax, indent, comment, and sa
   await page.reload();
   await expect(languageButton(page)).toHaveText("Lua");
   expect(await editorText(page)).toBe(edited);
-  await expect(token("if")).toHaveCSS("font-weight", "700");
+  await expect(token("if")).toHaveCSS("font-weight", "600");
 });
 
 test("menus support keyboard navigation, Escape, filtering, outside clicks, and the minimum window", async ({

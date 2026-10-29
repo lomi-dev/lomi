@@ -27,7 +27,7 @@
 }
 .explorer-panel .tree-entry {
   font-size: var(--font-size-12);
-  gap: 7px;
+  gap: var(--tree-entry-gap);
 }
 .explorer-panel .tree-row:hover,
 .explorer-panel .tree-row:focus-within {
@@ -38,8 +38,8 @@
   );
 }
 .explorer-panel .tree-row[data-selected="true"] {
-  background: var(--color-primary-container);
-  box-shadow: inset 2px 0 var(--color-primary);
+  background: var(--lomi-selection, var(--color-primary-container));
+  box-shadow: inset 2px 0 var(--color-accent-text);
 }
 .explorer-panel .tree-toggle:hover,
 .explorer-panel .tree-action:hover {
@@ -62,10 +62,10 @@
 .project-search-options .icon-button[aria-pressed="true"] {
   border-color: color-mix(
     in srgb,
-    var(--color-primary) 45%,
+    var(--color-accent-text) 45%,
     var(--color-outline)
   );
-  background: var(--color-primary-container);
+  background: var(--lomi-selection, var(--color-primary-container));
 }
 .project-search-scope {
   min-height: 26px;
@@ -114,7 +114,7 @@
 }
 .search-match.is-selected,
 .search-match.is-selected:hover {
-  background: var(--color-primary-container);
+  background: var(--lomi-selection, var(--color-primary-container));
 }
 .search-match mark {
   background: color-mix(
@@ -143,32 +143,25 @@
   font-size: var(--font-size-12);
 }
 .source-repository[aria-current="page"] {
-  background: var(--color-primary-container);
+  background: var(--lomi-selection, var(--color-primary-container));
   color: var(--color-surface-text);
-  box-shadow: inset 2px 0 var(--color-primary);
+  box-shadow: inset 2px 0 var(--color-accent-text);
 }
 .source-repository[aria-current="page"]:hover {
-  background: var(--color-primary-container);
+  background: var(--lomi-selection, var(--color-primary-container));
 }
 .source-all-repository {
   border-color: color-mix(in srgb, var(--color-outline) 55%, transparent);
 }
 .source-all-repository-heading {
-  min-height: 38px;
-  background: color-mix(
-    in srgb,
-    var(--color-surface-container) 55%,
-    transparent
-  );
+  min-height: 36px;
+  background: transparent;
 }
 .source-all-file {
   min-height: 30px;
 }
 .source-pages > button {
   font-weight: 600;
-}
-.source-pages > button[aria-selected="true"] {
-  border-bottom-width: 2px;
 }
 .git-remote-actions {
   padding: 8px 12px;
@@ -279,7 +272,7 @@
   border-color: color-mix(in srgb, var(--color-outline) 65%, transparent);
 }
 .commit-details-title h1 {
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.5;
   text-wrap: balance;
 }
@@ -304,7 +297,7 @@
   border-radius: var(--radius-sm);
 }
 .commit-file-entry[aria-current="true"] {
-  background: var(--color-primary-container);
+  background: var(--lomi-selection, var(--color-primary-container));
 }
 .commit-file-path {
   font-family: var(--font-family-mono);
@@ -383,7 +376,7 @@
   line-height: var(--markdown-line-height);
 }
 .markdown-content :is(h1, h2, h3, h4, h5, h6) {
-  font-weight: 650;
+  font-weight: 600;
   text-wrap: balance;
 }
 .markdown-content :is(h1, h2, pre, th, td, hr) {
@@ -417,7 +410,7 @@
     color-mix(in srgb, var(--color-outline) 55%, transparent);
 }
 .image-preview .editor-actions [aria-pressed="true"] {
-  background: var(--color-primary-container);
+  background: var(--lomi-selection, var(--color-primary-container));
   color: var(--color-surface-text);
 }
 .browser-toolbar,
@@ -431,12 +424,12 @@
   height: 32px;
   padding-inline: 10px;
   border-color: color-mix(in srgb, var(--color-outline) 70%, transparent);
-  background: var(--color-background);
+  background: var(--input-background);
   font-size: var(--font-size-12);
 }
 .browser-toolbar input:focus,
 .browser-search input:focus {
-  border-color: var(--color-primary);
+  border-color: var(--lomi-focus, var(--color-accent-text));
 }
 .browser-toolbar .icon-button,
 .browser-search .icon-button {
@@ -457,76 +450,8 @@
   margin: 0;
   color: var(--color-surface-text);
   font-size: var(--font-size-18);
-  font-weight: 650;
+  font-weight: 600;
   text-wrap: balance;
-}
-.android-toolbar {
-  border-color: color-mix(in srgb, var(--color-outline) 55%, transparent);
-}
-.android-toolbar .icon-button {
-  border-radius: var(--radius-control);
-  color: var(--color-surface-variant-text);
-}
-.android-toolbar .icon-button:hover:not(:disabled) {
-  background: var(--color-surface-container-high);
-  color: var(--color-surface-text);
-}
-.android-phone-picker,
-.android-startup {
-  gap: 20px;
-}
-.android-phone-picker h2,
-.android-startup h2 {
-  font-weight: 650;
-  line-height: 1.4;
-  text-wrap: balance;
-}
-.android-phone-picker p,
-.android-startup p {
-  text-wrap: pretty;
-}
-.android-phone-choices {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  border: 0;
-}
-.android-phone-choices li {
-  border: 0;
-}
-.android-phone-choice {
-  gap: 12px;
-  padding: 14px 12px;
-  border: var(--border-width) solid
-    color-mix(in srgb, var(--color-outline) 65%, transparent);
-  background: var(--color-surface);
-}
-.android-phone-choice:hover:not(:disabled) {
-  border-color: var(--color-outline);
-  background: var(--color-surface-container);
-}
-.android-phone-choice-info strong {
-  font-weight: 650;
-}
-.android-phone-choice-action {
-  color: var(--color-surface-variant-text);
-}
-.android-startup-steps {
-  width: 100%;
-  gap: 4px;
-  padding: 8px;
-  border: var(--border-width) solid
-    color-mix(in srgb, var(--color-outline) 55%, transparent);
-  border-radius: var(--radius-control);
-  background: var(--color-surface);
-}
-.android-startup-steps li {
-  min-height: 36px;
-  padding: 5px 8px;
-  border-radius: var(--radius-xs);
-}
-.android-startup-steps [aria-current="step"] {
-  background: var(--color-primary-container);
 }
 .android-device-form {
   gap: 20px;

@@ -365,6 +365,7 @@ export default function ChatHistory({
       {rename && (
         <Modal
           title="Rename conversation"
+          closeDisabled={busy}
           className="chat-dialog"
           onClose={() => {
             if (!busy) {
@@ -374,7 +375,7 @@ export default function ChatHistory({
           }}
         >
           <form
-            className="dialog-form"
+            className="dialog-form dialog-layout"
             onSubmit={(event) => {
               event.preventDefault();
               void run(async () => {
@@ -394,20 +395,22 @@ export default function ChatHistory({
               });
             }}
           >
-            <label htmlFor={nameId}>Conversation name</label>
-            <input
-              id={nameId}
-              autoFocus
-              required
-              maxLength={256}
-              disabled={busy}
-              value={rename.title}
-              onFocus={(event) => event.currentTarget.select()}
-              onChange={(event) =>
-                setRename({ ...rename, title: event.target.value })
-              }
-            />
-            {error && <p role="alert">{error}</p>}
+            <div className="dialog-content">
+              <label htmlFor={nameId}>Conversation name</label>
+              <input
+                id={nameId}
+                autoFocus
+                required
+                maxLength={256}
+                disabled={busy}
+                value={rename.title}
+                onFocus={(event) => event.currentTarget.select()}
+                onChange={(event) =>
+                  setRename({ ...rename, title: event.target.value })
+                }
+              />
+              {error && <p role="alert">{error}</p>}
+            </div>
             <div className="dialog-actions">
               <button
                 className="button"
@@ -434,6 +437,7 @@ export default function ChatHistory({
         <Modal
           protectTheme
           title="Delete conversation?"
+          closeDisabled={busy}
           tone="danger"
           className="chat-dialog"
           onClose={() => {
@@ -443,12 +447,14 @@ export default function ChatHistory({
             }
           }}
         >
-          <div className="dialog-form">
-            <p>
-              Permanently delete “{deleting.title}”, its variants and unused
-              attachments? All views of this conversation will close.
-            </p>
-            {error && <p role="alert">{error}</p>}
+          <div className="dialog-form dialog-layout">
+            <div className="dialog-content">
+              <p>
+                Permanently delete “{deleting.title}”, its variants and unused
+                attachments? All views of this conversation will close.
+              </p>
+              {error && <p role="alert">{error}</p>}
+            </div>
             <div className="dialog-actions">
               <button
                 className="button"

@@ -38,89 +38,117 @@ function writeIfChanged(destination, contents) {
   }
 }
 
-mkdirSync(outputDirectory, { recursive: true });
-// Compile in isolation so a failed build cannot reuse an older asset catalog.
-const stagingDirectory = mkdtempSync(path.join(outputDirectory, "compile-"));
-try {
-  execFileSync(
-    "xcrun",
-    [
-      "actool",
-      iconSource,
-      "--compile",
-      stagingDirectory,
-      "--app-icon",
-      "Lomi",
-      "--output-partial-info-plist",
-      path.join(stagingDirectory, "icon-info.plist"),
-      "--platform",
-      "macosx",
-      "--minimum-deployment-target",
-      config.bundle?.macOS?.minimumSystemVersion ?? "10.13",
-      "--target-device",
-      "mac",
-      "--output-format",
-      "human-readable-text",
-      "--errors",
-      "--warnings",
-    ],
-    { stdio: "inherit" },
-  );
+function findActool() {
+  try {
+    return execFileSync("xcrun", ["--find", "actool"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
+  } catch {
+    return "";
+  }
+}
 
-  const macosMajorVersion = Number(
-    execFileSync("sw_vers", ["-productVersion"], { encoding: "utf8" })
-      .trim()
-      .split(".")[0],
-  );
-  if (!Number.isInteger(macosMajorVersion)) {
+const compiledAssets = ["Assets.car", "Lomi.icns", "icon-info.plist"].map(
+  (name) => path.join(outputDirectory, name),
+);
+const hasCompiledAssets =
+  compiledAssets.every((file) => existsSync(file)) && existsSync(fallbackIcon);
+
+if (!findActool()) {
+  if (!hasCompiledAssets) {
     throw new Error(
-      "Could not determine the macOS version for icon validation.",
+      "Compiling the macOS icon requires full Xcode (`xcrun actool`). Command Line Tools are not enough. Install Xcode, run `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`, then retry.",
     );
   }
-  // macOS 15 assetutil cannot inspect the icon stacks compiled by Xcode 26.
-  const canInspectLayers = macosMajorVersion >= 26;
-  if (canInspectLayers) {
-    const catalog = JSON.parse(
-      execFileSync(
-        "xcrun",
-        ["assetutil", "--info", path.join(stagingDirectory, "Assets.car")],
-        { encoding: "utf8" },
-      ),
+  console.warn(
+    "macOS icon: xcrun actool is unavailable (full Xcode required). Reusing previously compiled Assets.car and Lomi.icns.",
+  );
+} else {
+  mkdirSync(outputDirectory, { recursive: true });
+  // Compile in isolation so a failed build cannot reuse an older asset catalog.
+  const stagingDirectory = mkdtempSync(path.join(outputDirectory, "compile-"));
+  try {
+    execFileSync(
+      "xcrun",
+      [
+        "actool",
+        iconSource,
+        "--compile",
+        stagingDirectory,
+        "--app-icon",
+        "Lomi",
+        "--output-partial-info-plist",
+        path.join(stagingDirectory, "icon-info.plist"),
+        "--platform",
+        "macosx",
+        "--minimum-deployment-target",
+        config.bundle?.macOS?.minimumSystemVersion ?? "10.13",
+        "--target-device",
+        "mac",
+        "--output-format",
+        "human-readable-text",
+        "--errors",
+        "--warnings",
+      ],
+      { stdio: "inherit" },
     );
-    for (const appearance of [
-      "NSAppearanceNameAqua",
-      "NSAppearanceNameDarkAqua",
-      "ISAppearanceTintable",
-    ]) {
-      if (
-        !catalog.some(
-          (asset) =>
-            asset.Name === "Lomi" &&
-            asset.AssetType === "IconImageStack" &&
-            asset.Appearance === appearance,
-        )
-      ) {
-        throw new Error(
-          `Compiled Lomi icon is missing its layered ${appearance} appearance.`,
-        );
+
+    const macosMajorVersion = Number(
+      execFileSync("sw_vers", ["-productVersion"], { encoding: "utf8" })
+        .trim()
+        .split(".")[0],
+    );
+    if (!Number.isInteger(macosMajorVersion)) {
+      throw new Error(
+        "Could not determine the macOS version for icon validation.",
+      );
+    }
+    // macOS 15 assetutil cannot inspect the icon stacks compiled by Xcode 26.
+    const canInspectLayers = macosMajorVersion >= 26;
+    if (canInspectLayers) {
+      const catalog = JSON.parse(
+        execFileSync(
+          "xcrun",
+          ["assetutil", "--info", path.join(stagingDirectory, "Assets.car")],
+          { encoding: "utf8" },
+        ),
+      );
+      for (const appearance of [
+        "NSAppearanceNameAqua",
+        "NSAppearanceNameDarkAqua",
+        "ISAppearanceTintable",
+      ]) {
+        if (
+          !catalog.some(
+            (asset) =>
+              asset.Name === "Lomi" &&
+              asset.AssetType === "IconImageStack" &&
+              asset.Appearance === appearance,
+          )
+        ) {
+          throw new Error(
+            `Compiled Lomi icon is missing its layered ${appearance} appearance.`,
+          );
+        }
       }
     }
-  }
-  for (const name of ["Assets.car", "Lomi.icns", "icon-info.plist"]) {
+    for (const name of ["Assets.car", "Lomi.icns", "icon-info.plist"]) {
+      writeIfChanged(
+        path.join(outputDirectory, name),
+        readFileSync(path.join(stagingDirectory, name)),
+      );
+    }
     writeIfChanged(
-      path.join(outputDirectory, name),
-      readFileSync(path.join(stagingDirectory, name)),
+      fallbackIcon,
+      readFileSync(path.join(stagingDirectory, "Lomi.icns")),
     );
+    console.log(
+      canInspectLayers
+        ? "macOS icon: default, dark, and clear/tinted layers compiled."
+        : "macOS icon: Assets.car and Lomi.icns compiled; layer inspection unavailable on this macOS version.",
+    );
+  } finally {
+    rmSync(stagingDirectory, { recursive: true, force: true });
   }
-  writeIfChanged(
-    fallbackIcon,
-    readFileSync(path.join(stagingDirectory, "Lomi.icns")),
-  );
-  console.log(
-    canInspectLayers
-      ? "macOS icon: default, dark, and clear/tinted layers compiled."
-      : "macOS icon: Assets.car and Lomi.icns compiled; layer inspection unavailable on this macOS version.",
-  );
-} finally {
-  rmSync(stagingDirectory, { recursive: true, force: true });
 }

@@ -93,6 +93,8 @@ enum Phase {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Record {
     schema: u32,
+    #[serde(default)]
+    release_attempted: bool,
     scope: Scope,
     host: kernel::HostWitness,
     label: String,
@@ -142,8 +144,21 @@ pub(crate) struct Boundary {
     resize_lock: std::sync::Mutex<()>,
 }
 fn private_directory(path: &Path) -> Result<(), String> {
-    let m = fs::symlink_metadata(path).map_err(|_| failure())?;
-    if !m.is_dir() || m.uid() != unsafe { libc::geteuid() } || m.mode() & 0o077 != 0 {
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(path)
+        .map_err(|_| failure())?;
+    lomi_platform::unix::reject_acl_grants_readonly(&file).map_err(|_| failure())?;
+    let opened = file.metadata().map_err(|_| failure())?;
+    let current = fs::symlink_metadata(path).map_err(|_| failure())?;
+    if !opened.is_dir()
+        || current.file_type().is_symlink()
+        || opened.dev() != current.dev()
+        || opened.ino() != current.ino()
+        || opened.uid() != unsafe { libc::geteuid() }
+        || opened.mode() & 0o077 != 0
+    {
         return Err(failure());
     }
     Ok(())
@@ -155,6 +170,7 @@ fn private_file(path: &Path) -> Result<fs::File, String> {
         .open(path)
         .map_err(|_| failure())?;
     let m = f.metadata().map_err(|_| failure())?;
+    lomi_platform::unix::reject_acl_grants_readonly(&f).map_err(|_| failure())?;
     if !m.is_file()
         || m.uid() != unsafe { libc::geteuid() }
         || m.mode() & 0o077 != 0
@@ -548,7 +564,8 @@ impl Boundary {
         }
         let worker = stage_worker()?;
         let record = Record {
-            schema: 1,
+            schema: 2,
+            release_attempted: false,
             scope,
             host: kernel::HostWitness::admitted()?,
             label: String::new(),
@@ -675,6 +692,17 @@ impl Boundary {
         if self.record.phase != Phase::Held {
             return Err(failure());
         }
+        if self.record.schema == 1 {
+            // Upgrade legacy Held records before capture. Schema 1 never
+            // carried a durable, monotonic release-attempt bit and therefore
+            // cannot support a later NoStart proof.
+            self.record.schema = 2;
+            self.record.release_attempted = false;
+            update(&self.root, &self.record)?;
+        }
+        if self.record.schema != 2 || self.record.release_attempted {
+            return Err(failure());
+        }
         let held = self.record.held.as_ref().ok_or_else(failure)?;
         if kernel::member(held.identity.pid)? != *held
             || binary_digest(&self.record.worker)? != self.record.worker_digest
@@ -682,6 +710,10 @@ impl Boundary {
             return Err(failure());
         }
         before_release(self)?;
+        // This synced monotonic marker is written before the child can be
+        // granted execution. Its absence is meaningful only for schema 2.
+        self.record.release_attempted = true;
+        update(&self.root, &self.record)?;
         self.record.phase = Phase::ReleaseIntent;
         update(&self.root, &self.record)?;
         self.record.phase = Phase::Released;
@@ -778,7 +810,8 @@ impl Boundary {
     pub(crate) fn restore(root: &Path) -> Result<Self, String> {
         private_directory(root)?;
         let record: Record = read_json(&root.join("record.json"))?;
-        if record.schema != 1
+        if !matches!(record.schema, 1 | 2)
+            || record.schema == 1 && record.release_attempted
             || record.host != kernel::HostWitness::admitted()?
             || root.file_name().and_then(|s| s.to_str()) != Some(record.scope.operation_id.as_str())
             || record.label != format!("dev.lomi.agent.host.{}", record.scope.operation_id)
@@ -999,7 +1032,8 @@ pub(crate) fn parent_scopes(storage: &Path, parent: &str) -> Result<Vec<Scope>, 
     let mut scopes = Vec::new();
     for root in parent_records(storage, parent)? {
         let record: Record = read_json(&root.join("record.json"))?;
-        if record.schema != 1
+        if !matches!(record.schema, 1 | 2)
+            || record.schema == 1 && record.release_attempted
             || record.host != kernel::HostWitness::admitted()?
             || root.file_name().and_then(|s| s.to_str()) != Some(record.scope.operation_id.as_str())
             || record.label != format!("dev.lomi.agent.host.{}", record.scope.operation_id)
@@ -1028,7 +1062,8 @@ pub(crate) fn settle_parent(storage: &Path, parent: &str) -> Result<Vec<RetiredR
 pub(crate) fn parent_completed(storage: &Path, parent: &str) -> Result<bool, String> {
     for root in parent_records(storage, parent)? {
         let record: Record = read_json(&root.join("record.json"))?;
-        if record.schema != 1
+        if !matches!(record.schema, 1 | 2)
+            || record.schema == 1 && record.release_attempted
             || record.host != kernel::HostWitness::admitted()?
             || root.file_name().and_then(|s| s.to_str()) != Some(record.scope.operation_id.as_str())
             || record.label != format!("dev.lomi.agent.host.{}", record.scope.operation_id)
@@ -1045,6 +1080,186 @@ pub(crate) fn parent_completed(storage: &Path, parent: &str) -> Result<bool, Str
         }
     }
     Ok(true)
+}
+
+/// Independently confirms that the exact owned Attempt never published its
+/// release record and that its entire parent cohort has retired. This is only
+/// suitable alongside an authenticated Host `NativeBindRejected` tombstone.
+fn attempt_without_release(
+    storage: &Path,
+    parent: &str,
+    task_id: &str,
+    attempt_id: &str,
+    account_id: &str,
+    auth_revision: u64,
+    generation: u64,
+    require_retired: bool,
+) -> Result<bool, String> {
+    fn check_acl_directory(path: &Path) -> Result<(), String> {
+        let file = fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
+            .open(path)
+            .map_err(|_| failure())?;
+        lomi_platform::unix::reject_acl_grants_readonly(&file).map_err(|_| failure())?;
+        let opened = file.metadata().map_err(|_| failure())?;
+        let current = fs::symlink_metadata(path).map_err(|_| failure())?;
+        if !opened.is_dir()
+            || current.file_type().is_symlink()
+            || opened.dev() != current.dev()
+            || opened.ino() != current.ino()
+            || opened.uid() != unsafe { libc::geteuid() }
+            || opened.mode() & 0o077 != 0
+        {
+            return Err(failure());
+        }
+        Ok(())
+    }
+
+    if parent.is_empty()
+        || task_id.is_empty()
+        || attempt_id.is_empty()
+        || account_id.is_empty()
+        || auth_revision == 0
+        || generation == 0
+        || [parent, task_id, attempt_id, account_id]
+            .iter()
+            .any(|value| value.len() > 256 || value.chars().any(char::is_control))
+    {
+        return Err(failure());
+    }
+    let base = storage.join("host-boundaries");
+    let parents = base.join("parents");
+    let indexed = parents.join(digest(parent.as_bytes()));
+    check_acl_directory(storage)?;
+    check_acl_directory(&base)?;
+    check_acl_directory(&parents)?;
+    check_acl_directory(&indexed)?;
+
+    for (index, entry) in fs::read_dir(&indexed).map_err(|_| failure())?.enumerate() {
+        if index >= 4096 {
+            return Err(failure());
+        }
+        check_acl_directory(&entry.map_err(|_| failure())?.path())?;
+    }
+    for (index, entry) in fs::read_dir(&base).map_err(|_| failure())?.enumerate() {
+        if index >= 4096 {
+            return Err(failure());
+        }
+        let root = entry.map_err(|_| failure())?.path();
+        if root != parents {
+            check_acl_directory(&root)?;
+        }
+    }
+    let roots = parent_records(storage, parent)?;
+
+    let mut exact_attempts = 0usize;
+    for root in &roots {
+        check_acl_directory(root)?;
+        let record: Record = read_json(&root.join("record.json"))?;
+        if !matches!(record.schema, 1 | 2)
+            || record.schema == 1 && record.release_attempted
+            || record.host != kernel::HostWitness::admitted()?
+            || root.file_name().and_then(|name| name.to_str())
+                != Some(record.scope.operation_id.as_str())
+            || record.label != format!("dev.lomi.agent.host.{}", record.scope.operation_id)
+            || record.domain != format!("gui/{}", unsafe { libc::getuid() })
+        {
+            return Err(failure());
+        }
+        if !matches!(&record.scope.purpose, Purpose::Attempt) {
+            continue;
+        }
+        if record.scope.parent_operation_id.as_deref() != Some(parent)
+            || record.scope.task_id.as_deref() != Some(task_id)
+            || record.scope.attempt_id.as_deref() != Some(attempt_id)
+        {
+            return Ok(false);
+        }
+        exact_attempts += 1;
+        if record.scope.account_id != account_id
+            || record.scope.auth_revision != auth_revision
+            || record.scope.generation != Some(generation)
+        {
+            return Ok(false);
+        }
+        if record.schema != 2
+            || record.release_attempted
+            || !matches!(record.phase, Phase::Held | Phase::Sealed | Phase::Retired)
+        {
+            return Ok(false);
+        }
+        let held: Held = read_json(&root.join("held.json"))?;
+        let observed = record.held.as_ref().ok_or_else(failure)?;
+        if held.schema != 1
+            || held.operation_id != record.scope.operation_id
+            || held.spec_digest != record.spec_digest
+            || held.member != *observed
+            || held.member.identity.boot != record.host.boot
+        {
+            return Ok(false);
+        }
+        if require_retired
+            && (record.phase != Phase::Retired
+                || !record.seal_confirmed
+                || kernel::usage(observed.resource_coalition)? != kernel::Usage::Retired)
+        {
+            return Ok(false);
+        }
+        match fs::symlink_metadata(root.join("release.json")) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Ok(_) => return Ok(false),
+            Err(_) => return Err(failure()),
+        }
+    }
+    Ok(exact_attempts == 1 && (!require_retired || parent_completed(storage, parent)?))
+}
+
+/// Read-only source check used before persisting a durable Host rejection
+/// marker. It proves the exact Attempt remained held without a release record.
+pub(crate) fn attempt_release_absent(
+    storage: &Path,
+    parent: &str,
+    task_id: &str,
+    attempt_id: &str,
+    account_id: &str,
+    auth_revision: u64,
+    generation: u64,
+) -> Result<bool, String> {
+    attempt_without_release(
+        storage,
+        parent,
+        task_id,
+        attempt_id,
+        account_id,
+        auth_revision,
+        generation,
+        false,
+    )
+}
+
+/// Independently confirms the exact owned Attempt never published its release
+/// record and the whole parent cohort retired. Use alongside an authenticated
+/// Host no-binding Finished result.
+pub(crate) fn retired_attempt_without_release(
+    storage: &Path,
+    parent: &str,
+    task_id: &str,
+    attempt_id: &str,
+    account_id: &str,
+    auth_revision: u64,
+    generation: u64,
+) -> Result<bool, String> {
+    attempt_without_release(
+        storage,
+        parent,
+        task_id,
+        attempt_id,
+        account_id,
+        auth_revision,
+        generation,
+        true,
+    )
 }
 impl Drop for Boundary {
     fn drop(&mut self) {
@@ -1115,7 +1330,8 @@ fn native_runner(root: &Path) -> Result<i32, String> {
     }
     private_directory(root)?;
     let record: Record = read_json(&root.join("record.json"))?;
-    if record.schema != 1
+    if record.schema != 2
+        || !record.release_attempted
         || record.phase != Phase::Released
         || record.host != kernel::HostWitness::admitted()?
     {
@@ -1207,7 +1423,8 @@ fn worker(root: &Path) -> Result<i32, String> {
     use std::os::unix::process::CommandExt;
     private_directory(root)?;
     let record: Record = read_json(&root.join("record.json"))?;
-    if record.schema != 1
+    if record.schema != 2
+        || record.release_attempted
         || record.phase != Phase::Intent
         || record.host != kernel::HostWitness::admitted()?
     {
@@ -1280,7 +1497,9 @@ fn worker(root: &Path) -> Result<i32, String> {
     loop {
         if let Ok(release) = read_json::<Release>(&root.join("release.json")) {
             let latest: Record = read_json(&root.join("record.json"))?;
-            if !matches!(latest.phase, Phase::ReleaseIntent | Phase::Released)
+            if latest.schema != 2
+                || !latest.release_attempted
+                || !matches!(latest.phase, Phase::ReleaseIntent | Phase::Released)
                 || release.operation_id != record.scope.operation_id
                 || release.spec_digest != record.spec_digest
             {

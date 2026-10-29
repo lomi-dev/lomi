@@ -9,6 +9,29 @@ import { newAgentTaskTab, agentTaskTabs, type AgentTaskTab } from "./model";
 import type { Task, AccountsSnapshot } from "./agent-runtime/types";
 import { useRemoteWorkspaces } from "./remote-workspaces";
 import RemoteWorkspaceStatus from "./RemoteWorkspaceStatus";
+import {
+  acknowledgeSharedWorkspaceStream,
+  importSharedWorkspace,
+  mergeSharedHostWorkspace,
+  saveSharedHostTerminalAlias,
+  sharedHostChannel,
+  sharedHostAliasesUpdatedEvent,
+  sharedHostMoveMatches,
+  sharedHostOperationId,
+  sharedHostPaneLocation,
+  sharedHostRpc,
+  sharedHostTerminalAliases,
+  sharedHostWorkspaceBindings,
+  sharedWorkspaceState,
+  stageSharedHostCreate,
+  validateSharedWorkspaceFrame,
+} from "./shared-host";
+import { WorkspaceStreamAssembler } from "@lomi/terminal-renderer-experimental/workspace-stream";
+import type {
+  SharedHostEvent,
+  SharedHostTerminalAlias,
+  SharedHostWorkspaceState,
+} from "./shared-host";
 import { useAgentControlBridge } from "./agent-control";
 import AgentControlStartup from "./AgentControlStartup";
 import { useAgentChatApproval } from "./AgentChatApproval";
@@ -50,6 +73,7 @@ import {
   useEffect,
   useLayoutEffect,
   useId,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -132,6 +156,7 @@ import {
   configureTerminals,
   configureTerminalRenderer,
   observeTerminalContexts,
+  isAgentTerminal,
   runningTerminal,
   terminalFor,
 } from "./terminal-runtime";
@@ -144,6 +169,7 @@ import {
 } from "./app-notifications";
 import { useAgentUsage } from "./AgentUsage";
 import Explorer from "./Explorer";
+import HostWorkspacePanels from "./HostWorkspacePanels";
 import ProjectSwitcher from "./ProjectSwitcher";
 import SourceControl from "./SourceControl";
 import Sidebar from "./Sidebar";
@@ -154,6 +180,7 @@ import { configureBrowsers, retainBrowsers } from "./browser-runtime";
 import SplitView from "./SplitView";
 import { usePaneMotion } from "./pane-motion";
 import { usePointerFocus } from "./usePointerFocus";
+import { usePanelReveal, type PanelRevealRequest } from "./usePanelReveal";
 import { useWindowZoom, changeWindowZoom } from "./useWindowZoom";
 import { openExternalFile, type ResolvedExternalFile } from "./external-files";
 import { useExternalFiles } from "./useExternalFiles";
@@ -287,17 +314,58 @@ export default function Workbench() {
     : "";
   const [session, renderSession] = useState<Session>();
   const currentSession = useRef<Session>(undefined);
+  const sharedHostView = useRef<
+    | {
+        workspaceId: string;
+        state: SharedHostWorkspaceState;
+        aliases: SharedHostTerminalAlias[];
+      }
+    | undefined
+  >(undefined);
+  const sharedHostMutation = useRef<string | undefined>(undefined);
+  const sharedHostDeferredState = useRef<
+    { workspaceId: string; state: SharedHostWorkspaceState } | undefined
+  >(undefined);
   const sessionPublication = useRef(false);
-  const remoteWorkspaces = useRemoteWorkspaces(
-    session,
-    currentSession,
-    info?.profiles,
-  );
   const workArea = useRef<HTMLDivElement>(null);
   const terminalLayout = useRef<HTMLDivElement>(null);
   const tabStrip = useRef<HTMLDivElement>(null);
   const terminalStage = useRef<HTMLElement>(null);
   const selected = session ? active(session) : undefined;
+  const localPanelIds = useMemo(
+    () =>
+      new Set(
+        selected?.tab.type === "terminal"
+          ? layoutPanes(selected.tab.layout)
+              .filter((pane) => pane.type !== "terminal")
+              .map((pane) => pane.id)
+          : [],
+      ),
+    [selected?.tab],
+  );
+  const sharedActiveWorkspaceId = selected?.workspace.id;
+  const sharedActiveWorkspaceName = selected?.workspace.name;
+  const sharedActiveProject = session?.projects.find((project) =>
+    project.workspaces.some(
+      (workspace) => workspace.id === sharedActiveWorkspaceId,
+    ),
+  );
+  const sharedActiveProjectPath = sharedActiveProject?.path;
+  const [sharedWorkspaceStreamStatus, setSharedWorkspaceStreamStatus] =
+    useState<{
+      workspaceId: string;
+      status: "reconnecting" | "unavailable";
+      message?: string;
+    }>();
+  const projectSelectionRevision = useRef(0);
+  const panelRevealRevision = useRef(0);
+  const [panelReveal, setPanelReveal] = useState<PanelRevealRequest>();
+  usePanelReveal(terminalStage, panelReveal, {
+    workspaceId: selected?.workspace.id,
+    tabId: selected?.tab.id,
+    paneId: selected ? activePanel(selected.tab)?.id : undefined,
+    hidden: settings.active,
+  });
   const agentProfileId =
     info?.platform !== "windows" && selected?.tab.type === "terminal"
       ? selected.tab.profileId
@@ -369,6 +437,425 @@ export default function Workbench() {
     },
     [renderPaneLayout, settings.leave],
   );
+  const relocateAuthoritativeWorkspaceRoot = useCallback(
+    async (workspaceId: string, previousRootPath: string, rootPath: string) => {
+      const before = currentSession.current;
+      const project = before?.projects.find((candidate) =>
+        candidate.workspaces.some((workspace) => workspace.id === workspaceId),
+      );
+      if (!before || !project) return;
+      const roots = new Set([
+        ...before.projects.map((candidate) => candidate.path),
+        ...fileTabs(before)
+          .filter((file) => !file.untitled)
+          .map((file) => file.root),
+      ]);
+      const aliases = (
+        await Promise.all(
+          [...roots].map(async (root) => {
+            try {
+              return {
+                root,
+                canonical: await api<string>("resolve_project_entry", {
+                  root,
+                  relative: "",
+                }),
+              };
+            } catch {
+              return null;
+            }
+          }),
+        )
+      ).filter(
+        (alias): alias is { root: string; canonical: string } => alias !== null,
+      );
+      const change = { oldPath: previousRootPath, newPath: rootPath };
+      const aliasChanges = fileChangeAliases(change, aliases, project.path);
+      setSession((state) => {
+        if (!state) return state;
+        const currentProject = state.projects.find((candidate) =>
+          candidate.workspaces.some(
+            (workspace) => workspace.id === workspaceId,
+          ),
+        );
+        if (!currentProject || currentProject.path === rootPath) return state;
+        const next = applyFileChange(state, aliasChanges, defaultProfileId);
+        relocateEditorFiles(state, next, change);
+        return next;
+      });
+    },
+    [defaultProfileId, setSession],
+  );
+  const remoteWorkspaces = useRemoteWorkspaces(
+    session,
+    currentSession,
+    info?.profiles,
+    relocateAuthoritativeWorkspaceRoot,
+  );
+  const applySharedHostWorkspaceState = useCallback(
+    async (
+      workspaceId: string,
+      rootPath: string,
+      hostState: SharedHostWorkspaceState,
+      isCurrent: () => boolean = () => true,
+    ) => {
+      if (sharedHostMutation.current === workspaceId) {
+        sharedHostDeferredState.current = { workspaceId, state: hostState };
+        return;
+      }
+      const cached = sharedHostView.current;
+      if (
+        cached?.workspaceId === workspaceId &&
+        cached.state.context.runtimeId === hostState.context.runtimeId &&
+        cached.state.context.workspaceEpoch ===
+          hostState.context.workspaceEpoch &&
+        BigInt(cached.state.domainRevision) > BigInt(hostState.domainRevision)
+      )
+        return;
+      const aliases = await sharedHostTerminalAliases(workspaceId);
+      if (!isCurrent()) return;
+      const reconciled = aliases.map((alias) => {
+        const location = sharedHostPaneLocation(hostState, alias.hostPaneId);
+        if (!location) return alias;
+        const destination = aliases.find(
+          (candidate) => candidate.hostTabId === location.tabId,
+        );
+        return {
+          ...alias,
+          desktopTabId:
+            destination?.desktopTabId ??
+            (alias.hostTabId === location.tabId
+              ? alias.desktopTabId
+              : location.tabId),
+          hostTabId: location.tabId,
+        };
+      });
+      for (let index = 0; index < aliases.length; index++) {
+        const alias = aliases[index];
+        const next = reconciled[index];
+        if (
+          alias.desktopPaneId !== next.desktopPaneId ||
+          alias.desktopTabId !== next.desktopTabId ||
+          alias.hostPaneId !== next.hostPaneId ||
+          alias.hostTabId !== next.hostTabId
+        )
+          await saveSharedHostTerminalAlias(workspaceId, next).catch((error) =>
+            setErrorState(errorMessage(error)),
+          );
+      }
+      if (!isCurrent()) return;
+      const latestView = sharedHostView.current;
+      if (
+        latestView?.workspaceId === workspaceId &&
+        latestView.state.context.runtimeId === hostState.context.runtimeId &&
+        latestView.state.context.workspaceEpoch ===
+          hostState.context.workspaceEpoch &&
+        BigInt(latestView.state.domainRevision) >
+          BigInt(hostState.domainRevision)
+      )
+        return;
+      sharedHostView.current = {
+        workspaceId,
+        state: hostState,
+        aliases: reconciled,
+      };
+      const current = currentSession.current;
+      if (!current) return;
+      const merged = mergeSharedHostWorkspace(
+        current,
+        workspaceId,
+        rootPath,
+        defaultProfileId,
+        hostState,
+        reconciled,
+      );
+      if (merged !== current) setSession(merged);
+    },
+    [defaultProfileId, setSession],
+  );
+  useEffect(() => {
+    if (
+      !native ||
+      !info ||
+      !sharedActiveWorkspaceId ||
+      !sharedActiveWorkspaceName ||
+      !sharedActiveProjectPath
+    )
+      return;
+    const workspaceId = sharedActiveWorkspaceId;
+    const workspaceName = sharedActiveWorkspaceName;
+    const rootPath = sharedActiveProjectPath;
+    let alive = true;
+    const initialRetryDelay = 250;
+    const maxRetryDelay = 5_000;
+    let retryDelay = initialRetryDelay;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let snapshotTimer: ReturnType<typeof setTimeout> | undefined;
+    type WorkspaceAttempt = {
+      failed: boolean;
+      processing: boolean;
+      pendingBytes: number;
+      pending: string[];
+      assembler?: WorkspaceStreamAssembler;
+      eventChannel?: ReturnType<typeof sharedHostChannel>;
+      snapshotReady: boolean;
+    };
+    let currentAttempt: WorkspaceAttempt | undefined;
+    let subscribeQueue: Promise<void> = Promise.resolve();
+
+    const isCurrent = (attempt: WorkspaceAttempt) =>
+      alive && currentAttempt === attempt && !attempt.failed;
+
+    const clearAttempt = (attempt: WorkspaceAttempt) => {
+      clearTimeout(snapshotTimer);
+      snapshotTimer = undefined;
+      attempt.assembler?.dispose();
+      attempt.assembler = undefined;
+      attempt.pending.length = 0;
+      attempt.pendingBytes = 0;
+      if (attempt.eventChannel) attempt.eventChannel.onmessage = () => {};
+    };
+
+    const clearRecoveryStatus = () => {
+      setSharedWorkspaceStreamStatus((status) =>
+        status?.workspaceId === workspaceId ? undefined : status,
+      );
+    };
+
+    const fail = (attempt: WorkspaceAttempt, message?: string) => {
+      if (!isCurrent(attempt)) return;
+      attempt.failed = true;
+      clearAttempt(attempt);
+      setSharedWorkspaceStreamStatus({
+        workspaceId,
+        status: message ? "unavailable" : "reconnecting",
+        ...(message ? { message } : {}),
+      });
+      const delay = retryDelay;
+      retryDelay = Math.min(retryDelay * 2, maxRetryDelay);
+      retryTimer = setTimeout(() => {
+        retryTimer = undefined;
+        if (alive && currentAttempt === attempt) void connect();
+      }, delay);
+    };
+
+    const aliasesUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ workspaceId?: string }>).detail;
+      if (detail?.workspaceId !== workspaceId) return;
+      const attempt = currentAttempt;
+      if (!attempt || !isCurrent(attempt)) return;
+      void sharedWorkspaceState(workspaceId)
+        .then((hostState) =>
+          isCurrent(attempt)
+            ? applySharedHostWorkspaceState(
+                workspaceId,
+                rootPath,
+                hostState,
+                () => isCurrent(attempt),
+              )
+            : undefined,
+        )
+        .catch(() => fail(attempt));
+    };
+    window.addEventListener(sharedHostAliasesUpdatedEvent, aliasesUpdated);
+
+    async function drain(attempt: WorkspaceAttempt) {
+      if (attempt.processing || !attempt.assembler || !isCurrent(attempt))
+        return;
+      attempt.processing = true;
+      try {
+        while (attempt.pending.length && isCurrent(attempt)) {
+          const raw = attempt.pending.shift()!;
+          attempt.pendingBytes -= new TextEncoder().encode(raw).byteLength;
+          const value = await attempt.assembler!.push(raw);
+          if (!value || !isCurrent(attempt)) continue;
+          if (value.state) {
+            await applySharedHostWorkspaceState(
+              workspaceId,
+              rootPath,
+              value.state as unknown as SharedHostWorkspaceState,
+              () => isCurrent(attempt),
+            );
+            if (!isCurrent(attempt)) continue;
+          }
+          await acknowledgeSharedWorkspaceStream(
+            value.ack.data as unknown as Parameters<
+              typeof acknowledgeSharedWorkspaceStream
+            >[0],
+          );
+          if (!isCurrent(attempt)) continue;
+          if (value.state) {
+            clearTimeout(snapshotTimer);
+            snapshotTimer = undefined;
+            if (!attempt.snapshotReady) {
+              attempt.snapshotReady = true;
+              retryDelay = initialRetryDelay;
+              clearRecoveryStatus();
+            }
+          }
+        }
+      } catch {
+        fail(attempt);
+      } finally {
+        attempt.processing = false;
+        if (attempt.pending.length && isCurrent(attempt)) void drain(attempt);
+      }
+    }
+
+    async function connect() {
+      if (!alive) return;
+      const attempt: WorkspaceAttempt = {
+        failed: false,
+        processing: false,
+        pendingBytes: 0,
+        pending: [] as string[],
+        snapshotReady: false,
+      };
+      currentAttempt = attempt;
+      try {
+        const bindings = await sharedHostWorkspaceBindings([workspaceId]);
+        if (!isCurrent(attempt)) return;
+        if (!bindings.bindings) {
+          fail(
+            attempt,
+            bindings.bindingError ??
+              "The local Host workspace bindings are unavailable.",
+          );
+          return;
+        }
+        const binding = bindings.bindings.find(
+          (candidate) => candidate.workspaceId === workspaceId,
+        );
+        if (!binding) {
+          fail(attempt, "The workspace has no authoritative local Host binding.");
+          return;
+        }
+        if (binding.state === "retired") {
+          fail(
+            attempt,
+            "This workspace was retired by the local Host. Its local project and drafts are preserved; reconnecting will not import it again.",
+          );
+          return;
+        }
+        if (binding.state === "pending") {
+          fail(
+            attempt,
+            "The local Host is still resolving this workspace binding.",
+          );
+          return;
+        }
+        if (binding.state === "missing") {
+          if (binding.previousRootPath) {
+            fail(
+              attempt,
+              "The local Host no longer has this imported workspace. Its local project and drafts are preserved.",
+            );
+            return;
+          }
+          // A missing, never-imported ID is the only state that permits the
+          // initial local setup import. Retired IDs remain unavailable above.
+          await importSharedWorkspace(workspaceId, workspaceName, rootPath);
+        }
+        if (!isCurrent(attempt)) return;
+        const current = await sharedWorkspaceState(workspaceId);
+        if (!isCurrent(attempt)) return;
+        await applySharedHostWorkspaceState(
+          workspaceId,
+          rootPath,
+          current,
+          () => isCurrent(attempt),
+        );
+        if (!isCurrent(attempt)) return;
+
+        const eventChannel = sharedHostChannel((event: SharedHostEvent) => {
+          if (!isCurrent(attempt)) return;
+          if (event.type === "transportLost") {
+            fail(attempt);
+            return;
+          }
+          if (event.type !== "frame" || event.value.stream !== "workspace")
+            return;
+          const raw = JSON.stringify(event.value.frame);
+          const size = new TextEncoder().encode(raw).byteLength;
+          if (
+            attempt.pendingBytes + size > 8 * 1024 * 1024 ||
+            attempt.pending.length >= 1024
+          ) {
+            fail(attempt);
+            return;
+          }
+          attempt.pending.push(raw);
+          attempt.pendingBytes += size;
+          void drain(attempt);
+        });
+        attempt.eventChannel = eventChannel;
+
+        // Do not allow a stale, still-pending subscribe request to register
+        // after a newer attempt has already installed its channel.
+        const previousSubscribe = subscribeQueue;
+        let releaseSubscribe!: () => void;
+        subscribeQueue = new Promise<void>((resolve) => {
+          releaseSubscribe = resolve;
+        });
+        await previousSubscribe;
+        if (!isCurrent(attempt)) {
+          releaseSubscribe();
+          return;
+        }
+        try {
+          const metadata = await sharedHostRpc(
+            {
+              method: "workspace.subscribe",
+              params: { context: current.context, cursor: null },
+            },
+            eventChannel,
+          );
+          if (!isCurrent(attempt)) return;
+          attempt.assembler = new WorkspaceStreamAssembler(
+            current.context,
+            metadata,
+            validateSharedWorkspaceFrame,
+          );
+          snapshotTimer = setTimeout(() => {
+            if (!isCurrent(attempt)) return;
+            try {
+              attempt.assembler?.expire();
+            } catch {
+              fail(attempt);
+            }
+          }, 30_000);
+          await drain(attempt);
+        } finally {
+          releaseSubscribe();
+        }
+      } catch {
+        fail(attempt);
+      }
+    }
+
+    void connect();
+
+    return () => {
+      alive = false;
+      clearTimeout(retryTimer);
+      retryTimer = undefined;
+      if (currentAttempt) {
+        currentAttempt.failed = true;
+        clearAttempt(currentAttempt);
+      }
+      clearRecoveryStatus();
+      window.removeEventListener(sharedHostAliasesUpdatedEvent, aliasesUpdated);
+    };
+  }, [
+    applySharedHostWorkspaceState,
+    defaultProfileId,
+    info,
+    native,
+    setSession,
+    sharedActiveProjectPath,
+    sharedActiveWorkspaceId,
+    sharedActiveWorkspaceName,
+  ]);
   useAgentControlBridge(
     session,
     () => currentSession.current,
@@ -1256,6 +1743,352 @@ export default function Workbench() {
 
   const change = (transform: (state: Session) => Session, animate = false) =>
     setSession((state) => (state ? transform(state) : state), animate);
+  const sharedHostPaneOwnership = (workspaceId: string, paneId: string) => {
+    if (!native || isAgentTerminal(paneId) || localPanelIds.has(paneId))
+      return { kind: "local" as const };
+    const view = sharedHostView.current;
+    if (!view || view.workspaceId !== workspaceId)
+      return {
+        kind: "pending" as const,
+        reason: "The shared workspace is still loading. Try again shortly.",
+      };
+    const alias = view.aliases.find(
+      (candidate) => candidate.desktopPaneId === paneId,
+    );
+    if (!alias)
+      return {
+        kind: "pending" as const,
+        reason: "The shared terminal is still connecting. Try again shortly.",
+      };
+    const location = sharedHostPaneLocation(view.state, alias.hostPaneId);
+    if (!location)
+      return {
+        kind: "pending" as const,
+        reason: "The shared terminal layout is refreshing. Try again shortly.",
+      };
+    return { kind: "host" as const, alias, location };
+  };
+  const sharedHostPaneMoveGate = (
+    workspaceId: string,
+    sourcePaneId: string,
+    targetPaneId: string,
+    side: TabDropSide,
+  ): boolean | string => {
+    const source = sharedHostPaneOwnership(workspaceId, sourcePaneId);
+    if (source.kind === "local") return true;
+    if (source.kind === "pending") return source.reason;
+    if (sourcePaneId === targetPaneId) return "Choose a different terminal.";
+    if (side === "top" || side === "bottom")
+      return "Shared terminal moves currently support horizontal splits only.";
+    const target = sharedHostPaneOwnership(workspaceId, targetPaneId);
+    if (target.kind === "pending") return target.reason;
+    if (target.kind !== "host")
+      return "Shared terminals can move only beside another shared terminal.";
+    return true;
+  };
+  const moveSharedHostPane = async (
+    workspaceId: string,
+    rootPath: string,
+    sourcePaneId: string,
+    targetPaneId: string,
+    side: TabDropSide,
+  ) => {
+    const gate = sharedHostPaneMoveGate(
+      workspaceId,
+      sourcePaneId,
+      targetPaneId,
+      side,
+    );
+    if (gate !== true)
+      throw new Error(
+        typeof gate === "string" ? gate : "This terminal move is unavailable.",
+      );
+    if (side === "top" || side === "bottom")
+      throw new Error(
+        "Shared terminal moves currently support horizontal splits only.",
+      );
+    if (sharedHostMutation.current)
+      throw new Error("A shared workspace change is already being confirmed.");
+    sharedHostMutation.current = workspaceId;
+    sharedHostDeferredState.current = undefined;
+    let latest: SharedHostWorkspaceState | undefined;
+    let deferred: SharedHostWorkspaceState | undefined;
+    let failure: unknown;
+    try {
+      const initial = await sharedWorkspaceState(workspaceId);
+      const aliases = await sharedHostTerminalAliases(workspaceId);
+      const sourceAlias = aliases.find(
+        (candidate) => candidate.desktopPaneId === sourcePaneId,
+      );
+      const targetAlias = aliases.find(
+        (candidate) => candidate.desktopPaneId === targetPaneId,
+      );
+      if (!sourceAlias || !targetAlias)
+        throw new Error("The shared terminal move could not be resolved.");
+      const source = sharedHostPaneLocation(initial, sourceAlias.hostPaneId);
+      const target = sharedHostPaneLocation(initial, targetAlias.hostPaneId);
+      if (!source || !target)
+        throw new Error(
+          "The shared terminal layout changed. Try the move again.",
+        );
+      const placement = side === "left" ? "before" : "after";
+      const operationId = await sharedHostOperationId(
+        workspaceId,
+        sourceAlias.hostPaneId,
+        source.tabId,
+        target.tabId,
+        targetAlias.hostPaneId,
+        placement,
+        initial.domainRevision,
+      );
+      const mutation = {
+        operationId,
+        context: initial.context,
+        expectedRevision: initial.domainRevision,
+      };
+      let receipt:
+        | {
+            operationId: string;
+            originalMethod: string;
+            workspaceId: string;
+            state: string;
+            effect: string;
+          }
+        | undefined;
+      let requestError: unknown;
+      try {
+        receipt = await sharedHostRpc({
+          method: "terminal.move",
+          params: {
+            mutation,
+            paneId: sourceAlias.hostPaneId,
+            sourceTabId: source.tabId,
+            targetTabId: target.tabId,
+            targetPaneId: targetAlias.hostPaneId,
+            placement,
+          },
+        });
+      } catch (error) {
+        requestError = error;
+      }
+      const isCommitted = (candidate: typeof receipt) =>
+        candidate?.operationId === operationId &&
+        candidate.originalMethod === "terminal.move" &&
+        candidate.workspaceId === initial.context.workspaceId &&
+        candidate.state === "succeeded" &&
+        candidate.effect === "committed";
+      if (!isCommitted(receipt)) {
+        try {
+          receipt = await sharedHostRpc({
+            method: "operation.status",
+            params: { context: initial.context, operationId },
+          });
+        } catch {
+          // Inspect below. Never replay a move whose reply was lost.
+        }
+      }
+      const receiptConfirmed = isCommitted(receipt);
+      latest = await sharedWorkspaceState(workspaceId);
+      const requestedMoveIsPresent = sharedHostMoveMatches(
+        latest,
+        sourceAlias.hostPaneId,
+        target.tabId,
+        targetAlias.hostPaneId,
+        placement,
+      );
+      if (!receiptConfirmed && !requestedMoveIsPresent)
+        throw (
+          requestError ??
+          new Error(
+            "The shared terminal move could not be confirmed. The layout was refreshed and the move was not retried.",
+          )
+        );
+    } catch (error) {
+      failure = error;
+      if (!latest)
+        latest = await sharedWorkspaceState(workspaceId).catch(() => undefined);
+    } finally {
+      const pendingState = sharedHostDeferredState.current as
+        { workspaceId: string; state: SharedHostWorkspaceState } | undefined;
+      deferred =
+        pendingState?.workspaceId === workspaceId
+          ? pendingState.state
+          : undefined;
+      if (sharedHostMutation.current === workspaceId)
+        sharedHostMutation.current = undefined;
+      sharedHostDeferredState.current = undefined;
+    }
+    const refreshed = await sharedWorkspaceState(workspaceId).catch(
+      () => undefined,
+    );
+    const states = [latest, deferred, refreshed].filter(
+      (state): state is SharedHostWorkspaceState => !!state,
+    );
+    const stateToApply = states.reduce<SharedHostWorkspaceState | undefined>(
+      (current, candidate) => {
+        if (!current) return candidate;
+        if (
+          current.context.runtimeId === candidate.context.runtimeId &&
+          current.context.workspaceEpoch === candidate.context.workspaceEpoch
+        )
+          return BigInt(candidate.domainRevision) >
+            BigInt(current.domainRevision)
+            ? candidate
+            : current;
+        return candidate;
+      },
+      undefined,
+    );
+    if (stateToApply)
+      await applySharedHostWorkspaceState(
+        workspaceId,
+        rootPath,
+        stateToApply,
+      ).catch((error) => {
+        if (!failure) failure = error;
+      });
+    if (failure) throw failure;
+  };
+  const renameSharedHostTab = async (
+    workspaceId: string,
+    rootPath: string,
+    desktopTabId: string,
+    name: string,
+  ) => {
+    const view = sharedHostView.current;
+    if (!view || view.workspaceId !== workspaceId)
+      throw new Error(
+        "The shared workspace is still loading. Try again shortly.",
+      );
+    const tabAlias = view.aliases.find(
+      (alias) => alias.desktopTabId === desktopTabId,
+    );
+    if (!tabAlias)
+      throw new Error(
+        "The shared terminal tab is still connecting. Try again shortly.",
+      );
+    if (sharedHostMutation.current)
+      throw new Error("A shared workspace change is already being confirmed.");
+    sharedHostMutation.current = workspaceId;
+    sharedHostDeferredState.current = undefined;
+    let latest: SharedHostWorkspaceState | undefined;
+    let deferred: SharedHostWorkspaceState | undefined;
+    let failure: unknown;
+    try {
+      const initial = await sharedWorkspaceState(workspaceId);
+      const tabLocation = sharedHostPaneLocation(initial, tabAlias.hostPaneId);
+      if (!tabLocation)
+        throw new Error("The shared terminal tab no longer exists.");
+      const currentTab = initial.tabs.find(
+        (candidate) => candidate.tabId === tabLocation.tabId,
+      );
+      if (!currentTab)
+        throw new Error("The shared terminal tab no longer exists.");
+      const operationId = await sharedHostOperationId(
+        workspaceId,
+        tabLocation.tabId,
+        "rename",
+        name,
+        initial.domainRevision,
+      );
+      const mutation = {
+        operationId,
+        context: initial.context,
+        expectedRevision: initial.domainRevision,
+      };
+      let receipt:
+        | {
+            operationId: string;
+            originalMethod: string;
+            workspaceId: string;
+            state: string;
+            effect: string;
+          }
+        | undefined;
+      let requestError: unknown;
+      try {
+        receipt = await sharedHostRpc({
+          method: "terminal.rename",
+          params: { mutation, tabId: tabLocation.tabId, name },
+        });
+      } catch (error) {
+        requestError = error;
+      }
+      const isCommitted = (candidate: typeof receipt) =>
+        candidate?.operationId === operationId &&
+        candidate.originalMethod === "terminal.rename" &&
+        candidate.workspaceId === initial.context.workspaceId &&
+        candidate.state === "succeeded" &&
+        candidate.effect === "committed";
+      if (!isCommitted(receipt)) {
+        try {
+          receipt = await sharedHostRpc({
+            method: "operation.status",
+            params: { context: initial.context, operationId },
+          });
+        } catch {
+          // Inspect below. Never replay a rename whose reply was lost.
+        }
+      }
+      const receiptConfirmed = isCommitted(receipt);
+      latest = await sharedWorkspaceState(workspaceId);
+      const renamed = latest.tabs.some(
+        (candidate) =>
+          candidate.tabId === tabLocation.tabId && candidate.name === name,
+      );
+      if (!receiptConfirmed && !renamed)
+        throw (
+          requestError ??
+          new Error(
+            "The shared tab rename could not be confirmed. The layout was refreshed and the rename was not retried.",
+          )
+        );
+    } catch (error) {
+      failure = error;
+      if (!latest)
+        latest = await sharedWorkspaceState(workspaceId).catch(() => undefined);
+    } finally {
+      const pendingState = sharedHostDeferredState.current as
+        { workspaceId: string; state: SharedHostWorkspaceState } | undefined;
+      deferred =
+        pendingState?.workspaceId === workspaceId
+          ? pendingState.state
+          : undefined;
+      if (sharedHostMutation.current === workspaceId)
+        sharedHostMutation.current = undefined;
+      sharedHostDeferredState.current = undefined;
+    }
+    const refreshed = await sharedWorkspaceState(workspaceId).catch(
+      () => undefined,
+    );
+    const states = [latest, deferred, refreshed].filter(
+      (state): state is SharedHostWorkspaceState => !!state,
+    );
+    const stateToApply = states.reduce<SharedHostWorkspaceState | undefined>(
+      (current, candidate) => {
+        if (!current) return candidate;
+        if (
+          current.context.runtimeId === candidate.context.runtimeId &&
+          current.context.workspaceEpoch === candidate.context.workspaceEpoch
+        )
+          return BigInt(candidate.domainRevision) >
+            BigInt(current.domainRevision)
+            ? candidate
+            : current;
+        return candidate;
+      },
+      undefined,
+    );
+    if (stateToApply)
+      await applySharedHostWorkspaceState(
+        workspaceId,
+        rootPath,
+        stateToApply,
+      ).catch((error) => {
+        if (!failure) failure = error;
+      });
+    if (failure) throw failure;
+  };
   const addTab = (cwd?: string) =>
     change((state) => {
       const selection = active(state);
@@ -1268,6 +2101,8 @@ export default function Workbench() {
           : defaultProfileId,
         `Terminal ${workspace.tabs.length + 1}`,
       );
+      const addedPane = panes(added.layout)[0];
+      if (addedPane) stageSharedHostCreate(addedPane.id, { kind: "create" });
       return updateWorkspace(state, workspace.id, (workspace) => ({
         ...workspace,
         tabs: [...workspace.tabs, added],
@@ -1517,6 +2352,7 @@ export default function Workbench() {
             ? panes(tab.layout).map((pane) => pane.id)
             : [],
         ),
+        workspace.id,
       );
       change((state) =>
         updateWorkspace(state, workspace.id, (workspace) =>
@@ -1995,12 +2831,27 @@ export default function Workbench() {
     {
       workspaceId,
       tabId,
+      paneId,
       createFile = false,
-    }: { workspaceId?: string; tabId?: string; createFile?: boolean } = {},
+      revealPane = false,
+    }: {
+      workspaceId?: string;
+      tabId?: string;
+      paneId?: string;
+      createFile?: boolean;
+      revealPane?: boolean;
+    } = {},
   ) => {
+    const selectionRevision = ++projectSelectionRevision.current;
     setProjectMenuOpen(false);
     try {
-      const normalized = await api<string>("validate_directory", { path });
+      // Open panels already belong to the loaded session. Select them in the
+      // same event, so a directory lookup cannot override later navigation.
+      const normalized =
+        workspaceId && tabId && paneId
+          ? path
+          : await api<string>("validate_directory", { path });
+      if (selectionRevision !== projectSelectionRevision.current) return;
       change((state) => {
         const found = state.projects.find(
           (project) => project.path === normalized,
@@ -2009,10 +2860,18 @@ export default function Workbench() {
           const workspace = found?.workspaces.find(
             (workspace) => workspace.id === workspaceId,
           );
+          const targetTab = workspace?.tabs.find((tab) => tab.id === tabId);
           if (
             !found ||
             !workspace ||
-            (tabId && !workspace.tabs.some((tab) => tab.id === tabId))
+            (tabId && !targetTab) ||
+            (paneId &&
+              (!targetTab ||
+                !(
+                  targetTab.type === "terminal"
+                    ? layoutPanes(targetTab.layout)
+                    : [targetTab]
+                ).some((pane) => pane.id === paneId)))
           )
             return state;
           return {
@@ -2025,7 +2884,20 @@ export default function Workbench() {
                     activeWorkspaceId: workspaceId,
                     workspaces: project.workspaces.map((workspace) =>
                       workspace.id === workspaceId && tabId
-                        ? { ...workspace, activeTabId: tabId }
+                        ? {
+                            ...workspace,
+                            activeTabId: tabId,
+                            tabs: workspace.tabs.map((tab) =>
+                              tab.id === tabId &&
+                              tab.type === "terminal" &&
+                              paneId &&
+                              layoutPanes(tab.layout).some(
+                                (pane) => pane.id === paneId,
+                              )
+                                ? { ...tab, activePaneId: paneId }
+                                : tab,
+                            ),
+                          }
                         : workspace,
                     ),
                   }
@@ -2034,6 +2906,16 @@ export default function Workbench() {
           };
         }
         const added = found ?? newProject(normalized, defaultProfileId);
+        if (!found) {
+          const initialWorkspace = added.workspaces[0];
+          const initialTab = initialWorkspace?.tabs[0];
+          const initialPane =
+            initialTab?.type === "terminal"
+              ? panes(initialTab.layout)[0]
+              : undefined;
+          if (initialPane)
+            stageSharedHostCreate(initialPane.id, { kind: "create" });
+        }
         const next = {
           ...state,
           projects: [
@@ -2050,6 +2932,26 @@ export default function Workbench() {
           activeTabId: file.id,
         }));
       });
+      const next = currentSession.current && active(currentSession.current);
+      if (
+        workspaceId &&
+        next?.workspace.id === workspaceId &&
+        (!tabId || next.tab.id === tabId) &&
+        (!paneId || activePanel(next.tab)?.id === paneId)
+      ) {
+        settings.leave();
+        setTerminalOverview(false);
+        setPanelReveal(
+          revealPane && tabId && paneId
+            ? {
+                workspaceId,
+                tabId,
+                paneId,
+                revision: ++panelRevealRevision.current,
+              }
+            : undefined,
+        );
+      }
     } catch (error) {
       setError(errorMessage(error));
     }
@@ -2085,9 +2987,20 @@ export default function Workbench() {
           title: "New workspace",
           initial: `${basename(normalized)}${count ? ` ${count + 1}` : ""}`,
           submit: (name) =>
-            change((state) =>
-              addWorkspace(state, normalized, defaultProfileId, name),
-            ),
+            change((state) => {
+              const next = addWorkspace(
+                state,
+                normalized,
+                defaultProfileId,
+                name,
+              );
+              const selection = active(next);
+              if (selection?.tab.type === "terminal") {
+                const pane = panes(selection.tab.layout)[0];
+                if (pane) stageSharedHostCreate(pane.id, { kind: "create" });
+              }
+              return next;
+            }),
         });
       } else await selectProject(path, { createFile: intent === "file" });
     } catch (error) {
@@ -2188,6 +3101,7 @@ export default function Workbench() {
                 ? panes(tab.layout).map((pane) => pane.id)
                 : [],
             ),
+            workspace.id,
           );
           change((state) => removeWorkspace(state, workspace.id));
         } finally {
@@ -2208,6 +3122,7 @@ export default function Workbench() {
     >
       <Workspaces
         projects={session.projects}
+        usage={agentUsage.usage}
         remote={remoteWorkspaces}
         activeWorkspaceId={selected?.workspace.id}
         activeRoot={selected?.project.path ?? ""}
@@ -2220,8 +3135,16 @@ export default function Workbench() {
             })),
           )
         }
-        onSelect={(path, id, tabId) =>
-          void selectProject(path, { workspaceId: id, tabId })
+        onSelect={(path, id, tabId, paneId) =>
+          void selectProject(path, { workspaceId: id, tabId, paneId })
+        }
+        onReveal={(path, workspaceId, tabId, paneId) =>
+          void selectProject(path, {
+            workspaceId,
+            tabId,
+            paneId,
+            revealPane: true,
+          })
         }
         onNew={() => void browse("workspace")}
         onRename={(workspace) =>
@@ -2357,11 +3280,12 @@ export default function Workbench() {
     (sum, repository) => sum + repository.changes.length,
     0,
   );
-  const sidebarPanels: SidebarPanel[] =
-    git.repositories.length ||
-    git.errors.length ||
-    git.limited ||
-    (git.loading && sidebarOpen("git"))
+  const sidebarPanels: SidebarPanel[] = native
+    ? ["files", "git"]
+    : git.repositories.length ||
+        git.errors.length ||
+        git.limited ||
+        (git.loading && sidebarOpen("git"))
       ? ["files", "git"]
       : ["files"];
   const pluginSidebarViews = workspace.pluginSidebars ?? [];
@@ -2484,6 +3408,11 @@ export default function Workbench() {
     );
     if (pane.type === "terminal" && pane.profileId !== undefined)
       added.profileId = pane.profileId;
+    stageSharedHostCreate(added.id, {
+      kind: "split",
+      targetPaneId: pane.id,
+      axis,
+    });
     setPaneNotice("");
     change(
       (state) =>
@@ -2516,7 +3445,7 @@ export default function Workbench() {
       return;
     try {
       if (!(await prepareAndroidRemoval(closeIds))) return;
-      if (pane.type === "terminal") closeTerminals([id]);
+      if (pane.type === "terminal") closeTerminals([id], workspace.id);
       change(
         (state) =>
           updateTab(state, current.id, (tab) => {
@@ -2538,18 +3467,47 @@ export default function Workbench() {
       await closeGuard.release(closeIds);
     }
   };
-  const restartPane = async (id: string, useProjectDirectory = false) => {
+  const restartPane = async (
+    id: string,
+    useProjectDirectory = false,
+    selectedProfileId?: string,
+  ) => {
+    const pane =
+      tab.type === "terminal"
+        ? layoutPanes(tab.layout).find((candidate) => candidate.id === id)
+        : undefined;
+    if (
+      pane?.type === "terminal" &&
+      pane.profileId === "" &&
+      !selectedProfileId
+    ) {
+      setDialog({
+        type: "environment",
+        title: "Restart terminal",
+        profiles: info.profiles,
+        selected: "",
+        submit: (profileId) =>
+          void restartPane(id, useProjectDirectory, profileId),
+      });
+      return;
+    }
     const closeIds = new Set([id]);
     if (!(await closeGuard.confirm(closeIds, [id]))) return;
     try {
-      closeTerminals([id]);
+      closeTerminals([id], workspace.id);
       modifyTab((tab) => {
         let activePaneId = tab.activePaneId;
         const layout = mapLayout(tab.layout, (pane) => {
           if (pane.id !== id) return pane;
-          const added = newPane(useProjectDirectory ? project.path : pane.cwd);
+          const added = newPane(
+            useProjectDirectory || pane.profileId === ""
+              ? project.path
+              : pane.cwd,
+          );
           if (pane.type === "terminal" && pane.profileId !== undefined)
             added.profileId = pane.profileId;
+          if (selectedProfileId) added.profileId = selectedProfileId;
+          stageSharedHostCreate(added.id, { kind: "create" });
           if (activePaneId === id) activePaneId = added.id;
           return added;
         });
@@ -2571,7 +3529,7 @@ export default function Workbench() {
         const closeIds = new Set(ids);
         if (!(await closeGuard.confirm(closeIds, ids))) return;
         try {
-          closeTerminals(ids);
+          closeTerminals(ids, workspace.id);
           const layout = mapLayout(tab.layout, () => newPane(project.path));
           modifyTab((tab) => ({
             ...tab,
@@ -2648,18 +3606,22 @@ export default function Workbench() {
       const next = applyFileChange(state, result, defaultProfileId);
       relocateEditorFiles(state, next, canonicalChange);
       const kept = new Set(next.projects.map((project) => project.id));
-      closeTerminals(
+      const removedTerminalWorkspaces = Object.fromEntries(
         state.projects
           .filter((project) => !kept.has(project.id))
           .flatMap((project) =>
             project.workspaces.flatMap((workspace) =>
               workspace.tabs.flatMap((tab) =>
                 tab.type === "terminal"
-                  ? panes(tab.layout).map((pane) => pane.id)
+                  ? panes(tab.layout).map((pane) => [pane.id, workspace.id])
                   : [],
               ),
             ),
           ),
+      );
+      closeTerminals(
+        Object.keys(removedTerminalWorkspaces),
+        removedTerminalWorkspaces,
       );
       return next;
     });
@@ -2794,6 +3756,7 @@ export default function Workbench() {
         fileChangeAliases(result, aliases, project.path),
         result,
       );
+      if (result.warning) setError(result.warning);
       return true;
     } finally {
       if (closeIds) await closeGuard.release(closeIds);
@@ -2896,17 +3859,153 @@ export default function Workbench() {
               }}
               onClose={closeTab}
               mergeContainer={terminalLayout}
-              onMove={(id, beforeId) =>
+              canMove={(id) => {
+                const movedTab = workspace.tabs.find(
+                  (candidate) => candidate.id === id,
+                );
+                const containsSharedTerminal =
+                  native &&
+                  movedTab?.type === "terminal" &&
+                  layoutPanes(movedTab.layout).some(
+                    (pane) =>
+                      pane.type === "terminal" && !isAgentTerminal(pane.id),
+                  );
+                return containsSharedTerminal
+                  ? "Shared terminal tab order cannot currently be changed."
+                  : true;
+              }}
+              canMerge={(id, targetId, side) => {
+                const sourceTab = workspace.tabs.find(
+                  (candidate) => candidate.id === id,
+                );
+                const targetTab = workspace.tabs.find(
+                  (candidate) => candidate.id === targetId,
+                );
+                const hostPanes =
+                  native && sourceTab?.type === "terminal"
+                    ? layoutPanes(sourceTab.layout).filter(
+                        (pane) =>
+                          pane.type === "terminal" && !isAgentTerminal(pane.id),
+                      )
+                    : [];
+                if (!hostPanes.length) return true;
+                const ownership = sharedHostPaneOwnership(
+                  workspace.id,
+                  hostPanes[0].id,
+                );
+                if (ownership.kind === "pending") return ownership.reason;
+                const view = sharedHostView.current;
+                const targetAlias =
+                  targetTab?.type === "terminal"
+                    ? view?.aliases.find(
+                        (alias) => alias.desktopTabId === targetTab.id,
+                      )
+                    : undefined;
+                const targetHostTab = targetAlias
+                  ? view?.state.tabs.find(
+                      (candidate) => candidate.tabId === targetAlias.hostTabId,
+                    )
+                  : undefined;
+                if (
+                  sourceTab?.type !== "terminal" ||
+                  hostPanes.length !== 1 ||
+                  layoutPanes(sourceTab.layout).length !== 1 ||
+                  side === "top" ||
+                  side === "bottom" ||
+                  !targetAlias ||
+                  targetHostTab?.layout.kind !== "pane" ||
+                  targetHostTab.layout.pane.paneId !== targetAlias.hostPaneId
+                )
+                  return "Shared tabs can merge only as one horizontal split between single-pane shared tabs.";
+                const element = terminalLayout.current;
+                if (!element)
+                  return "The shared terminal layout is still loading.";
+                const proposed = mergeTabs(workspace, id, targetId, side, {
+                  width: element.clientWidth,
+                  height: element.clientHeight,
+                });
+                return proposed === workspace
+                  ? "This shared terminal move does not fit a horizontal split."
+                  : true;
+              }}
+              onMove={(id, beforeId) => {
+                const movedTab = workspace.tabs.find(
+                  (candidate) => candidate.id === id,
+                );
+                const containsSharedTerminal =
+                  native &&
+                  movedTab?.type === "terminal" &&
+                  layoutPanes(movedTab.layout).some(
+                    (pane) =>
+                      pane.type === "terminal" && !isAgentTerminal(pane.id),
+                  );
+                if (containsSharedTerminal) {
+                  setError(
+                    "Shared terminal tab order cannot currently be changed.",
+                  );
+                  return;
+                }
                 change((state) =>
                   updateWorkspace(state, workspace.id, (current) =>
                     moveTab(current, id, beforeId),
                   ),
-                )
-              }
+                );
+              }}
               onMerge={(id, targetId, side) => {
                 if (settings.activeRef.current) return;
                 const container = terminalLayout.current;
                 if (!container) return;
+                const sourceTab = workspace.tabs.find(
+                  (candidate) => candidate.id === id,
+                );
+                const targetTab = workspace.tabs.find(
+                  (candidate) => candidate.id === targetId,
+                );
+                const sourceHostPanes =
+                  native && sourceTab?.type === "terminal"
+                    ? layoutPanes(sourceTab.layout).filter(
+                        (pane) =>
+                          pane.type === "terminal" && !isAgentTerminal(pane.id),
+                      )
+                    : [];
+                if (sourceHostPanes.length) {
+                  const view = sharedHostView.current;
+                  const targetAlias =
+                    targetTab?.type === "terminal"
+                      ? view?.aliases.find(
+                          (alias) => alias.desktopTabId === targetTab.id,
+                        )
+                      : undefined;
+                  const targetHostTab = targetAlias
+                    ? view?.state.tabs.find(
+                        (candidate) =>
+                          candidate.tabId === targetAlias.hostTabId,
+                      )
+                    : undefined;
+                  if (
+                    sourceTab?.type !== "terminal" ||
+                    sourceHostPanes.length !== 1 ||
+                    layoutPanes(sourceTab.layout).length !== 1 ||
+                    side === "top" ||
+                    side === "bottom" ||
+                    !targetAlias ||
+                    targetHostTab?.layout.kind !== "pane" ||
+                    targetHostTab.layout.pane.paneId !== targetAlias.hostPaneId
+                  ) {
+                    setError(
+                      "Shared tabs can merge only as one horizontal split between single-pane shared tabs.",
+                    );
+                    return;
+                  }
+                  void moveSharedHostPane(
+                    workspace.id,
+                    project.path,
+                    sourceHostPanes[0].id,
+                    targetAlias.desktopPaneId,
+                    side,
+                  ).catch((error) => setError(errorMessage(error)));
+                  return;
+                }
                 change(
                   (state) =>
                     updateWorkspace(state, workspace.id, (current) =>
@@ -2925,13 +4024,30 @@ export default function Workbench() {
                   type: "name",
                   title: "Rename tab",
                   initial: tabTitle(candidate),
-                  submit: (title) =>
+                  submit: (title) => {
+                    const shared =
+                      native &&
+                      candidate.type === "terminal" &&
+                      layoutPanes(candidate.layout).some(
+                        (pane) =>
+                          pane.type === "terminal" && !isAgentTerminal(pane.id),
+                      );
+                    if (shared) {
+                      void renameSharedHostTab(
+                        workspace.id,
+                        project.path,
+                        candidate.id,
+                        title,
+                      ).catch((error) => setError(errorMessage(error)));
+                      return;
+                    }
                     change((state) =>
                       updateTab(state, candidate.id, (tab) => ({
                         ...tab,
                         customTitle: title,
                       })),
-                    ),
+                    );
+                  },
                 })
               }
             />
@@ -2970,21 +4086,39 @@ export default function Workbench() {
                   }
                 >
                   {panel === "files" ? (
-                    <Explorer
-                      key={project.path}
-                      root={project.path}
-                      explorerOpenOnSingleClick={
-                        preferences.explorerOpenOnSingleClick
-                      }
-                      onTerminal={addTab}
-                      onOpenFile={(relative, match) =>
-                        void openFile(relative, project.path, match)
-                      }
-                      repositories={git.repositories}
-                      onRefreshGit={git.refresh}
-                      onOpenCommit={openHistoryCommit}
-                      onOperation={operateFile}
-                      onError={setError}
+                    native ? (
+                      <HostWorkspacePanels
+                        key={`host-files-${workspace.id}`}
+                        panel="files"
+                        workspaceId={workspace.id}
+                        workspaceName={workspace.name}
+                        rootPath={project.path}
+                      />
+                    ) : (
+                      <Explorer
+                        key={project.path}
+                        root={project.path}
+                        explorerOpenOnSingleClick={
+                          preferences.explorerOpenOnSingleClick
+                        }
+                        onTerminal={addTab}
+                        onOpenFile={(relative, match) =>
+                          void openFile(relative, project.path, match)
+                        }
+                        repositories={git.repositories}
+                        onRefreshGit={git.refresh}
+                        onOpenCommit={openHistoryCommit}
+                        onOperation={operateFile}
+                        onError={setError}
+                      />
+                    )
+                  ) : native ? (
+                    <HostWorkspacePanels
+                      key={`host-git-${workspace.id}`}
+                      panel="git"
+                      workspaceId={workspace.id}
+                      workspaceName={workspace.name}
+                      rootPath={project.path}
                     />
                   ) : (
                     <SourceControl
@@ -3039,7 +4173,8 @@ export default function Workbench() {
                             throw new Error(
                               "Save or discard unsaved editor changes before discarding Git changes.",
                             );
-                          await api("git_discard", { root, change });
+                          const result = await api<FileChange>("git_discard", { root, change });
+                          if (result.warning) setError(result.warning);
                         } finally {
                           resume?.();
                           fileOperationBusy.current = false;
@@ -3054,6 +4189,9 @@ export default function Workbench() {
             <main
               className="terminal-stage"
               ref={terminalStage}
+              data-desktop-panel-id={
+                tab.type === "terminal" ? undefined : tab.id
+              }
               id={`panel-${tab.id}`}
               role="tabpanel"
               aria-labelledby={`tab-${tab.id}`}
@@ -3157,6 +4295,17 @@ export default function Workbench() {
                     key={tab.id}
                     layout={tab.layout}
                     profile={profile}
+                    sharedHost={
+                      native
+                        ? {
+                            workspaceId: workspace.id,
+                            workspaceName: workspace.name,
+                            rootPath: project.path,
+                            desktopTabId: tab.id,
+                            tabName: tabTitle(tab),
+                          }
+                        : undefined
+                    }
                     profiles={info.profiles}
                     activePaneId={tab.activePaneId}
                     overview={terminalOverview}
@@ -3182,22 +4331,116 @@ export default function Workbench() {
                           selected.tab.id !== tab.id
                         )
                           return false;
-                        return (
-                          movePaneToTab(
-                            selected.workspace,
-                            tab.id,
-                            id,
-                            destination,
-                            {
-                              width: container.clientWidth,
-                              height: container.clientHeight,
-                            },
-                          ) !== selected.workspace
+                        const source = sharedHostPaneOwnership(
+                          workspace.id,
+                          id,
                         );
+                        if (source.kind === "pending") return source.reason;
+                        const moved = movePaneToTab(
+                          selected.workspace,
+                          tab.id,
+                          id,
+                          destination,
+                          {
+                            width: container.clientWidth,
+                            height: container.clientHeight,
+                          },
+                        );
+                        if (moved === selected.workspace) return false;
+                        if (source.kind !== "host") return true;
+                        if (destination.type !== "tab")
+                          return "Shared terminals cannot move to a new tab yet.";
+                        const destinationTab = selected.workspace.tabs.find(
+                          (candidate) => candidate.id === destination.tabId,
+                        );
+                        const view = sharedHostView.current;
+                        const targetAlias = view?.aliases.find(
+                          (alias) => alias.desktopTabId === destination.tabId,
+                        );
+                        const targetHostTab = targetAlias
+                          ? view?.state.tabs.find(
+                              (candidate) =>
+                                candidate.tabId === targetAlias.hostTabId,
+                            )
+                          : undefined;
+                        if (
+                          destinationTab?.type !== "terminal" ||
+                          !targetAlias ||
+                          targetHostTab?.layout.kind !== "pane" ||
+                          targetHostTab.layout.pane.paneId !==
+                            targetAlias.hostPaneId
+                        )
+                          return "Shared terminals can move only into a single-pane shared tab.";
+                        const targetAfterMove = moved.tabs.find(
+                          (candidate) => candidate.id === destination.tabId,
+                        );
+                        if (
+                          targetAfterMove?.type !== "terminal" ||
+                          targetAfterMove.layout.type !== "split" ||
+                          targetAfterMove.layout.axis !== "horizontal"
+                        )
+                          return "This shared terminal move does not fit a horizontal split.";
+                        return true;
                       },
+                      canMove: (id, targetId, side) =>
+                        sharedHostPaneMoveGate(
+                          workspace.id,
+                          id,
+                          targetId,
+                          side,
+                        ),
                       onDrop: (id, destination) => {
                         const container = terminalLayout.current;
                         if (!container || settings.activeRef.current) return;
+                        const source = sharedHostPaneOwnership(
+                          workspace.id,
+                          id,
+                        );
+                        if (source.kind === "pending") {
+                          setError(source.reason);
+                          return;
+                        }
+                        if (source.kind === "host") {
+                          if (destination.type !== "tab") {
+                            setError(
+                              "Shared terminals cannot move to a new tab yet.",
+                            );
+                            return;
+                          }
+                          const target = workspace.tabs.find(
+                            (candidate) => candidate.id === destination.tabId,
+                          );
+                          const view = sharedHostView.current;
+                          const targetAlias = view?.aliases.find(
+                            (alias) => alias.desktopTabId === destination.tabId,
+                          );
+                          const targetHostTab = targetAlias
+                            ? view?.state.tabs.find(
+                                (candidate) =>
+                                  candidate.tabId === targetAlias.hostTabId,
+                              )
+                            : undefined;
+                          if (
+                            target?.type !== "terminal" ||
+                            !targetAlias ||
+                            targetHostTab?.layout.kind !== "pane" ||
+                            targetHostTab.layout.pane.paneId !==
+                              targetAlias.hostPaneId
+                          ) {
+                            setError(
+                              "Shared terminals can move only into a single-pane shared tab.",
+                            );
+                            return;
+                          }
+                          void moveSharedHostPane(
+                            workspace.id,
+                            project.path,
+                            id,
+                            targetAlias.desktopPaneId,
+                            "right",
+                          ).catch((error) => setError(errorMessage(error)));
+                          return;
+                        }
                         change((state) =>
                           updateWorkspace(state, workspace.id, (current) =>
                             current.activeTabId === tab.id
@@ -3219,6 +4462,24 @@ export default function Workbench() {
                     onMove={(id, targetId, side) => {
                       const container = terminalLayout.current;
                       if (!container) return;
+                      const ownership = sharedHostPaneOwnership(
+                        workspace.id,
+                        id,
+                      );
+                      if (ownership.kind === "pending") {
+                        setError(ownership.reason);
+                        return;
+                      }
+                      if (ownership.kind === "host") {
+                        void moveSharedHostPane(
+                          workspace.id,
+                          project.path,
+                          id,
+                          targetId,
+                          side,
+                        ).catch((error) => setError(errorMessage(error)));
+                        return;
+                      }
                       modifyTab((tab) => {
                         const layout = movePane(
                           tab.layout,
@@ -3281,6 +4542,7 @@ export default function Workbench() {
                           removed
                             .filter((pane) => pane.type === "terminal")
                             .map((pane) => pane.id),
+                          workspace.id,
                         );
                         const removedIds = new Set(
                           removed.map((pane) => pane.id),
@@ -3381,19 +4643,28 @@ export default function Workbench() {
             {pluginSidebarToggles}
             <Slot name="statusbar" />
             {cliIntegrations.bar}
+            {sharedWorkspaceStreamStatus?.workspaceId === workspace.id && (
+              <span
+                className="remote-workspace-status"
+                role="status"
+                aria-live="polite"
+                title={sharedWorkspaceStreamStatus.message}
+              >
+                <span className="remote-workspace-status-label">
+                  {sharedWorkspaceStreamStatus.message ??
+                    "Workspace connection lost · reconnecting…"}
+                </span>
+              </span>
+            )}
             {remoteWorkspace?.shared && (
               <RemoteWorkspaceStatus
                 available={remoteWorkspaces.available}
-                paused={remoteWorkspaces.state?.paused}
-                resume={remoteWorkspaces.resume}
                 key={workspace.id}
                 workspace={workspace}
                 connectionMessage={
                   remoteWorkspace.message ??
                   remoteWorkspaces.state?.message ??
-                  (remoteWorkspace.online && remoteWorkspaces.state?.online
-                    ? "Remote access is online"
-                    : "Remote access is offline")
+                  "Shared by the local host"
                 }
                 busy={!!remoteWorkspaces.busy}
                 error={remoteWorkspaces.error}
@@ -3418,7 +4689,7 @@ export default function Workbench() {
               onClose={() => setDocking(null)}
             >
               <form
-                className="dialog-form"
+                className="dialog-form dialog-layout"
                 onSubmit={(event) => {
                   event.preventDefault();
                   const element =
@@ -3429,6 +4700,104 @@ export default function Workbench() {
                     width: element.clientWidth,
                     height: element.clientHeight,
                   };
+                  if (docking.mode === "movePanel" && tab.type === "terminal") {
+                    const ownership = sharedHostPaneOwnership(
+                      workspace.id,
+                      tab.activePaneId,
+                    );
+                    if (ownership.kind === "pending") {
+                      setError(ownership.reason);
+                      return;
+                    }
+                    if (ownership.kind === "host") {
+                      const gate = sharedHostPaneMoveGate(
+                        workspace.id,
+                        tab.activePaneId,
+                        docking.target,
+                        docking.side,
+                      );
+                      if (gate !== true) {
+                        setError(
+                          typeof gate === "string"
+                            ? gate
+                            : "This shared terminal move is unavailable.",
+                        );
+                        return;
+                      }
+                      void moveSharedHostPane(
+                        workspace.id,
+                        project.path,
+                        tab.activePaneId,
+                        docking.target,
+                        docking.side,
+                      )
+                        .then(() => setDocking(null))
+                        .catch((error) => setError(errorMessage(error)));
+                      return;
+                    }
+                  }
+                  if (docking.mode === "dockTab" && tab.type === "terminal") {
+                    const sourceHostPanes = layoutPanes(tab.layout).filter(
+                      (pane) =>
+                        pane.type === "terminal" && !isAgentTerminal(pane.id),
+                    );
+                    if (sourceHostPanes.length) {
+                      const view = sharedHostView.current;
+                      const targetTab = workspace.tabs.find(
+                        (candidate) => candidate.id === docking.target,
+                      );
+                      const targetAlias =
+                        targetTab?.type === "terminal"
+                          ? view?.aliases.find(
+                              (alias) => alias.desktopTabId === targetTab.id,
+                            )
+                          : undefined;
+                      const targetHostTab = targetAlias
+                        ? view?.state.tabs.find(
+                            (candidate) =>
+                              candidate.tabId === targetAlias.hostTabId,
+                          )
+                        : undefined;
+                      if (
+                        sourceHostPanes.length !== 1 ||
+                        layoutPanes(tab.layout).length !== 1 ||
+                        docking.side === "top" ||
+                        docking.side === "bottom" ||
+                        !targetAlias ||
+                        targetHostTab?.layout.kind !== "pane" ||
+                        targetHostTab.layout.pane.paneId !==
+                          targetAlias.hostPaneId
+                      ) {
+                        setError(
+                          "Shared tabs can merge only as one horizontal split between single-pane shared tabs.",
+                        );
+                        return;
+                      }
+                      const proposed = mergeTabs(
+                        workspace,
+                        tab.id,
+                        docking.target,
+                        docking.side,
+                        size,
+                      );
+                      if (proposed === workspace) {
+                        setError(
+                          "The requested docking operation does not fit this layout.",
+                        );
+                        return;
+                      }
+                      void moveSharedHostPane(
+                        workspace.id,
+                        project.path,
+                        sourceHostPanes[0].id,
+                        targetAlias.desktopPaneId,
+                        docking.side,
+                      )
+                        .then(() => setDocking(null))
+                        .catch((error) => setError(errorMessage(error)));
+                      return;
+                    }
+                  }
                   const next =
                     docking.mode === "dockTab"
                       ? mergeTabs(
@@ -3470,43 +4839,45 @@ export default function Workbench() {
                   setDocking(null);
                 }}
               >
-                <label>
-                  Target
-                  <Select
-                    aria-label="Docking target"
-                    value={docking.target}
-                    onChange={(target) => setDocking({ ...docking, target })}
-                    options={
-                      docking.mode === "dockTab"
-                        ? workspace.tabs
-                            .filter(
-                              (t) => t.type === "terminal" && t.id !== tab.id,
-                            )
-                            .map((t) => ({ value: t.id, label: tabTitle(t) }))
-                        : tab.type === "terminal"
-                          ? layoutPanes(tab.layout)
-                              .filter((p) => p.id !== tab.activePaneId)
-                              .map((p, index) => ({
-                                value: p.id,
-                                label: `${p.type} ${index + 1}${"title" in p ? ` · ${p.title}` : ""}`,
-                              }))
-                          : []
-                    }
-                  />
-                </label>
-                <label>
-                  Position
-                  <Select
-                    aria-label="Docking position"
-                    value={docking.side}
-                    onChange={(side) =>
-                      setDocking({ ...docking, side: side as TabDropSide })
-                    }
-                    options={["left", "right", "top", "bottom"].map(
-                      (value) => ({ value, label: value }),
-                    )}
-                  />
-                </label>
+                <div className="dialog-content">
+                  <label>
+                    Target
+                    <Select
+                      aria-label="Docking target"
+                      value={docking.target}
+                      onChange={(target) => setDocking({ ...docking, target })}
+                      options={
+                        docking.mode === "dockTab"
+                          ? workspace.tabs
+                              .filter(
+                                (t) => t.type === "terminal" && t.id !== tab.id,
+                              )
+                              .map((t) => ({ value: t.id, label: tabTitle(t) }))
+                          : tab.type === "terminal"
+                            ? layoutPanes(tab.layout)
+                                .filter((p) => p.id !== tab.activePaneId)
+                                .map((p, index) => ({
+                                  value: p.id,
+                                  label: `${p.type} ${index + 1}${"title" in p ? ` · ${p.title}` : ""}`,
+                                }))
+                            : []
+                      }
+                    />
+                  </label>
+                  <label>
+                    Position
+                    <Select
+                      aria-label="Docking position"
+                      value={docking.side}
+                      onChange={(side) =>
+                        setDocking({ ...docking, side: side as TabDropSide })
+                      }
+                      options={["left", "right", "top", "bottom"].map(
+                        (value) => ({ value, label: value }),
+                      )}
+                    />
+                  </label>
+                </div>
                 <div className="dialog-actions">
                   <button
                     type="button"
@@ -3578,33 +4949,38 @@ export default function Workbench() {
               initialFocus={cancelCloseButton}
               onClose={requestCancelClose}
             >
-              <div className="close-progress-body" role="status">
-                <span className="close-progress-spinner" aria-hidden="true" />
-                <div id={closeDescriptionId}>
-                  <p>
-                    {stoppingForClose === "cancelling"
-                      ? "Cancelling close. Waiting for current operations to finish."
-                      : "Finishing pending operations before closing."}
-                  </p>
-                  <p className="close-progress-hint">
-                    {stoppingForClose === "cancelling"
-                      ? "Stopped phones will stay stopped."
-                      : "Android phones will stop safely and keep their data."}
-                  </p>
-                </div>
-              </div>
-              <div className="dialog-actions close-progress-actions">
-                <button
-                  ref={cancelCloseButton}
-                  type="button"
-                  className="button"
-                  disabled={stoppingForClose === "cancelling"}
-                  onClick={requestCancelClose}
+              <div className="dialog-layout">
+                <div
+                  className="dialog-content close-progress-body"
+                  role="status"
                 >
-                  {stoppingForClose === "cancelling"
-                    ? "Cancelling…"
-                    : "Cancel closing"}
-                </button>
+                  <span className="close-progress-spinner" aria-hidden="true" />
+                  <div id={closeDescriptionId}>
+                    <p>
+                      {stoppingForClose === "cancelling"
+                        ? "Cancelling close. Waiting for current operations to finish."
+                        : "Finishing pending operations before closing."}
+                    </p>
+                    <p className="close-progress-hint">
+                      {stoppingForClose === "cancelling"
+                        ? "Stopped phones will stay stopped."
+                        : "Android phones will stop safely and keep their data."}
+                    </p>
+                  </div>
+                </div>
+                <div className="dialog-actions close-progress-actions">
+                  <button
+                    ref={cancelCloseButton}
+                    type="button"
+                    className="button"
+                    disabled={stoppingForClose === "cancelling"}
+                    onClick={requestCancelClose}
+                  >
+                    {stoppingForClose === "cancelling"
+                      ? "Cancelling…"
+                      : "Cancel closing"}
+                  </button>
+                </div>
               </div>
             </Modal>
           )}
@@ -3652,10 +5028,16 @@ function AppDialog({
       }
     >
       {dialog.type === "preview" ? (
-        <pre className="file-preview">{dialog.content || "(empty file)"}</pre>
+        <div className="dialog-layout">
+          <div className="dialog-content">
+            <pre className="file-preview">
+              {dialog.content || "(empty file)"}
+            </pre>
+          </div>
+        </div>
       ) : (
         <form
-          className="dialog-form"
+          className="dialog-form dialog-layout"
           onSubmit={(event) => {
             event.preventDefault();
             if (dialog.type === "name") {
@@ -3672,54 +5054,56 @@ function AppDialog({
             onClose();
           }}
         >
-          {dialog.type === "name" ? (
-            <label>
-              Name
-              <input
-                ref={nameInput}
-                value={value}
-                onChange={(event) => setValue(event.target.value)}
-                maxLength={120}
-              />
-            </label>
-          ) : dialog.type === "environment" ? (
-            <>
+          <div className="dialog-content">
+            {dialog.type === "name" ? (
               <label>
-                Terminal environment
-                <Select
-                  autoFocus
-                  aria-label="Terminal environment"
+                Name
+                <input
+                  ref={nameInput}
                   value={value}
-                  onChange={setValue}
-                  options={[
-                    ...(!dialog.profiles.some(
-                      (profile) => profile.id === dialog.selected,
-                    )
-                      ? [
-                          {
-                            value: dialog.selected,
-                            label: "Unavailable environment",
-                            disabled: true,
-                          },
-                        ]
-                      : []),
-                    ...dialog.profiles.map((profile) => ({
-                      value: profile.id,
-                      label: profile.distro
-                        ? profile.name
-                        : `Local · ${profile.name}`,
-                    })),
-                  ]}
+                  onChange={(event) => setValue(event.target.value)}
+                  maxLength={120}
                 />
               </label>
-              <p>
-                Changing the environment restarts all terminals in this tab in
-                the project folder.
-              </p>
-            </>
-          ) : (
-            <p>{dialog.text}</p>
-          )}
+            ) : dialog.type === "environment" ? (
+              <>
+                <label>
+                  Terminal environment
+                  <Select
+                    autoFocus
+                    aria-label="Terminal environment"
+                    value={value}
+                    onChange={setValue}
+                    options={[
+                      ...(!dialog.profiles.some(
+                        (profile) => profile.id === dialog.selected,
+                      )
+                        ? [
+                            {
+                              value: dialog.selected,
+                              label: "Unavailable environment",
+                              disabled: true,
+                            },
+                          ]
+                        : []),
+                      ...dialog.profiles.map((profile) => ({
+                        value: profile.id,
+                        label: profile.distro
+                          ? profile.name
+                          : `Local · ${profile.name}`,
+                      })),
+                    ]}
+                  />
+                </label>
+                <p>
+                  Changing the environment restarts all terminals in this tab in
+                  the project folder.
+                </p>
+              </>
+            ) : (
+              <p>{dialog.text}</p>
+            )}
+          </div>
           <div className="dialog-actions">
             <button type="button" className="button" onClick={onClose}>
               Cancel

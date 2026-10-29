@@ -10,6 +10,14 @@
     "isolatedModules": true,
     "noEmit": true,
     "allowImportingTsExtensions": true,
+    "paths": {
+      "@lomi/remote-contracts/rpc-client": [
+        "../lomi-remote/packages/remote-contracts/src/rpc-client.ts"
+      ],
+      "@lomi/terminal-renderer-experimental/workspace-stream": [
+        "../lomi-remote/packages/terminal-renderer/src/workspace-stream.ts"
+      ]
+    },
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,

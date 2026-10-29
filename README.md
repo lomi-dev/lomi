@@ -46,7 +46,7 @@ your device.
   </tr>
   <tr>
     <td align="center"><img src="docs/images/agent-control.png" alt="Settings, Agent control page listing Claude Code, Codex, Gemini CLI and other MCP clients." /><br /><sub>Connect coding agents to Lomi over MCP</sub></td>
-    <td align="center"><img src="docs/images/themes.png" alt="Settings, Themes page with the active Lomi theme, DeepMono and VS Code import." /><br /><sub>Built-in themes, light and dark modes, VS Code import</sub></td>
+    <td align="center"><img src="docs/images/themes.png" alt="Settings, Themes page with the built-in Lomi theme and VS Code import." /><br /><sub>Built-in theme, light and dark modes, VS Code import</sub></td>
   </tr>
 </table>
 
@@ -123,7 +123,6 @@ checks you actually ran. Do not add AI co-author attribution.
 
 Copyright 2026 Maciej Kolerski. Licensed under [Apache 2.0](LICENSE).
 
-The default Lomi theme follows the Lomi Brandbook and Design System. The
-optional DeepMono palette is based on DeepMono by viewerofall. Bundled fonts,
-including Manrope and JetBrains Mono, keep their own licenses in
+The default Lomi theme follows the Lomi Brandbook and Design System. Bundled
+fonts, including Manrope and JetBrains Mono, keep their own licenses in
 [public/fonts](public/fonts).

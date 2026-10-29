@@ -116,8 +116,10 @@ export function useCloseGuard() {
             initialFocus={request.application ? cancelButton : confirmButton}
             onClose={() => finish(false)}
           >
-            <div className="dialog-form">
-              <p id={descriptionId}>{request.message}</p>
+            <div className="dialog-form dialog-layout">
+              <div className="dialog-content">
+                <p id={descriptionId}>{request.message}</p>
+              </div>
               <div className="dialog-actions">
                 <button
                   ref={cancelButton}
@@ -146,12 +148,18 @@ export function useCloseGuard() {
             title="Views could not be closed"
             onClose={() => setChatError("")}
           >
-            <div className="dialog-form">
-              <p>{chatError}</p>
-              <p>The views remain open. Resolve the error and retry closing.</p>
-              <button className="button" onClick={() => setChatError("")}>
-                Keep open
-              </button>
+            <div className="dialog-form dialog-layout">
+              <div className="dialog-content">
+                <p>{chatError}</p>
+                <p>
+                  The views remain open. Resolve the error and retry closing.
+                </p>
+              </div>
+              <div className="dialog-actions">
+                <button className="button" onClick={() => setChatError("")}>
+                  Keep open
+                </button>
+              </div>
             </div>
           </Modal>
         )}

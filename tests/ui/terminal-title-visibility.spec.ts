@@ -135,7 +135,10 @@ test("the setting applies across windows, survives reload and resets to hidden",
   await expect(toggle).toBeEnabled();
   await expect(toggle).not.toBeChecked();
   await toggle.check();
-  await expect(settings.getByRole("status")).toHaveText("Saved");
+  await expect(settings.locator(".terminal-settings-page")).toHaveAttribute(
+    "aria-busy",
+    "false",
+  );
   await expect(heading).toHaveAttribute("aria-hidden", "false");
   await page.bringToFront();
   await pauseClock(page);

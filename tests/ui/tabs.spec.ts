@@ -212,6 +212,26 @@ test("long names keep the active tab centered and its close button visible", asy
     };
   });
   expect(Math.abs(bounds.top - bounds.bottom)).toBeLessThan(1);
+  const centers = await page.locator(".titlebar").evaluate((titlebar) => {
+    const center = (element: Element) => {
+      const bounds = element.getBoundingClientRect();
+      return bounds.top + bounds.height / 2;
+    };
+    return {
+      active: center(titlebar.querySelector(".active-tab")!),
+      controls: Array.from(
+        titlebar.querySelectorAll(
+          ".project-switcher, .active-tab .tab-close, .tab-strip > .icon-button, .tab-navigation .icon-button",
+        ),
+        center,
+      ),
+    };
+  });
+  for (const center of centers.controls)
+    expect(Math.abs(center - centers.active)).toBeLessThan(1);
+  await expect(page.getByRole("button", { name: /^New tab/ })).toBeInViewport({
+    ratio: 1,
+  });
   await page.screenshot({ path: "test-results/tabs-long-name.png" });
   await page
     .getByRole("button", { name: `Close ${title}`, exact: true })

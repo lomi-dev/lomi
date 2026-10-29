@@ -9,33 +9,39 @@ test.beforeEach(async ({ page }) => {
   ).toBeVisible();
 });
 
-test("page search preserves the active page and its unsaved draft", async ({
+test("moving navigation focus preserves the active page and its unsaved draft", async ({
   page,
 }) => {
-  const search = page.getByRole("textbox", { name: "Find a settings page" });
   const fontSize = page.getByRole("spinbutton", {
     name: "Font size",
     exact: true,
   });
   await expect(fontSize).toBeEnabled();
-  // Keep the browser validation popup from refocusing the invalid draft.
+  // Keep browser validation from refocusing the invalid draft on blur.
   await fontSize.evaluate((input: HTMLInputElement) => {
     input.reportValidity = () => false;
   });
   await fontSize.fill("0");
-  await search.fill("appearance");
   const navigation = page.getByRole("navigation", { name: "Settings pages" });
-  await expect(navigation.locator(".settings-nav-item")).toHaveText(["Themes"]);
-  await expect(search).toBeFocused();
-  await expect(fontSize).toHaveValue("0");
-  await search.fill("no page has these words");
-  await expect(navigation.getByRole("status")).toHaveText("No matching pages.");
-  await expect(fontSize).toHaveValue("0");
-  await navigation
-    .getByRole("button", { name: "Clear search", exact: true })
-    .click();
-  await expect(search).toHaveValue("");
-  await expect(search).toBeFocused();
+  const terminal = navigation.getByRole("button", {
+    name: "Terminal",
+    exact: true,
+  });
+  await terminal.focus();
+  await terminal.press("Home");
+  const themes = navigation.getByRole("button", {
+    name: "Themes",
+    exact: true,
+  });
+  await expect(themes).toBeFocused();
+  await themes.press("ArrowDown");
+  await expect(
+    navigation.getByRole("button", { name: "Keybinds", exact: true }),
+  ).toBeFocused();
+  await expect(terminal).toHaveAttribute("aria-current", "page");
+  await expect(
+    page.getByRole("heading", { name: "Terminal", exact: true }),
+  ).toBeVisible();
   await expect(fontSize).toHaveValue("0");
   expect(
     await page.evaluate(() =>
@@ -44,42 +50,6 @@ test("page search preserves the active page and its unsaved draft", async ({
       ),
     ),
   ).toHaveLength(0);
-});
-
-test("search keyboard actions navigate matches and Escape keeps search focused", async ({
-  page,
-}) => {
-  const navigation = page.getByRole("navigation", { name: "Settings pages" });
-  const search = navigation.getByRole("textbox", {
-    name: "Find a settings page",
-  });
-  const themes = navigation.getByRole("button", {
-    name: "Themes",
-    exact: true,
-  });
-  await search.fill("dark");
-  await search.press("Escape");
-  await expect(search).toHaveValue("");
-  await expect(search).toBeFocused();
-  await search.fill("terminal");
-  await search.press("Enter");
-  await expect(search).toHaveValue("");
-  await expect(
-    navigation.getByRole("button", { name: "Terminal", exact: true }),
-  ).toBeFocused();
-  await search.fill("dark");
-  await search.press("ArrowDown");
-  await expect(themes).toBeFocused();
-  await expect(
-    page.getByRole("heading", { name: "Terminal", exact: true }),
-  ).toBeVisible();
-  await search.focus();
-  await search.press("Enter");
-  await expect(
-    page.getByRole("heading", { name: "Themes", exact: true }),
-  ).toBeVisible();
-  await expect(themes).toBeFocused();
-  await expect(search).toHaveValue("");
 });
 
 test("navigation keys move focus without changing pages and skip unavailable Remote", async ({
@@ -124,24 +94,22 @@ test("navigation keys move focus without changing pages and skip unavailable Rem
   ).toBeVisible();
 });
 
-test("filtered Remote remains disabled and native requests clear a hiding search", async ({
+test("disabled Remote ignores activation and native requests focus the requested page", async ({
   page,
 }) => {
   const navigation = page.getByRole("navigation", { name: "Settings pages" });
-  const search = navigation.getByRole("textbox", {
-    name: "Find a settings page",
+  const remote = navigation.getByRole("button", {
+    name: "Remote",
+    exact: true,
   });
-  await search.fill("remote");
-  await expect(navigation.locator(".settings-nav-item")).toHaveText(["Remote"]);
-  await expect(
-    navigation.getByRole("button", { name: "Remote", exact: true }),
-  ).toBeDisabled();
-  await search.press("ArrowDown");
-  await expect(search).toBeFocused();
-  await search.press("Enter");
+  await expect(remote).toBeDisabled();
+  await remote.evaluate((button: HTMLButtonElement) => button.click());
   await expect(
     page.getByRole("heading", { name: "Terminal", exact: true }),
   ).toBeVisible();
+  await expect(
+    navigation.getByRole("button", { name: "Terminal", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
   await page.evaluate(() =>
     (window as any).__TAURI_INTERNALS__.invoke("open_settings", {
       page: "keybinds",
@@ -150,7 +118,6 @@ test("filtered Remote remains disabled and native requests clear a hiding search
   await expect(
     page.getByRole("heading", { name: "Keybinds", exact: true }),
   ).toBeVisible();
-  await expect(search).toHaveValue("");
   await expect(
     navigation.getByRole("button", { name: "Keybinds", exact: true }),
   ).toBeFocused();
@@ -199,6 +166,14 @@ test("shortcut search filters actions and clears without changing bindings", asy
   });
   await expect(recorder).toBeEnabled();
   const binding = await recorder.textContent();
+  const editorShortcut = page.getByRole("button", {
+    name: "Shortcut for Save file",
+    exact: true,
+  });
+  await expect(editorShortcut).toBeHidden();
+  await search.fill("Save file");
+  await expect(editorShortcut).toBeVisible();
+  await expect(page.locator(".shortcut-recorder")).toHaveCount(1);
   await search.fill("New terminal side");
   await expect(page.locator(".shortcut-recorder")).toHaveCount(1);
   await expect(recorder).toHaveText(binding!);

@@ -8,6 +8,63 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
+for (const mode of ["dark", "light"] as const) {
+  test(`text fields and selects keep visible boundaries in ${mode} appearance`, async ({
+    page,
+  }) => {
+    await mockDesktop(page, false, null);
+    await page.emulateMedia({ colorScheme: mode });
+    await page.goto("/?window=settings&page=terminal");
+    const font = page.getByRole("combobox", { name: "Font", exact: true });
+    const size = page.getByRole("spinbutton", {
+      name: "Font size",
+      exact: true,
+    });
+    await expect(font).toHaveText("Theme default");
+    for (const control of [font, size]) {
+      const contrast = await control.evaluate((element) => {
+        const style = getComputedStyle(element);
+        const group = getComputedStyle(element.closest(".settings-group")!);
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = 1;
+        const context = canvas.getContext("2d")!;
+        const luminance = (color: string) => {
+          context.clearRect(0, 0, 1, 1);
+          context.fillStyle = color;
+          context.fillRect(0, 0, 1, 1);
+          const values = Array.from(context.getImageData(0, 0, 1, 1).data)
+            .slice(0, 3)
+            .map((value) => {
+              const channel = value / 255;
+              return channel <= 0.04045
+                ? channel / 12.92
+                : ((channel + 0.055) / 1.055) ** 2.4;
+            });
+          return values[0] * 0.2126 + values[1] * 0.7152 + values[2] * 0.0722;
+        };
+        const ratio = (a: string, b: string) => {
+          const values = [luminance(a), luminance(b)].sort((a, b) => a - b);
+          return (values[1] + 0.05) / (values[0] + 0.05);
+        };
+        return {
+          fill: ratio(style.borderTopColor, style.backgroundColor),
+          group: ratio(style.borderTopColor, group.backgroundColor),
+          text: ratio(style.color, style.backgroundColor),
+        };
+      });
+      expect(contrast.fill).toBeGreaterThanOrEqual(3);
+      expect(contrast.group).toBeGreaterThanOrEqual(3);
+      expect(contrast.text).toBeGreaterThanOrEqual(4.5);
+    }
+    await font.focus();
+    await font.press("ArrowDown");
+    await expect(page.getByRole("listbox")).toBeVisible();
+    await font.press("Escape");
+    await expect(font).toBeFocused();
+    await expect(font).toHaveText("Theme default");
+  });
+}
+
 test("selects support keyboard navigation, cancellation, typeahead and small windows", async ({
   page,
 }, testInfo) => {

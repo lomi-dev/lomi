@@ -8,6 +8,7 @@ import {
   SettingsPage,
   SettingsSection,
 } from "./settings-ui";
+import { DisclosureSummary } from "./ui";
 import { license, version } from "../package.json";
 
 interface AboutInfo {
@@ -106,12 +107,6 @@ export default function AboutSettingsPage({
     >
       {error && <SettingsNotice tone="error">{error}</SettingsNotice>}
       <SettingsSection title="Application">
-        <SettingRow label="Build">
-          <span className="setting-value">{build}</span>
-        </SettingRow>
-        <SettingRow label="Bundle ID">
-          <span className="setting-value">{bundleId}</span>
-        </SettingRow>
         <SettingRow label="License">
           <span className="setting-value">
             {license === "Apache-2.0" ? "Apache 2.0" : license}
@@ -153,6 +148,17 @@ export default function AboutSettingsPage({
           </button>
         </SettingRow>
       </SettingsSection>
+      <details className="settings-disclosure">
+        <DisclosureSummary>Build details</DisclosureSummary>
+        <div className="settings-disclosure-body">
+          <SettingRow label="Build">
+            <span className="setting-value">{build}</span>
+          </SettingRow>
+          <SettingRow label="Bundle ID">
+            <span className="setting-value">{bundleId}</span>
+          </SettingRow>
+        </div>
+      </details>
     </SettingsPage>
   );
 }

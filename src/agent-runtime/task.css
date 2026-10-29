@@ -5,7 +5,7 @@
   height: 100%;
   min-width: 0;
   min-height: 0;
-  background: var(--color-background);
+  background: var(--color-surface);
   color: var(--color-surface-text);
   font-size: var(--font-size-13);
   line-height: 1.6;
@@ -16,7 +16,7 @@
   justify-content: space-between;
   flex-shrink: 0;
   gap: var(--space-12);
-  min-height: 46px;
+  min-height: 40px;
   padding: var(--space-8) var(--space-16);
   border-bottom: 1px solid
     color-mix(in srgb, var(--color-outline) 55%, transparent);
@@ -31,7 +31,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 650;
+  font-weight: 600;
 }
 .agent-task-header > .button {
   flex-shrink: 0;
@@ -44,7 +44,7 @@
   flex-direction: column;
   min-height: 0;
   gap: var(--space-16);
-  padding: var(--space-24) max(20px, calc((100% - 780px) / 2));
+  padding: var(--space-20) max(20px, calc((100% - 780px) / 2));
   overflow: auto;
   overscroll-behavior: contain;
   overflow-wrap: anywhere;
@@ -68,13 +68,13 @@
   width: 100%;
   min-width: 0;
   padding: var(--space-10) var(--space-12);
-  border: 1px solid var(--color-outline);
-  border-radius: var(--radius-control);
-  background: var(--color-surface);
   color: var(--color-surface-text);
   font: inherit;
   font-weight: 400;
   line-height: 1.6;
+}
+.agent-task-content select:not([multiple]) {
+  padding-right: var(--space-32);
 }
 .agent-task-content .dialog-actions {
   justify-content: flex-start;
@@ -90,9 +90,10 @@
 .agent-task-status {
   align-self: flex-start;
   padding: var(--space-4) var(--space-10);
-  border: 1px solid color-mix(in srgb, var(--color-outline) 60%, transparent);
-  border-radius: var(--radius-control);
+  border: var(--border-width) solid var(--color-outline);
+  border-radius: var(--radius-sm);
   background: var(--color-surface-container);
+  color: var(--color-surface-text);
   font-size: var(--font-size-11);
   font-weight: 550;
 }
@@ -102,9 +103,9 @@
   gap: var(--space-16) var(--space-24);
   margin: 0;
   padding: var(--space-16);
-  border: 1px solid color-mix(in srgb, var(--color-outline) 55%, transparent);
-  border-radius: calc(var(--radius-control) + var(--space-4));
-  background: color-mix(in srgb, var(--color-surface) 65%, transparent);
+  border: var(--border-width) solid var(--color-outline);
+  border-radius: var(--radius-menu);
+  background: var(--color-surface-container);
 }
 .agent-task-meta > div {
   min-width: 0;
@@ -121,15 +122,17 @@
   display: none;
 }
 .agent-task-history article {
-  padding-block: var(--space-20);
-  border-top: 1px solid
-    color-mix(in srgb, var(--color-outline) 65%, transparent);
+  margin-bottom: var(--space-12);
+  padding: var(--space-16);
+  border: var(--border-width) solid var(--color-outline);
+  border-radius: var(--radius-menu);
+  background: var(--color-surface-container);
 }
 .agent-task-history h3,
 .agent-saved-tasks h3 {
   margin: 0 0 var(--space-6);
   font-size: var(--font-size-13);
-  font-weight: 650;
+  font-weight: 600;
   text-wrap: balance;
 }
 .agent-task-history .settings-help {
@@ -171,12 +174,9 @@
 }
 .agent-qualification-note {
   padding: var(--space-12) var(--space-16);
-  border-inline-start: 2px solid var(--color-outline);
-  background: color-mix(
-    in srgb,
-    var(--color-surface-container) 45%,
-    transparent
-  );
+  border: var(--border-width) solid var(--color-outline);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-container);
   color: var(--color-surface-variant-text);
   font-size: var(--font-size-11);
   line-height: 1.65;
@@ -196,6 +196,7 @@
 }
 .agent-task-dialog {
   display: grid;
+  align-content: start;
   gap: var(--space-16);
   min-width: 0;
 }
@@ -210,10 +211,6 @@
 }
 .agent-task-dialog > p {
   margin: 0;
-}
-.agent-task-dialog > .dialog-actions {
-  margin-top: 0;
-  flex-wrap: wrap;
 }
 .agent-task-dialog > p:first-child {
   margin-top: 0;
@@ -232,6 +229,20 @@
   justify-content: flex-start;
   text-align: start;
   white-space: normal;
+  overflow-wrap: anywhere;
+}
+.agent-permission-choices {
+  display: grid;
+  gap: var(--space-8);
+  min-width: 0;
+}
+.agent-permission-choices > .button {
+  justify-content: flex-start;
+  min-width: 0;
+  max-width: 100%;
+  height: auto;
+  white-space: normal;
+  text-align: start;
   overflow-wrap: anywhere;
 }
 @container agent-task (max-width: 420px) {
@@ -253,4 +264,10 @@
   .agent-task-header {
     flex-wrap: wrap;
   }
+}
+
+.agent-task-content :is(textarea, select):focus-visible {
+  border-color: var(--lomi-focus, var(--color-accent-text));
+  outline: var(--focus-width) solid var(--lomi-focus, var(--color-accent-text));
+  outline-offset: 2px;
 }

@@ -20,7 +20,14 @@ import {
   X,
 } from "./icons";
 import type { Pane, ShellProfile } from "./model";
-import { terminalFor } from "./terminal-runtime";
+import type { SharedHostTerminalBinding } from "./shared-host";
+import {
+  getTerminalAgents,
+  subscribeTerminalAgents,
+  terminalFor,
+} from "./terminal-runtime";
+import { cliTerminalDisplayTitle } from "./cli-terminal-title";
+import { terminalProgramStatusActivity } from "./cli-activity";
 import { IconButton } from "./ui";
 import { actionForEvent, formatShortcut } from "./keybindings";
 import { useKeybindings } from "./KeybindingsProvider";
@@ -38,6 +45,7 @@ interface Props {
   onToggleMaximize: () => void;
   onFocus: () => void;
   onRestart: (useProjectDirectory?: boolean) => void;
+  sharedHost?: SharedHostTerminalBinding;
 }
 
 export default function TerminalPane(props: Props) {
@@ -69,9 +77,18 @@ function LiveTerminal({
   onToggleMaximize,
   onFocus,
   onRestart,
+  sharedHost,
 }: Props & { profile: ShellProfile }) {
-  const [runtime] = useState(() => terminalFor(pane, profile));
+  const [runtime] = useState(() =>
+    terminalFor(pane, profile, undefined, undefined, sharedHost),
+  );
+  runtime.configureSharedHostBinding(sharedHost);
+  useEffect(() => runtime.setSharedHostFocused(active), [active, runtime]);
   const snapshot = useSyncExternalStore(runtime.subscribe, runtime.getSnapshot);
+  const terminalAgents = useSyncExternalStore(
+    subscribeTerminalAgents,
+    getTerminalAgents,
+  );
   const { value: preferences } = useTerminalPreferences();
   const { bindings } = useKeybindings();
   const container = useRef<HTMLDivElement>(null);
@@ -127,13 +144,26 @@ function LiveTerminal({
   };
   const title =
     snapshot.status === "running"
-      ? [snapshot.title || snapshot.foregroundProgram, snapshot.accountLabel]
+      ? [
+          cliTerminalDisplayTitle(
+            snapshot.title,
+            snapshot.foregroundProgram,
+            terminalAgents[pane.id],
+          ),
+          snapshot.accountLabel,
+        ]
           .filter(Boolean)
           .join(" · ")
       : "";
+  const programStatus =
+    terminalAgents[pane.id] === "codex" ? snapshot.programStatus : null;
   const activity =
     snapshot.status === "running"
-      ? snapshot.agentSignal || (snapshot.titleBusy ? "working" : null)
+      ? programStatus
+        ? programStatus.state === "done"
+          ? "finished"
+          : terminalProgramStatusActivity(programStatus)
+        : snapshot.agentSignal || (snapshot.titleBusy ? "working" : null)
       : null;
   const activityLabel =
     activity === "working"
@@ -142,7 +172,9 @@ function LiveTerminal({
         ? "Needs input"
         : activity === "finished"
           ? "Done"
-          : "";
+          : activity === "error"
+            ? "Error"
+            : "";
   const fallbackTitle = pane.cwd || profile.name;
   const displayTitle = title || (canMove || revealTitle ? fallbackTitle : "");
   const headingVisible =

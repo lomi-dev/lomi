@@ -8,8 +8,11 @@ publish = false
 [dependencies]
 ring = "0.17.14"
 lomi-control-protocol = { path = "../lomi-control-protocol" }
+lomi-native-project-files = { path = "../../../../lomi-remote/crates/lomi-native-project-files" }
+lomi-native-git = { path = "../../../../lomi-remote/crates/lomi-native-git" }
+lomi-remote-protocol = { path = "../../../../lomi-remote/crates/lomi-remote-protocol" }
 rcgen = { version = "=0.14.10", default-features = false, features = ["ring"] }
-rustls = { version = "=0.23.45", default-features = false, features = ["ring", "std"] }
+rustls = { version = "=0.23.46", default-features = false, features = ["ring", "std"] }
 tokio-rustls = { version = "=0.26.5", default-features = false, features = ["ring"] }
 tokio = { version = "1", features = ["io-util", "net", "sync", "time", "rt", "macros"] }
 serde = { version = "1", features = ["derive"] }

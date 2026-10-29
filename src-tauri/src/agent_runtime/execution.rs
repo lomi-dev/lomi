@@ -12,14 +12,17 @@ use serde_json::{json, Value};
 
 use std::{
     path::Path,
-    sync::atomic::Ordering,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
     thread,
     time::{Duration, Instant},
 };
 
 #[cfg(target_os = "macos")]
 use super::owned_operation::OwnedOperation;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 pub(crate) fn model_parts(cli: TitleCli, model: &str) -> Result<(Option<&str>, &str), String> {
     if matches!(cli, TitleCli::Pi | TitleCli::Kilo | TitleCli::Opencode) {
@@ -41,6 +44,8 @@ struct Binding<'a> {
     attempt: Attempt,
     active: Active,
     identity: (u64, u64),
+    #[cfg(target_os = "macos")]
+    native_intent: crate::project_write_guard::NativeIntentHandle,
 }
 
 impl Binding<'_> {
@@ -52,6 +57,9 @@ impl Binding<'_> {
         if workspace(Path::new(&self.task.cwd))?.1 != self.identity {
             return Err("The task project directory was replaced.".into());
         }
+
+        #[cfg(target_os = "macos")]
+        self.native_intent.check_for_execution()?;
 
         self.state.with(self.app, |i| {
             let s = i.store.as_ref().unwrap();
@@ -514,6 +522,9 @@ pub(crate) fn execute(state: AgentRuntime, app: AppHandle, shells: Shells, id: S
         state.closing.store(true, Ordering::SeqCst);
     }
 
+    #[cfg(target_os = "macos")]
+    state.finish_settled_native_intent(&app, &id, &active.attempt);
+
     state.changed(&app, Some(&id));
 }
 
@@ -553,30 +564,16 @@ fn run(
         .cli
         .ok_or("The archived native CLI family is unknown; execution is unavailable.")?;
 
-    let b = Binding {
-        state,
-        app,
-        task: task.clone(),
-        attempt: attempt.clone(),
-        active: active.clone(),
-        identity,
-    };
-
-    b.fence()?;
-
-    let lease = crate::project_write_guard::activate(
+    let storage_root = app
+        .path()
+        .app_data_dir()
+        .map_err(|_| "Runtime storage is unavailable.")?
+        .join("agent-runtime");
+    let mut lease = crate::project_write_guard::activate_attempt(
         Path::new(&task.cwd),
         &task.task_id,
         attempt.generation,
     )?;
-
-    let mut project = RetainedProject {
-        state,
-        task: id.into(),
-        attempt: attempt.attempt_id.clone(),
-        lease: Some(lease),
-        settled: false,
-    };
 
     let admitted_intent = state.with(app, |i| {
         if state.closing.load(Ordering::SeqCst)
@@ -611,6 +608,31 @@ fn run(
     let ownership_marker = admitted_intent;
     #[cfg(target_os = "macos")]
     let mut operation_guard = OwnedOperation::new(state, app, context.clone());
+    #[cfg(target_os = "macos")]
+    let native_intent = lease.register_native_intent(&attempt.operation_id, &storage_root)?;
+    #[cfg(target_os = "macos")]
+    state.track_native_recovery_intent(id, &attempt.operation_id, native_intent.clone())?;
+
+    let b = Binding {
+        state,
+        app,
+        task: task.clone(),
+        attempt: attempt.clone(),
+        active: active.clone(),
+        identity,
+        #[cfg(target_os = "macos")]
+        native_intent,
+    };
+
+    let mut project = RetainedProject {
+        state,
+        task: id.into(),
+        attempt: attempt.attempt_id.clone(),
+        lease: Some(lease),
+        settled: false,
+    };
+    b.fence()?;
+
     let prepared = Prepared::prepare(
         app,
         shells,
@@ -807,6 +829,15 @@ fn run(
             if let Some((req, receipt)) = &transfer_receipt {
                 super::native_transfer::fence(&root, req, receipt)?;
             }
+
+            #[cfg(target_os = "macos")]
+            state.with(app, |i| {
+                i.store
+                    .as_mut()
+                    .unwrap()
+                    .mark_native_writer_bind_attempted(&attempt.operation_id)
+            })?;
+            b.native_intent.mark_bind_attempted()?;
 
             Ok(())
         },
@@ -1184,7 +1215,12 @@ task_id:id.into(),attempt_id:attempt.attempt_id.clone(),account_id:attempt.accou
 s.update_task(&t,Some(&c),Some((&attempt.operation_id,"settled")))}
 )?;
 
-    project.settled = true;
+    #[cfg(target_os = "macos")]
+    project.retain_for_native_verification();
+    #[cfg(not(target_os = "macos"))]
+    {
+        project.settled = true;
+    }
 
     drop(project);
 
@@ -1222,6 +1258,30 @@ struct RetainedProject<'a> {
     settled: bool,
 }
 
+#[cfg(target_os = "macos")]
+impl RetainedProject<'_> {
+    fn retain_for_native_verification(&mut self) {
+        let Some(lease) = self.lease.take() else {
+            self.settled = true;
+            return;
+        };
+        match self.state.inner.lock() {
+            Ok(mut inner) => match inner.recovery_projects.entry(self.task.clone()) {
+                std::collections::hash_map::Entry::Vacant(entry) => {
+                    entry.insert(lease);
+                }
+                std::collections::hash_map::Entry::Occupied(_) => {
+                    // A second owner for this project is an invariant failure;
+                    // keep its registry token fenced rather than dropping it.
+                    std::mem::forget(lease);
+                }
+            },
+            Err(_) => std::mem::forget(lease),
+        }
+        self.settled = true;
+    }
+}
+
 impl Drop for RetainedProject<'_> {
     fn drop(&mut self) {
         if self.settled {
@@ -1232,6 +1292,8 @@ impl Drop for RetainedProject<'_> {
             return;
         };
 
+        lease.close_unbound_native_intent();
+
         match self.state.inner.lock() {
             Ok(mut i) => {
                 let helper_unknown = i
@@ -1240,6 +1302,7 @@ impl Drop for RetainedProject<'_> {
                     .and_then(|s| s.helpers_settled(Some(&self.task)).ok())
                     .is_none_or(|settled| !settled);
                 let retain = helper_unknown
+                    || lease.requires_recovery()
                     || i.store
                         .as_ref()
                         .and_then(|s| s.task(&self.task).ok())
@@ -1360,6 +1423,52 @@ pub(super) fn retry_finishes(inner: &mut super::service::Inner) -> Result<(), St
     }
     Ok(())
 }
+
+pub(super) fn finalize_recovered_terminal_attempts(
+    inner: &mut super::service::Inner,
+) -> Result<(), String> {
+    let store = inner.store.as_ref().ok_or("Runtime storage is unavailable.")?;
+    let mut candidates = Vec::new();
+    for task in store.tasks()? {
+        let Some(attempt_id) = task.active_attempt_id.as_deref() else {
+            continue;
+        };
+        if !matches!(task.state, TaskState::Completed | TaskState::Stopped)
+            || !store.processes_settled(&task.task_id)?
+            || !store.helpers_settled(Some(&task.task_id))?
+        {
+            continue;
+        }
+        let Some(attempt) = task.attempts.iter().find(|a| a.attempt_id == attempt_id) else {
+            continue;
+        };
+        if task.generation != attempt.generation
+            || task.active_account_id.as_deref() != Some(attempt.account_id.as_str())
+            || !matches!(attempt.state.as_str(), "completed" | "stopped")
+            || attempt.effects_state != "settled"
+        {
+            continue;
+        }
+        candidates.push((
+            task.task_id.clone(),
+            Active {
+                attempt: attempt.attempt_id.clone(),
+                generation: attempt.generation,
+                account: attempt.account_id.clone(),
+                stop: Arc::new(AtomicBool::new(false)),
+                abort: Arc::new(AtomicBool::new(false)),
+                done: Arc::new(AtomicBool::new(false)),
+                control: Arc::new(Mutex::new(())),
+                worker_finished: Arc::new(AtomicBool::new(false)),
+            },
+        ));
+    }
+    for (task_id, active) in candidates {
+        finish_record(inner, &task_id, &active, &Ok(()))?;
+    }
+    Ok(())
+}
+
 fn finish_record(
     i: &mut super::service::Inner,
     id: &str,
@@ -1381,7 +1490,16 @@ fn finish_record(
                 .iter()
                 .find(|a| a.attempt_id == active.attempt)
                 .is_some_and(|a| {
-                    matches!(a.state.as_str(), "spawn_intent" | "running" | "dispatched")
+                    matches!(
+                        a.state.as_str(),
+                        "spawn_intent"
+                            | "running"
+                            | "dispatched"
+                            | "stopping"
+                            | "completed"
+                            | "stopped"
+                            | "recovery_required"
+                    )
                 });
 
             t.state = if dispatched {

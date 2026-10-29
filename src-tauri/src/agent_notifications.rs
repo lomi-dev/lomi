@@ -223,6 +223,7 @@ pub fn notify_agent(
     source: Option<NotificationSource>,
     session_id: Option<String>,
     notification_id: Option<String>,
+    pane_id: Option<String>,
 ) -> Result<bool, String> {
     main_window(&window)?;
     if matches!(kind, NotificationKind::Info) {
@@ -231,6 +232,12 @@ pub fn notify_agent(
     let terminals = app.state::<crate::terminal::Terminals>();
     if context.chars().count() > 300 || context.chars().any(char::is_control) {
         return Err("Invalid notification context.".into());
+    }
+    if pane_id
+        .as_deref()
+        .is_some_and(|pane_id| !crate::notifications::valid_id(pane_id))
+    {
+        return Err("Invalid notification pane ID.".into());
     }
     let source = source.unwrap_or_default();
     // OSC9/777 signals are attention events, not proof of task completion.
@@ -257,8 +264,15 @@ pub fn notify_agent(
         (_, NotificationKind::Info) => unreachable!("Info was rejected before delivery"),
     };
     let agent = source.agent(&terminals, session_id.as_deref());
-    let (requested, recorded) =
-        crate::push::terminal_local::deliver(&app, &window, kind, agent, title, &context)?;
+    let (requested, recorded) = crate::push::terminal_local::deliver(
+        &app,
+        &window,
+        kind,
+        agent,
+        pane_id.as_deref(),
+        title,
+        &context,
+    )?;
     #[cfg(feature = "native-smoke")]
     if std::env::var_os("LOMI_NOTIFICATION_SMOKE_DIRECTORY").is_some() {
         let _ = app.emit_to(

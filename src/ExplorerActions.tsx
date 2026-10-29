@@ -490,12 +490,13 @@ export function useExplorerActions(props: Props) {
       protectTheme
       tone="danger"
       title={title}
+      closeDisabled={busy}
       onClose={() => {
         if (!busy) setPrompt(undefined);
       }}
     >
-      <form className="dialog-form" onSubmit={submit}>
-        <div className="dialog-body">
+      <form className="dialog-form dialog-layout" onSubmit={submit}>
+        <div className="dialog-content">
           <p>
             {prompt.kind === "trash" ? "Move" : "Permanently delete"}{" "}
             <strong>{prompt.entry.name}</strong>
@@ -535,17 +536,19 @@ export function useExplorerActions(props: Props) {
       className="file-history-dialog"
       onClose={() => setHistory(undefined)}
     >
-      <GitHistory
-        key={history.path}
-        root={historyRoot}
-        path={gitFilePath(history.path)
-          .slice(gitFilePath(historyRoot).length)
-          .replace(/^\//, "")}
-        onOpenCommit={(commit) => {
-          setHistory(undefined);
-          props.onOpenCommit(commit, historyRoot);
-        }}
-      />
+      <div className="dialog-content dialog-history-content">
+        <GitHistory
+          key={history.path}
+          root={historyRoot}
+          path={gitFilePath(history.path)
+            .slice(gitFilePath(historyRoot).length)
+            .replace(/^\//, "")}
+          onOpenCommit={(commit) => {
+            setHistory(undefined);
+            props.onOpenCommit(commit, historyRoot);
+          }}
+        />
+      </div>
     </Modal>
   );
   return {

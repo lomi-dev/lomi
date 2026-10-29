@@ -1,0 +1,183 @@
+name: Set up canonical shared sources
+description: Check out immutable shared sources beside a desktop checkout
+inputs:
+  desktop-relative-path:
+    description: Desktop checkout directory relative to GITHUB_WORKSPACE
+    required: false
+    default: .
+  remote-repository:
+    description: Canonical host source repository in owner/repository form
+    required: true
+  remote-sha:
+    description: Full immutable commit SHA for the canonical host source
+    required: true
+  remote-web-sha:
+    description: Full immutable commit SHA for lomi-dev/remote-web
+    required: true
+  checkout-token:
+    description: Existing token with read access to the configured source repositories
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Validate pinned sources and prepare staging directory
+      shell: bash
+      env:
+        REMOTE_REPOSITORY: ${{ inputs.remote-repository }}
+        REMOTE_SHA: ${{ inputs.remote-sha }}
+        REMOTE_WEB_SHA: ${{ inputs.remote-web-sha }}
+        DESKTOP_RELATIVE_PATH: ${{ inputs.desktop-relative-path }}
+      run: |
+        set -euo pipefail
+        node --input-type=module <<'JS'
+        import { lstatSync, mkdirSync, realpathSync } from 'node:fs';
+        import { isAbsolute, relative, resolve, sep } from 'node:path';
+
+        const repository = process.env.REMOTE_REPOSITORY ?? '';
+        const remoteSha = process.env.REMOTE_SHA ?? '';
+        const remoteWebSha = process.env.REMOTE_WEB_SHA ?? '';
+        const desktopRelativePath = process.env.DESKTOP_RELATIVE_PATH ?? '';
+        const repositoryPattern = /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/;
+        const shaPattern = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i;
+
+        if (!repositoryPattern.test(repository)) {
+          throw new Error('Set vars.LOMI_REMOTE_CORE_REPOSITORY to owner/repository form.');
+        }
+        if (!shaPattern.test(remoteSha)) {
+          throw new Error('Set vars.LOMI_REMOTE_CORE_SHA to a full 40- or 64-hex commit SHA.');
+        }
+        if (!shaPattern.test(remoteWebSha)) {
+          throw new Error('Set vars.REMOTE_WEB_SHA to a full 40- or 64-hex commit SHA.');
+        }
+        if (
+          !desktopRelativePath ||
+          desktopRelativePath.includes('\\') ||
+          (desktopRelativePath !== '.' &&
+            desktopRelativePath.split('/').some((part) =>
+              part === '.' || part === '..' || !/^[A-Za-z0-9_.-]+$/.test(part),
+            ))
+        ) {
+          throw new Error('desktop-relative-path must be a safe path inside GITHUB_WORKSPACE.');
+        }
+
+        const pathExists = (path) => {
+          try {
+            lstatSync(path);
+            return true;
+          } catch (error) {
+            if (error.code === 'ENOENT') return false;
+            throw error;
+          }
+        };
+
+        const workspace = process.env.GITHUB_WORKSPACE;
+        if (!workspace) throw new Error('GITHUB_WORKSPACE is unavailable.');
+        const workspaceRoot = realpathSync(workspace);
+        const desktopRoot = resolve(workspaceRoot, desktopRelativePath);
+        const desktopPath = relative(workspaceRoot, desktopRoot);
+        if (
+          isAbsolute(desktopPath) ||
+          desktopPath === '..' ||
+          desktopPath.startsWith(`..${sep}`)
+        ) {
+          throw new Error('desktop-relative-path must stay inside GITHUB_WORKSPACE.');
+        }
+        if (!pathExists(desktopRoot) || !lstatSync(desktopRoot).isDirectory()) {
+          throw new Error('The configured desktop checkout directory is missing.');
+        }
+        const realDesktopRoot = realpathSync(desktopRoot);
+        const actualDesktopPath = relative(workspaceRoot, realDesktopRoot);
+        if (
+          isAbsolute(actualDesktopPath) ||
+          actualDesktopPath === '..' ||
+          actualDesktopPath.startsWith(`..${sep}`)
+        ) {
+          throw new Error('desktop-relative-path must resolve inside GITHUB_WORKSPACE.');
+        }
+        const staging = resolve(workspaceRoot, '.canonical-source-checkouts');
+        const destinations = [
+          resolve(realDesktopRoot, '..', 'lomi-remote'),
+          resolve(realDesktopRoot, '..', 'remote-web'),
+        ];
+        if (pathExists(staging)) {
+          throw new Error('Canonical source staging path already exists.');
+        }
+        for (const destination of destinations) {
+          if (pathExists(destination)) {
+            throw new Error('A canonical source destination already exists beside the desktop checkout.');
+          }
+        }
+        mkdirSync(staging);
+        JS
+
+    - name: Check out canonical host source
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # actions/checkout@v4
+      with:
+        repository: ${{ inputs.remote-repository }}
+        ref: ${{ inputs.remote-sha }}
+        path: .canonical-source-checkouts/lomi-remote
+        token: ${{ inputs.checkout-token }}
+        persist-credentials: false
+
+    - name: Check out canonical Remote UI source
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # actions/checkout@v4
+      with:
+        repository: lomi-dev/remote-web
+        ref: ${{ inputs.remote-web-sha }}
+        path: .canonical-source-checkouts/remote-web
+        token: ${{ inputs.checkout-token }}
+        persist-credentials: false
+
+    - name: Verify revisions and place canonical source siblings
+      shell: bash
+      env:
+        REMOTE_SHA: ${{ inputs.remote-sha }}
+        REMOTE_WEB_SHA: ${{ inputs.remote-web-sha }}
+        DESKTOP_RELATIVE_PATH: ${{ inputs.desktop-relative-path }}
+      run: |
+        set -euo pipefail
+        node --input-type=module <<'JS'
+        import { lstatSync, realpathSync, renameSync, rmdirSync } from 'node:fs';
+        import { execFileSync } from 'node:child_process';
+        import { resolve } from 'node:path';
+
+        const workspace = realpathSync(process.env.GITHUB_WORKSPACE);
+        const staging = resolve(workspace, '.canonical-source-checkouts');
+        const desktopRoot = resolve(workspace, process.env.DESKTOP_RELATIVE_PATH);
+        const pathExists = (path) => {
+          try {
+            lstatSync(path);
+            return true;
+          } catch (error) {
+            if (error.code === 'ENOENT') return false;
+            throw error;
+          }
+        };
+        const sources = [
+          {
+            path: resolve(staging, 'lomi-remote'),
+            destination: resolve(desktopRoot, '..', 'lomi-remote'),
+            expected: process.env.REMOTE_SHA,
+          },
+          {
+            path: resolve(staging, 'remote-web'),
+            destination: resolve(desktopRoot, '..', 'remote-web'),
+            expected: process.env.REMOTE_WEB_SHA,
+          },
+        ];
+
+        for (const source of sources) {
+          if (!pathExists(source.path) || pathExists(source.destination)) {
+            throw new Error('Canonical source checkout is missing or its sibling destination is occupied.');
+          }
+          const actual = execFileSync('git', ['-C', source.path, 'rev-parse', 'HEAD'], {
+            encoding: 'utf8',
+          }).trim();
+          if (actual.toLowerCase() !== source.expected.toLowerCase()) {
+            throw new Error('Canonical source checkout does not match its configured commit SHA.');
+          }
+        }
+
+        for (const source of sources) renameSync(source.path, source.destination);
+        rmdirSync(staging);
+        JS

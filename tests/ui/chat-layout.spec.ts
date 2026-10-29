@@ -30,7 +30,9 @@ async function emptySettings(page: Page) {
   }, defaultConfig);
   await mockChats(page);
   await page.goto("/?window=settings&page=chat-ai");
-  await page.getByRole("button", { name: "Add provider", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Connect AI service", exact: true })
+    .click();
 }
 
 for (const [provider, model, name, label = model] of [
@@ -66,7 +68,7 @@ for (const [provider, model, name, label = model] of [
     await page.getByRole("option", { name: label, exact: true }).click();
     await page
       .getByRole("dialog")
-      .getByRole("button", { name: "Add provider", exact: true })
+      .getByRole("button", { name: "Save connection", exact: true })
       .click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     const saved = await page.evaluate(() =>
@@ -116,7 +118,7 @@ test("failed key storage keeps the form and key available for explicit session-o
   });
   await page
     .getByRole("dialog")
-    .getByRole("button", { name: "Add provider", exact: true })
+    .getByRole("button", { name: "Save connection", exact: true })
     .click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("alert")).toContainText(
@@ -138,7 +140,7 @@ test("failed key storage keeps the form and key available for explicit session-o
   });
   await page
     .getByRole("dialog")
-    .getByRole("button", { name: "Add provider", exact: true })
+    .getByRole("button", { name: "Save connection", exact: true })
     .click();
   await expect(dialog).toHaveCount(0);
   expect(
@@ -283,11 +285,25 @@ test("setup and advanced conversation dialogs scroll inside a short window", asy
   await page.setViewportSize({ width: 640, height: 360 });
   const dialog = page.getByRole("dialog");
   const save = dialog.getByRole("button", {
-    name: "Add provider",
+    name: "Save connection",
     exact: true,
   });
-  await save.scrollIntoViewIfNeeded();
-  await expect(save).toBeInViewport();
+  await expect(save).toBeInViewport({ ratio: 1 });
+  const footerBounds = await save.boundingBox();
+  const body = dialog.locator(".dialog-content").first();
+  expect(
+    await body.evaluate(
+      (element) => element.scrollHeight > element.clientHeight,
+    ),
+  ).toBe(true);
+  await body.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect(save).toBeInViewport({ ratio: 1 });
+  expect((await save.boundingBox())!.y).toBeCloseTo(footerBounds!.y, 0);
+  await expect(
+    dialog.getByRole("button", { name: "Close dialog" }),
+  ).toBeInViewport({ ratio: 1 });
   expect(
     await dialog.evaluate(
       (element) => element.getBoundingClientRect().bottom <= innerHeight,
@@ -318,8 +334,7 @@ test("setup and advanced conversation dialogs scroll inside a short window", asy
   await page.getByRole("button", { name: "Choose model" }).click();
   await page.getByText("Advanced options", { exact: true }).click();
   const apply = page.getByRole("button", { name: "Apply", exact: true });
-  await apply.scrollIntoViewIfNeeded();
-  await expect(apply).toBeInViewport();
+  await expect(apply).toBeInViewport({ ratio: 1 });
   await expect(
     page.getByRole("button", { name: "Close dialog" }),
   ).toBeInViewport();

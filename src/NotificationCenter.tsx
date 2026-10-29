@@ -23,12 +23,14 @@ import { listen } from "@tauri-apps/api/event";
 import { api, errorMessage, native } from "./api";
 import {
   clearNotificationError,
-  newestNotificationSnapshot,
+  acceptNotificationSnapshot,
+  getNotificationSnapshot,
   notificationAgent,
   notificationRelativeTime,
   notificationKindLabel,
   notificationSource,
   subscribeNotificationErrors,
+  subscribeNotificationSnapshot,
   unreadNotificationCount,
 } from "./notifications";
 import type { NotificationSnapshot } from "./notifications";
@@ -53,8 +55,10 @@ export function useNotifications() {
     subscribeUnsavedApplicationNotifications,
     unsavedApplicationNotifications,
   );
-  const [snapshot, setSnapshot] = useState<NotificationSnapshot | null>(null);
-  const current = useRef<NotificationSnapshot | null>(null);
+  const snapshot = useSyncExternalStore(
+    subscribeNotificationSnapshot,
+    getNotificationSnapshot,
+  );
   const [error, setError] = useState<string | null>(null);
   const errorVersion = useRef(0);
   const [busy, setBusy] = useState(false);
@@ -62,9 +66,7 @@ export function useNotifications() {
   const mounted = useRef(false);
   const [attempt, setAttempt] = useState(0);
   const accept = useCallback((incoming: NotificationSnapshot) => {
-    const next = newestNotificationSnapshot(current.current, incoming);
-    current.current = next;
-    setSnapshot(next);
+    acceptNotificationSnapshot(incoming);
   }, []);
   useEffect(() => {
     mounted.current = true;

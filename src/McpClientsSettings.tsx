@@ -5,7 +5,7 @@ import { CliAgentIcon } from "./CliAgentIcon";
 import { ArrowLeft, Check, ChevronRight, RefreshCw, Search } from "./icons";
 import type { TitleProcess } from "./terminal-runtime";
 import { DisclosureSummary } from "./ui";
-import { SettingsNotice } from "./settings-ui";
+import { SettingRow, SettingsNotice, SettingsSection } from "./settings-ui";
 
 interface McpClient {
   cli: TitleProcess["cli"];
@@ -29,14 +29,24 @@ function rowStatus(client: McpClient) {
   if (client.configured) return "Configured";
   if (client.manualReason) return "Manual setup";
   if (client.error) return "Setup unavailable";
-  return "";
+  return "Set up";
 }
 
 export function McpClientsSettings({
   yoloMode,
+  serverEnabled,
+  serverStatus,
+  serverBusy,
+  canStartServer,
+  onStartServer,
   onInstalled,
 }: {
   yoloMode: boolean;
+  serverEnabled: boolean;
+  serverStatus: string;
+  serverBusy: boolean;
+  canStartServer: boolean;
+  onStartServer: () => Promise<void>;
   onInstalled: () => Promise<void> | void;
 }) {
   const [clients, setClients] = useState<McpClient[]>([]);
@@ -54,6 +64,12 @@ export function McpClientsSettings({
   const searchInput = useRef<HTMLInputElement>(null);
   const focusIntent = useRef<"setup" | "chooser" | null>(null);
   const returnFocusCli = useRef<string | null>(null);
+  const focusAfterServerStart = useRef(false);
+  useEffect(() => {
+    if (!focusAfterServerStart.current || serverBusy || busy || loading) return;
+    focusAfterServerStart.current = false;
+    if (serverEnabled) backButton.current?.focus();
+  }, [serverEnabled, serverBusy, busy, loading]);
   const selected = clients.find((client) => client.cli === selectedCli);
   const matchingClients = useMemo(
     () =>
@@ -187,7 +203,14 @@ export function McpClientsSettings({
       {!selected ? (
         <div className="agent-client-chooser">
           <div className="agent-control-section-heading">
-            <h2 id="mcp-clients-heading">Choose a client</h2>
+            <div>
+              <h2 id="mcp-clients-heading">Choose your agent</h2>
+              <p>
+                {yoloMode
+                  ? "Choose the coding agent you already use. Add the Lomi connection, then restart the agent. YOLO mode approves its Lomi session automatically."
+                  : "Choose the coding agent you already use. Add the Lomi connection, restart the agent, then review its request in Sessions."}
+              </p>
+            </div>
             <button
               type="button"
               className="icon-button agent-client-refresh"
@@ -301,7 +324,9 @@ export function McpClientsSettings({
                                   ? "configured"
                                   : client.manualReason
                                     ? "manual"
-                                    : "error"
+                                    : client.error
+                                      ? "error"
+                                      : "ready"
                               }
                             >
                               {client.configured && (
@@ -334,6 +359,11 @@ export function McpClientsSettings({
                   </button>
                 </div>
               )}
+
+              <p className="settings-footnote agent-client-configuration-help">
+                Configured means the connection is saved in the agent’s
+                settings. Connected agents appear in Sessions.
+              </p>
 
               <details className="settings-disclosure agent-control-details">
                 <DisclosureSummary>All client configurations</DisclosureSummary>
@@ -407,6 +437,25 @@ export function McpClientsSettings({
             />
             <div className="agent-setup-client-identity">
               <h2 id="mcp-setup-heading">{selected.name}</h2>
+            </div>
+          </header>
+
+          <SettingsSection
+            title="Lomi connection"
+            className="agent-setup-connection"
+          >
+            <SettingRow
+              label="Connection setup"
+              description={
+                selected.configured
+                  ? `The Lomi connection is saved in ${selected.name} settings. It does not grant access by itself.`
+                  : selected.manualReason
+                    ? selected.manualReason
+                    : selected.error
+                      ? "Automatic setup is unavailable until the issue below is resolved."
+                      : `Adds Lomi to ${selected.name} for all projects and starts the local server.`
+              }
+            >
               <span
                 className="agent-setup-client-status"
                 data-state={
@@ -421,57 +470,74 @@ export function McpClientsSettings({
               >
                 {selectedStatus}
               </span>
-            </div>
-          </header>
-
-          <p className="agent-setup-client-description">
-            {selected.configured
-              ? `Lomi is configured for ${selected.name}.`
-              : selected.manualReason
-                ? selected.manualReason
-                : selected.error
-                  ? "Automatic setup is unavailable until the issue below is resolved."
-                  : `Adds Lomi to ${selected.name} for all projects and starts the local server.`}
-          </p>
-          {loadError && (
-            <SettingsNotice tone="error">
-              Could not check installed clients: {loadError}
-            </SettingsNotice>
-          )}
-          {error && <SettingsNotice tone="error">{error}</SettingsNotice>}
-          {status && <SettingsNotice role="status">{status}</SettingsNotice>}
-          {selected.notice && (
-            <SettingsNotice tone="warning">{selected.notice}</SettingsNotice>
-          )}
-          {selected.error && (
-            <SettingsNotice tone="error">{selected.error}</SettingsNotice>
-          )}
-          {selected.configured ? (
-            <p className="settings-help" role="status">
-              {yoloMode
-                ? "Next: restart the client. YOLO mode approves its Lomi session automatically."
-                : "Next: restart the client, then approve its Lomi session in Sessions."}
-            </p>
-          ) : selected.manualReason ? (
-            <p className="settings-help">
-              Open Preferences → Manual configuration to connect this client.
-            </p>
-          ) : (
-            <div className="agent-setup-client-controls">
-              <button
-                type="button"
-                className="button button-primary"
-                disabled={busy || loading || Boolean(selected.error)}
-                aria-label={`Install Lomi MCP for ${selected.name}`}
-                onClick={() => void install([selected])}
+            </SettingRow>
+            {loadError && (
+              <SettingsNotice tone="error">
+                Could not check installed clients: {loadError}
+              </SettingsNotice>
+            )}
+            {error && <SettingsNotice tone="error">{error}</SettingsNotice>}
+            {status && <SettingsNotice role="status">{status}</SettingsNotice>}
+            {selected.notice && (
+              <SettingsNotice tone="warning">{selected.notice}</SettingsNotice>
+            )}
+            {selected.error && (
+              <SettingsNotice tone="error">{selected.error}</SettingsNotice>
+            )}
+            {selected.configured && (
+              <SettingRow
+                label="Connection server"
+                description={
+                  serverEnabled
+                    ? "The server can accept connection requests. Manage connected agents in Sessions."
+                    : "Start the local server before restarting your agent. Starting it does not grant access by itself."
+                }
               >
-                {busy ? "Setting up…" : `Add Lomi to ${selected.name}`}
-              </button>
-              <p className="settings-help">
-                Your existing configuration is backed up.
+                <span className="agent-setup-server-status" role="status">
+                  {serverStatus}
+                </span>
+                {!serverEnabled && (
+                  <button
+                    type="button"
+                    className="button"
+                    disabled={!canStartServer || serverBusy || busy || loading}
+                    onClick={() => {
+                      focusAfterServerStart.current = true;
+                      void onStartServer();
+                    }}
+                  >
+                    Start server
+                  </button>
+                )}
+              </SettingRow>
+            )}
+            {selected.configured ? (
+              <p className="settings-help" role="status">
+                {yoloMode
+                  ? "Next: restart the agent. YOLO mode approves its Lomi session automatically."
+                  : "Next: restart the agent, then approve its Lomi session in Sessions."}
               </p>
-            </div>
-          )}
+            ) : selected.manualReason ? (
+              <p className="settings-help">
+                Open Preferences → Manual configuration to connect this client.
+              </p>
+            ) : (
+              <div className="agent-setup-client-controls">
+                <button
+                  type="button"
+                  className="button button-primary"
+                  disabled={busy || loading || Boolean(selected.error)}
+                  aria-label={`Install Lomi MCP for ${selected.name}`}
+                  onClick={() => void install([selected])}
+                >
+                  {busy ? "Setting up…" : `Add Lomi to ${selected.name}`}
+                </button>
+                <p className="settings-help">
+                  Your existing configuration is backed up.
+                </p>
+              </div>
+            )}
+          </SettingsSection>
 
           <details className="settings-disclosure agent-control-details">
             <DisclosureSummary>Setup details</DisclosureSummary>

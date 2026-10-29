@@ -124,8 +124,9 @@ test("plugin search and filters combine without enabling code and remain usable 
   await expect(cards).toHaveCount(4);
   const first = await cards.nth(0).boundingBox();
   const second = await cards.nth(1).boundingBox();
-  expect(first!.y).toBe(second!.y);
-  expect(second!.x).toBeGreaterThan(first!.x);
+  expect(second!.x).toBe(first!.x);
+  expect(second!.width).toBe(first!.width);
+  expect(second!.y).toBeGreaterThanOrEqual(first!.y + first!.height);
   await page.screenshot({ path: test.info().outputPath("plugins-dark.png") });
   await page.emulateMedia({ colorScheme: "light" });
   await expect(page.locator("html")).toHaveAttribute(
@@ -214,7 +215,9 @@ test("plugin search and filters combine without enabling code and remain usable 
       .locator(".plugins-page")
       .evaluate((element) => element.scrollWidth <= element.clientWidth),
   ).toBe(true);
-  await page.getByRole("button", { name: "Refresh plugins" }).click();
+  await page.evaluate(() =>
+    (window as any).__nativeTest.emitEvent("plugins-changed"),
+  );
   await expect(cards).toHaveCount(1);
   await chooseOption(
     page.getByRole("combobox", { name: "Plugin status" }),
@@ -295,7 +298,7 @@ test("installed external ESM stays inert until trust, opens once, persists state
       page.evaluate(() =>
         JSON.parse(
           localStorage.getItem("test-session")!,
-        ).projects[0].workspaces[0].tabs.some(
+        ).projects[0]?.workspaces[0]?.tabs.some(
           (tab: any) => tab.type === "plugin" && tab.state.expanded,
         ),
       ),

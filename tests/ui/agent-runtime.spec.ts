@@ -18,6 +18,7 @@ async function fixture(
     accountRecovery?: "ownership_unknown" | "effects_review_required";
     failAccountRecovery?: boolean;
     unavailableNative?: boolean;
+    longAccountLabel?: string;
   } = {},
 ) {
   const project = newProject("/project", "local:bash");
@@ -60,7 +61,10 @@ async function fixture(
         accounts: ["a", "b", "c"].map((id) => ({
           accountId: id,
           cli: options.pi ? "pi" : "codex",
-          label: `Account ${id.toUpperCase()}`,
+          label:
+            id === "a" && options.longAccountLabel
+              ? options.longAccountLabel
+              : `Account ${id.toUpperCase()}`,
           enabled: true,
           revision: 1,
           authRevision: 1,
@@ -475,6 +479,36 @@ async function calls(page: Page, command: string) {
     command,
   );
 }
+test("long account labels remain usable in a compact task without sending a message", async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 800, height: 420 });
+  const label = "Production account for the design and development team";
+  const pane = await fixture(page, { longAccountLabel: label });
+  const account = pane.getByLabel("Next account");
+  const message = pane.getByLabel("Message", { exact: true });
+  await message.fill("Keep this draft while choosing an account");
+  await expect(account.locator("option:checked")).toContainText(label);
+  await account.focus();
+  await account.selectOption("c");
+  await expect(account).toHaveValue("c");
+  await account.selectOption("a");
+  await expect(account).toHaveValue("a");
+  await expect(message).toHaveValue(
+    "Keep this draft while choosing an account",
+  );
+  expect(
+    await pane.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth,
+    ),
+  ).toBe(true);
+  expect(await calls(page, "agent_task_send")).toHaveLength(0);
+  expect(await calls(page, "agent_task_continue")).toHaveLength(0);
+  await page.screenshot({
+    path: info.outputPath("task-long-account-label.png"),
+  });
+});
+
 test("Send and Continue target B, A, C in one task with unknown quota", async ({
   page,
 }) => {
@@ -834,6 +868,7 @@ test("CLI Accounts show capabilities and perform native account CRUD", async ({
     .getByRole("button", { name: "Agent control", exact: true })
     .click();
   await page.getByRole("tab", { name: "CLI Accounts" }).click();
+  await page.getByText("CLI capabilities", { exact: true }).click();
   await expect(page.getByRole("table")).toBeVisible();
   await expect(page.getByRole("table").locator("tbody tr")).toHaveCount(
     Object.keys(cliNames).length,
@@ -1270,6 +1305,146 @@ for (const family of [
       expect(request.editorFreezeToken).toBe(allow ? "retained-freeze" : null);
     }
   });
+
+test("many native Pi choices scroll while Cancel stays available in a compact window", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 800, height: 420 });
+  await fixture(page, { grant: true });
+  const choices = Array.from(
+    { length: 14 },
+    (_, index) =>
+      `Native option ${index + 1}: ${"Review the exact project operation and its requested effects. ".repeat(3)}`,
+  );
+  const lastChoice = choices.at(-1)!;
+  for (const allow of [true, false]) {
+    await page.evaluate(
+      async ({ choices, allow }) => {
+        const mock = (window as any).__nativeTest;
+        mock.permissions = [
+          {
+            taskId: "task",
+            attemptId: "attempt-a",
+            generation: 1,
+            approvalToken: `compact-pi-${allow}`,
+            projectRoot: "/project",
+            permission: {
+              requestId: "compact-native-select",
+              sessionId: "native-session",
+              turnId: "turn",
+              toolId: "tool",
+              choices,
+              raw: {
+                type: "extension_ui_request",
+                method: "select",
+                options: choices,
+                message: "Read the native request carefully.\n".repeat(100),
+                finalDetail: "End of the complete native request",
+              },
+            },
+          },
+        ];
+        await mock.resync();
+      },
+      { choices, allow },
+    );
+    const review = page.getByRole("dialog", {
+      name: "Review native CLI permission",
+    });
+    const cancel = review.getByRole("button", { name: "Cancel", exact: true });
+    await expect(cancel).toHaveCount(1);
+    await expect(cancel).toBeInViewport({ ratio: 1 });
+    const raw = review.locator("pre");
+    await expect(raw).toContainText("End of the complete native request");
+    await raw.scrollIntoViewIfNeeded();
+    expect(
+      await raw.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+        return element.scrollTop > 0;
+      }),
+    ).toBe(true);
+    const last = review.getByRole("button", { name: lastChoice, exact: true });
+    await last.scrollIntoViewIfNeeded();
+    await expect(last).toBeInViewport({ ratio: 1 });
+    await expect(cancel).toBeInViewport({ ratio: 1 });
+    if (allow)
+      await page.screenshot({
+        path: test.info().outputPath("permission-many-options.png"),
+        animations: "disabled",
+      });
+    expect(
+      await review
+        .locator(".dialog-content")
+        .evaluate((element) => element.scrollTop > 0),
+    ).toBe(true);
+    await (allow ? last : cancel).click();
+    await expect(review).toHaveCount(0);
+    const request = (await calls(page, "agent_permission_reply")).at(-1).args
+      .request;
+    expect(request.choice).toEqual(allow ? lastChoice : null);
+    expect(request.allow).toBe(allow);
+    expect(request.editorFreezeToken).toBe(allow ? "retained-freeze" : null);
+  }
+});
+
+test("a long native denial stays readable and reachable in a compact permission footer", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 800, height: 420 });
+  await fixture(page, { grant: true });
+  const label = "Deny this request and keep the project unchanged. "
+    .repeat(5)
+    .trim();
+  await page.evaluate(async (label) => {
+    const mock = (window as any).__nativeTest;
+    mock.permissions = [
+      {
+        taskId: "task",
+        attemptId: "attempt-a",
+        generation: 1,
+        approvalToken: "long-denial",
+        projectRoot: "/project",
+        permission: {
+          requestId: "native-long-denial",
+          sessionId: "native-session",
+          turnId: "turn",
+          toolId: "tool",
+          choices: [
+            { optionId: "deny-exact", kind: "deny", label },
+            { optionId: "allow-exact", kind: "allow", label: "Allow once" },
+          ],
+          raw: {
+            operation: "Review project operation",
+            message: "Read this request carefully.",
+          },
+        },
+      },
+    ];
+    await mock.resync();
+  }, label);
+  const review = page.getByRole("dialog", {
+    name: "Review native CLI permission",
+  });
+  const deny = review.getByRole("button", { name: label, exact: true });
+  await expect(deny).toBeFocused();
+  await expect(deny).toBeInViewport({ ratio: 1 });
+  expect(
+    await review.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: test.info().outputPath("permission-long-denial.png"),
+    animations: "disabled",
+  });
+  await deny.click();
+  await expect(review).toHaveCount(0);
+  const request = (await calls(page, "agent_permission_reply")).at(-1).args
+    .request;
+  expect(request.choice).toBe("deny-exact");
+  expect(request.allow).toBe(false);
+  expect(request.editorFreezeToken).toBeNull();
+});
 
 test("import after v4 restoration and v5 autosave preserves domain and gates publication", async ({
   page,

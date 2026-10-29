@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "remote-view",
+  "description": "Allow first-party remote workspace views to observe account lifecycle events.",
+  "webviews": ["remoteview*"],
+  "permissions": ["core:event:default"]
+}

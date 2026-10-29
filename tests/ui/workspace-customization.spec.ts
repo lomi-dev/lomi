@@ -1,5 +1,11 @@
 import { expect, test } from "@playwright/test";
-import { active, addWorkspace, newSession, splitPane } from "../../src/model";
+import {
+  active,
+  addWorkspace,
+  layoutPanes,
+  newSession,
+  splitPane,
+} from "../../src/model";
 import { mockDesktop } from "./desktop";
 
 test("workspace appearance presets save on an inactive workspace and survive reload, cancellation and reset", async ({
@@ -225,9 +231,9 @@ test("workspace summaries track real CLI processes in split tabs without startin
     has: page.locator(".workspace-list-item", { hasText: "Review" }),
   });
   await expect(build.locator(".workspace-metadata")).toHaveText("main");
-  await expect(review.locator(".workspace-metadata")).toHaveText("1 tab");
+  await expect(review.locator(".workspace-metadata")).toHaveCount(0);
   await expect(build.locator(".workspace-avatar")).toHaveCount(0);
-  await expect(build.locator(".workspace-folder-row > svg")).toBeVisible();
+  await expect(build.locator(".workspace-name-row > svg")).toBeVisible();
   await page.evaluate(() => {
     const native = (window as any).__nativeTest;
     const starts = native.calls.filter(
@@ -263,9 +269,33 @@ test("workspace summaries track real CLI processes in split tabs without startin
     "1",
   );
   await build
-    .getByRole("button", { name: "Expand tabs in Build", exact: true })
+    .getByRole("button", { name: "Expand items in Build", exact: true })
     .click();
-  await expect(build.locator(".workspace-tab-agents")).toHaveText("2");
+  const items = build.getByRole("list", {
+    name: "Open items in Build",
+    exact: true,
+  });
+  const panels = items.locator(".workspace-open-item");
+  const panes = layoutPanes(tab.layout);
+  await expect(panels).toHaveCount(2);
+  for (const pane of panes)
+    await expect(
+      items.locator(
+        `.workspace-open-item[data-workspace-pane-id="${pane.id}"]`,
+      ),
+    ).toHaveAttribute("data-owner-tab-id", tab.id);
+  await expect(
+    items
+      .locator('.workspace-open-item[data-workspace-pane-id="second-pane"]')
+      .locator('.workspace-cli-icon[title^="Claude Code"]'),
+  ).toBeVisible();
+  await expect(
+    items
+      .locator(
+        `.workspace-open-item[data-workspace-pane-id="${tab.activePaneId}"]`,
+      )
+      .locator('.workspace-cli-icon[title^="Codex"]'),
+  ).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath("workspace-agents-dark.png"),
   });

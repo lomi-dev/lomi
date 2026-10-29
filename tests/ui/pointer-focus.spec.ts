@@ -206,7 +206,9 @@ test("invalid pointer preferences are preserved and failed saves keep the previo
           .focusFollowsPointer,
     ),
   ).toBe("yes");
-  await page.getByRole("button", { name: "Reset all", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Reset to defaults", exact: true })
+    .click();
   await expect(toggle).toBeEnabled();
   await expect(toggle).not.toBeChecked();
   await page.evaluate(() => {

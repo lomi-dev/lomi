@@ -60,6 +60,7 @@ test("package styles cannot hide Agent control or modal ancestors, including a l
     page.evaluate(() => getComputedStyle(document.body).opacity);
   await install();
   await expect.poll(opacity).toBe("1");
+  await page.getByRole("tab", { name: "Preferences", exact: true }).click();
   await expect(
     page.getByRole("button", {
       name: "Start server",

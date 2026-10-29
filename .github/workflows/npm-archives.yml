@@ -12,6 +12,9 @@ on:
       qualify_registry:
         type: boolean
         default: false
+    secrets:
+      CANONICAL_SOURCE_TOKEN:
+        required: false
 
 permissions:
   contents: read
@@ -44,6 +47,14 @@ jobs:
           ref: ${{ github.sha }}
           path: registry-host
           persist-credentials: false
+      - name: Set up pinned canonical sources for host checkouts
+        uses: ./host/.github/actions/setup-canonical-sources
+        with:
+          desktop-relative-path: host
+          remote-repository: ${{ vars.LOMI_REMOTE_CORE_REPOSITORY }}
+          remote-sha: ${{ vars.LOMI_REMOTE_CORE_SHA }}
+          remote-web-sha: ${{ vars.REMOTE_WEB_SHA }}
+          checkout-token: ${{ secrets.CANONICAL_SOURCE_TOKEN || github.token }}
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # actions/checkout@v4
         with:
           repository: lomi-dev/plugin-sdk

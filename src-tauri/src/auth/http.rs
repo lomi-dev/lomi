@@ -10,6 +10,8 @@ pub(super) struct ApiClient {
     client: Client,
     config: AuthConfig,
     remote_origin: Option<String>,
+    host_identity_origin: Option<String>,
+    host_remote_api_origin: Option<String>,
 }
 
 pub(super) struct DesktopStart {
@@ -32,6 +34,84 @@ pub(super) enum HttpProblem {
     DesktopUpdateRequired,
     InvalidResponse,
     Rejected,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RemoteHttpError {
+    pub status: Option<u16>,
+    pub code: String,
+    #[serde(skip)]
+    problem: HttpProblem,
+}
+
+impl RemoteHttpError {
+    fn local(problem: HttpProblem, code: &str) -> Self {
+        Self {
+            status: None,
+            code: code.to_owned(),
+            problem,
+        }
+    }
+
+    pub(crate) fn local_code(code: &str) -> Self {
+        Self::local(HttpProblem::Rejected, code)
+    }
+
+    fn from_http(status: StatusCode, body: &[u8], retry_after: Option<u64>) -> Self {
+        let problem = classify_http_error(status, body, retry_after);
+        let code = response_error_code(body).unwrap_or_else(|| {
+            match status.as_u16() {
+                401 => "UNAUTHORIZED",
+                403 => "FORBIDDEN",
+                404 => "NOT_FOUND",
+                409 => "CONFLICT",
+                426 => "DESKTOP_UPDATE_REQUIRED",
+                429 => "RATE_LIMITED",
+                500..=599 => "SERVICE_UNAVAILABLE",
+                _ => "REQUEST_REJECTED",
+            }
+            .to_owned()
+        });
+        Self {
+            status: Some(status.as_u16()),
+            code,
+            problem,
+        }
+    }
+
+    pub(crate) fn message(&self) -> &'static str {
+        match self.problem {
+            HttpProblem::DesktopUpdateRequired => "Update Lomi to share workspaces remotely.",
+            HttpProblem::Transport => {
+                "Cannot connect to the Remote service. Check your connection and retry."
+            }
+            HttpProblem::Temporary => {
+                "The Remote service is temporarily unavailable. Try again shortly."
+            }
+            HttpProblem::RateLimited(_) => "Too many Remote requests. Wait a moment and retry.",
+            HttpProblem::Unauthorized => {
+                "The Remote service could not verify your account session. Check Account settings and retry."
+            }
+            HttpProblem::Forbidden => "The Remote service denied access to this account.",
+            HttpProblem::InvalidResponse => {
+                "The Remote service returned an invalid response. Try again later."
+            }
+            HttpProblem::Rejected => "The Remote service rejected the request. Try again later.",
+        }
+    }
+}
+
+impl From<String> for RemoteHttpError {
+    fn from(_: String) -> Self {
+        Self::local(HttpProblem::Rejected, "REQUEST_FAILED")
+    }
+}
+
+impl From<&'static str> for RemoteHttpError {
+    fn from(_: &'static str) -> Self {
+        Self::local(HttpProblem::Rejected, "REQUEST_FAILED")
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
@@ -140,6 +220,66 @@ fn push_http_error(status: StatusCode, body: &[u8], retry_after: Option<u64>) ->
     }
 }
 
+#[derive(Clone, Copy)]
+enum RemoteV2Destination {
+    Identity,
+    RemoteApi,
+}
+
+fn remote_v2_destination(method: &reqwest::Method, path: &str) -> Option<RemoteV2Destination> {
+    use lomi_remote_protocol::HttpSurface;
+
+    let route = remote_v2_route(method, path)?;
+    if route.route == lomi_remote_protocol::HttpRoute::ConsumerAuthorizationIssue {
+        return Some(RemoteV2Destination::Identity);
+    }
+    match route.surface {
+        HttpSurface::ConsumerIdentity | HttpSurface::ConsumerManagement => {
+            Some(RemoteV2Destination::Identity)
+        }
+        HttpSurface::ConsumerSession | HttpSurface::EitherOwnPeer => {
+            Some(RemoteV2Destination::RemoteApi)
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn remote_v2_route(
+    method: &reqwest::Method,
+    path: &str,
+) -> Option<&'static lomi_remote_protocol::HttpRouteContract> {
+    use lomi_remote_protocol::{HttpMethod, HTTP_ROUTES, REMOTE_HTTP_PREFIX};
+
+    if path.contains('?') || path.contains('#') || path.trim() != path {
+        return None;
+    }
+    let route_path = path.strip_prefix(REMOTE_HTTP_PREFIX)?;
+    let method = match method.as_str() {
+        "GET" => HttpMethod::Get,
+        "POST" => HttpMethod::Post,
+        "PUT" => HttpMethod::Put,
+        _ => return None,
+    };
+    HTTP_ROUTES.iter().find(|contract| {
+        contract.method == method && route_template_matches(contract.path, route_path)
+    })
+}
+
+fn route_template_matches(template: &str, actual: &str) -> bool {
+    let expected: Vec<_> = template.split('/').collect();
+    let actual: Vec<_> = actual.split('/').collect();
+    if expected.len() != actual.len() {
+        return false;
+    }
+    expected.iter().zip(actual).all(|(expected, actual)| {
+        if expected.starts_with('{') && expected.ends_with('}') {
+            lomi_remote_protocol::WorkspaceId::try_from(actual.to_owned()).is_ok()
+        } else {
+            *expected == actual
+        }
+    })
+}
+
 impl ApiClient {
     #[cfg(test)]
     pub(super) fn set_test_remote_origin(&mut self, origin: String) {
@@ -160,6 +300,8 @@ impl ApiClient {
             client,
             config,
             remote_origin,
+            host_identity_origin: option_env!("LOMI_HOST_IDENTITY_ORIGIN").map(str::to_owned),
+            host_remote_api_origin: option_env!("LOMI_HOST_REMOTE_API_ORIGIN").map(str::to_owned),
         })
     }
 
@@ -205,6 +347,65 @@ impl ApiClient {
             return Err(classify_status(response, &bytes, retry_after));
         }
         serde_json::from_slice(&bytes).map_err(|_| HttpProblem::InvalidResponse)
+    }
+
+    /// Native Remote v2 transport. The destination is derived from the
+    /// canonical route surface, never from a caller-supplied URL or header.
+    pub async fn remote_v2_request(
+        &self,
+        token: &str,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&Value>,
+    ) -> Result<Value, RemoteHttpError> {
+        let destination = remote_v2_destination(&method, path)
+            .ok_or_else(|| RemoteHttpError::local(HttpProblem::Rejected, "REQUEST_REJECTED"))?;
+        let origin = match destination {
+            RemoteV2Destination::Identity => self.host_identity_origin.as_deref(),
+            RemoteV2Destination::RemoteApi => self.host_remote_api_origin.as_deref(),
+        }
+        .ok_or_else(|| RemoteHttpError::local(HttpProblem::Rejected, "SERVICE_UNAVAILABLE"))?;
+        let url = reqwest::Url::parse(&format!("{origin}{path}"))
+            .map_err(|_| RemoteHttpError::local(HttpProblem::InvalidResponse, "INVALID_REQUEST"))?;
+        let request = self
+            .client
+            .request(method, url)
+            .bearer_auth(token)
+            .timeout(Duration::from_secs(12));
+        let request = if let Some(body) = body {
+            let bytes = serde_json::to_vec(body).map_err(|_| {
+                RemoteHttpError::local(HttpProblem::InvalidResponse, "INVALID_REQUEST")
+            })?;
+            if bytes.len() > lomi_remote_protocol::CONTROL_MESSAGE_BYTES as usize {
+                return Err(RemoteHttpError::local(
+                    HttpProblem::Rejected,
+                    "REQUEST_REJECTED",
+                ));
+            }
+            request
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(bytes)
+        } else {
+            request
+        };
+        let (response, bytes, retry_after) = read_response_limit(
+            request
+                .send()
+                .await
+                .map_err(|_| RemoteHttpError::local(HttpProblem::Transport, "TRANSPORT_UNKNOWN"))?,
+            lomi_remote_protocol::CONTROL_MESSAGE_BYTES as usize,
+        )
+        .await
+        .map_err(|problem| RemoteHttpError::local(problem, problem_code(problem)))?;
+        if !response.status().is_success() {
+            return Err(RemoteHttpError::from_http(
+                response.status(),
+                &bytes,
+                retry_after,
+            ));
+        }
+        serde_json::from_slice(&bytes)
+            .map_err(|_| RemoteHttpError::local(HttpProblem::InvalidResponse, "INVALID_RESPONSE"))
     }
 
     pub async fn push_request(
@@ -472,6 +673,36 @@ async fn read_response_limit(
 
 fn classify_status(response: Response, body: &[u8], retry_after: Option<u64>) -> HttpProblem {
     classify_http_error(response.status(), body, retry_after)
+}
+
+fn problem_code(problem: HttpProblem) -> &'static str {
+    match problem {
+        HttpProblem::Transport => "TRANSPORT_UNKNOWN",
+        HttpProblem::Temporary => "SERVICE_UNAVAILABLE",
+        HttpProblem::RateLimited(_) => "RATE_LIMITED",
+        HttpProblem::Unauthorized => "UNAUTHORIZED",
+        HttpProblem::Forbidden => "FORBIDDEN",
+        HttpProblem::DesktopUpdateRequired => "DESKTOP_UPDATE_REQUIRED",
+        HttpProblem::InvalidResponse => "INVALID_RESPONSE",
+        HttpProblem::Rejected => "REQUEST_REJECTED",
+    }
+}
+
+fn response_error_code(body: &[u8]) -> Option<String> {
+    let value: Value = serde_json::from_slice(body).ok()?;
+    let code = value
+        .get("code")
+        .and_then(Value::as_str)
+        .or_else(|| value.get("error").and_then(Value::as_str))?;
+    if code.is_empty()
+        || code.len() > 80
+        || !code
+            .bytes()
+            .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
+    {
+        return None;
+    }
+    Some(code.to_owned())
 }
 
 fn classify_http_error(status: StatusCode, body: &[u8], retry_after: Option<u64>) -> HttpProblem {
@@ -869,6 +1100,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "remote-probe")]
     #[tokio::test]
     async fn native_remote_state_capacity_has_a_separate_streaming_limit() {
         use lomi_remote_crypto::{Identity, PeerApproval, Permissions, Role};

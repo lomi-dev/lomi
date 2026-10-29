@@ -1461,7 +1461,28 @@ pub async fn agent_control_artifact_export(
         let app = window.app_handle().clone();
         tauri::async_runtime::spawn_blocking(move || {
             crate::files::agent::with_writer(&app, || {
-                broker.commit_artifact_export(&operation_id, &nonce)
+                let publish: lomi_control_core::broker::ArtifactExportPublisher = Arc::new({
+                    let app = app.clone();
+                    move |root,
+                          principal,
+                          operation,
+                          relative_path,
+                          expected_parent_revision,
+                          bytes,
+                          check| {
+                        crate::files::agent::publish_artifact_create(
+                            &app,
+                            root,
+                            principal,
+                            operation,
+                            relative_path,
+                            expected_parent_revision,
+                            bytes,
+                            check,
+                        )
+                    }
+                });
+                broker.commit_artifact_export_with_host(&operation_id, &nonce, &publish)
             })
         })
         .await
@@ -1489,7 +1510,15 @@ pub async fn agent_control_files_mutate(
         let app = window.app_handle().clone();
         tauri::async_runtime::spawn_blocking(move || {
             crate::files::agent::with_writer(&app, || {
-                broker.commit_files_mutate(&operation_id, &nonce)
+                let publish: lomi_control_core::broker::FilesProjectMutationPublisher = Arc::new({
+                    let app = app.clone();
+                    move |root, principal, operation, mutation, check| {
+                        crate::files::agent::publish_project_mutation(
+                            &app, root, principal, operation, mutation, check,
+                        )
+                    }
+                });
+                broker.commit_files_mutate_with_host(&operation_id, &nonce, &publish)
             })
         })
         .await
@@ -1518,11 +1547,31 @@ pub async fn agent_control_editor_save_file(
         let app = window.app_handle().clone();
         tauri::async_runtime::spawn_blocking(move || {
             crate::files::agent::with_writer(&app, || {
-                broker.commit_editor_save(
+                broker.commit_editor_save_with_host(
                     &operation_id,
                     &nonce,
                     body,
                     crate::files::agent::encode_preserving,
+                    |principal,
+                     mcp_operation,
+                     destination,
+                     project_root,
+                     relative_path,
+                     expected_disk_revision,
+                     content,
+                     check| {
+                        crate::files::agent::publish_editor_save(
+                            &app,
+                            destination,
+                            project_root,
+                            relative_path,
+                            expected_disk_revision,
+                            content,
+                            principal,
+                            mcp_operation,
+                            check,
+                        )
+                    },
                 )
             })
         })
@@ -2077,6 +2126,7 @@ pub async fn agent_control_decide_install(
 pub async fn agent_control_git_mutation_prepare(
     window: Window,
     state: State<'_, Control>,
+    host: State<'_, crate::shared_host::SharedHost>,
     operation_id: String,
     nonce: String,
 ) -> Result<lomi_control_protocol::git::GitMutationPlan, lomi_control_protocol::ErrorCode> {
@@ -2085,17 +2135,25 @@ pub async fn agent_control_git_mutation_prepare(
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     {
         let broker = state.required().map_err(|_| ErrorCode::ControlRevoked)?;
+        let shared_host = host.inner().clone();
+        let app = window.app_handle().clone();
         broker
             .native_worker(move |broker| {
-                broker.prepare_git_mutation(&operation_id, &nonce, |root| {
-                    crate::git::mutation_guard(root).map_err(|_| ErrorCode::TargetBusy)
-                })
+                let mut bridge = shared_host
+                    .native_git_bridge(&app)
+                    .map_err(|_| ErrorCode::StorageUnavailable)?;
+                broker.prepare_git_mutation(
+                    &operation_id,
+                    &nonce,
+                    |root| crate::git::mutation_guard(root).map_err(|_| ErrorCode::TargetBusy),
+                    &mut bridge,
+                )
             })
             .await?
     }
     #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
     {
-        let _ = (state, operation_id, nonce);
+        let _ = (state, host, operation_id, nonce);
         Err(ErrorCode::HostUnqualified)
     }
 }
@@ -2127,6 +2185,7 @@ pub fn agent_control_git_mutation_pending(
 pub async fn agent_control_git_mutation_decide(
     window: Window,
     state: State<'_, Control>,
+    host: State<'_, crate::shared_host::SharedHost>,
     operation_id: String,
     nonce: String,
     plan_hash: String,
@@ -2136,17 +2195,22 @@ pub async fn agent_control_git_mutation_decide(
     crate::files::main_window(&window).map_err(|_| ErrorCode::ScopeDenied)?;
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     {
+        let shared_host = host.inner().clone();
+        let app = window.app_handle().clone();
         state
             .required()
             .map_err(|_| ErrorCode::ControlRevoked)?
             .native_worker(move |broker| {
-                broker.decide_git_mutation(&operation_id, &nonce, &plan_hash, approved)
+                let mut bridge = shared_host
+                    .native_git_bridge(&app)
+                    .map_err(|_| ErrorCode::StorageUnavailable)?;
+                broker.decide_git_mutation(&operation_id, &nonce, &plan_hash, approved, &mut bridge)
             })
             .await?
     }
     #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
     {
-        let _ = (state, operation_id, nonce, plan_hash, approved);
+        let _ = (state, host, operation_id, nonce, plan_hash, approved);
         Err(ErrorCode::HostUnqualified)
     }
 }
@@ -2154,6 +2218,7 @@ pub async fn agent_control_git_mutation_decide(
 pub async fn agent_control_git_mutation_commit(
     window: Window,
     state: State<'_, Control>,
+    host: State<'_, crate::shared_host::SharedHost>,
     operation_id: String,
     nonce: String,
     plan_hash: String,
@@ -2162,19 +2227,28 @@ pub async fn agent_control_git_mutation_commit(
     crate::files::main_window(&window).map_err(|_| ErrorCode::ScopeDenied)?;
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     {
+        let shared_host = host.inner().clone();
+        let app = window.app_handle().clone();
         state
             .required()
             .map_err(|_| ErrorCode::ControlRevoked)?
             .native_worker(move |broker| {
-                broker.commit_git_mutation(&operation_id, &nonce, &plan_hash, |root| {
-                    crate::git::mutation_guard(root).map_err(|_| ErrorCode::TargetBusy)
-                })
+                let mut bridge = shared_host
+                    .native_git_bridge(&app)
+                    .map_err(|_| ErrorCode::StorageUnavailable)?;
+                broker.commit_git_mutation(
+                    &operation_id,
+                    &nonce,
+                    &plan_hash,
+                    |root| crate::git::mutation_guard(root).map_err(|_| ErrorCode::TargetBusy),
+                    &mut bridge,
+                )
             })
             .await?
     }
     #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
     {
-        let _ = (state, operation_id, nonce, plan_hash);
+        let _ = (state, host, operation_id, nonce, plan_hash);
         Err(ErrorCode::HostUnqualified)
     }
 }

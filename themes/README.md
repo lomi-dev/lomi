@@ -13,29 +13,36 @@ A local folder contains `theme.jsonc`, optional ordered CSS files and local asse
 also checks CSS values, contribution paths, duplicates and resource availability.
 Create theme writes `theme.jsonc` and its local schema. The new adaptive theme
 inherits Lomi until overrides are added; it contains no demonstration assets.
-[`lomi.json`](lomi.json) is the default built-in theme. It maps the Lomi Brandbook
-and Design System v1.0.0 to the desktop interface: Electric Lime actions, graphite
-dark surfaces, Chalk light surfaces, semantic status colors, and bundled Manrope.
-Controls use the system’s 8 px radius and keyboard focus 2 px. Desktop dialogs
-use 16 px corners, layered shadows, a dimmed backdrop, and semantic warning or
-danger actions. Terminal surfaces use graphite in dark mode and white in light
-mode, with additional inset space around the text.
-Desktop density and monospace JetBrains Mono in code/terminals are retained.
-Syntax and ANSI colors extend the semantic palette for readable code.
+[`lomi.json`](lomi.json) is the default built-in theme. Its warm light palette
+uses Chalk canvas, white content and pale neutral chrome. Dark mode uses a
+subtly cool charcoal surfaces and distinct navigation and raised surfaces.
+Electric Lime marks primary actions and keyboard focus in dark mode; cool gray
+selection fills keep navigation quiet. Semantic status and
+syntax colors remain readable in both appearances.
 
-[`deepmono.json`](deepmono.json) preserves DeepMono 1.1.0 Mono/Mono Light with
-Graphite as a second read-only built-in theme. Both themes support System, Light
-and Dark modes, duplication into editable local packages, and VS Code export.
-Lomi is represented by `active: null`; DeepMono uses `active: "@builtin-deepmono"`.
-Existing default selections adopt Lomi; explicit local and plugin selections
-remain unchanged. Built-ins are embedded in the application and need no external
-theme folder. Manrope and its OFL license ship in `public/fonts/manrope/`.
-`src/theme/baseline.css` provides the same startup baseline before JavaScript runs.
+Bundled Geist Variable provides the 13 px interface with regular, medium and
+semibold weights. JetBrains Mono remains the code and terminal face, with the
+existing monospace and symbol fallbacks. The continuous workbench keeps a 44 px
+titlebar, 32 px tabs and panel headings, 26 px statusbar, and compact tree rows.
+Controls use 6 px corners and a 2 px focus ring; tabs use 10 px corners, menus
+12 px and dialogs 16 px. Explorer, Workspaces, Source Control and terminal panes
+retain their previous section styling and geometry. The main shell stays opaque, square and flush to the viewport.
+
+Lomi is the only read-only built-in theme, represented by `active: null`. It
+supports System, Light and Dark modes, duplication into editable local packages,
+and VS Code export. Saved selections of the removed DeepMono built-in fall back
+to Lomi, preserving appearance and icon preferences. Explicit local and plugin
+selections remain unchanged. Lomi is embedded in the application and needs no
+external theme folder. Geist's Latin and Latin Extended variable subsets and OFL
+license ship in `public/fonts/geist/`; CSS Unicode ranges select the matching
+subset. `src/theme/baseline.css` registers these local fonts and provides matching
+startup tokens before JavaScript runs. The built-in theme uses no package asset
+resources or paths into the source brandbook.
 
 ```jsonc
 {
   "version": 2,
-  "name": "My graphite",
+  "name": "My theme",
   "appearance": "adaptive", // adaptive (default), light, or dark
   "common": {
     "tokens": { "--radius-control": "6px", "--terminal-padding": "12px" },

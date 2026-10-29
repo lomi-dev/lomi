@@ -635,6 +635,20 @@ fn spawn_io(
             proof.root.join("package-lock.json"),
         ]);
     }
+    if matches!(purpose, Purpose::VersionProbe | Purpose::Resolver) {
+        let project_root = context
+            .project_root
+            .canonicalize()
+            .map_err(|_| "Cannot verify the read-only native helper project root.")?;
+        if project_root != context.project_root {
+            return Err("The read-only native helper project root changed.".into());
+        }
+        // Version and resolver helpers run before the Attempt boundary is
+        // admitted. Keep them inside the existing project read/write sandbox,
+        // but deny writes to the canonical project subtree until the bound
+        // Attempt lease exists.
+        protected_reads.push(project_root);
+    }
     if matches!(purpose, Purpose::AccountTerminal) && matches!(cli, TitleCli::Claude) {
         let login_state = context.physical_account_root.join(".claude.json");
         protected_reads.retain(|path| path != &login_state);
@@ -645,6 +659,11 @@ fn spawn_io(
             command.env(name, &certificates);
         }
         protected_reads.push(certificates);
+    }
+    protected_reads.sort();
+    protected_reads.dedup();
+    if protected_reads.len() > 32 {
+        return Err("The native helper read-only policy exceeds its path limit.".into());
     }
     let mut unix_sockets = Vec::new();
     if let Some(registration) = registration {

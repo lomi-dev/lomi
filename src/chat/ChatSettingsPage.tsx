@@ -62,6 +62,8 @@ export default function ChatSettingsPage() {
   const [editingRevision, setEditingRevision] = useState(0);
   const [editing, setEditing] = useState<Connection | null>(null);
   const setupTrigger = useRef<HTMLButtonElement | null>(null);
+  const savedServiceFocus = useRef<string | null>(null);
+  const serviceButtons = useRef(new Map<string, HTMLButtonElement>());
   const setupOpen = choosingProvider || !!editing;
   const [key, setKey] = useState("");
   const [removingKey, setRemovingKey] = useState<Connection | null>(null);
@@ -75,11 +77,15 @@ export default function ChatSettingsPage() {
   const [testModel, setTestModel] = useState<Record<string, string>>({});
   useEffect(() => {
     // WebKit can lose the native return target when dialog contents change.
-    if (!setupOpen) {
-      setupTrigger.current?.focus();
+    if (!setupOpen && !busy) {
+      const target = savedServiceFocus.current
+        ? serviceButtons.current.get(savedServiceFocus.current)
+        : setupTrigger.current;
+      if (target?.isConnected) target.focus();
+      savedServiceFocus.current = null;
       setupTrigger.current = null;
     }
-  }, [setupOpen]);
+  }, [setupOpen, busy]);
   const originalConnection = data?.connections.find(
     (c) => c.id === editing?.id,
   );
@@ -239,6 +245,20 @@ export default function ChatSettingsPage() {
       className="chat-provider-detail"
       aria-label={`${preset.name} configuration`}
     >
+      <dl className="chat-provider-endpoint">
+        <div>
+          <dt>Base URL</dt>
+          <dd>{connection.baseUrl ?? preset.baseURL}</dd>
+        </div>
+        <div>
+          <dt>API format</dt>
+          <dd>
+            {connection.apiFormat
+              ? customApiFormats[connection.apiFormat]
+              : preset.format}
+          </dd>
+        </div>
+      </dl>
       <SettingRow label="Available in chat">
         <input
           type="checkbox"
@@ -436,20 +456,6 @@ export default function ChatSettingsPage() {
         <details className="settings-disclosure chat-provider-tools">
           <DisclosureSummary>Connection tools</DisclosureSummary>
           <div className="settings-disclosure-body">
-            <dl className="chat-provider-endpoint">
-              <div>
-                <dt>Base URL</dt>
-                <dd>{connection.baseUrl ?? preset.baseURL}</dd>
-              </div>
-              <div>
-                <dt>API format</dt>
-                <dd>
-                  {connection.apiFormat
-                    ? customApiFormats[connection.apiFormat]
-                    : preset.format}
-                </dd>
-              </div>
-            </dl>
             <ModelSelect
               connection={connection}
               value={
@@ -535,12 +541,12 @@ export default function ChatSettingsPage() {
   return (
     <SettingsPage
       title="Chat AI"
-      description="AI providers and defaults for new conversations."
+      description="Connect an AI service, then choose how new conversations start."
       className="chat-settings"
       busy={busy}
       status={loading ? "Loading…" : busy ? "Working…" : status}
       actions={
-        data && (
+        !!data?.connections.length && (
           <button
             className="button"
             disabled={busy}
@@ -551,7 +557,7 @@ export default function ChatSettingsPage() {
               setChoosingProvider(true);
             }}
           >
-            <Plus size={14} /> Add provider
+            <Plus size={14} /> Connect AI service
           </button>
         )
       }
@@ -598,67 +604,91 @@ export default function ChatSettingsPage() {
       ) : (
         <>
           <SettingsSection
-            title="Providers"
+            title="AI services"
             count={data.connections.length}
             className="chat-providers"
+            grouped={false}
           >
             {data.connections.length ? (
-              <ul className="chat-provider-list" aria-label="Your providers">
+              <ul className="chat-provider-list" aria-label="Your AI services">
                 {data.connections.map((item) => (
                   <li key={item.id}>
-                    <button
-                      type="button"
-                      className="chat-provider-item"
-                      aria-expanded={connection?.id === item.id}
-                      aria-controls={`provider-${item.id}`}
-                      aria-haspopup="menu"
-                      onClick={() => choose(item.id)}
-                      onContextMenu={(event) => {
-                        event.preventDefault();
-                        showProviderMenu(
-                          item.id,
-                          event.currentTarget,
-                          event.clientX,
-                          event.clientY,
-                        );
-                      }}
-                      onKeyDown={(event) => {
-                        if (
-                          event.key === "ContextMenu" ||
-                          (event.shiftKey && event.key === "F10")
-                        ) {
+                    <div className="chat-provider-row">
+                      <button
+                        ref={(button) => {
+                          if (button)
+                            serviceButtons.current.set(item.id, button);
+                          else serviceButtons.current.delete(item.id);
+                        }}
+                        type="button"
+                        className="chat-provider-item"
+                        aria-expanded={connection?.id === item.id}
+                        aria-controls={`provider-${item.id}`}
+                        aria-haspopup="menu"
+                        onClick={() => choose(item.id)}
+                        onContextMenu={(event) => {
                           event.preventDefault();
-                          showProviderMenu(item.id, event.currentTarget);
-                        }
-                      }}
-                      disabled={busy}
-                    >
-                      <ProviderIcon provider={item.provider} />
-                      <span className="chat-provider-name">
-                        <strong>{item.name}</strong>
-                        <small>
-                          {item.name !== providers[item.provider] &&
-                            `${providers[item.provider]} · `}
-                          {!item.enabled
-                            ? "Disabled"
-                            : !item.secretId
-                              ? item.provider === "custom"
-                                ? "No API key"
-                                : "Needs API key"
-                              : item.secretMode === "session"
-                                ? "Session-only key"
-                                : "Key saved"}
-                        </small>
-                      </span>
-                      {data.defaults.connectionId === item.id && (
-                        <span className="chat-provider-default">Default</span>
-                      )}
-                      <ChevronRight
-                        className="chat-provider-chevron"
-                        size={15}
-                        aria-hidden="true"
-                      />
-                    </button>
+                          showProviderMenu(
+                            item.id,
+                            event.currentTarget,
+                            event.clientX,
+                            event.clientY,
+                          );
+                        }}
+                        onKeyDown={(event) => {
+                          if (
+                            event.key === "ContextMenu" ||
+                            (event.shiftKey && event.key === "F10")
+                          ) {
+                            event.preventDefault();
+                            showProviderMenu(item.id, event.currentTarget);
+                          }
+                        }}
+                        disabled={busy}
+                      >
+                        <ProviderIcon provider={item.provider} />
+                        <span className="chat-provider-name">
+                          <strong>{item.name}</strong>
+                          <small>
+                            {item.name !== providers[item.provider] &&
+                              `${providers[item.provider]} · `}
+                            {!item.enabled
+                              ? "Disabled"
+                              : !item.secretId
+                                ? item.provider === "custom"
+                                  ? "No API key · Requests sent without authentication"
+                                  : "Needs API key"
+                                : item.secretMode === "session"
+                                  ? "Session-only key"
+                                  : "Key saved"}
+                          </small>
+                        </span>
+                        {data.defaults.connectionId === item.id && (
+                          <span className="chat-provider-default">Default</span>
+                        )}
+                        <span className="chat-provider-manage">Manage</span>
+                        <ChevronRight
+                          className="chat-provider-chevron"
+                          size={15}
+                          aria-hidden="true"
+                        />
+                      </button>
+                      {!item.secretId &&
+                        item.provider !== "custom" &&
+                        connection?.id !== item.id && (
+                          <button
+                            type="button"
+                            className="button chat-provider-add-key"
+                            aria-label={`Add API key for ${item.name}`}
+                            disabled={busy}
+                            onClick={(event) =>
+                              openEdit(item, event.currentTarget)
+                            }
+                          >
+                            Add API key
+                          </button>
+                        )}
+                    </div>
                     <div
                       id={`provider-${item.id}`}
                       hidden={connection?.id !== item.id}
@@ -671,8 +701,24 @@ export default function ChatSettingsPage() {
             ) : (
               <div className="settings-empty chat-providers-empty">
                 <MessageSquare size={24} aria-hidden="true" />
-                <h3>Connect your first provider</h3>
-                <p>Add a provider with your API key to start chatting.</p>
+                <h3>Set up your first AI service</h3>
+                <p>
+                  Choose an AI service, add its API key, then pick a model for
+                  your conversations.
+                </p>
+                <button
+                  type="button"
+                  className="button button-primary"
+                  disabled={busy}
+                  onClick={(event) => {
+                    setupTrigger.current = event.currentTarget;
+                    setError("");
+                    setStatus("");
+                    setChoosingProvider(true);
+                  }}
+                >
+                  <Plus size={14} aria-hidden="true" /> Connect AI service
+                </button>
               </div>
             )}
           </SettingsSection>
@@ -684,8 +730,9 @@ export default function ChatSettingsPage() {
             />
           )}
           <p className="settings-footnote">
-            <ShieldCheck size={15} aria-hidden="true" /> Keys stay in your
-            system credential store. Conversation history stays on this device.
+            <ShieldCheck size={15} aria-hidden="true" /> API keys use your
+            chosen storage: the system credential store or this session only.
+            Conversation history stays on this device.
           </p>
         </>
       )}
@@ -717,35 +764,44 @@ export default function ChatSettingsPage() {
               ? originalConnection
                 ? `Edit ${providers[editing.provider]}`
                 : `Connect ${providers[editing.provider]}`
-              : "Add provider"
+              : "Choose an AI service"
           }
+          closeDisabled={busy}
           onClose={closeSetup}
         >
           {choosingProvider ? (
-            <div className="dialog-form chat-provider-picker">
-              <p>Choose a provider to connect.</p>
+            <div className="dialog-content chat-provider-picker">
+              <p>Choose the service that will receive your chat requests.</p>
               <div className="chat-provider-choices">
                 {providerIds.map((id) => (
                   <button
                     key={id}
+                    aria-label={providers[id]}
                     autoFocus={id === providerIds[0]}
                     className="chat-provider-choice"
                     onClick={() => add(id)}
                   >
                     <ProviderIcon provider={id} />
-                    <span>{providers[id]}</span>
+                    <span className="chat-provider-choice-copy">
+                      <strong>{providers[id]}</strong>
+                      <small>
+                        {id === "custom"
+                          ? "Your own API server or local model service"
+                          : `For example, ${providerPresets[id].models[0]}`}
+                      </small>
+                    </span>
                     <ChevronRight size={14} aria-hidden="true" />
                   </button>
                 ))}
               </div>
               <p className="chat-field-help">
-                API usage is billed by your provider.
+                Review the service’s API usage and pricing before chatting.
               </p>
             </div>
           ) : (
             editing && (
               <form
-                className="dialog-form chat-config"
+                className="dialog-form dialog-layout"
                 onSubmit={(e) => {
                   e.preventDefault();
                   if (
@@ -819,6 +875,7 @@ export default function ChatSettingsPage() {
                       key.trim() ? editing.id : undefined,
                       key.trim(),
                     );
+                    savedServiceFocus.current = editing.id;
                     setSelected(editing.id);
                     setSearch("");
                     setEditing(null);
@@ -831,264 +888,276 @@ export default function ChatSettingsPage() {
                   });
                 }}
               >
-                <div className="chat-setup-provider">
-                  <ProviderIcon provider={editing.provider} />
-                  <span>{providers[editing.provider]}</span>
-                  {!originalConnection && (
-                    <button
-                      type="button"
-                      className="chat-text-button"
-                      disabled={busy}
-                      onClick={() => {
-                        setEditing(null);
-                        setKey("");
-                        setShowKey(false);
-                        setError("");
-                        setChoosingProvider(true);
-                      }}
-                    >
-                      <ArrowLeft size={13} /> Change provider
-                    </button>
-                  )}
-                </div>
-                {custom && (
-                  <>
-                    <label>
-                      Base URL
-                      <input
-                        autoFocus
-                        required
-                        type="url"
-                        placeholder="http://localhost:11434/v1"
-                        maxLength={2048}
-                        spellCheck={false}
-                        value={editing.baseUrl ?? ""}
-                        onChange={(e) =>
-                          setEditing({
-                            ...editing,
-                            baseUrl: e.target.value.trim(),
-                          })
-                        }
+                <div className="dialog-content chat-config">
+                  <div className="chat-setup-provider">
+                    <ProviderIcon provider={editing.provider} />
+                    <span>{providers[editing.provider]}</span>
+                    {!originalConnection && (
+                      <button
+                        type="button"
+                        className="chat-text-button"
                         disabled={busy}
-                      />
-                    </label>
-                    <p className="chat-field-help">
-                      Enter the API base URL, including any /v1 prefix. HTTPS is
-                      required except on localhost.
-                    </p>
-                    <div className="chat-select-field">
-                      <label htmlFor="chat-api-format">API format</label>
-                      <Select
-                        id="chat-api-format"
-                        value={editing.apiFormat ?? "chat-completions"}
-                        disabled={busy}
-                        onChange={(value) =>
-                          setEditing({
-                            ...editing,
-                            apiFormat: value as Connection["apiFormat"],
-                          })
-                        }
-                        options={Object.entries(customApiFormats).map(
-                          ([value, label]) => ({ value, label }),
-                        )}
-                      />
-                    </div>
-                    <label>
-                      Model ID
-                      <input
-                        required
-                        maxLength={200}
-                        spellCheck={false}
-                        placeholder="e.g. llama3.2"
-                        value={editingModel}
-                        onChange={(e) => setEditingModel(e.target.value)}
-                        disabled={busy}
-                      />
-                    </label>
-                    <p className="chat-field-help">
-                      Use the exact model ID from your server. Listing models is
-                      optional and available after saving.
-                    </p>
-                    {destinationChanged && (
-                      <p className="chat-field-help">
-                        Future messages and conversation history will go to this
-                        address. Re-enter your saved key when changing the
-                        address or format.
-                      </p>
+                        onClick={() => {
+                          setEditing(null);
+                          setKey("");
+                          setShowKey(false);
+                          setError("");
+                          setChoosingProvider(true);
+                        }}
+                      >
+                        <ArrowLeft size={13} /> Change provider
+                      </button>
                     )}
-                  </>
-                )}
-                <div className="chat-key-heading">
-                  <label htmlFor="chat-provider-key">
-                    {custom && !editing.secretId
-                      ? "API key (optional)"
-                      : needsKey
-                        ? "API key"
-                        : "Replacement API key"}
-                  </label>
-                  {!custom && (
-                    <button
-                      type="button"
-                      className="chat-text-button"
-                      onClick={() =>
-                        void openUrl(
-                          providerPresets[editing.provider].keyURL,
-                        ).catch((e) => setError(errorMessage(e)))
-                      }
-                    >
-                      Get API key <ExternalLink size={12} />
-                    </button>
+                  </div>
+                  {custom && (
+                    <>
+                      <label>
+                        Base URL
+                        <input
+                          autoFocus
+                          required
+                          type="url"
+                          placeholder="http://localhost:11434/v1"
+                          maxLength={2048}
+                          spellCheck={false}
+                          value={editing.baseUrl ?? ""}
+                          onChange={(e) =>
+                            setEditing({
+                              ...editing,
+                              baseUrl: e.target.value.trim(),
+                            })
+                          }
+                          disabled={busy}
+                        />
+                      </label>
+                      <p className="chat-field-help">
+                        Enter the API base URL, including any /v1 prefix. HTTPS
+                        is required except on localhost.
+                      </p>
+                      <div className="chat-select-field">
+                        <label htmlFor="chat-api-format">API format</label>
+                        <Select
+                          id="chat-api-format"
+                          value={editing.apiFormat ?? "chat-completions"}
+                          disabled={busy}
+                          onChange={(value) =>
+                            setEditing({
+                              ...editing,
+                              apiFormat: value as Connection["apiFormat"],
+                            })
+                          }
+                          options={Object.entries(customApiFormats).map(
+                            ([value, label]) => ({ value, label }),
+                          )}
+                        />
+                      </div>
+                      {destinationChanged && (
+                        <p className="chat-field-help">
+                          Future messages and conversation history will go to
+                          this address. Re-enter your saved key when changing
+                          the address or format.
+                        </p>
+                      )}
+                    </>
                   )}
-                </div>
-                <div className="chat-key-input">
-                  <input
-                    id="chat-provider-key"
-                    autoFocus={!custom}
-                    type={showKey ? "text" : "password"}
-                    autoComplete="off"
-                    spellCheck={false}
-                    aria-describedby="chat-provider-key-help"
-                    value={key}
-                    onChange={(e) => {
-                      setKey(e.target.value);
-                      if (needsCatalog) setEditingModel("");
-                    }}
-                    required={needsKey}
-                    disabled={busy}
-                    placeholder={
-                      custom && !editing.secretId && !needsKey
-                        ? "Leave empty if your server needs no key"
+                  <h3 className="chat-setup-section-title">API access</h3>
+                  <div className="chat-key-heading">
+                    <label htmlFor="chat-provider-key">
+                      {custom && !editing.secretId
+                        ? "API key (optional)"
                         : needsKey
-                          ? "Paste your API key"
-                          : "Leave empty to keep your current key"
-                    }
-                  />
-                  <button
-                    className="chat-key-reveal"
-                    type="button"
-                    aria-label={showKey ? "Hide key" : "Show key"}
-                    aria-pressed={showKey}
-                    onClick={() => setShowKey(!showKey)}
-                  >
-                    {showKey ? <EyeOff size={15} /> : <Eye size={15} />}
-                  </button>
-                </div>
-                <p className="chat-field-help" id="chat-provider-key-help">
-                  {custom && !editing.secretId
-                    ? "Leave empty only if your server accepts unauthenticated requests."
-                    : needsKey
-                      ? "API usage is billed separately by your provider."
-                      : "Your saved key is never displayed here."}
-                </p>
-                <label className="chat-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={makeDefault}
-                    disabled={data.defaults.connectionId === editing.id}
-                    onChange={(event) => setMakeDefault(event.target.checked)}
-                  />
-                  Use for new conversations
-                </label>
-                {makeDefault && !custom && (
-                  <ModelSelect
-                    key={editing.provider}
-                    connection={editing}
-                    value={editingModel}
-                    onChange={setEditingModel}
-                    availableModels={
-                      !originalConnection ? catalog.models : undefined
-                    }
-                    allowCustom={!!originalConnection}
-                    disabled={
-                      busy || (needsCatalog && catalog.status !== "ready")
-                    }
-                    placeholder={
-                      originalConnection || catalog.status === "ready"
-                        ? "Choose a model"
-                        : catalog.status === "idle"
-                          ? "Enter an API key first"
-                          : catalog.status === "loading"
-                            ? "Loading models…"
-                            : "Models unavailable"
-                    }
-                  />
-                )}
-                {!originalConnection && catalog.status === "loading" && (
-                  <p className="chat-field-help" role="status">
-                    Loading available models…
-                  </p>
-                )}
-                {!originalConnection && catalog.error && (
-                  <div className="chat-catalog-error">
-                    <p className="chat-field-help" role="alert">
-                      {catalog.error}
-                    </p>
+                          ? "API key"
+                          : "Replacement API key"}
+                    </label>
+                    {!custom && (
+                      <button
+                        type="button"
+                        className="chat-text-button"
+                        onClick={() =>
+                          void openUrl(
+                            providerPresets[editing.provider].keyURL,
+                          ).catch((e) => setError(errorMessage(e)))
+                        }
+                      >
+                        Get API key <ExternalLink size={12} />
+                      </button>
+                    )}
+                  </div>
+                  <div className="chat-key-input">
+                    <input
+                      id="chat-provider-key"
+                      autoFocus={!custom}
+                      type={showKey ? "text" : "password"}
+                      autoComplete="off"
+                      spellCheck={false}
+                      aria-describedby="chat-provider-key-help"
+                      value={key}
+                      onChange={(e) => {
+                        setKey(e.target.value);
+                        if (needsCatalog) setEditingModel("");
+                      }}
+                      required={needsKey}
+                      disabled={busy}
+                      placeholder={
+                        custom && !editing.secretId && !needsKey
+                          ? "Leave empty if your server needs no key"
+                          : needsKey
+                            ? "Paste your API key"
+                            : "Leave empty to keep your current key"
+                      }
+                    />
                     <button
+                      className="chat-key-reveal"
                       type="button"
-                      className="chat-text-button"
-                      onClick={catalog.retry}
+                      aria-label={showKey ? "Hide key" : "Show key"}
+                      aria-pressed={showKey}
+                      onClick={() => setShowKey(!showKey)}
                     >
-                      <RefreshCw size={13} aria-hidden="true" /> Retry
+                      {showKey ? <EyeOff size={15} /> : <Eye size={15} />}
                     </button>
                   </div>
-                )}
-                <p className="chat-storage-note">
-                  <ShieldCheck size={14} />{" "}
-                  {editing.secretMode === "system"
-                    ? "Your key will be saved in your system credential store."
-                    : "Key kept in memory until Lomi closes."}
-                </p>
-                <details className="chat-advanced">
-                  <DisclosureSummary>Advanced options</DisclosureSummary>
-                  <label>
-                    Connection name
-                    <input
-                      placeholder={providers[editing.provider]}
-                      maxLength={200}
-                      value={editing.name}
-                      onChange={(e) =>
-                        setEditing({ ...editing, name: e.target.value })
-                      }
-                    />
-                  </label>
-                  <div className="chat-select-field">
-                    <label htmlFor={keyStorageId}>Key storage</label>
-                    <Select
-                      id={keyStorageId}
-                      value={editing.secretMode}
-                      onChange={(value) =>
-                        setEditing({
-                          ...editing,
-                          secretMode: value as Connection["secretMode"],
-                        })
-                      }
-                      options={[
-                        { value: "system", label: "System credential store" },
-                        {
-                          value: "session",
-                          label: "Session only · expires when the app closes",
-                        },
-                      ]}
-                    />
-                  </div>
+                  <p className="chat-field-help" id="chat-provider-key-help">
+                    {custom && !editing.secretId
+                      ? "Leave empty only if your server accepts unauthenticated requests."
+                      : needsKey
+                        ? "An API key lets Lomi send requests to this service. Use Get API key to create one, then paste it here."
+                        : "Your saved key is never displayed here."}
+                  </p>
+                  <h3 className="chat-setup-section-title">
+                    Conversation model
+                  </h3>
+                  {custom && (
+                    <>
+                      <label>
+                        Model ID
+                        <input
+                          required
+                          maxLength={200}
+                          spellCheck={false}
+                          placeholder="e.g. llama3.2"
+                          value={editingModel}
+                          onChange={(e) => setEditingModel(e.target.value)}
+                          disabled={busy}
+                        />
+                      </label>
+                      <p className="chat-field-help">
+                        Use the exact model ID from your server. Listing models
+                        is optional and available after saving.
+                      </p>
+                    </>
+                  )}
                   <label className="chat-checkbox">
                     <input
                       type="checkbox"
-                      checked={editing.enabled}
-                      onChange={(e) =>
-                        setEditing({ ...editing, enabled: e.target.checked })
-                      }
-                    />{" "}
-                    Enabled
+                      checked={makeDefault}
+                      disabled={data.defaults.connectionId === editing.id}
+                      onChange={(event) => setMakeDefault(event.target.checked)}
+                    />
+                    Use for new conversations
                   </label>
-                  {data.connections.some((c) => c.id === editing.id) && (
-                    <p>
-                      Changing the key or storage stops active replies. Changing
-                      storage requires a new key.
+                  {makeDefault && !custom && (
+                    <ModelSelect
+                      key={editing.provider}
+                      connection={editing}
+                      value={editingModel}
+                      onChange={setEditingModel}
+                      availableModels={
+                        !originalConnection ? catalog.models : undefined
+                      }
+                      allowCustom={!!originalConnection}
+                      disabled={
+                        busy || (needsCatalog && catalog.status !== "ready")
+                      }
+                      placeholder={
+                        originalConnection || catalog.status === "ready"
+                          ? "Choose a model"
+                          : catalog.status === "idle"
+                            ? "Enter an API key first"
+                            : catalog.status === "loading"
+                              ? "Loading models…"
+                              : "Models unavailable"
+                      }
+                    />
+                  )}
+                  {!originalConnection && catalog.status === "loading" && (
+                    <p className="chat-field-help" role="status">
+                      Loading available models…
                     </p>
                   )}
-                </details>
-                {error && <p role="alert">{error}</p>}
+                  {!originalConnection && catalog.error && (
+                    <div className="chat-catalog-error">
+                      <p className="chat-field-help" role="alert">
+                        {catalog.error}
+                      </p>
+                      <button
+                        type="button"
+                        className="chat-text-button"
+                        onClick={catalog.retry}
+                      >
+                        <RefreshCw size={13} aria-hidden="true" /> Retry
+                      </button>
+                    </div>
+                  )}
+                  <p className="chat-storage-note">
+                    <ShieldCheck size={14} />{" "}
+                    {custom && !editing.secretId && !key.trim()
+                      ? "No API key will be stored. Requests are sent without authentication."
+                      : editing.secretMode === "system"
+                        ? "Your key will be saved in your system credential store."
+                        : "Key kept in memory until Lomi closes. Re-enter it after restarting."}
+                  </p>
+                  <details className="chat-advanced">
+                    <DisclosureSummary>Advanced options</DisclosureSummary>
+                    <label>
+                      Connection name
+                      <input
+                        placeholder={providers[editing.provider]}
+                        maxLength={200}
+                        value={editing.name}
+                        onChange={(e) =>
+                          setEditing({ ...editing, name: e.target.value })
+                        }
+                      />
+                    </label>
+                    <div className="chat-select-field">
+                      <label htmlFor={keyStorageId}>Key storage</label>
+                      <Select
+                        id={keyStorageId}
+                        value={editing.secretMode}
+                        onChange={(value) =>
+                          setEditing({
+                            ...editing,
+                            secretMode: value as Connection["secretMode"],
+                          })
+                        }
+                        options={[
+                          { value: "system", label: "System credential store" },
+                          {
+                            value: "session",
+                            label: "Session only · expires when the app closes",
+                          },
+                        ]}
+                      />
+                    </div>
+                    <label className="chat-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={editing.enabled}
+                        onChange={(e) =>
+                          setEditing({ ...editing, enabled: e.target.checked })
+                        }
+                      />{" "}
+                      Enabled
+                    </label>
+                    {data.connections.some((c) => c.id === editing.id) && (
+                      <p>
+                        Changing the key or storage stops active replies.
+                        Changing storage requires a new key.
+                      </p>
+                    )}
+                  </details>
+                  {error && <p role="alert">{error}</p>}
+                </div>
                 <div className="dialog-actions">
                   <button
                     type="button"
@@ -1112,7 +1181,7 @@ export default function ChatSettingsPage() {
                       ? "Saving…"
                       : originalConnection
                         ? "Save changes"
-                        : "Add provider"}
+                        : "Save connection"}
                   </button>
                 </div>
               </form>
@@ -1124,12 +1193,13 @@ export default function ChatSettingsPage() {
         <Modal
           className="chat-dialog"
           title="Add model"
+          closeDisabled={busy}
           onClose={() => {
             if (!busy) setAddingModel(false);
           }}
         >
           <form
-            className="dialog-form chat-config"
+            className="dialog-form dialog-layout"
             onSubmit={(event) => {
               event.preventDefault();
               if (!validModelId(newModel.trim())) return;
@@ -1151,22 +1221,24 @@ export default function ChatSettingsPage() {
               });
             }}
           >
-            <label>
-              Model ID
-              <input
-                autoFocus
-                required
-                maxLength={200}
-                spellCheck={false}
-                value={newModel}
-                onChange={(e) => setNewModel(e.target.value)}
-                placeholder="Exact ID from the provider’s model catalog"
-              />
-            </label>
-            <p className="chat-field-help">
-              Use the exact ID from {preset.name}. Access isn’t verified.
-            </p>
-            {error && <p role="alert">{error}</p>}
+            <div className="dialog-content chat-config">
+              <label>
+                Model ID
+                <input
+                  autoFocus
+                  required
+                  maxLength={200}
+                  spellCheck={false}
+                  value={newModel}
+                  onChange={(e) => setNewModel(e.target.value)}
+                  placeholder="Exact ID from the provider’s model catalog"
+                />
+              </label>
+              <p className="chat-field-help">
+                Use the exact ID from {preset.name}. Access isn’t verified.
+              </p>
+              {error && <p role="alert">{error}</p>}
+            </div>
             <div className="dialog-actions">
               <button
                 type="button"
@@ -1194,29 +1266,34 @@ export default function ChatSettingsPage() {
           tone="warning"
           onClose={() => setRecovering(false)}
         >
-          <div className="dialog-form">
-            <p>
-              Current preferences move to a private recovery folder and
-              connections start empty. Conversation history stays. Unreadable
-              keys may remain in the system credential store.
-            </p>
-            <button
-              className="button"
-              disabled={busy}
-              onClick={() =>
-                void run(async () => {
-                  await api("chat_recover", {
-                    target: "settings",
-                    reset: true,
-                  });
-                  await reload();
-                  setRecovering(false);
-                })
-              }
-            >
-              Back up and reset settings
-            </button>
-            {error && <p role="alert">{error}</p>}
+          <div className="dialog-form dialog-layout">
+            <div className="dialog-content">
+              <p>
+                Current preferences move to a private recovery folder and
+                connections start empty. Conversation history stays. Unreadable
+                keys may remain in the system credential store.
+              </p>
+
+              {error && <p role="alert">{error}</p>}
+            </div>
+            <div className="dialog-actions">
+              <button
+                className="button"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    await api("chat_recover", {
+                      target: "settings",
+                      reset: true,
+                    });
+                    await reload();
+                    setRecovering(false);
+                  })
+                }
+              >
+                Back up and reset settings
+              </button>
+            </div>
           </div>
         </Modal>
       )}
@@ -1228,32 +1305,37 @@ export default function ChatSettingsPage() {
           tone="warning"
           onClose={() => setRemovingKey(null)}
         >
-          <div className="dialog-form">
-            <p>
-              Remove the key for “{removingKey.name}”? Its active responses will
-              stop. The connection and history remain.
-              {removingKey.provider === "custom" &&
-                " Future requests will be sent without an API key."}
-            </p>
-            <button
-              className="button button-danger"
-              disabled={busy}
-              onClick={() =>
-                void run(async () => {
-                  setData(
-                    await api<Preferences>("chat_preferences_save", {
-                      data,
-                      expected: data.revision,
-                      clearKey: removingKey.id,
-                    }),
-                  );
-                  setRemovingKey(null);
-                })
-              }
-            >
-              Remove key
-            </button>
-            {error && <p role="alert">{error}</p>}
+          <div className="dialog-form dialog-layout">
+            <div className="dialog-content">
+              <p>
+                Remove the key for “{removingKey.name}”? Its active responses
+                will stop. The connection and history remain.
+                {removingKey.provider === "custom" &&
+                  " Future requests will be sent without an API key."}
+              </p>
+
+              {error && <p role="alert">{error}</p>}
+            </div>
+            <div className="dialog-actions">
+              <button
+                className="button button-danger"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    setData(
+                      await api<Preferences>("chat_preferences_save", {
+                        data,
+                        expected: data.revision,
+                        clearKey: removingKey.id,
+                      }),
+                    );
+                    setRemovingKey(null);
+                  })
+                }
+              >
+                Remove key
+              </button>
+            </div>
           </div>
         </Modal>
       )}
@@ -1262,16 +1344,21 @@ export default function ChatSettingsPage() {
           protectTheme
           className="chat-dialog"
           title="Remove provider?"
+          closeDisabled={busy}
           tone="danger"
           onClose={() => {
             if (!busy) setDeleting(null);
           }}
         >
-          <div className="dialog-form">
-            <p>
-              Remove “{deleting.name}” and its stored key? Active responses will
-              stop. Conversation history stays on this device.
-            </p>
+          <div className="dialog-form dialog-layout">
+            <div className="dialog-content">
+              <p>
+                Remove “{deleting.name}” and its stored key? Active responses
+                will stop. Conversation history stays on this device.
+              </p>
+
+              {error && <p role="alert">{error}</p>}
+            </div>
             <div className="dialog-actions">
               <button
                 className="button"
@@ -1304,7 +1391,6 @@ export default function ChatSettingsPage() {
                 Remove provider
               </button>
             </div>
-            {error && <p role="alert">{error}</p>}
           </div>
         </Modal>
       )}

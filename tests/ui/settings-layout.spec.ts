@@ -33,6 +33,7 @@ for (const appearance of ["dark", "light"] as const) {
         compact ? { width: 800, height: 420 } : { width: 1440, height: 900 },
       );
       await page.goto("/");
+      let commonBounds: { x: number; width: number } | undefined;
       for (const [id, title] of pages) {
         await page.evaluate(
           (id) =>
@@ -55,6 +56,17 @@ for (const appearance of ["dark", "light"] as const) {
             (element) => element.scrollWidth <= element.clientWidth,
           ),
         ).toBe(true);
+        const bounds = await content
+          .locator(".settings-page-content")
+          .boundingBox();
+        expect(bounds).not.toBeNull();
+        if (commonBounds) {
+          expect(bounds!.x).toBeCloseTo(commonBounds.x, 0);
+          expect(bounds!.width).toBeCloseTo(commonBounds.width, 0);
+        } else {
+          commonBounds = bounds!;
+        }
+        expect(bounds!.width).toBeLessThanOrEqual(800);
         expect(
           await page.evaluate(
             () => document.documentElement.scrollWidth <= innerWidth,
@@ -119,12 +131,18 @@ test("horizontal theme navigation leaves content usable at the minimum window si
       ).commit();
     }, settingsNavigation);
     const navigation = page.getByRole("navigation", { name: "Settings pages" });
-    await expect(
-      navigation.getByRole("button", { name: "About", exact: true }),
-    ).toBeInViewport();
-    await expect(
-      navigation.getByRole("textbox", { name: "Find a settings page" }),
-    ).toBeVisible();
+    for (const [, title] of pages) {
+      await expect(
+        navigation.getByRole("button", { name: title, exact: true }),
+      ).toBeInViewport();
+    }
+    const terminal = navigation.getByRole("button", {
+      name: "Terminal",
+      exact: true,
+    });
+    await terminal.focus();
+    await expect(terminal).toBeFocused();
+    await expect(terminal).toHaveAttribute("aria-current", "page");
     expect(
       (await page
         .getByRole("main", { name: "Terminal", exact: true })

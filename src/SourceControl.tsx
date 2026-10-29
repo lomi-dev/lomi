@@ -95,43 +95,46 @@ export default function SourceControl({
               title="Repository scan"
               onClose={() => setScanDetails(false)}
             >
-              <div className="dialog-body source-scan-details">
-                {errors.map((error, index) => (
-                  <p key={`${error.root}:${index}`}>
-                    <strong>{label(error.root)}</strong>: {error.message}
-                  </p>
-                ))}
-                {errors.length > 0 && (
-                  <p>
-                    Some repositories could not be refreshed. Previously loaded
-                    statuses are kept until the next successful refresh.
-                  </p>
-                )}
-                {limited && (
-                  <p>
-                    Only part of this folder was scanned. Open a more specific
-                    project folder to see other repositories.
-                  </p>
-                )}
-              </div>
-              <div className="dialog-actions">
-                <button
-                  type="button"
-                  className="button"
-                  onClick={() => setScanDetails(false)}
-                >
-                  Close
-                </button>
-                <button
-                  type="button"
-                  className="button"
-                  onClick={() => {
-                    setScanDetails(false);
-                    onRefresh();
-                  }}
-                >
-                  Retry repository scan
-                </button>
+              <div className="dialog-form dialog-layout">
+                <div className="dialog-content source-scan-details">
+                  {errors.map((error, index) => (
+                    <p key={`${error.root}:${index}`}>
+                      <strong>{label(error.root)}</strong>: {error.message}
+                    </p>
+                  ))}
+                  {errors.length > 0 && (
+                    <p>
+                      Some repositories could not be refreshed. Previously
+                      loaded statuses are kept until the next successful
+                      refresh.
+                    </p>
+                  )}
+                  {limited && (
+                    <p>
+                      Only part of this folder was scanned. Open a more specific
+                      project folder to see other repositories.
+                    </p>
+                  )}
+                </div>
+                <div className="dialog-actions">
+                  <button
+                    type="button"
+                    className="button"
+                    onClick={() => setScanDetails(false)}
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="button"
+                    className="button"
+                    onClick={() => {
+                      setScanDetails(false);
+                      onRefresh();
+                    }}
+                  >
+                    Retry repository scan
+                  </button>
+                </div>
               </div>
             </Modal>
           )}
@@ -401,7 +404,7 @@ function RepositoryControl({
     return (
       <div className="sidebar-panel">
         <header className="sidebar-heading">
-          <span>SOURCE CONTROL</span>
+          <span>Source control</span>
           {scanAction}
         </header>
         <p className="sidebar-empty" role={loading ? "status" : undefined}>
@@ -684,32 +687,34 @@ function RepositoryControl({
           tone="warning"
           onClose={() => setForcePush(false)}
         >
-          <div className="dialog-body">
-            <p>
-              Replace the remote branch history with your local commits? The
-              push is rejected if the remote branch changed since your last
-              fetch.
-            </p>
-          </div>
-          <div className="dialog-actions">
-            <button
-              type="button"
-              className="button"
-              onClick={() => setForcePush(false)}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="button text-error"
-              disabled={busy}
-              onClick={() => {
-                setForcePush(false);
-                void push(undefined, true);
-              }}
-            >
-              Force Push
-            </button>
+          <div className="dialog-form dialog-layout">
+            <div className="dialog-content">
+              <p>
+                Replace the remote branch history with your local commits? The
+                push is rejected if the remote branch changed since your last
+                fetch.
+              </p>
+            </div>
+            <div className="dialog-actions">
+              <button
+                type="button"
+                className="button"
+                onClick={() => setForcePush(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="button text-error"
+                disabled={busy}
+                onClick={() => {
+                  setForcePush(false);
+                  void push(undefined, true);
+                }}
+              >
+                Force Push
+              </button>
+            </div>
           </div>
         </Modal>
       )}

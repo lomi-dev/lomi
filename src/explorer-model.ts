@@ -5,6 +5,7 @@ import { joinFilePath, normalizePath, parentPath } from "./file-path.ts";
 export { normalizePath, parentPath } from "./file-path.ts";
 
 export interface FileChange {
+  warning?: string | null;
   oldPath: string | null;
   newPath: string | null;
 }

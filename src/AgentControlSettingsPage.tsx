@@ -24,6 +24,7 @@ import {
 import type { ControlState } from "./agent-control";
 import type { ControlStartupState } from "./agent-control-startup";
 import { formatShortcut } from "./keybindings";
+import "./agent-control-settings.css";
 
 const AccountsSettings = lazy(
   () => import("./agent-runtime/accounts/AccountsSettings"),
@@ -53,8 +54,7 @@ function ThemePreferenceChanges({
   before: Record<string, unknown>;
   after: Record<string, unknown>;
 }) {
-  const name = (id: unknown) =>
-    id === null ? "Lomi" : id === "@builtin-deepmono" ? "DeepMono" : String(id);
+  const name = (id: unknown) => (id === null ? "Lomi" : String(id));
   const appearance = (value: unknown) =>
     value === "system" ? "Follow system" : value === "light" ? "Light" : "Dark";
   return (
@@ -403,7 +403,7 @@ export default function AgentControlSettingsPage({
   const pendingOperationRequests = broker ? (
     <>
       {!!broker.pendingControls.length && (
-        <SettingsSection title="Terminal input requests">
+        <SettingsSection title="Terminal input requests" grouped={false}>
           {broker.pendingControls.map((request) => (
             <article
               className="agent-control-request"
@@ -464,7 +464,7 @@ export default function AgentControlSettingsPage({
         </SettingsSection>
       )}
       {!!broker.pendingSettingsUpdates?.length && (
-        <SettingsSection title="Preference change requests">
+        <SettingsSection title="Preference change requests" grouped={false}>
           {broker.pendingSettingsUpdates.map((request) => (
             <article
               className="agent-control-request"
@@ -566,7 +566,7 @@ export default function AgentControlSettingsPage({
         </SettingsSection>
       )}
       {!!broker.pendingProjectOpens?.length && (
-        <SettingsSection title="Project folder requests">
+        <SettingsSection title="Project folder requests" grouped={false}>
           {broker.pendingProjectOpens.map((request) => (
             <article
               className="agent-control-request"
@@ -632,7 +632,10 @@ export default function AgentControlSettingsPage({
         </SettingsSection>
       )}
       {!!broker.pendingAndroidManagement?.length && (
-        <SettingsSection title="Android setup and device requests">
+        <SettingsSection
+          title="Android setup and device requests"
+          grouped={false}
+        >
           {broker.pendingAndroidManagement.map((request) => (
             <AgentAndroidApproval
               key={`${request.operationId}:${request.plan.revision}`}
@@ -649,7 +652,7 @@ export default function AgentControlSettingsPage({
         run={run}
       />
       {!!broker.pendingInstalls?.length && (
-        <SettingsSection title="APK installation requests">
+        <SettingsSection title="APK installation requests" grouped={false}>
           {broker.pendingInstalls.map((request) => (
             <article
               className="agent-control-request"
@@ -772,36 +775,11 @@ export default function AgentControlSettingsPage({
       title="Agent control"
       description={
         activeTab === "accounts"
-          ? undefined
-          : "Let coding agents work with Lomi over MCP."
+          ? "Native CLI logins for agent tasks. Chat AI services are managed separately."
+          : "Connect coding agents to use your Lomi files, terminals and tools. Manage their access in Sessions."
       }
       className="agent-control-page"
       status={status}
-      actions={
-        activeTab !== "accounts" && (
-          <>
-            <span
-              className="agent-control-badge"
-              data-state={serverState}
-              aria-live="polite"
-            >
-              {serverStatus}
-            </span>
-            <button
-              type="button"
-              className="button"
-              disabled={!native || !state?.supported || busy}
-              onClick={() =>
-                void run(() =>
-                  api("agent_control_enable", { enabled: !broker }),
-                )
-              }
-            >
-              {broker ? "Turn off server" : "Start server"}
-            </button>
-          </>
-        )
-      }
     >
       {startupState?.yoloMode && (
         <SettingsNotice tone="warning" role="note">
@@ -888,6 +866,38 @@ export default function AgentControlSettingsPage({
         </SettingsNotice>
       )}
 
+      {(activeTab === "sessions" || activeTab === "preferences") && (
+        <SettingsSection
+          title="Local connection"
+          className="agent-control-server-section"
+        >
+          <SettingRow
+            label="Connection server"
+            description="Lets agents request access to Lomi. Starting the server alone does not approve a session."
+          >
+            <span
+              className="agent-control-badge"
+              data-state={serverState}
+              aria-live="polite"
+            >
+              {serverStatus}
+            </span>
+            <button
+              type="button"
+              className="button"
+              disabled={!native || !state?.supported || busy}
+              onClick={() =>
+                void run(() =>
+                  api("agent_control_enable", { enabled: !broker }),
+                )
+              }
+            >
+              {broker ? "Turn off server" : "Start server"}
+            </button>
+          </SettingRow>
+        </SettingsSection>
+      )}
+
       {yoloConfirmationOpen && (
         <Modal
           protectTheme
@@ -901,18 +911,20 @@ export default function AgentControlSettingsPage({
             if (!startupBusy) setYoloConfirmationOpen(false);
           }}
         >
-          <div className="dialog-form" aria-busy={startupBusy}>
-            <p id="agent-control-yolo-confirmation-description">
-              Local MCP clients will pair automatically, and their requests run
-              in every workspace without asking: terminal commands, file
-              changes, Git, browser, Android and chat messages. Active sessions
-              disconnect and must reconnect.
-            </p>
-            {startupError && (
-              <div className="keybindings-error" role="alert">
-                {startupError}
-              </div>
-            )}
+          <div className="dialog-form dialog-layout" aria-busy={startupBusy}>
+            <div className="dialog-content">
+              <p id="agent-control-yolo-confirmation-description">
+                Local MCP clients will pair automatically, and their requests
+                run in every workspace without asking: terminal commands, file
+                changes, Git, browser, Android and chat messages. Active
+                sessions disconnect and must reconnect.
+              </p>
+              {startupError && (
+                <div className="keybindings-error" role="alert">
+                  {startupError}
+                </div>
+              )}
+            </div>
             <div className="dialog-actions">
               <button
                 ref={yoloCancelButton}
@@ -962,6 +974,14 @@ export default function AgentControlSettingsPage({
         {state?.supported ? (
           <McpClientsSettings
             yoloMode={startupState?.yoloMode === true}
+            serverEnabled={!!broker}
+            serverStatus={serverStatus}
+            serverBusy={busy}
+            canStartServer={native && state.supported}
+            onStartServer={async () => {
+              if (!native || !state.supported || busy || broker) return;
+              await run(() => api("agent_control_enable", { enabled: true }));
+            }}
             onInstalled={() =>
               refresh().catch((cause) => setError(errorMessage(cause)))
             }
@@ -985,7 +1005,8 @@ export default function AgentControlSettingsPage({
           <div className="settings-empty">
             <h2>No active sessions</h2>
             <p>
-              Start the server and connect a client to see its request here.
+              Start the server above, then connect an agent to review its access
+              request here.
             </p>
             <button
               type="button"
@@ -997,7 +1018,7 @@ export default function AgentControlSettingsPage({
           </div>
         ) : (
           <>
-            <SettingsSection title="New session requests">
+            <SettingsSection title="New session requests" grouped={false}>
               {!broker.pending.length && (
                 <p className="settings-help">
                   No client is waiting to connect.
@@ -1020,7 +1041,7 @@ export default function AgentControlSettingsPage({
 
             {pendingOperationRequests}
 
-            <SettingsSection title="Active sessions">
+            <SettingsSection title="Active sessions" grouped={false}>
               {!broker.sessions.length && (
                 <p className="settings-help">No active sessions.</p>
               )}
@@ -1113,7 +1134,10 @@ export default function AgentControlSettingsPage({
         tabIndex={0}
         hidden={activeTab !== "preferences"}
       >
-        <SettingsSection title="Server preferences">
+        <SettingsSection
+          title="Server preferences"
+          description="Choose how Lomi handles connections when it opens."
+        >
           <SettingRow
             label="Start MCP server when Lomi opens"
             htmlFor="agent-control-auto-start"
@@ -1136,36 +1160,41 @@ export default function AgentControlSettingsPage({
               onChange={(event) => void setAutomaticStart(event.target.checked)}
             />
           </SettingRow>
-          <SettingRow
-            label="Automatically approve requests (YOLO)"
-            htmlFor="agent-control-yolo-mode"
-            description="Approves requests from all local clients without asking. Active sessions reconnect."
-            descriptionId="agent-control-yolo-mode-help"
-          >
-            <input
-              id="agent-control-yolo-mode"
-              ref={yoloSwitch}
-              className="settings-switch"
-              type="checkbox"
-              role="switch"
-              aria-label="YOLO mode"
-              aria-describedby="agent-control-yolo-mode-help"
-              checked={startupState?.yoloMode === true}
-              disabled={
-                !native ||
-                !startupState ||
-                !startupState.supported ||
-                startupBusy
-              }
-              onChange={(event) => {
-                if (event.target.checked) {
-                  event.currentTarget.focus();
-                  setYoloConfirmationOpen(true);
-                } else void setYoloMode(false);
-              }}
-            />
-          </SettingRow>
         </SettingsSection>
+        <details className="settings-disclosure agent-control-details agent-control-automatic-approvals">
+          <DisclosureSummary>Automatic approvals (YOLO)</DisclosureSummary>
+          <div className="settings-disclosure-body">
+            <SettingRow
+              label="Automatically approve requests (YOLO)"
+              htmlFor="agent-control-yolo-mode"
+              description="Approves requests from all local clients without asking. Active sessions reconnect."
+              descriptionId="agent-control-yolo-mode-help"
+            >
+              <input
+                id="agent-control-yolo-mode"
+                ref={yoloSwitch}
+                className="settings-switch"
+                type="checkbox"
+                role="switch"
+                aria-label="YOLO mode"
+                aria-describedby="agent-control-yolo-mode-help"
+                checked={startupState?.yoloMode === true}
+                disabled={
+                  !native ||
+                  !startupState ||
+                  !startupState.supported ||
+                  startupBusy
+                }
+                onChange={(event) => {
+                  if (event.target.checked) {
+                    event.currentTarget.focus();
+                    setYoloConfirmationOpen(true);
+                  } else void setYoloMode(false);
+                }}
+              />
+            </SettingRow>
+          </div>
+        </details>
 
         {state?.supported && (
           <>

@@ -8,6 +8,38 @@ did not exist when this workflow was prepared on 2026-09-11.
 
 ## Release workflow
 
+### Canonical source and host configuration
+
+Desktop release builds, npm archive qualification, and source-based installer
+qualification require the canonical host and Remote UI repositories as siblings
+of each desktop checkout. Configure these repository variables before using
+the release or building installer qualification packages:
+
+- `LOMI_REMOTE_CORE_REPOSITORY`: the canonical host repository as
+  `owner/repository`. Set this to the established repository location; the
+  workflow does not assume an unpublished repository name.
+- `LOMI_REMOTE_CORE_SHA`: a full 40- or 64-hex commit SHA from that repository.
+- `REMOTE_WEB_SHA`: a full 40- or 64-hex commit SHA from `lomi-dev/remote-web`.
+- `LOMI_HOST_IDENTITY_ORIGIN`, `LOMI_HOST_REMOTE_API_ORIGIN`,
+  `LOMI_HOST_RELAY_ENDPOINT`, and `LOMI_HOST_CLIENT_ID`: the public host
+  authentication bootstrap pins required by release builds.
+
+Before enabling desktop release builds, publish the canonical host source to
+its own Git repository and set its actual owner/repository and full commit SHA.
+This workflow only checks out configured immutable revisions; it does not
+create or publish the canonical source repository.
+
+The checkout action rejects missing or unpinned refs, verifies each checked-out
+commit, and places the sources beside the desktop checkout without replacing an
+existing sibling. The npm archive job checks out its desktop candidates below
+the workspace root, so one checked-out source pair at that root serves each
+candidate. The desktop repository's `GITHUB_TOKEN` is used by default.
+If the source repositories are private and that token cannot read them, set the
+existing `CANONICAL_SOURCE_TOKEN` repository secret to a token with read access
+to those repositories. The four host bootstrap values are public application
+configuration, not signing credentials. `LOMI_HOST_CLIENT_ID` identifies host
+enrollment; the desktop OAuth consumer client remains separate.
+
 ### Installer qualification without publishing
 
 `.github/workflows/installers.yml` builds production-feature packages on Linux
@@ -26,7 +58,9 @@ reads the payload after RPM digest verification because Ubuntu 22.04's rpm2cpio
 requires a size tag omitted by Tauri's RPM writer. AppImage runs its native
 helper through the extract-and-run launcher and its extracted runtime is checked.
 This does not test the AppImage FUSE launcher or the Fedora GUI. Every payload must
-include the verified AI and remote-terminal bundles, notices and pinned Node.
+include the verified AI runtime bundle, notices and pinned Node. The archived
+Remote terminal helper is built only for non-release `remote-probe` builds and
+is excluded from the default application bundle.
 AppImage's Node has a packaging-added ELF RUNPATH. Qualification checks its
 unchanged code/data sections against the checksum-verified Node from the RPM,
 and checks the added path, string table and unchanged library dependencies;
@@ -47,92 +81,59 @@ total. The scope and signing limitations above apply to these test artifacts.
 
 ### Publishing
 
-`.github/workflows/release.yml` is the only release workflow. It is
-named **publish** and publishes when a version tag matching `v*` is pushed.
-Branch pushes and pull requests do not start a workflow. A manual dispatch runs
-only the security and npm qualification gates, even when dispatched against a
-tag; building, signing and publishing require a tag push. Run a manual dispatch
-against `main` before creating the final `vX.Y.Z` release tag.
-The workflow first runs the required `security-regressions` matrix on macOS
-Apple Silicon, macOS Intel, Linux x64 and Windows x64 against the tag's exact
-commit. It has read-only repository permissions and no signing secrets. Every
-platform installs frozen dependencies, verifies SDK archive/helper digests and
-runs native JSON persistence, account authentication, Remote workspace, terminal
-observer and crypto tests, plus the JavaScript Remote terminal helper suite.
-macOS and Linux additionally run
-Unix-only IPC authentication, project containment and broker revocation suites;
-those implementations are not compiled on Windows. Unix JSON persistence tests
-include permissions and symlink checks; Windows runs the failure-preservation
-and concurrent atomic-write tests. Ubuntu also runs installed-archive build safety
-tests, frontend checks/tests and Remote UI account/workspace lifecycle tests.
-Both manual and tag-triggered runs validate the four app version entries and
-license. All four security jobs must pass before the
-`publish-tauri` matrix starts. Empty Rust test selections fail
-the gate. Run its native suites locally with
-`node scripts/security-regressions.mjs`, and SDK checks with
-`pnpm sdk:verify && pnpm sdk:test:consumer`.
+Pushing a version tag runs `.github/workflows/release.yml`, which builds and
+signs platform assets into a GitHub draft. It does not publish the draft, AUR
+packages, or a Flathub update. After release qualification, upload the reviewed
+canonical whole-release manifest as the fixed `release-set.json` draft asset,
+alongside every artifact declared by all seven components. This includes Host
+bundles and declared installer metadata, Web bundles/WASM, signed Mobile
+packages/native libraries, exported OCI container archives and Desktop
+bundles/update metadata. Collect these reviewed files from their native build
+pipelines; this publisher does not build, extract or deploy them. Each asset
+must have a unique declared size/SHA-256 binding; ambiguous duplicate payload
+declarations and extra files are rejected.
 
-The required `npm-archives` gate calls `.github/workflows/npm-archives.yml` on
-macOS, Linux and Windows. That read-only workflow can also be dispatched manually
-before npm publication. It checks out the reviewed full SDK, CLI and generator
-commits, verifies the selected archives in `vendor/plugin-sdk` and
-`vendor/plugin-tools`. Clean-source packs must match every selected archive byte
-except gzip's OS header field at offset 9, and the full uncompressed tar bytes
-must match exactly. Reports preserve both raw digests and OS fields; the selected
-publication archives retain their original SHA-256 and SHA-512. The suites install
-the selected SDK directly, the selected CLI through the generator suite, and the
-selected generator through the CLI suite, with exact archive-byte assertions.
-They also test platform-produced CLI/generator envelopes and record their
-comparison with the selected archives. The SDK consumer harness runs against a
-separate clean host checkout at the workflow commit and the pinned CLI source.
-All platform reports and command logs are retained as workflow artifacts,
-including failed command logs. No npm credentials or signing secrets are passed
-to these jobs. Registry installation and native desktop qualification remain
-separate checks.
+Configure the protected source pins before dispatch:
 
-After all three packages are published, dispatch the npm workflow with
-`qualify_registry: true`. It anonymously verifies each exact registry version and
-downloaded archive against the retained size, SHA-256, SHA-512 and original raw
-bytes before any registry consumer install. Then it runs the existing CLI and
-generator registry suites with archive overrides cleared and checks the npm
-lockfile integrities for all generated projects. A third clean host checkout at
-the workflow commit installs the exact SDK version from npm in both the app and
-its fixture using a fresh store, performs a frozen reinstall, and runs SDK
-verification, frontend checks/tests/build and the independent author test. The
-An inherited pnpm setting exempts only the three exact reviewed release versions
-in bare runners and the independent author project, preserving the host's existing
-exceptions and the dependency-age threshold. Each suite, the host and the
-independent author use isolated stores. Registry reports
-and lockfiles are retained alongside the archive reports. Registry mode defaults
-to false for manual qualification; release tag pushes require it to pass before
-desktop publication.
+- `LOMI_REMOTE_CORE_REPOSITORY`, `LOMI_REMOTE_CORE_SHA` and `REMOTE_WEB_SHA`
+  identify the canonical Host and Web commits as before.
+- `LOMI_AUTH_REPOSITORY` and `LOMI_AUTH_SHA` identify the account service
+  repository and full immutable commit. API, Identity and Relay must declare
+  that same commit; their actual source tree is checked for each component.
+- `LOMI_MOBILE_REPOSITORY` and `LOMI_MOBILE_SHA` identify the Mobile repository
+  and full immutable commit.
 
-After both gates, the workflow follows the `publish-tauri` matrix:
+Repository values use `owner/repository`; commit pins are full lowercase
+40- or 64-hex Git object IDs. The existing `CANONICAL_SOURCE_TOKEN` must have
+read access to the selected source repositories. Checkout credentials are not
+persisted in those worktrees.
 
-1. Start four parallel jobs on `macos-latest` (Apple Silicon), `macos-15-intel`,
-   `ubuntu-22.04`, and `windows-latest`.
-2. Install pnpm from `package.json`, Node LTS, Rust stable, and the platform's
-   build dependencies. Validate the tag, app versions, and Apache-2.0 metadata.
-3. Install frontend dependencies with the frozen lockfile and run
-   `tauri-apps/tauri-action@v0` through `pnpm tauri`, using the locked Rust
-   dependencies. Tauri's frontend build includes TypeScript checking.
-4. Sign and notarize the macOS apps using the Apple secrets. Build the native
-   installers, sign updater artifacts with the dedicated Tauri key, and upload
-   them with `latest.json` to a draft `vX.Y.Z` GitHub release. Use
-   `releases/vX.Y.Z.md` for the release description and updater notes when present.
-5. After all four builds succeed, validate `latest.json` with
-   `scripts/check-updater.mjs` and publish the complete release. Then publish `lomi` and `lomi-bin`
-   to AUR in the same workflow. Retry temporary AUR failures up to three times;
-   failed AUR jobs can be rerun from that release's workflow run.
-6. Notify Flathub only when `FLATHUB_TOKEN` is configured.
+```sh
+gh release upload vX.Y.Z ./release-set.json
+sha256sum ./release-set.json
+```
 
-The release stays a draft if a platform fails or updater metadata is incomplete.
-The previous stable release remains the updater endpoint until publication.
-GitHub Actions runs the required security gate before building and distributing
-the application. Formatting checks, Clippy and native platform qualification
-also run locally. Release metadata and signatures are verified before
-publication. Run the relevant local checks before tagging, as described in the
-[development guide](../README.md#validation-and-builds).
+Then dispatch `.github/workflows/publish-coordinated-release.yml` from the
+protected default branch with the exact draft tag and the lowercase SHA-256 of
+those manifest bytes. It validates the
+manifest against all seven pinned source trees with
+`--require-complete-mappings`, uniquely binds every declared product artifact by
+size and SHA-256, and requires the manifest
+to cover the complete draft asset set other than itself. It binds `latest.json`
+to its declared metadata digest, checks each updater URL against a bundle for
+the right platform, and matches each updater signature to its declared `.sig`
+asset. Container, Host, Web and Mobile signature files retain their own
+component bindings and are not interpreted as Desktop updater metadata.
+These checks run again after production approval using the already validated
+source commits and the exact approved manifest digest. A missing, extra,
+ambiguous, changed, or mismatched asset leaves the release unpublished. The
+manifest validator checks recorded qualification and signature declarations;
+it does not independently verify their evidence. Configure the GitHub
+`production` environment with required reviewers and protected-branch
+restrictions before enabling publication. AUR publication uses the manifest
+verified DEB or a source archive pinned to the validated Desktop commit. AUR
+and the optional Flathub notification run only after this explicit publisher
+succeeds.
 
 The README downloads badge counts release packages only. Every six hours, or
 when started manually, `.github/workflows/downloads-badge.yml` sums release
@@ -313,13 +314,18 @@ Window Close hides Lomi and preserves Remote; explicit Quit ends its sessions.
    git push origin vX.Y.Z
    ```
 
-5. Follow the **publish** workflow. Wait for all four platforms and AUR jobs to
-   finish. Download and smoke-test the installers on the supported systems;
-   successful CI builds do not establish native behavior on every operating
-   system.
-6. Release notes prepared before tagging are included in both the GitHub
-   description and `latest.json`. Editing the GitHub description after publication
-   does not automatically change the notes already stored in `latest.json`.
+5. Follow **Prepare signed draft**. Wait for all four platform builds and
+   notarization checks. The tag workflow leaves the release as a draft.
+6. Complete release qualification, upload the canonical `release-set.json`
+   described above, and record its exact lowercase SHA-256. Dispatch
+   **Publish coordinated release** with that digest and tag. After the protected
+   `production` environment approval, the workflow rechecks the manifest and
+   updater metadata before publication; AUR and optional Flathub work follows.
+   Download and smoke-test the installers on supported systems: successful CI
+   builds do not establish native behavior on every operating system.
+7. Release notes prepared before tagging are included in both the GitHub
+   description and `latest.json`. Editing the GitHub description after
+   publication does not automatically update the notes stored in `latest.json`.
 
 Retry failed jobs when the failure was an external service or credential issue.
 For a source change after publication, use a new version. Never move a tag already
@@ -327,9 +333,10 @@ used by a published release. The first Apple notarization can take considerably
 longer than later submissions; Tauri waits for Apple's response.
 
 If GitHub publication succeeded but AUR failed, rerun the failed `publish-aur`
-jobs in the existing **publish** run. They only accept the latest stable
-release, avoiding an accidental package downgrade. The `SKIP` checksums in
-the upstream PKGBUILD templates are
+jobs in the **Publish coordinated release** run. They recheck the approved
+manifest and DEB digest, and use the validated Desktop commit for source
+archives. They only accept the latest stable release, avoiding an accidental
+package downgrade. The `SKIP` checksums in the protected PKGBUILD templates are
 replaced before anything is sent to AUR; published package recipes contain the
 real SHA-256 values. Arch's standard package hooks maintain desktop and icon
 caches without custom install scripts.

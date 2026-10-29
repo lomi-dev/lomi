@@ -1,0 +1,1087 @@
+name: Publish coordinated release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing draft version tag to publish (for example v1.2.3)
+        required: true
+        type: string
+      expected_release_set_sha256:
+        description: Exact lowercase SHA-256 of the canonical draft release-set.json
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-coordinated-release
+  cancel-in-progress: false
+
+jobs:
+  validate-release:
+    name: Validate draft and immutable release set
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      desktop_commit: ${{ steps.manifest.outputs.desktop_commit }}
+      host_commit: ${{ steps.manifest.outputs.host_commit }}
+      web_commit: ${{ steps.manifest.outputs.web_commit }}
+      auth_commit: ${{ steps.manifest.outputs.auth_commit }}
+      mobile_commit: ${{ steps.manifest.outputs.mobile_commit }}
+      release_set_sha256: ${{ steps.manifest.outputs.release_set_sha256 }}
+      deb_asset_name: ${{ steps.assets.outputs.deb_asset_name }}
+      deb_sha256: ${{ steps.assets.outputs.deb_sha256 }}
+      deb_size_bytes: ${{ steps.assets.outputs.deb_size_bytes }}
+      latest_sha256: ${{ steps.assets.outputs.latest_sha256 }}
+      latest_size_bytes: ${{ steps.assets.outputs.latest_size_bytes }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Validate requested release tag
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "release_tag must be a stable version tag such as v1.2.3." >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag }}
+          path: desktop
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # actions/setup-node@v4
+        with:
+          node-version: 22.22.3
+
+      - name: Verify draft state and pin the reviewed manifest bytes
+        id: manifest
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          EXPECTED_RELEASE_SET_SHA256: ${{ inputs.expected_release_set_sha256 }}
+          TRUSTED_HOST_SHA: ${{ vars.LOMI_REMOTE_CORE_SHA }}
+          TRUSTED_WEB_SHA: ${{ vars.REMOTE_WEB_SHA }}
+          TRUSTED_AUTH_SHA: ${{ vars.LOMI_AUTH_SHA }}
+          TRUSTED_AUTH_REPOSITORY: ${{ vars.LOMI_AUTH_REPOSITORY }}
+          TRUSTED_MOBILE_SHA: ${{ vars.LOMI_MOBILE_SHA }}
+          TRUSTED_MOBILE_REPOSITORY: ${{ vars.LOMI_MOBILE_REPOSITORY }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$EXPECTED_RELEASE_SET_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "expected_release_set_sha256 must be 64 lowercase hexadecimal characters." >&2
+            exit 1
+          fi
+          gh release view "$RELEASE_TAG" --json tagName,isDraft,isPrerelease \
+            | jq -e --arg tag "$RELEASE_TAG" '.tagName == $tag and .isDraft == true and .isPrerelease == false' >/dev/null
+
+          manifest_dir="$RUNNER_TEMP/coordinated-release-manifest"
+          mkdir -m 700 -p "$manifest_dir"
+          if ! gh release download "$RELEASE_TAG" --pattern release-set.json --dir "$manifest_dir"; then
+            echo "The draft is missing its reviewed release-set.json. Upload it with 'gh release upload $RELEASE_TAG ./release-set.json', then dispatch this workflow with that file's SHA-256." >&2
+            exit 1
+          fi
+          manifest="$manifest_dir/release-set.json"
+          test -f "$manifest" && test ! -L "$manifest"
+
+          python3 - "$manifest" <<'PY'
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import re
+          import subprocess
+          import sys
+
+          manifest_path = pathlib.Path(sys.argv[1])
+          expected = os.environ["EXPECTED_RELEASE_SET_SHA256"]
+          with manifest_path.open("rb") as source:
+              raw = source.read(1024 * 1024 + 1)
+          if not raw or len(raw) > 1024 * 1024 or hashlib.sha256(raw).hexdigest() != expected:
+              raise SystemExit("draft release-set.json is missing, oversized, or does not match the supplied digest")
+
+          def reject_duplicate_keys(pairs):
+              value = {}
+              for key, item in pairs:
+                  if key in value:
+                      raise ValueError("duplicate JSON key")
+                  value[key] = item
+              return value
+
+          try:
+              manifest = json.loads(raw.decode("utf-8"), object_pairs_hook=reject_duplicate_keys)
+          except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+              raise SystemExit("draft release-set.json is not bounded UTF-8 JSON with unique object keys")
+          if not isinstance(manifest, dict):
+              raise SystemExit("draft release-set.json must be a JSON object")
+          components = manifest.get("components")
+          if not isinstance(components, dict):
+              raise SystemExit("draft release-set.json has no component map")
+          host = components.get("host")
+          web = components.get("web")
+          desktop = components.get("desktop")
+          if not all(isinstance(item, dict) for item in (host, web, desktop)):
+              raise SystemExit("draft release-set.json must declare Host, Web, and Desktop")
+          host_source = host.get("source")
+          web_source = web.get("source")
+          if not isinstance(host_source, dict) or not isinstance(web_source, dict):
+              raise SystemExit("draft release-set.json has incomplete Host or Web source declarations")
+          host_commit = host_source.get("git_commit")
+          web_commit = web_source.get("git_commit")
+          desktop_version = desktop.get("product_version")
+          revision = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
+          trusted_host = os.environ.get("TRUSTED_HOST_SHA", "")
+          trusted_web = os.environ.get("TRUSTED_WEB_SHA", "")
+          if not revision.fullmatch(trusted_host) or not revision.fullmatch(trusted_web):
+              raise SystemExit("configure full lowercase LOMI_REMOTE_CORE_SHA and REMOTE_WEB_SHA repository variables")
+          if host_commit != trusted_host or web_commit != trusted_web:
+              raise SystemExit("Host/Web manifest revisions must match the protected repository source pins")
+          repository = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$")
+          trusted_auth = os.environ.get("TRUSTED_AUTH_SHA", "")
+          trusted_mobile = os.environ.get("TRUSTED_MOBILE_SHA", "")
+          for prefix, commit in (("AUTH", trusted_auth), ("MOBILE", trusted_mobile)):
+              if not revision.fullmatch(commit) or not repository.fullmatch(os.environ.get(f"TRUSTED_{prefix}_REPOSITORY", "")):
+                  raise SystemExit(f"configure immutable LOMI_{prefix}_SHA and owner/repository LOMI_{prefix}_REPOSITORY pins")
+          for name, expected_commit in (("api", trusted_auth), ("identity", trusted_auth), ("relay", trusted_auth), ("mobile", trusted_mobile)):
+              component = components.get(name)
+              source = component.get("source") if isinstance(component, dict) else None
+              if not isinstance(source, dict) or source.get("git_commit") != expected_commit:
+                  raise SystemExit(f"{name} manifest revision must match its protected repository pin")
+          if not isinstance(desktop_version, str) or desktop_version != os.environ["RELEASE_TAG"][1:]:
+              raise SystemExit("draft release-set Desktop version must match the selected tag")
+          desktop_commit = subprocess.run(
+              ["git", "-C", "desktop", "rev-parse", "HEAD"],
+              check=True,
+              capture_output=True,
+              text=True,
+          ).stdout.strip()
+          if not revision.fullmatch(desktop_commit):
+              raise SystemExit("the selected Desktop tag did not resolve to a full commit")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"host_commit={host_commit}\n")
+              output.write(f"web_commit={web_commit}\n")
+              output.write(f"auth_commit={trusted_auth}\n")
+              output.write(f"mobile_commit={trusted_mobile}\n")
+              output.write(f"desktop_version={desktop_version}\n")
+              output.write(f"desktop_commit={desktop_commit}\n")
+              output.write(f"release_set_sha256={expected}\n")
+          PY
+
+      - name: Verify tag and manifest agree with the Desktop package version
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          MANIFEST_VERSION: ${{ steps.manifest.outputs.desktop_version }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import { readFileSync } from 'node:fs';
+          const tag = process.env.RELEASE_TAG ?? '';
+          const manifestVersion = process.env.MANIFEST_VERSION ?? '';
+          const packageJson = JSON.parse(readFileSync('desktop/package.json', 'utf8'));
+          if (typeof packageJson.version !== 'string'
+            || packageJson.version !== manifestVersion
+            || tag !== `v${packageJson.version}`) {
+            throw new Error('release tag, Desktop package version, and release-set version must match exactly');
+          }
+          JS
+
+      - name: Check out pinned canonical Host and Web sources
+        uses: ./.github/actions/setup-canonical-sources
+        with:
+          desktop-relative-path: desktop
+          remote-repository: ${{ vars.LOMI_REMOTE_CORE_REPOSITORY }}
+          remote-sha: ${{ steps.manifest.outputs.host_commit }}
+          remote-web-sha: ${{ steps.manifest.outputs.web_commit }}
+          checkout-token: ${{ secrets.CANONICAL_SOURCE_TOKEN || github.token }}
+
+      - name: Check out pinned API, Identity and Relay source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # actions/checkout@v4
+        with:
+          repository: ${{ vars.LOMI_AUTH_REPOSITORY }}
+          ref: ${{ steps.manifest.outputs.auth_commit }}
+          path: auth-app
+          token: ${{ secrets.CANONICAL_SOURCE_TOKEN || github.token }}
+          persist-credentials: false
+
+      - name: Check out pinned Mobile source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # actions/checkout@v4
+        with:
+          repository: ${{ vars.LOMI_MOBILE_REPOSITORY }}
+          ref: ${{ steps.manifest.outputs.mobile_commit }}
+          path: mobile-app
+          token: ${{ secrets.CANONICAL_SOURCE_TOKEN || github.token }}
+          persist-credentials: false
+
+      - name: Download draft assets and validate every declared product artifact
+        id: assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          EXPECTED_RELEASE_SET_SHA256: ${{ inputs.expected_release_set_sha256 }}
+          HOST_SOURCE_DIR: ${{ github.workspace }}/lomi-remote
+          DESKTOP_SOURCE_DIR: ${{ github.workspace }}/desktop
+          WEB_SOURCE_DIR: ${{ github.workspace }}/remote-web
+          AUTH_SOURCE_DIR: ${{ github.workspace }}/auth-app
+          MOBILE_SOURCE_DIR: ${{ github.workspace }}/mobile-app
+        run: |
+          set -euo pipefail
+          asset_dir="$RUNNER_TEMP/coordinated-release-assets"
+          mkdir -m 700 -p "$asset_dir"
+          gh release download "$RELEASE_TAG" --dir "$asset_dir"
+          python3 - "$asset_dir" <<'PY'
+          import os
+          import pathlib
+          import re
+          import subprocess
+          import sys
+          from urllib.parse import quote, unquote, urlsplit
+
+          host_root = pathlib.Path(os.environ["HOST_SOURCE_DIR"]).resolve(strict=True)
+          desktop_root = pathlib.Path(os.environ["DESKTOP_SOURCE_DIR"]).resolve(strict=True)
+          web_root = pathlib.Path(os.environ["WEB_SOURCE_DIR"]).resolve(strict=True)
+          auth_root = pathlib.Path(os.environ["AUTH_SOURCE_DIR"]).resolve(strict=True)
+          mobile_root = pathlib.Path(os.environ["MOBILE_SOURCE_DIR"]).resolve(strict=True)
+          asset_dir = pathlib.Path(sys.argv[1]).resolve(strict=True)
+          manifest_path = pathlib.Path(os.environ["RUNNER_TEMP"]) / "coordinated-release-manifest" / "release-set.json"
+          tool_dir = host_root / "release"
+          sys.dont_write_bytecode = True
+          sys.path.insert(0, str(tool_dir))
+          import release_set
+
+          manifest = release_set._load_json(
+              manifest_path, release_set.MAX_MANIFEST_BYTES, "release-set manifest"
+          )
+          components = manifest.get("components") if isinstance(manifest, dict) else None
+          desktop = components.get("desktop") if isinstance(components, dict) else None
+          artifacts = desktop.get("artifacts") if isinstance(desktop, dict) else None
+          if not isinstance(artifacts, list) or not artifacts:
+              raise SystemExit("release-set must declare at least one Desktop artifact")
+          all_artifacts = []
+          artifact_components = {}
+          for component in release_set.COMPONENTS:
+              entry = components.get(component) if isinstance(components, dict) else None
+              records = entry.get("artifacts") if isinstance(entry, dict) else None
+              if not isinstance(records, list) or not records:
+                  raise SystemExit("release-set must declare artifacts for all seven components")
+              for record in records:
+                  artifact_id = record.get("id") if isinstance(record, dict) else None
+                  if not isinstance(artifact_id, str) or artifact_id in artifact_components:
+                      raise SystemExit("release-set artifact identifiers must be unique across components")
+                  artifact_components[artifact_id] = component
+                  all_artifacts.append(record)
+          if len(all_artifacts) > release_set.MAX_MAPPINGS:
+              raise SystemExit("release-set product artifact inventory exceeds the supported mapping limit")
+
+          candidates = []
+          try:
+              entries = list(os.scandir(asset_dir))
+          except OSError:
+              raise SystemExit("cannot inspect downloaded draft assets")
+          if len(entries) > release_set.MAX_MAPPINGS + 1:
+              raise SystemExit("draft release asset inventory exceeds the supported mapping limit")
+          for entry in entries:
+              if entry.name == "release-set.json":
+                  continue
+              if not entry.is_file(follow_symlinks=False):
+                  raise SystemExit("draft release contains a non-regular asset")
+              candidates.append(pathlib.Path(entry.path))
+
+          command = [
+              sys.executable,
+              str(tool_dir / "release_set.py"),
+              "validate",
+              str(manifest_path),
+              "--mode",
+              "release",
+              "--require-complete-mappings",
+              "--source",
+              f"api={auth_root}",
+              "--source",
+              f"identity={auth_root}",
+              "--source",
+              f"relay={auth_root}",
+              "--source",
+              f"mobile={mobile_root}",
+              "--source",
+              f"desktop={desktop_root}",
+              "--source",
+              f"host={host_root}",
+              "--source",
+              f"web={web_root}",
+              "--canonical-out",
+              str(pathlib.Path(os.environ["RUNNER_TEMP"]) / "coordinated-release-canonical.json"),
+          ]
+          declarations_by_digest = {}
+          declared_ids = set()
+          for artifact in all_artifacts:
+              if not isinstance(artifact, dict):
+                  raise SystemExit("release-set contains an invalid product artifact declaration")
+              artifact_id = artifact.get("id")
+              expected_hash = artifact.get("sha256")
+              expected_size = artifact.get("size_bytes")
+              if not isinstance(artifact_id, str) or type(expected_size) is not int or not isinstance(expected_hash, str):
+                  raise SystemExit("release-set contains an incomplete product artifact declaration")
+              if artifact_id in declared_ids:
+                  raise SystemExit("release-set contains a duplicate product artifact identifier")
+              declared_ids.add(artifact_id)
+              declarations_by_digest.setdefault((expected_hash, expected_size), []).append(artifact)
+
+          if len(candidates) != len(all_artifacts):
+              raise SystemExit("draft distributable asset inventory does not exactly match the complete product manifest")
+
+          asset_records = {}
+          asset_paths = {}
+          matched_ids = set()
+          for path in candidates:
+              try:
+                  digest, size = release_set._sha256_file(path)
+              except (OSError, release_set.ManifestError):
+                  raise SystemExit("a downloaded release asset could not be safely verified")
+              matches = declarations_by_digest.get((digest, size), [])
+              if len(matches) != 1:
+                  raise SystemExit("a draft asset has a missing or ambiguous product manifest binding")
+              artifact = matches[0]
+              artifact_id = artifact["id"]
+              if artifact_id in matched_ids or path.name in asset_records:
+                  raise SystemExit("draft assets do not have a one-to-one product manifest binding")
+              matched_ids.add(artifact_id)
+              asset_records[path.name] = artifact
+              asset_paths[path.name] = path.resolve(strict=True)
+
+          if matched_ids != declared_ids:
+              raise SystemExit("a declared product artifact is absent from the draft")
+
+          metadata_target = {"os": "web", "architecture": "universal", "abi": "json"}
+          detached_target = {"os": "web", "architecture": "universal", "abi": "detached-signature"}
+          latest_records = [
+              artifact for artifact in artifacts
+              if artifact["kind"] == "update_metadata" and artifact["target"] == metadata_target
+          ]
+          if len(latest_records) != 1 or asset_records.get("latest.json") != latest_records[0]:
+              raise SystemExit("latest.json must be the unique hash-bound Desktop update-metadata artifact")
+
+          detached_assets = [name for name, artifact in asset_records.items()
+                             if artifact_components[artifact["id"]] == "desktop" and name.endswith(".sig")]
+          detached_records = [
+              artifact for artifact in artifacts
+              if artifact["kind"] == "update_metadata" and artifact["target"] == detached_target
+          ]
+          if len(detached_assets) != len(detached_records):
+              raise SystemExit("every detached signature asset must have one declared metadata artifact")
+          for name, artifact in asset_records.items():
+              command.extend(["--artifact", f"{artifact['id']}={asset_paths[name]}"])
+              if artifact_components[artifact["id"]] != "desktop":
+                  continue
+              if name == "latest.json":
+                  continue
+              if name.endswith(".sig"):
+                  if artifact["kind"] != "update_metadata" or artifact["target"] != detached_target:
+                      raise SystemExit("detached signature assets require declared detached-signature metadata")
+              elif artifact["kind"] != "desktop_bundle":
+                  raise SystemExit("non-signature Desktop assets must be declared Desktop bundles")
+
+          latest_path = asset_paths["latest.json"]
+          latest = release_set._load_json(latest_path, release_set.MAX_MANIFEST_BYTES, "updater metadata")
+          latest_version = latest.get("version") if isinstance(latest, dict) else None
+          if not isinstance(latest_version, str) or latest_version.removeprefix("v") != os.environ["RELEASE_TAG"][1:]:
+              raise SystemExit("latest.json version must match the selected release tag")
+          platform_targets = {
+              "darwin-aarch64": ("macos", "aarch64"),
+              "darwin-x86_64": ("macos", "x86_64"),
+              "windows-x86_64": ("windows", "x86_64"),
+              "linux-x86_64": ("linux", "x86_64"),
+          }
+          platforms = latest.get("platforms")
+          if not isinstance(platforms, dict) or set(platforms) != set(platform_targets):
+              raise SystemExit("latest.json must contain exactly the four declared Desktop updater targets")
+          updater_assets = set()
+          for target_name, platform in platform_targets.items():
+              entry = platforms.get(target_name)
+              if not isinstance(entry, dict) or not isinstance(entry.get("url"), str):
+                  raise SystemExit("latest.json contains an invalid updater target URL")
+              parsed = urlsplit(entry["url"])
+              segments = parsed.path.split("/")
+              if (
+                  parsed.scheme != "https"
+                  or parsed.netloc != "github.com"
+                  or parsed.query
+                  or parsed.fragment
+                  or segments[:6] != ["", "lomi-dev", "lomi", "releases", "download", os.environ["RELEASE_TAG"]]
+                  or len(segments) != 7
+              ):
+                  raise SystemExit("latest.json updater URLs must use the exact approved GitHub release path")
+              raw_name = segments[6]
+              try:
+                  asset_name = unquote(raw_name, errors="strict")
+              except UnicodeDecodeError:
+                  raise SystemExit("latest.json contains a non-canonical updater asset name")
+              if (
+                  not asset_name
+                  or asset_name in {".", ".."}
+                  or "/" in asset_name
+                  or "\\" in asset_name
+                  or any(ord(char) < 32 for char in asset_name)
+                  or quote(asset_name, safe="._-") != raw_name
+                  or asset_name not in asset_records
+                  or asset_name in updater_assets
+              ):
+                  raise SystemExit("latest.json updater URL does not name one unique verified release asset")
+              updater_assets.add(asset_name)
+              artifact = asset_records[asset_name]
+              expected_os, expected_architecture = platform
+              if artifact["kind"] != "desktop_bundle" or artifact["target"]["os"] != expected_os or artifact["target"]["architecture"] != expected_architecture:
+                  raise SystemExit("latest.json updater URL is not bound to a bundle for its declared platform")
+
+              signature = entry.get("signature")
+              signature_name = f"{asset_name}.sig"
+              signature_path = asset_paths.get(signature_name)
+              signature_artifact = asset_records.get(signature_name)
+              if (
+                  not isinstance(signature, str)
+                  or not signature.strip()
+                  or signature_path is None
+                  or not isinstance(signature_artifact, dict)
+                  or signature_artifact["kind"] != "update_metadata"
+                  or signature_artifact["target"] != detached_target
+              ):
+                  raise SystemExit("each updater bundle requires a declared detached signature asset")
+              try:
+                  if signature_path.stat(follow_symlinks=False).st_size > 65536:
+                      raise ValueError("oversized signature")
+                  with signature_path.open("rb") as source:
+                      signature_bytes = source.read(65537)
+                  if len(signature_bytes) > 65536:
+                      raise ValueError("oversized signature")
+                  sidecar_signature = signature_bytes.decode("utf-8", errors="strict").strip()
+              except (OSError, UnicodeDecodeError, ValueError):
+                  raise SystemExit("an updater detached signature asset is unreadable or oversized")
+              if sidecar_signature != signature.strip():
+                  raise SystemExit("latest.json signature does not match its declared detached signature asset")
+
+          deb_matches = [
+              (name, artifact) for name, artifact in asset_records.items()
+              if name.endswith(".deb")
+              and artifact["kind"] == "desktop_bundle"
+              and artifact["target"]["os"] == "linux"
+              and artifact["target"]["architecture"] == "x86_64"
+          ]
+          if len(deb_matches) != 1:
+              raise SystemExit("the approved Desktop inventory must contain exactly one Linux x86_64 DEB for AUR")
+          deb_name, deb_artifact = deb_matches[0]
+          if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,250}\.deb", deb_name):
+              raise SystemExit("the approved DEB asset name cannot be passed safely to the AUR workflow")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"deb_asset_name={deb_name}\n")
+              output.write(f"deb_sha256={deb_artifact['sha256']}\n")
+              output.write(f"deb_size_bytes={deb_artifact['size_bytes']}\n")
+              output.write(f"latest_sha256={latest_records[0]['sha256']}\n")
+              output.write(f"latest_size_bytes={latest_records[0]['size_bytes']}\n")
+
+          subprocess.run(command, check=True)
+          canonical = pathlib.Path(os.environ["RUNNER_TEMP"]) / "coordinated-release-canonical.json"
+          if canonical.read_bytes() != manifest_path.read_bytes():
+              raise SystemExit("release-set.json must already use the validator's canonical encoding")
+          PY
+
+  publish-release:
+    name: Publish the verified draft
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    needs: validate-release
+    runs-on: ubuntu-24.04
+    environment: production
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag }}
+          path: desktop
+          persist-credentials: false
+
+      - name: Check out the already validated Host and Web commits
+        uses: ./.github/actions/setup-canonical-sources
+        with:
+          desktop-relative-path: desktop
+          remote-repository: ${{ vars.LOMI_REMOTE_CORE_REPOSITORY }}
+          remote-sha: ${{ needs.validate-release.outputs.host_commit }}
+          remote-web-sha: ${{ needs.validate-release.outputs.web_commit }}
+          checkout-token: ${{ secrets.CANONICAL_SOURCE_TOKEN || github.token }}
+
+      - name: Check out the already validated API, Identity and Relay commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # actions/checkout@v4
+        with:
+          repository: ${{ vars.LOMI_AUTH_REPOSITORY }}
+          ref: ${{ needs.validate-release.outputs.auth_commit }}
+          path: auth-app
+          token: ${{ secrets.CANONICAL_SOURCE_TOKEN || github.token }}
+          persist-credentials: false
+
+      - name: Check out the already validated Mobile commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # actions/checkout@v4
+        with:
+          repository: ${{ vars.LOMI_MOBILE_REPOSITORY }}
+          ref: ${{ needs.validate-release.outputs.mobile_commit }}
+          path: mobile-app
+          token: ${{ secrets.CANONICAL_SOURCE_TOKEN || github.token }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # actions/setup-node@v4
+        with:
+          node-version: 22.22.3
+
+      - name: Recheck reviewed bytes and publish only the validated draft
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          EXPECTED_RELEASE_SET_SHA256: ${{ needs.validate-release.outputs.release_set_sha256 }}
+          EXPECTED_DESKTOP_COMMIT: ${{ needs.validate-release.outputs.desktop_commit }}
+          EXPECTED_LATEST_SHA256: ${{ needs.validate-release.outputs.latest_sha256 }}
+          EXPECTED_LATEST_SIZE_BYTES: ${{ needs.validate-release.outputs.latest_size_bytes }}
+          HOST_SOURCE_DIR: ${{ github.workspace }}/lomi-remote
+          DESKTOP_SOURCE_DIR: ${{ github.workspace }}/desktop
+          WEB_SOURCE_DIR: ${{ github.workspace }}/remote-web
+          AUTH_SOURCE_DIR: ${{ github.workspace }}/auth-app
+          MOBILE_SOURCE_DIR: ${{ github.workspace }}/mobile-app
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "release_tag must be a stable version tag such as v1.2.3." >&2
+            exit 1
+          fi
+          if [[ ! "$EXPECTED_RELEASE_SET_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "The verified release-set digest is unavailable." >&2
+            exit 1
+          fi
+          actual_commit=$(git -C desktop rev-parse HEAD)
+          test "$actual_commit" = "$EXPECTED_DESKTOP_COMMIT" || {
+            echo "The Desktop release tag changed after validation." >&2
+            exit 1
+          }
+          gh release view "$RELEASE_TAG" --json tagName,isDraft,isPrerelease \
+            | jq -e --arg tag "$RELEASE_TAG" '.tagName == $tag and .isDraft == true and .isPrerelease == false' >/dev/null
+
+          recheck_dir="$RUNNER_TEMP/coordinated-release-final-check"
+          mkdir -m 700 -p "$recheck_dir/assets"
+          if ! gh release download "$RELEASE_TAG" --dir "$recheck_dir/assets"; then
+            echo "The draft assets could not be re-read for final hash validation; the release remains unpublished." >&2
+            exit 1
+          fi
+          python3 - "$recheck_dir/assets" <<'PY'
+          import hashlib
+          import os
+          import pathlib
+          import re
+          import subprocess
+          import sys
+          from urllib.parse import quote, unquote, urlsplit
+
+          asset_dir = pathlib.Path(sys.argv[1]).resolve(strict=True)
+          manifest_path = asset_dir / "release-set.json"
+          if manifest_path.is_symlink() or not manifest_path.is_file():
+              raise SystemExit("the draft release-set.json could not be re-read safely")
+          with manifest_path.open("rb") as source:
+              data = source.read(1024 * 1024 + 1)
+          if not data or len(data) > 1024 * 1024 or hashlib.sha256(data).hexdigest() != os.environ["EXPECTED_RELEASE_SET_SHA256"]:
+              raise SystemExit("release-set.json changed after validation or does not match the approved digest")
+
+          host_root = pathlib.Path(os.environ["HOST_SOURCE_DIR"]).resolve(strict=True)
+          desktop_root = pathlib.Path(os.environ["DESKTOP_SOURCE_DIR"]).resolve(strict=True)
+          web_root = pathlib.Path(os.environ["WEB_SOURCE_DIR"]).resolve(strict=True)
+          auth_root = pathlib.Path(os.environ["AUTH_SOURCE_DIR"]).resolve(strict=True)
+          mobile_root = pathlib.Path(os.environ["MOBILE_SOURCE_DIR"]).resolve(strict=True)
+          tool_dir = host_root / "release"
+          sys.dont_write_bytecode = True
+          sys.path.insert(0, str(tool_dir))
+          import release_set
+
+          manifest = release_set._load_json(
+              manifest_path, release_set.MAX_MANIFEST_BYTES, "release-set manifest"
+          )
+          components = manifest.get("components") if isinstance(manifest, dict) else None
+          desktop = components.get("desktop") if isinstance(components, dict) else None
+          artifacts = desktop.get("artifacts") if isinstance(desktop, dict) else None
+          if not isinstance(artifacts, list) or not artifacts:
+              raise SystemExit("release-set must declare at least one Desktop artifact")
+          all_artifacts = []
+          artifact_components = {}
+          for component in release_set.COMPONENTS:
+              entry = components.get(component) if isinstance(components, dict) else None
+              records = entry.get("artifacts") if isinstance(entry, dict) else None
+              if not isinstance(records, list) or not records:
+                  raise SystemExit("release-set must declare artifacts for all seven components")
+              for record in records:
+                  artifact_id = record.get("id") if isinstance(record, dict) else None
+                  if not isinstance(artifact_id, str) or artifact_id in artifact_components:
+                      raise SystemExit("release-set artifact identifiers must be unique across components")
+                  artifact_components[artifact_id] = component
+                  all_artifacts.append(record)
+          if len(all_artifacts) > release_set.MAX_MAPPINGS:
+              raise SystemExit("release-set product artifact inventory exceeds the supported mapping limit")
+
+          try:
+              entries = list(os.scandir(asset_dir))
+          except OSError:
+              raise SystemExit("cannot inspect downloaded draft assets")
+          if len(entries) > release_set.MAX_MAPPINGS + 1:
+              raise SystemExit("draft release asset inventory exceeds the supported mapping limit")
+          candidates = []
+          for entry in entries:
+              if entry.name == "release-set.json":
+                  continue
+              if not entry.is_file(follow_symlinks=False):
+                  raise SystemExit("draft release contains a non-regular asset")
+              candidates.append(pathlib.Path(entry.path))
+
+          command = [
+              sys.executable,
+              str(tool_dir / "release_set.py"),
+              "validate",
+              str(manifest_path),
+              "--mode",
+              "release",
+              "--require-complete-mappings",
+              "--source",
+              f"api={auth_root}",
+              "--source",
+              f"identity={auth_root}",
+              "--source",
+              f"relay={auth_root}",
+              "--source",
+              f"mobile={mobile_root}",
+              "--source",
+              f"desktop={desktop_root}",
+              "--source",
+              f"host={host_root}",
+              "--source",
+              f"web={web_root}",
+              "--canonical-out",
+              str(pathlib.Path(os.environ["RUNNER_TEMP"]) / "coordinated-release-final-canonical.json"),
+          ]
+          declarations_by_digest = {}
+          declared_ids = set()
+          for artifact in all_artifacts:
+              if not isinstance(artifact, dict):
+                  raise SystemExit("release-set contains an invalid product artifact declaration")
+              artifact_id = artifact.get("id")
+              expected_hash = artifact.get("sha256")
+              expected_size = artifact.get("size_bytes")
+              if not isinstance(artifact_id, str) or type(expected_size) is not int or not isinstance(expected_hash, str):
+                  raise SystemExit("release-set contains an incomplete product artifact declaration")
+              if artifact_id in declared_ids:
+                  raise SystemExit("release-set contains a duplicate product artifact identifier")
+              declared_ids.add(artifact_id)
+              declarations_by_digest.setdefault((expected_hash, expected_size), []).append(artifact)
+
+          if len(candidates) != len(all_artifacts):
+              raise SystemExit("draft distributable asset inventory does not exactly match the complete product manifest")
+
+          asset_records = {}
+          asset_paths = {}
+          matched_ids = set()
+          for path in candidates:
+              try:
+                  digest, size = release_set._sha256_file(path)
+              except (OSError, release_set.ManifestError):
+                  raise SystemExit("a downloaded release asset could not be safely verified")
+              matches = declarations_by_digest.get((digest, size), [])
+              if len(matches) != 1:
+                  raise SystemExit("a draft asset has a missing or ambiguous product manifest binding")
+              artifact = matches[0]
+              artifact_id = artifact["id"]
+              if artifact_id in matched_ids or path.name in asset_records:
+                  raise SystemExit("draft assets do not have a one-to-one product manifest binding")
+              matched_ids.add(artifact_id)
+              asset_records[path.name] = artifact
+              asset_paths[path.name] = path.resolve(strict=True)
+
+          if matched_ids != declared_ids:
+              raise SystemExit("a declared product artifact is absent from the draft")
+
+          metadata_target = {"os": "web", "architecture": "universal", "abi": "json"}
+          detached_target = {"os": "web", "architecture": "universal", "abi": "detached-signature"}
+          latest_records = [
+              artifact for artifact in artifacts
+              if artifact["kind"] == "update_metadata" and artifact["target"] == metadata_target
+          ]
+          if len(latest_records) != 1 or asset_records.get("latest.json") != latest_records[0]:
+              raise SystemExit("latest.json must be the unique hash-bound Desktop update-metadata artifact")
+
+          detached_assets = [name for name, artifact in asset_records.items()
+                             if artifact_components[artifact["id"]] == "desktop" and name.endswith(".sig")]
+          detached_records = [
+              artifact for artifact in artifacts
+              if artifact["kind"] == "update_metadata" and artifact["target"] == detached_target
+          ]
+          if len(detached_assets) != len(detached_records):
+              raise SystemExit("every detached signature asset must have one declared metadata artifact")
+          for name, artifact in asset_records.items():
+              command.extend(["--artifact", f"{artifact['id']}={asset_paths[name]}"])
+              if artifact_components[artifact["id"]] != "desktop":
+                  continue
+              if name == "latest.json":
+                  continue
+              if name.endswith(".sig"):
+                  if artifact["kind"] != "update_metadata" or artifact["target"] != detached_target:
+                      raise SystemExit("detached signature assets require declared detached-signature metadata")
+              elif artifact["kind"] != "desktop_bundle":
+                  raise SystemExit("non-signature Desktop assets must be declared Desktop bundles")
+
+          latest_path = asset_paths["latest.json"]
+          latest = release_set._load_json(latest_path, release_set.MAX_MANIFEST_BYTES, "updater metadata")
+          latest_version = latest.get("version") if isinstance(latest, dict) else None
+          if not isinstance(latest_version, str) or latest_version.removeprefix("v") != os.environ["RELEASE_TAG"][1:]:
+              raise SystemExit("latest.json version must match the selected release tag")
+          platform_targets = {
+              "darwin-aarch64": ("macos", "aarch64"),
+              "darwin-x86_64": ("macos", "x86_64"),
+              "windows-x86_64": ("windows", "x86_64"),
+              "linux-x86_64": ("linux", "x86_64"),
+          }
+          platforms = latest.get("platforms")
+          if not isinstance(platforms, dict) or set(platforms) != set(platform_targets):
+              raise SystemExit("latest.json must contain exactly the four declared Desktop updater targets")
+          updater_assets = set()
+          for target_name, platform in platform_targets.items():
+              entry = platforms.get(target_name)
+              if not isinstance(entry, dict) or not isinstance(entry.get("url"), str):
+                  raise SystemExit("latest.json contains an invalid updater target URL")
+              parsed = urlsplit(entry["url"])
+              segments = parsed.path.split("/")
+              if (
+                  parsed.scheme != "https"
+                  or parsed.netloc != "github.com"
+                  or parsed.query
+                  or parsed.fragment
+                  or segments[:6] != ["", "lomi-dev", "lomi", "releases", "download", os.environ["RELEASE_TAG"]]
+                  or len(segments) != 7
+              ):
+                  raise SystemExit("latest.json updater URLs must use the exact approved GitHub release path")
+              raw_name = segments[6]
+              try:
+                  asset_name = unquote(raw_name, errors="strict")
+              except UnicodeDecodeError:
+                  raise SystemExit("latest.json contains a non-canonical updater asset name")
+              if (
+                  not asset_name
+                  or asset_name in {".", ".."}
+                  or "/" in asset_name
+                  or "\\" in asset_name
+                  or any(ord(char) < 32 for char in asset_name)
+                  or quote(asset_name, safe="._-") != raw_name
+                  or asset_name not in asset_records
+                  or asset_name in updater_assets
+              ):
+                  raise SystemExit("latest.json updater URL does not name one unique verified release asset")
+              updater_assets.add(asset_name)
+              artifact = asset_records[asset_name]
+              expected_os, expected_architecture = platform
+              if artifact["kind"] != "desktop_bundle" or artifact["target"]["os"] != expected_os or artifact["target"]["architecture"] != expected_architecture:
+                  raise SystemExit("latest.json updater URL is not bound to a bundle for its declared platform")
+
+              signature = entry.get("signature")
+              signature_name = f"{asset_name}.sig"
+              signature_path = asset_paths.get(signature_name)
+              signature_artifact = asset_records.get(signature_name)
+              if (
+                  not isinstance(signature, str)
+                  or not signature.strip()
+                  or signature_path is None
+                  or not isinstance(signature_artifact, dict)
+                  or signature_artifact["kind"] != "update_metadata"
+                  or signature_artifact["target"] != detached_target
+              ):
+                  raise SystemExit("each updater bundle requires a declared detached signature asset")
+              try:
+                  if signature_path.stat(follow_symlinks=False).st_size > 65536:
+                      raise ValueError("oversized signature")
+                  with signature_path.open("rb") as source:
+                      signature_bytes = source.read(65537)
+                  if len(signature_bytes) > 65536:
+                      raise ValueError("oversized signature")
+                  sidecar_signature = signature_bytes.decode("utf-8", errors="strict").strip()
+              except (OSError, UnicodeDecodeError, ValueError):
+                  raise SystemExit("an updater detached signature asset is unreadable or oversized")
+              if sidecar_signature != signature.strip():
+                  raise SystemExit("latest.json signature does not match its declared detached signature asset")
+
+          subprocess.run(command, check=True)
+          canonical = pathlib.Path(os.environ["RUNNER_TEMP"]) / "coordinated-release-final-canonical.json"
+          if canonical.read_bytes() != data:
+              raise SystemExit("release-set.json is not the validator's canonical encoding")
+          PY
+          node scripts/check-updater.mjs "$RELEASE_TAG" "$recheck_dir/assets/latest.json"
+          gh release view "$RELEASE_TAG" --json tagName,isDraft,isPrerelease \
+            | jq -e --arg tag "$RELEASE_TAG" '.tagName == $tag and .isDraft == true and .isPrerelease == false' >/dev/null
+          gh release edit "$RELEASE_TAG" --draft=false --latest
+
+  publish-aur:
+    name: Publish ${{ matrix.package }} to AUR
+    needs: [publish-release, validate-release]
+    permissions:
+      contents: read
+    concurrency:
+      group: publish-aur-${{ matrix.package }}
+      cancel-in-progress: false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: lomi-bin
+            pkgbuild: ./aur/lomi-bin/PKGBUILD
+            source_kind: deb
+          - package: lomi
+            pkgbuild: ./aur/lomi/PKGBUILD
+            source_kind: source
+    env:
+      AUR_MAINTAINER_NAME: "Woro"
+      AUR_MAINTAINER_EMAIL: "woro@tanieddosy.pl"
+
+    steps:
+      - name: Validate the release tag
+        id: release
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Expected a version tag such as v0.1.0." >&2
+            exit 1
+          fi
+          echo "version=${RELEASE_TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Check out protected release policy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # actions/checkout v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Check out the validated Desktop source commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # actions/checkout@v4
+        with:
+          ref: ${{ needs.validate-release.outputs.desktop_commit }}
+          path: desktop
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # actions/setup-node@v4
+        with:
+          node-version: 22.22.3
+
+      - name: Verify the published manifest and updater metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          EXPECTED_RELEASE_SET_SHA256: ${{ needs.validate-release.outputs.release_set_sha256 }}
+          EXPECTED_DESKTOP_COMMIT: ${{ needs.validate-release.outputs.desktop_commit }}
+          EXPECTED_LATEST_SHA256: ${{ needs.validate-release.outputs.latest_sha256 }}
+          EXPECTED_LATEST_SIZE_BYTES: ${{ needs.validate-release.outputs.latest_size_bytes }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$EXPECTED_RELEASE_SET_SHA256" =~ ^[0-9a-f]{64}$ || ! "$EXPECTED_DESKTOP_COMMIT" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]]; then
+            echo "Validated release identity outputs are unavailable." >&2
+            exit 1
+          fi
+          actual_commit=$(git -C desktop rev-parse HEAD)
+          test "$actual_commit" = "$EXPECTED_DESKTOP_COMMIT"
+          gh release view "$RELEASE_TAG" --json tagName,isDraft,isPrerelease \
+            | jq -e --arg tag "$RELEASE_TAG" '.tagName == $tag and .isDraft == false and .isPrerelease == false' >/dev/null
+          latest=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)
+          test "$latest" = "$RELEASE_TAG"
+          verify_dir="$RUNNER_TEMP/coordinated-release-aur-check"
+          mkdir -m 700 -p "$verify_dir"
+          gh release download "$RELEASE_TAG" --pattern release-set.json --dir "$verify_dir"
+          gh release download "$RELEASE_TAG" --pattern latest.json --dir "$verify_dir"
+          python3 - "$verify_dir/release-set.json" "$verify_dir/latest.json" <<'PY'
+          import hashlib
+          import os
+          import pathlib
+          import sys
+          release_set_path = pathlib.Path(sys.argv[1])
+          latest_path = pathlib.Path(sys.argv[2])
+          if release_set_path.is_symlink() or not release_set_path.is_file():
+              raise SystemExit("published release-set.json is unavailable")
+          with release_set_path.open("rb") as source:
+              release_set_data = source.read(1024 * 1024 + 1)
+          if not release_set_data or len(release_set_data) > 1024 * 1024 or hashlib.sha256(release_set_data).hexdigest() != os.environ["EXPECTED_RELEASE_SET_SHA256"]:
+              raise SystemExit("published release-set.json differs from the validated manifest")
+          if latest_path.is_symlink() or not latest_path.is_file():
+              raise SystemExit("published latest.json is unavailable")
+          with latest_path.open("rb") as source:
+              latest_data = source.read(1024 * 1024 + 1)
+          if (
+              not latest_data
+              or len(latest_data) > 1024 * 1024
+              or len(latest_data) != int(os.environ["EXPECTED_LATEST_SIZE_BYTES"])
+              or hashlib.sha256(latest_data).hexdigest() != os.environ["EXPECTED_LATEST_SHA256"]
+          ):
+              raise SystemExit("published latest.json differs from the validated updater metadata")
+          PY
+          node scripts/check-updater.mjs "$RELEASE_TAG" "$verify_dir/latest.json"
+
+      - name: Prepare ${{ matrix.package }}
+        shell: bash
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          SOURCE_KIND: ${{ matrix.source_kind }}
+          PACKAGE: ${{ matrix.package }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          EXPECTED_DESKTOP_COMMIT: ${{ needs.validate-release.outputs.desktop_commit }}
+          EXPECTED_DEB_ASSET_NAME: ${{ needs.validate-release.outputs.deb_asset_name }}
+          EXPECTED_DEB_SHA256: ${{ needs.validate-release.outputs.deb_sha256 }}
+          EXPECTED_DEB_SIZE_BYTES: ${{ needs.validate-release.outputs.deb_size_bytes }}
+          EXPECTED_LATEST_SHA256: ${{ needs.validate-release.outputs.latest_sha256 }}
+          EXPECTED_LATEST_SIZE_BYTES: ${{ needs.validate-release.outputs.latest_size_bytes }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" == "v${VERSION}" ]]
+          [[ "$EXPECTED_DESKTOP_COMMIT" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]]
+          if [[ "$SOURCE_KIND" == "deb" ]]; then
+            [[ "$EXPECTED_DEB_ASSET_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]{0,250}\.deb$ ]]
+            [[ "$EXPECTED_DEB_SHA256" =~ ^[0-9a-f]{64}$ ]]
+            [[ "$EXPECTED_DEB_SIZE_BYTES" =~ ^[1-9][0-9]*$ ]]
+            deb_dir="$RUNNER_TEMP/lomi-aur-deb"
+            mkdir -m 700 -p "$deb_dir"
+            gh release download "$RELEASE_TAG" --pattern "$EXPECTED_DEB_ASSET_NAME" --dir "$deb_dir"
+            archive="$deb_dir/$EXPECTED_DEB_ASSET_NAME"
+            test -f "$archive" && test ! -L "$archive"
+            archive_size=$(stat -c '%s' "$archive")
+            test "$archive_size" = "$EXPECTED_DEB_SIZE_BYTES"
+            checksum=$(sha256sum "$archive" | cut -d' ' -f1)
+            test "$checksum" = "$EXPECTED_DEB_SHA256"
+            checksum_key=sha256sums_x86_64
+            deb_url="https://github.com/lomi-dev/lomi/releases/download/${RELEASE_TAG}/${EXPECTED_DEB_ASSET_NAME}"
+          else
+            url="https://github.com/lomi-dev/lomi/archive/${EXPECTED_DESKTOP_COMMIT}.tar.gz"
+            archive="$RUNNER_TEMP/lomi-${VERSION}-${EXPECTED_DESKTOP_COMMIT}.tar.gz"
+            curl --fail --location --retry 4 --retry-all-errors --output "$archive" "$url"
+            checksum=$(sha256sum "$archive" | cut -d' ' -f1)
+            [[ "$checksum" =~ ^[0-9a-f]{64}$ ]]
+            checksum_key=sha256sums
+          fi
+
+          pkgbuild="aur/${PACKAGE}/PKGBUILD"
+          sed -i "s/^pkgver=.*/pkgver=${VERSION}/" "$pkgbuild"
+          sed -i "s/^pkgrel=.*/pkgrel=1/" "$pkgbuild"
+          if [[ "$SOURCE_KIND" == "deb" ]]; then
+            sed -i "s@^source_x86_64=.*@source_x86_64=(\"${EXPECTED_DEB_ASSET_NAME}::${deb_url}\")@" "$pkgbuild"
+          else
+            source_url="https://github.com/lomi-dev/lomi/archive/${EXPECTED_DESKTOP_COMMIT}.tar.gz"
+            sed -i "s@^source=.*@source=(\"${PACKAGE}-${VERSION}.tar.gz::${source_url}\")@" "$pkgbuild"
+            sed -i "s@cd \"\${pkgname}-\${pkgver}\"@cd \"${PACKAGE}-${EXPECTED_DESKTOP_COMMIT}\"@g" "$pkgbuild"
+          fi
+          sed -i "s/^${checksum_key}=.*/${checksum_key}=('${checksum}')/" "$pkgbuild"
+          bash -n "$pkgbuild"
+
+      - name: Publish to AUR (attempt 1)
+        id: publish_1
+        continue-on-error: true
+        uses: KSXGitHub/github-actions-deploy-aur@084b0d9b15415bf9cdb65d44dad1efe37a354050 # v4.2.0
+        with:
+          pkgname: ${{ matrix.package }}
+          pkgbuild: ${{ matrix.pkgbuild }}
+          commit_username: ${{ env.AUR_MAINTAINER_NAME }}
+          commit_email: ${{ env.AUR_MAINTAINER_EMAIL }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: |
+            build(aur): publish ${{ inputs.release_tag }}
+
+            Update the package from the verified stable GitHub release.
+
+            Validation:
+            - Tagged versions and license: verified
+            - SHA-256 source checksum: calculated before publication
+          ssh_keyscan_types: rsa,ecdsa,ed25519
+
+      - name: Wait before retry 2
+        if: steps.publish_1.outcome == 'failure'
+        run: sleep 30
+
+      - name: Publish to AUR (attempt 2)
+        id: publish_2
+        if: steps.publish_1.outcome == 'failure'
+        continue-on-error: true
+        uses: KSXGitHub/github-actions-deploy-aur@084b0d9b15415bf9cdb65d44dad1efe37a354050 # v4.2.0
+        with:
+          pkgname: ${{ matrix.package }}
+          pkgbuild: ${{ matrix.pkgbuild }}
+          commit_username: ${{ env.AUR_MAINTAINER_NAME }}
+          commit_email: ${{ env.AUR_MAINTAINER_EMAIL }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: |
+            build(aur): publish ${{ inputs.release_tag }}
+
+            Update the package from the verified stable GitHub release.
+
+            Validation:
+            - Tagged versions and license: verified
+            - SHA-256 source checksum: calculated before publication
+          ssh_keyscan_types: rsa,ecdsa,ed25519
+
+      - name: Wait before retry 3
+        if: steps.publish_1.outcome == 'failure' && steps.publish_2.outcome == 'failure'
+        run: sleep 60
+
+      - name: Publish to AUR (attempt 3)
+        if: steps.publish_1.outcome == 'failure' && steps.publish_2.outcome == 'failure'
+        uses: KSXGitHub/github-actions-deploy-aur@084b0d9b15415bf9cdb65d44dad1efe37a354050 # v4.2.0
+        with:
+          pkgname: ${{ matrix.package }}
+          pkgbuild: ${{ matrix.pkgbuild }}
+          commit_username: ${{ env.AUR_MAINTAINER_NAME }}
+          commit_email: ${{ env.AUR_MAINTAINER_EMAIL }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: |
+            build(aur): publish ${{ inputs.release_tag }}
+
+            Update the package from the verified stable GitHub release.
+
+            Validation:
+            - Tagged versions and license: verified
+            - SHA-256 source checksum: calculated before publication
+          ssh_keyscan_types: rsa,ecdsa,ed25519
+
+  notify-flathub:
+    needs: [publish-release, validate-release]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      FLATHUB_TOKEN: ${{ secrets.FLATHUB_TOKEN }}
+    steps:
+      - name: Flathub is not connected yet
+        if: env.FLATHUB_TOKEN == ''
+        run: echo "Skipping Flathub notification until FLATHUB_TOKEN is configured."
+
+      - name: Trigger the Flathub update workflow
+        if: env.FLATHUB_TOKEN != ''
+        uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697 # v4.0.1
+        with:
+          token: ${{ env.FLATHUB_TOKEN }}
+          repository: flathub/dev.lomi.desktop
+          event-type: lomi-release
+          client-payload: '{"tag":"${{ inputs.release_tag }}","commit":"${{ needs.validate-release.outputs.desktop_commit }}"}'

@@ -69,6 +69,7 @@ import {
   type Session,
 } from "./model";
 import {
+  isAgentTerminal,
   runningTerminal,
   closeTerminals,
   stageAgentTerminal,
@@ -275,7 +276,7 @@ interface UiCommand {
             | { type: "editor_tab_size"; value: number }
             | { type: "editor_insert_spaces"; value: boolean }
             | KeybindingPatch
-            | { type: "theme_builtin"; value: "lomi" | "deepmono" }
+            | { type: "theme_builtin"; value: "lomi" }
             | { type: "theme_appearance"; value: "system" | "light" | "dark" }
             | {
                 type: "terminal_field";
@@ -1695,6 +1696,37 @@ export function useAgentControlBridge(
                     )
                   )
                     throw new Error("TARGET_NOT_FOUND");
+                }
+                if (native) {
+                  const sharedTerminalInTab = (tabId: string) => {
+                    const candidate = workspace.tabs.find(
+                      (tab) => tab.id === tabId,
+                    );
+                    return (
+                      candidate?.type === "terminal" &&
+                      layoutPanes(candidate.layout).some(
+                        (panel) =>
+                          panel.type === "terminal" &&
+                          !isAgentTerminal(panel.id),
+                      )
+                    );
+                  };
+                  const movement = action.movement;
+                  const mutatesSharedTerminal =
+                    movement.type === "move_pane"
+                      ? identities.some(
+                          (panel) =>
+                            panel.panelId === movement.panelId &&
+                            panel.kind === "terminal" &&
+                            !isAgentTerminal(panel.panelId),
+                        )
+                      : movement.type === "reorder_tab" ||
+                          movement.type === "transfer_tab" ||
+                          movement.type === "dock_tab"
+                        ? sharedTerminalInTab(movement.tabId)
+                        : false;
+                  if (mutatesSharedTerminal)
+                    throw new Error("PANEL_NOT_RENDERABLE");
                 }
                 const after = moveAgentPanel(
                   before,

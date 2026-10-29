@@ -12,11 +12,27 @@ pub(super) struct AuthConfig {
 
 impl AuthConfig {
     pub fn from_build() -> Result<Self, String> {
-        Self::for_build(
-            cfg!(debug_assertions),
-            option_env!("LOMI_AUTH_ORIGIN"),
-            option_env!("LOMI_AUTH_CLIENT_ID"),
-        )
+        let host_identity_origin = option_env!("LOMI_HOST_IDENTITY_ORIGIN");
+        if cfg!(debug_assertions) {
+            Self::for_build(
+                true,
+                host_identity_origin.or(option_env!("LOMI_AUTH_ORIGIN")),
+                option_env!("LOMI_AUTH_CLIENT_ID"),
+            )
+        } else {
+            // The release auth issuer is the same public identity pin used by
+            // the shared host. The OAuth client remains the desktop consumer
+            // client; LOMI_HOST_CLIENT_ID belongs to host enrollment only.
+            Self::new(
+                host_identity_origin.unwrap_or(DEFAULT_ORIGIN),
+                DEFAULT_CLIENT_ID,
+                false,
+            )
+        }
+    }
+
+    pub fn is_host_identity_origin(&self) -> bool {
+        option_env!("LOMI_HOST_IDENTITY_ORIGIN") == Some(self.origin.as_str())
     }
 
     fn for_build(

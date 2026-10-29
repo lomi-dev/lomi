@@ -204,7 +204,6 @@ for (const version of ["2025-11-25", "2026-07-28"]) {
         },
         { type: "keybinding_reset", action: "saveFile" },
         { type: "keybinds_focus_follows_pointer", value: true },
-        { type: "theme_builtin", value: "deepmono" },
         { type: "theme_builtin", value: "lomi" },
         { type: "theme_appearance", value: "system" },
       ])
@@ -216,6 +215,7 @@ for (const version of ["2025-11-25", "2026-07-28"]) {
         { type: "keybinding_set", action: "saveFile" },
         { type: "keybinding_reset", action: "saveFile", shortcut: null },
         { type: "keybindings_replace", value: {} },
+        { type: "theme_builtin", value: "deepmono" },
         { type: "theme_builtin", value: "user-package" },
         { type: "theme_appearance", value: "custom" },
       ])

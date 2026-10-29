@@ -1,8 +1,18 @@
 import type { CliAgent } from "./cli-agents";
 import { Channel } from "@tauri-apps/api/core";
-import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Terminal } from "@xterm/xterm";
+import {
+  applyPatch,
+  applySnapshot,
+  setInputEnabled,
+} from "@lomi/terminal-renderer-experimental";
+import {
+  TerminalStreamAssembler,
+  TerminalStreamResyncError,
+} from "@lomi/terminal-renderer-experimental/stream";
+import type { AssembledTerminalValue } from "@lomi/terminal-renderer-experimental/stream";
 import type { IDisposable, IMarker } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
@@ -12,6 +22,13 @@ import { api, errorMessage, macOS, windows } from "./api";
 import { newId } from "./model";
 import type { Pane, ShellProfile } from "./model";
 import { inputChunks } from "./terminal-utils";
+import { isAgentTerminalState } from "./remote-workspace-domain";
+import {
+  parseOsc9Progress,
+  parseTerminalProgramStatus,
+  terminalProgramStatusActivity,
+} from "./cli-activity";
+import type { CliActivity, TerminalProgramStatus } from "./cli-activity";
 import { classifyTerminalInput } from "./terminal-input-source";
 import {
   createAgentNotificationGate,
@@ -25,6 +42,25 @@ import {
   terminalSearchColors,
   themeAppliedEvent,
 } from "./theme/runtime";
+import {
+  closeSharedHostTerminal as closeHostTerminal,
+  detachSharedHostView,
+  finishSharedHostCreate,
+  importSharedWorkspace,
+  registerSharedShellProfile,
+  saveSharedHostTerminalAlias,
+  sharedHostCreateIntent,
+  sharedHostOperationId,
+  sharedHostRpc,
+  sharedHostTerminalAliases,
+  sharedWorkspaceState,
+} from "./shared-host";
+import type {
+  SharedHostEvent,
+  SharedHostLease,
+  SharedHostTerminalBinding,
+  SharedHostTerminalContext,
+} from "./shared-host";
 
 export interface CommandBlock {
   id: string;
@@ -38,10 +74,12 @@ interface Snapshot {
   status: "starting" | "running" | "exited" | "error";
   title: string;
   titleBusy: boolean;
+  programStatus: TerminalProgramStatus | null;
   accountLabel: string | null;
   agentSignal: AgentSignal | null;
   foregroundProgram: string;
   agentControlled: boolean;
+  observedWorkingDirectory: string | null;
   error: string | null;
   cwd: string;
   renderer: "WebGL" | "DOM";
@@ -56,11 +94,40 @@ export interface TitleProcess {
   pid: number;
 }
 
+export interface TerminalAgentState {
+  cli: CliAgent;
+  sessionId: string;
+  process: TitleProcess | null;
+  activity: CliActivity | null;
+}
+
 export interface TerminalContext {
   cwd: string | null;
   foregroundProgram: string | null;
   titleCli: TitleProcess | null;
   agentControlled?: boolean;
+}
+type SharedHostTab =
+  import("./shared-host").SharedHostWorkspaceState["tabs"][number];
+type SharedHostLayout = SharedHostTab["layout"];
+type SharedHostPane = Extract<SharedHostLayout, { kind: "pane" }>["pane"];
+function locateHostPane(
+  state: import("./shared-host").SharedHostWorkspaceState,
+  paneId: string,
+): { tabId: string; pane: SharedHostPane } | undefined {
+  const find = (
+    layout: SharedHostLayout,
+    tabId: string,
+  ): { tabId: string; pane: SharedHostPane } | undefined => {
+    if (layout.kind === "pane")
+      return layout.pane.paneId === paneId ? { tabId, pane: layout.pane } : undefined;
+    return find(layout.first, tabId) ?? find(layout.second, tabId);
+  };
+  for (const tab of state.tabs) {
+    const found = find(tab.layout, tab.tabId);
+    if (found) return found;
+  }
+  return undefined;
 }
 type DirectoryListener = (id: string, cwd: string) => void;
 let directoryListener: DirectoryListener = () => {};
@@ -90,9 +157,14 @@ export function stageAgentTerminal(panelId: string, start: AgentTerminalStart) {
   if (agentStarts.has(panelId) || runtimes.has(panelId))
     throw new Error("Terminal already exists.");
   agentStarts.set(panelId, start);
+  terminalLifecycleChanged();
 }
 export const clearAgentTerminal = (panelId: string) =>
-  agentStarts.delete(panelId);
+  (() => {
+    const cleared = agentStarts.delete(panelId);
+    if (cleared) terminalLifecycleChanged();
+    return cleared;
+  })();
 export async function waitForAgentTerminal(panelId: string, sessionId: string) {
   const deadline = performance.now() + 20000;
   while (performance.now() < deadline) {
@@ -111,7 +183,8 @@ export async function waitForAgentTerminal(panelId: string, sessionId: string) {
 }
 
 export class TerminalRuntime {
-  readonly sessionId: string;
+  sessionId: string;
+  readonly agentStarted: boolean;
   private readonly agentStart?: AgentTerminalStart;
   readonly terminal: Terminal;
   readonly fitAddon = new FitAddon();
@@ -149,6 +222,27 @@ export class TerminalRuntime {
   private nextCommand?: string;
   private eof = false;
   private exitCode: number | null | undefined;
+  private activityOverride: CliActivity | null | undefined;
+  private activityOverrideSource:
+    "agent-signal" | "progress" | "notification" | "title" | undefined;
+  private hostBinding?: SharedHostTerminalBinding;
+  private hostTerminal?: SharedHostTerminalContext;
+  private hostSubscriptionId?: string;
+  private hostAssembler?: TerminalStreamAssembler;
+  private hostEvents?: Channel<SharedHostEvent>;
+  private hostLease?: SharedHostLease["lease"];
+  private hostInputId = 0n;
+  private hostInputSeq = 0n;
+  private hostResizeSeq = 0n;
+  private hostRenderedThroughSeq = "0";
+  private hostFocused = false;
+  private hostSnapshotReady = false;
+  private hostPendingFrames: string[] = [];
+  private hostPendingFrameBytes = 0;
+  private hostLeaseTimer?: ReturnType<typeof setTimeout>;
+  private hostResizePending?: { cols: number; rows: number };
+  private hostResizing = false;
+  private hostAckChain: Promise<void> = Promise.resolve();
 
   constructor(
     readonly paneId: string,
@@ -156,18 +250,24 @@ export class TerminalRuntime {
     cwd: string,
     private readonly cliLaunch?: CliAgent,
     private readonly accountId?: string,
+    hostBinding?: SharedHostTerminalBinding,
   ) {
     this.agentStart = agentStarts.get(paneId);
     agentStarts.delete(paneId);
+    this.agentStarted = Boolean(this.agentStart);
+    this.hostBinding =
+      this.agentStarted || cliLaunch || accountId ? undefined : hostBinding;
     this.sessionId = this.agentStart?.sessionId ?? newId();
     this.snapshot = {
       status: "starting",
       title: "",
       titleBusy: false,
+      programStatus: null,
       accountLabel: null,
       agentSignal: null,
       foregroundProgram: "",
       agentControlled: false,
+      observedWorkingDirectory: null,
       error: null,
       cwd,
       renderer: "DOM",
@@ -193,11 +293,29 @@ export class TerminalRuntime {
       const spinner = /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏](?:\s+|$)/u.exec(title);
       const titleBusy = spinner !== null;
       if (spinner) title = title.slice(spinner[0].length);
+      let clearSignal = false;
+      if (
+        titleBusy &&
+        !this.snapshot.titleBusy &&
+        this.activityOverrideSource !== "agent-signal"
+      ) {
+        this.activityOverride = "working";
+        this.activityOverrideSource = "title";
+        clearSignal = this.snapshot.agentSignal !== null;
+      } else if (!titleBusy && this.activityOverrideSource === "title") {
+        this.activityOverride = undefined;
+        this.activityOverrideSource = undefined;
+      }
       if (
         title !== this.snapshot.title ||
-        titleBusy !== this.snapshot.titleBusy
+        titleBusy !== this.snapshot.titleBusy ||
+        clearSignal
       )
-        this.update({ title, titleBusy });
+        this.update({
+          title,
+          titleBusy,
+          ...(clearSignal ? { agentSignal: null } : {}),
+        });
     });
     window.addEventListener(themeAppliedEvent, this.applyTheme);
     this.host.className = "terminal-host";
@@ -253,6 +371,9 @@ export class TerminalRuntime {
       return false;
     });
     this.terminal.parser.registerOscHandler(7, (value) => {
+      // Shared Host terminals get advisory CWD from the Host stream metadata.
+      // Do not let xterm's renderer parser become a second authority source.
+      if (this.hostBinding) return true;
       try {
         const url = new URL(value);
         if (url.protocol !== "file:") return false;
@@ -289,6 +410,20 @@ export class TerminalRuntime {
     });
     const shouldNotify = createAgentNotificationGate();
     this.terminal.parser.registerOscHandler(9, (value) => {
+      const progress = parseOsc9Progress(value);
+      if (progress) {
+        if (!this.disposed)
+          this.updateActivitySignal(
+            progress.activity,
+            progress.activity === "working"
+              ? "working"
+              : progress.activity === "attention"
+                ? "attention"
+                : null,
+            "progress",
+          );
+        return true;
+      }
       // OSC 9;4 is a progress report, not a notification. Never forward raw
       // terminal text into a system notification.
       if (!value || /^\d;/.test(value)) return false;
@@ -301,11 +436,35 @@ export class TerminalRuntime {
         });
       return true;
     });
+    this.terminal.parser.registerOscHandler(7501, (value) => {
+      const status = parseTerminalProgramStatus(value);
+      if (!status) return false;
+      if (this.disposed) return true;
+      if (this.atPrompt && status.state !== "clear") return true;
+
+      const cli = terminalAgents[this.paneId];
+      if (cli && cli !== "codex") return true;
+
+      if (status.state === "clear") {
+        if (cli === "codex" || this.snapshot.programStatus !== null)
+          this.clearProgramStatus(true);
+        return true;
+      }
+
+      // A status can arrive before native process discovery. Keep the typed,
+      // bounded value pending until the process identity is verified.
+      this.update({ programStatus: status });
+      return true;
+    });
     this.terminal.parser.registerOscHandler(777, (value) => {
       const kind = parseAgentSignal(value);
       if (!kind) return false;
-      if (!this.disposed && kind !== this.snapshot.agentSignal)
-        this.update({ agentSignal: kind });
+      if (!this.disposed)
+        this.updateActivitySignal(
+          kind === "finished" ? null : kind,
+          kind,
+          "agent-signal",
+        );
       if (!this.disposed && shouldNotify(kind) && kind !== "working")
         emitAgentNotification({
           paneId: this.paneId,
@@ -420,9 +579,13 @@ export class TerminalRuntime {
     await api("close_terminal", { id: this.sessionId });
     this.nativeCloseComplete = true;
   }
-  observeControl(agentControlled: boolean) {
-    if (agentControlled !== this.snapshot.agentControlled)
+  observeControl(agentControlled: boolean, notifyLifecycle = true) {
+    if (agentControlled !== this.snapshot.agentControlled) {
       this.update({ agentControlled });
+      if (notifyLifecycle) terminalLifecycleChanged();
+      return true;
+    }
+    return false;
   }
   async takeControl() {
     try {
@@ -440,6 +603,66 @@ export class TerminalRuntime {
     if (foregroundProgram !== this.snapshot.foregroundProgram)
       this.update({ foregroundProgram });
   }
+  resetCliActivity() {
+    this.activityOverride = undefined;
+    this.activityOverrideSource = undefined;
+    if (
+      this.snapshot.agentSignal !== null ||
+      this.snapshot.titleBusy ||
+      this.snapshot.programStatus !== null
+    )
+      this.update({ agentSignal: null, titleBusy: false, programStatus: null });
+    else publishTerminalAgentState(this);
+  }
+  clearProgramStatus(clearLegacyActivity = false) {
+    if (clearLegacyActivity) {
+      this.activityOverride = null;
+      this.activityOverrideSource = undefined;
+    }
+    const patch: Partial<Snapshot> = {};
+    if (this.snapshot.programStatus !== null) patch.programStatus = null;
+    if (clearLegacyActivity) {
+      if (this.snapshot.agentSignal !== null) patch.agentSignal = null;
+      if (this.snapshot.titleBusy) patch.titleBusy = false;
+    }
+    if (Object.keys(patch).length) this.update(patch);
+    else publishTerminalAgentState(this);
+  }
+  getCliActivity(): CliActivity | null {
+    if (this.snapshot.status === "error") return "error";
+    if (
+      this.snapshot.status === "exited" &&
+      this.exitCode !== undefined &&
+      this.exitCode !== null &&
+      this.exitCode !== 0
+    )
+      return "error";
+    const programStatus = this.snapshot.programStatus;
+    if (
+      terminalAgents[this.paneId] === "codex" &&
+      programStatus !== null &&
+      programStatus.state !== "clear"
+    )
+      return terminalProgramStatusActivity(programStatus);
+    if (this.activityOverride !== undefined) return this.activityOverride;
+    if (this.snapshot.agentSignal === "working") return "working";
+    if (this.snapshot.agentSignal === "attention") return "attention";
+    if (this.snapshot.agentSignal === "finished") return null;
+    return this.snapshot.titleBusy ? "working" : null;
+  }
+  private updateActivitySignal(
+    activity: CliActivity | null,
+    agentSignal: AgentSignal | null,
+    source: "agent-signal" | "progress" | "notification",
+  ) {
+    this.activityOverride = activity;
+    this.activityOverrideSource = source;
+    const patch: Partial<Snapshot> = {};
+    if (this.snapshot.agentSignal !== agentSignal)
+      patch.agentSignal = agentSignal;
+    if (Object.keys(patch).length) this.update(patch);
+    else publishTerminalAgentState(this);
+  }
   setView(view: "searchOpen" | "composerOpen" | "blocksOpen", open: boolean) {
     this.update({ [view]: open });
   }
@@ -449,6 +672,7 @@ export class TerminalRuntime {
   private update(patch: Partial<Snapshot>) {
     if (this.disposed) return;
     this.snapshot = { ...this.snapshot, ...patch };
+    publishTerminalAgentState(this);
     for (const listener of this.listeners) listener();
   }
 
@@ -674,7 +898,8 @@ export class TerminalRuntime {
         const size = this.pendingResize;
         this.pendingResize = undefined;
         try {
-          await api("resize_terminal", { id: this.sessionId, ...size });
+          if (this.hostBinding) await this.resizeSharedHost(size);
+          else await api("resize_terminal", { id: this.sessionId, ...size });
         } catch (error) {
           if (!this.disposed && this.snapshot.status === "running")
             reportError(errorMessage(error));
@@ -690,6 +915,22 @@ export class TerminalRuntime {
     await this.start();
     if (this.snapshot.status === "error")
       throw new Error(this.snapshot.error ?? "Terminal could not start.");
+    if (this.hostBinding && this.snapshot.status !== "running")
+      throw new Error("The shared host terminal is unavailable. Restart it explicitly to create a new shell.");
+  }
+
+  configureSharedHostBinding(binding?: SharedHostTerminalBinding) {
+    if (this.agentStarted || this.cliLaunch || this.accountId) return;
+    const previous = this.hostBinding;
+    this.hostBinding = binding;
+    if (
+      previous?.workspaceId !== binding?.workspaceId ||
+      previous?.rootPath !== binding?.rootPath ||
+      previous?.desktopTabId !== binding?.desktopTabId ||
+      previous?.tabName !== binding?.tabName
+    ) {
+      this.clearObservedHostDirectory();
+    }
   }
 
   private start() {
@@ -702,6 +943,14 @@ export class TerminalRuntime {
         // Docking or a remount can replace initialization while fonts load.
       } while (renderer !== this.rendererPromise);
       if (this.disposed) return;
+      if (this.hostBinding) {
+        try {
+          await this.startSharedHost();
+        } catch (error) {
+          this.update({ status: "error", error: errorMessage(error) });
+        }
+        return;
+      }
       const output = new Channel<ArrayBuffer>();
       output.onmessage = (data) => {
         if (this.disposed) return;
@@ -773,8 +1022,558 @@ export class TerminalRuntime {
     return this.startPromise;
   }
 
+  private async startSharedHost() {
+    const binding = this.hostBinding;
+    if (!binding) throw new Error("The shared terminal workspace is unavailable.");
+    await importSharedWorkspace(
+      binding.workspaceId,
+      binding.workspaceName,
+      binding.rootPath,
+    );
+    if (this.disposed) return;
+    let state = await sharedWorkspaceState(binding.workspaceId);
+    const aliases = await sharedHostTerminalAliases(binding.workspaceId);
+    let alias = aliases.find(
+      (candidate) => candidate.desktopPaneId === this.paneId,
+    );
+    let located = locateHostPane(state, alias?.hostPaneId ?? this.paneId);
+    const intent = sharedHostCreateIntent(this.paneId);
+
+    if (!located && !alias && intent) {
+      const profileId = await registerSharedShellProfile(
+        binding.workspaceId,
+        this.profile.id,
+        this.snapshot.cwd,
+      );
+      const operationId = await sharedHostOperationId(
+        binding.workspaceId,
+        this.paneId,
+        intent.kind,
+        intent.kind === "split" ? intent.targetPaneId : "",
+        intent.kind === "split" ? intent.axis : "",
+      );
+      const mutation = {
+        operationId,
+        context: state.context,
+        expectedRevision: state.domainRevision,
+      };
+      let receipt;
+      if (intent.kind === "create") {
+        receipt = await this.createSharedHostTerminal(
+          mutation,
+          binding.tabName,
+          profileId,
+        );
+      } else {
+        const targetAlias = aliases.find(
+          (candidate) => candidate.desktopPaneId === intent.targetPaneId,
+        );
+        const targetHostPaneId = targetAlias?.hostPaneId ?? intent.targetPaneId;
+        const target = locateHostPane(state, targetHostPaneId);
+        if (!target?.pane.session)
+          throw new Error("The terminal being split is unavailable.");
+        receipt = await this.splitSharedHostTerminal(
+          {
+            ...mutation,
+            operationId,
+          },
+          target.tabId,
+          targetHostPaneId,
+          intent.axis,
+          profileId,
+        );
+      }
+      const newPaneId = receipt.result?.kind === "terminal" ? receipt.result.paneId : "";
+      if (!newPaneId)
+        throw new Error("Local host did not confirm terminal creation.");
+      state = await sharedWorkspaceState(binding.workspaceId);
+      located = locateHostPane(state, newPaneId);
+      if (!located)
+        throw new Error("The created terminal is not present in the host workspace.");
+      alias = {
+        desktopPaneId: this.paneId,
+        desktopTabId: binding.desktopTabId,
+        hostPaneId: newPaneId,
+        hostTabId: located.tabId,
+      };
+      await saveSharedHostTerminalAlias(binding.workspaceId, alias);
+      finishSharedHostCreate(this.paneId);
+    }
+
+    if (this.disposed) return;
+    if (!located) {
+      this.eof = true;
+      this.exitCode = null;
+      this.update({ status: "exited" });
+      return;
+    }
+    if (!alias) {
+      alias = {
+        desktopPaneId: this.paneId,
+        desktopTabId: binding.desktopTabId,
+        hostPaneId: located.pane.paneId,
+        hostTabId: located.tabId,
+      };
+      await saveSharedHostTerminalAlias(binding.workspaceId, alias);
+    }
+    if (!located.pane.session) {
+      this.eof = true;
+      this.exitCode = null;
+      this.update({ status: "exited" });
+      return;
+    }
+    if (located.pane.state === "exited") {
+      this.eof = true;
+      this.exitCode = null;
+    }
+    await this.attachSharedHostSession(located.pane.session);
+  }
+
+  private async attachSharedHostSession(
+    terminal: SharedHostTerminalContext | null | undefined,
+  ) {
+    this.clearObservedHostDirectory();
+    if (!terminal) {
+      this.eof = true;
+      this.exitCode = null;
+      this.update({ status: "exited" });
+      return;
+    }
+    this.hostEvents && (this.hostEvents.onmessage = () => {});
+    this.hostAssembler?.dispose();
+    this.hostAssembler = undefined;
+    this.hostSnapshotReady = false;
+    const channel = new Channel<SharedHostEvent>();
+    channel.onmessage = (event) => this.receiveSharedHostEvent(event);
+    const metadata = await sharedHostRpc(
+      {
+        method: "terminal.attach",
+        params: { terminal },
+      },
+      channel,
+    );
+    this.sessionId = terminal.sessionId;
+    this.hostEvents = channel;
+    this.hostTerminal = metadata.terminal;
+    this.hostSubscriptionId = metadata.subscriptionId;
+    this.hostAssembler = TerminalStreamAssembler.fromSnapshotMetadata(
+      metadata.terminal,
+      metadata.subscriptionId,
+      metadata,
+    );
+    const pending = this.hostPendingFrames;
+    this.hostPendingFrames = [];
+    this.hostPendingFrameBytes = 0;
+    for (const frame of pending) this.processSharedHostFrame(frame);
+    this.scheduleFit();
+  }
+
+  private async createSharedHostTerminal(
+    mutation: {
+      operationId: string;
+      context: import("./shared-host").SharedHostWorkspaceContext;
+      expectedRevision: string;
+    },
+    tabName: string,
+    profileId: string,
+  ) {
+    const call = {
+      method: "terminal.create" as const,
+      params: { mutation, tabName, profileId },
+    };
+    try {
+      return await sharedHostRpc(call);
+    } catch (error) {
+      try {
+        return await sharedHostRpc({
+          method: "operation.status",
+          params: {
+            context: mutation.context,
+            operationId: mutation.operationId,
+          },
+        });
+      } catch {
+        throw error;
+      }
+    }
+  }
+
+  private async splitSharedHostTerminal(
+    mutation: {
+      operationId: string;
+      context: import("./shared-host").SharedHostWorkspaceContext;
+      expectedRevision: string;
+    },
+    tabId: string,
+    paneId: string,
+    axis: "horizontal" | "vertical",
+    profileId: string,
+  ) {
+    const call = {
+      method: "terminal.split" as const,
+      params: { mutation, tabId, paneId, axis, profileId },
+    };
+    try {
+      return await sharedHostRpc(call);
+    } catch (error) {
+      try {
+        return await sharedHostRpc({
+          method: "operation.status",
+          params: {
+            context: mutation.context,
+            operationId: mutation.operationId,
+          },
+        });
+      } catch {
+        throw error;
+      }
+    }
+  }
+
+  private receiveSharedHostEvent(event: SharedHostEvent) {
+    if (this.disposed) return;
+    if (event.type === "transportLost") {
+      this.clearObservedHostDirectory();
+      this.loseSharedHostLease();
+      this.update({
+        status: "error",
+        error: "The shared terminal connection was lost. Reopen the terminal to reconnect.",
+      });
+      return;
+    }
+    if (event.value.stream !== "terminal") return;
+    const frame = JSON.stringify(event.value.frame);
+    if (!this.hostAssembler) {
+      const size = new TextEncoder().encode(frame).length;
+      if (this.hostPendingFrameBytes + size > 1024 * 1024) {
+        this.hostPendingFrames = [];
+        this.hostPendingFrameBytes = 0;
+        this.update({
+          status: "error",
+          error: "The shared terminal snapshot arrived too quickly. Reopen the terminal to retry.",
+        });
+        return;
+      }
+      this.hostPendingFrames.push(frame);
+      this.hostPendingFrameBytes += size;
+      return;
+    }
+    this.processSharedHostFrame(frame);
+  }
+
+  private processSharedHostFrame(frame: string) {
+    const assembler = this.hostAssembler;
+    if (!assembler || this.disposed) return;
+    try {
+      const assembled = assembler.push(frame);
+      if (assembled) this.applySharedHostValue(assembled);
+    } catch (error) {
+      this.clearObservedHostDirectory();
+      this.loseSharedHostLease();
+      const reason =
+        error instanceof TerminalStreamResyncError
+          ? error.message
+          : "invalid terminal stream";
+      this.update({
+        status: "error",
+        error: `The shared terminal needs to be reopened (${reason}).`,
+      });
+    }
+  }
+
+  private applySharedHostValue(value: AssembledTerminalValue) {
+    const terminal = this.terminal;
+    if (value.kind === "snapshot") {
+      applySnapshot(terminal, value.value);
+      this.applySharedHostDirectory(value);
+      this.hostSnapshotReady = true;
+      this.receivedOutput = true;
+      this.hostRenderedThroughSeq = value.throughSeq;
+      this.update({ status: "running" });
+      this.terminal.refresh(0, this.terminal.rows - 1);
+      void this.acknowledgeSharedHost(value);
+      if (this.hostFocused) void this.claimSharedHostControl();
+      return;
+    }
+    if (value.kind === "delta") {
+      applyPatch(terminal, value.value);
+      this.applySharedHostDirectory(value);
+      this.hostRenderedThroughSeq = value.throughSeq;
+      this.receivedOutput = true;
+      this.update({ status: "running" });
+      setInputEnabled(terminal, Boolean(this.hostLease && this.hostFocused));
+      void this.acknowledgeSharedHost(value);
+      return;
+    }
+    const event = value.value as {
+      change?: {
+        kind?: string;
+        data?: {
+          columns?: number;
+          rows?: number;
+          exitCode?: number | null;
+          leaseVersion?: string;
+        };
+      };
+    };
+    const change = event.change;
+    if (change?.kind === "grid" && change.data) {
+      applyPatch(terminal, change.data);
+      this.setSharedHostInputEnabled();
+    } else if (change?.kind === "resize" && change.data) {
+      const { columns, rows } = change.data;
+      if (columns && rows) {
+        terminal.resize(columns, rows);
+        this.scheduleFit();
+      }
+    } else if (change?.kind === "exit") {
+      this.exitCode = change.data?.exitCode ?? null;
+      this.eof = true;
+      this.finishExit();
+    } else if (change?.kind === "controlChanged") {
+      if (this.hostLease?.version !== change.data?.leaseVersion)
+        this.loseSharedHostLease();
+    }
+    this.hostRenderedThroughSeq = value.throughSeq;
+    void this.acknowledgeSharedHost(value);
+  }
+
+  private applySharedHostDirectory(value: AssembledTerminalValue) {
+    const binding = this.hostBinding;
+    const expected = this.hostTerminal;
+    if (
+      !binding ||
+      !expected ||
+      expected.workspace.workspaceId !== binding.workspaceId ||
+      value.terminal.sessionId !== expected.sessionId ||
+      value.terminal.sessionEpoch !== expected.sessionEpoch
+    ) {
+      return;
+    }
+    const directory =
+      typeof value.workingDirectory === "string"
+        ? value.workingDirectory
+        : null;
+    if (directory === this.snapshot.observedWorkingDirectory) return;
+    this.update({ observedWorkingDirectory: directory });
+  }
+
+  private clearObservedHostDirectory() {
+    if (this.snapshot.observedWorkingDirectory !== null) {
+      this.update({ observedWorkingDirectory: null });
+    }
+  }
+
+  private async acknowledgeSharedHost(value: AssembledTerminalValue) {
+    const terminal = this.hostTerminal;
+    if (!terminal || this.disposed) return;
+    this.hostAckChain = this.hostAckChain
+      .then(async () => {
+        if (this.disposed) return;
+        await sharedHostRpc({
+          method: "terminal.ack",
+          params: {
+            terminal,
+            subscriptionId: value.subscriptionId,
+            throughSeq: value.throughSeq,
+          },
+        });
+      })
+      .catch(() => this.loseSharedHostLease());
+  }
+
+  private setSharedHostInputEnabled() {
+    try {
+      setInputEnabled(this.terminal, Boolean(this.hostLease && this.hostFocused));
+    } catch (error) {
+      this.loseSharedHostLease();
+      reportError(errorMessage(error));
+    }
+  }
+
+  setSharedHostFocused(focused: boolean) {
+    if (!this.hostBinding || this.disposed || this.hostFocused === focused) return;
+    this.hostFocused = focused;
+    if (focused) void this.claimSharedHostControl();
+    else void this.releaseSharedHostControl();
+  }
+
+  private async claimSharedHostControl() {
+    if (
+      !this.hostFocused ||
+      !this.hostSnapshotReady ||
+      !this.hostTerminal ||
+      !this.hostSubscriptionId ||
+      this.disposed
+    )
+      return;
+    if (this.hostLease) return;
+    try {
+      const lease = await sharedHostRpc({
+        method: "terminal.claim",
+        params: {
+          terminal: this.hostTerminal,
+          subscriptionId: this.hostSubscriptionId,
+          renderedThroughSeq: this.hostRenderedThroughSeq,
+        },
+      });
+      if (!this.hostFocused || this.disposed) {
+        await sharedHostRpc({
+          method: "terminal.release",
+          params: { terminal: lease.terminal, lease: lease.lease },
+        });
+        return;
+      }
+      this.hostLease = lease.lease;
+      this.hostInputId = BigInt(lease.nextInputId);
+      this.hostInputSeq = BigInt(lease.nextInputSeq);
+      this.hostResizeSeq = BigInt(lease.nextResizeSeq);
+      this.setSharedHostInputEnabled();
+      this.scheduleSharedHostLeaseRenewal(lease.expiresInMs);
+    } catch {
+      this.loseSharedHostLease();
+    }
+  }
+
+  private scheduleSharedHostLeaseRenewal(expiresInMs: number) {
+    clearTimeout(this.hostLeaseTimer);
+    this.hostLeaseTimer = setTimeout(
+      () => void this.renewSharedHostControl(),
+      Math.max(250, Math.floor(expiresInMs / 2)),
+    );
+  }
+
+  private async renewSharedHostControl() {
+    const lease = this.hostLease;
+    const terminal = this.hostTerminal;
+    if (!lease || !terminal || !this.hostFocused || this.disposed) return;
+    try {
+      const renewed = await sharedHostRpc({
+        method: "terminal.renew",
+        params: { terminal, lease },
+      });
+      if (this.hostLease !== lease || this.disposed) return;
+      this.hostLease = renewed.lease;
+      this.scheduleSharedHostLeaseRenewal(renewed.expiresInMs);
+    } catch {
+      this.loseSharedHostLease();
+    }
+  }
+
+  private async releaseSharedHostControl() {
+    const lease = this.hostLease;
+    const terminal = this.hostTerminal;
+    this.loseSharedHostLease();
+    if (!lease || !terminal) return;
+    try {
+      await sharedHostRpc({
+        method: "terminal.release",
+        params: { terminal, lease },
+      });
+    } catch {
+      // Lease expiry and transport loss both leave the renderer read-only.
+    }
+  }
+
+  private loseSharedHostLease() {
+    this.hostLease = undefined;
+    clearTimeout(this.hostLeaseTimer);
+    this.hostLeaseTimer = undefined;
+    try {
+      setInputEnabled(this.terminal, false);
+    } catch {
+      // A failed structured render already leaves input disabled.
+    }
+  }
+
+  private async sendSharedHostInput(data: string) {
+    const terminal = this.hostTerminal;
+    const lease = this.hostLease;
+    if (!terminal || !lease || !this.hostFocused)
+      throw new Error("Focus this terminal window to send input.");
+    const encoder = new TextEncoder();
+    let bytes = new Uint8Array(0);
+    let text = "";
+    const submit = async () => {
+      if (!bytes.length) return;
+      const inputId = this.hostInputId.toString();
+      const inputSeq = this.hostInputSeq.toString();
+      const receipt = await sharedHostRpc({
+        method: "terminal.input",
+        params: {
+          terminal,
+          lease,
+          inputId,
+          inputSeq,
+          bytes: [...bytes],
+        },
+      });
+      if (receipt.inputId !== inputId || receipt.inputSeq !== inputSeq)
+        throw new Error("The host did not confirm terminal input ordering.");
+      this.hostInputId++;
+      this.hostInputSeq++;
+      bytes = new Uint8Array(0);
+      text = "";
+    };
+    try {
+      for (const scalar of data) {
+        const next = encoder.encode(scalar);
+        if (bytes.length + next.length > 16_384) await submit();
+        const joined = new Uint8Array(bytes.length + next.length);
+        joined.set(bytes);
+        joined.set(next, bytes.length);
+        bytes = joined;
+        text += scalar;
+      }
+      if (text) await submit();
+    } catch {
+      // A lost reply makes the input sequence ambiguous. Release control and
+      // require a fresh lease instead of sending these bytes again.
+      void this.releaseSharedHostControl();
+      throw new Error(
+        "The shared terminal input could not be confirmed and was not retried. Reopen the terminal before sending more.",
+      );
+    }
+  }
+
+  private async resizeSharedHost(size: { cols: number; rows: number }) {
+    this.hostResizePending = size;
+    if (this.hostResizing) return;
+    this.hostResizing = true;
+    try {
+      while (this.hostResizePending && !this.disposed) {
+        const next = this.hostResizePending;
+        this.hostResizePending = undefined;
+        const lease = this.hostLease;
+        const terminal = this.hostTerminal;
+        if (!lease || !terminal || !this.hostFocused) continue;
+        const resizeSeq = this.hostResizeSeq.toString();
+        await sharedHostRpc({
+          method: "terminal.resize",
+          params: {
+            terminal,
+            lease,
+            resizeSeq,
+            columns: next.cols,
+            rows: next.rows,
+          },
+        });
+        this.hostResizeSeq++;
+      }
+    } catch {
+      this.loseSharedHostLease();
+    } finally {
+      this.hostResizing = false;
+    }
+  }
+
   private finishExit() {
     if (!this.eof || this.exitCode === undefined || this.disposed) return;
+    if (this.hostBinding) {
+      this.loseSharedHostLease();
+      this.update({ status: "exited" });
+      return;
+    }
     this.terminal.write("", () => {
       this.finishBlock(this.exitCode ?? undefined);
       this.update({ status: "exited" });
@@ -823,6 +1622,10 @@ export class TerminalRuntime {
   }
 
   private async writeInput(data: string, human = true) {
+    if (this.hostBinding) {
+      await this.sendSharedHostInput(data);
+      return;
+    }
     if (human) this.observeControl(false);
     // Accept titles after submission even when a shell has no pre-execution hook.
     if (human && (data === "\r" || data === "\n")) this.atPrompt = false;
@@ -892,6 +1695,20 @@ export class TerminalRuntime {
     )
       return Promise.resolve();
     return this.queueInput(async () => {
+      if (this.hostBinding) {
+        const text = await readText();
+        if (this.disposed || text === null) return;
+        this.pasteOutput = [];
+        let data: string;
+        try {
+          this.terminal.paste(text);
+          data = this.pasteOutput.join("");
+        } finally {
+          this.pasteOutput = undefined;
+        }
+        if (!this.disposed) await this.writeInput(data);
+        return;
+      }
       // Native image-paste actions share the input queue with text and later keys.
       const text = await api<string | null>("paste_terminal_clipboard", {
         id: this.sessionId,
@@ -972,18 +1789,23 @@ export class TerminalRuntime {
 
   private finishBlock(exitCode?: number) {
     this.atPrompt = true;
+    this.activityOverride = null;
+    this.activityOverrideSource = undefined;
     if (
       this.snapshot.title ||
       this.snapshot.titleBusy ||
       this.snapshot.agentSignal ||
+      this.snapshot.programStatus ||
       this.snapshot.foregroundProgram
     )
       this.update({
         title: "",
         titleBusy: false,
         agentSignal: null,
+        programStatus: null,
         foregroundProgram: "",
       });
+    else publishTerminalAgentState(this);
     if (!this.activeBlock) return;
     const id = this.activeBlock.id;
     this.activeBlock = undefined;
@@ -1007,15 +1829,28 @@ export class TerminalRuntime {
     }
   }
 
-  dispose() {
+  dispose(closeSharedHost = true) {
     if (this.disposed) return;
+    this.clearObservedHostDirectory();
+    if (this.hostBinding) {
+      if (closeSharedHost)
+        void closeHostTerminal(this.hostBinding.workspaceId, this.paneId).catch(
+          (error) => reportError(errorMessage(error)),
+        );
+      else void this.releaseSharedHostControl();
+      this.hostEvents && (this.hostEvents.onmessage = () => {});
+      this.hostAssembler?.dispose();
+      this.hostAssembler = undefined;
+    }
     window.removeEventListener(themeAppliedEvent, this.applyTheme);
     this.disposed = true;
+    removeTerminalAgentState(this.paneId);
     this.host.removeEventListener("paste", this.onPaste, true);
     this.detach();
     clearTimeout(this.ackTimer);
     this.listeners.clear();
     this.terminal.dispose();
+    if (this.hostBinding) return;
     if (!this.nativeCloseComplete)
       void this.startPromise?.finally(() =>
         api("close_terminal", { id: this.sessionId }).catch((error) =>
@@ -1037,29 +1872,142 @@ const terminalLifecycleChanged = () => {
 };
 const runtimes = new Map<string, TerminalRuntime>();
 let terminalAgents: Readonly<Record<string, CliAgent>> = Object.freeze({});
+let terminalAgentProcesses: Readonly<Record<string, TitleProcess>> =
+  Object.freeze({});
+let terminalAgentStates: Readonly<Record<string, TerminalAgentState>> =
+  Object.freeze({});
+const terminalAgentStateListeners = new Set<() => void>();
 const terminalAgentListeners = new Set<() => void>();
 export const getTerminalAgents = () => terminalAgents;
+export const getTerminalAgentStates = () => terminalAgentStates;
+export function subscribeTerminalAgentStates(listener: () => void) {
+  terminalAgentStateListeners.add(listener);
+  return () => {
+    terminalAgentStateListeners.delete(listener);
+  };
+}
 export function subscribeTerminalAgents(listener: () => void) {
   terminalAgentListeners.add(listener);
   return () => {
     terminalAgentListeners.delete(listener);
   };
 }
-function updateTerminalAgents(next: Record<string, CliAgent>) {
+function sameTitleProcess(
+  left: TitleProcess | null | undefined,
+  right: TitleProcess | null | undefined,
+) {
+  return left?.cli === right?.cli && left?.pid === right?.pid;
+}
+function sameTerminalAgentState(
+  left: TerminalAgentState | undefined,
+  right: TerminalAgentState | undefined,
+) {
+  return (
+    left === right ||
+    Boolean(
+      left &&
+      right &&
+      left.cli === right.cli &&
+      left.sessionId === right.sessionId &&
+      sameTitleProcess(left.process, right.process) &&
+      left.activity === right.activity,
+    )
+  );
+}
+function publishTerminalAgentState(runtime: TerminalRuntime) {
+  const paneId = runtime.paneId;
+  const cli = terminalAgents[paneId];
+  const process = terminalAgentProcesses[paneId] ?? null;
+  const state: TerminalAgentState | undefined = cli
+    ? {
+        cli,
+        sessionId: runtime.sessionId,
+        process,
+        activity: runtime.getCliActivity(),
+      }
+    : undefined;
+  const previous = terminalAgentStates[paneId];
+  if (sameTerminalAgentState(previous, state)) return false;
+  const next = { ...terminalAgentStates };
+  if (state) next[paneId] = Object.freeze(state);
+  else delete next[paneId];
+  terminalAgentStates = Object.freeze(next);
+  for (const listener of terminalAgentStateListeners) listener();
+  return true;
+}
+function removeTerminalAgentState(paneId: string) {
+  if (!terminalAgentStates[paneId]) return false;
+  const next = { ...terminalAgentStates };
+  delete next[paneId];
+  terminalAgentStates = Object.freeze(next);
+  for (const listener of terminalAgentStateListeners) listener();
+  return true;
+}
+function updateTerminalAgentStates() {
+  let changed = false;
+  for (const runtime of runtimes.values())
+    changed = publishTerminalAgentState(runtime) || changed;
+  for (const id of Object.keys(terminalAgentStates)) {
+    if (!runtimes.has(id) || !terminalAgents[id]) {
+      changed = removeTerminalAgentState(id) || changed;
+    }
+  }
+  return changed;
+}
+function updateTerminalAgents(
+  next: Record<string, CliAgent>,
+  processes: Record<string, TitleProcess>,
+  notifyLifecycle = true,
+) {
   const ids = Object.keys(next);
-  if (
+  const agentsChanged = !(
     ids.length === Object.keys(terminalAgents).length &&
     ids.every((id) => next[id] === terminalAgents[id])
-  )
-    return;
+  );
+  const processIds = Object.keys(processes);
+  const processesChanged = !(
+    processIds.length === Object.keys(terminalAgentProcesses).length &&
+    processIds.every((id) =>
+      sameTitleProcess(processes[id], terminalAgentProcesses[id]),
+    )
+  );
+  if (!agentsChanged && !processesChanged) return false;
+
+  const resetActivities = new Set<string>();
+  const clearPendingProgramStatuses = new Set<string>();
+  for (const id of new Set([
+    ...Object.keys(terminalAgents),
+    ...ids,
+    ...Object.keys(terminalAgentProcesses),
+    ...processIds,
+  ])) {
+    const previousCli = terminalAgents[id];
+    const identityChanged =
+      previousCli !== next[id] ||
+      !sameTitleProcess(terminalAgentProcesses[id], processes[id]);
+    if (!identityChanged) continue;
+
+    if (previousCli !== undefined) resetActivities.add(id);
+    else if (next[id] !== undefined && next[id] !== "codex")
+      clearPendingProgramStatuses.add(id);
+  }
   terminalAgents = Object.freeze(next);
-  for (const listener of terminalAgentListeners) listener();
+  terminalAgentProcesses = Object.freeze(processes);
+  for (const id of resetActivities) runtimes.get(id)?.resetCliActivity();
+  for (const id of clearPendingProgramStatuses)
+    runtimes.get(id)?.clearProgramStatus();
+  const statesChanged = updateTerminalAgentStates();
+  if (agentsChanged) for (const listener of terminalAgentListeners) listener();
+  if (notifyLifecycle && (agentsChanged || processesChanged || statesChanged))
+    terminalLifecycleChanged();
+  return true;
 }
 export function terminalFor(
   pane: Pane,
   profile: ShellProfile,
   cliLaunch?: CliAgent,
   accountId?: string,
+  hostBinding?: SharedHostTerminalBinding,
 ): TerminalRuntime {
   let runtime = runtimes.get(pane.id);
   if (!runtime) {
@@ -1069,13 +2017,23 @@ export function terminalFor(
       pane.cwd,
       cliLaunch,
       accountId,
+      hostBinding,
     );
     runtimes.set(pane.id, runtime);
     terminalLifecycleChanged();
   }
+  runtime.configureSharedHostBinding(hostBinding);
   return runtime;
 }
 export const runningTerminal = (id: string) => runtimes.get(id);
+export function isAgentTerminal(id: string) {
+  const runtime = runtimes.get(id);
+  return isAgentTerminalState({
+    staged: agentStarts.has(id) || runtime?.agentStarted,
+    agentControlled: runtime?.getSnapshot().agentControlled,
+    titleCli: Boolean(terminalAgents[id]),
+  });
+}
 export function synchronizeVisibleTerminalFits(root: HTMLElement) {
   for (const pane of root.querySelectorAll<HTMLElement>(
     ".terminal-pane[data-pane-id]",
@@ -1118,30 +2076,55 @@ export async function terminalsWithProcesses(ids?: readonly string[]) {
 export async function prepareOwnedTerminalClose(ids: readonly string[]) {
   for (const id of ids) await runtimes.get(id)?.prepareOwnedClose();
 }
-export function closeTerminals(ids: string[]) {
+export function closeTerminals(
+  ids: string[],
+  workspaceIds?: string | Readonly<Record<string, string>>,
+  closeSharedHost = true,
+) {
   for (const id of ids) {
-    runtimes.get(id)?.dispose();
+    const workspaceId =
+      typeof workspaceIds === "string" ? workspaceIds : workspaceIds?.[id];
+    runtimes.get(id)?.dispose(workspaceId ? false : closeSharedHost);
+    if (workspaceId && closeSharedHost)
+      void closeHostTerminal(workspaceId, id).catch((error) =>
+        reportError(errorMessage(error)),
+      );
     runtimes.delete(id);
     terminalLifecycleChanged();
   }
   const next = { ...terminalAgents };
-  for (const id of ids) delete next[id];
-  updateTerminalAgents(next);
+  const processes = { ...terminalAgentProcesses };
+  for (const id of ids) {
+    delete next[id];
+    delete processes[id];
+  }
+  updateTerminalAgents(next, processes);
 }
 export function observeTerminalContexts(
   contexts: Record<string, TerminalContext>,
 ) {
   const result: Record<string, string> = {};
   const agents: Record<string, CliAgent> = {};
+  const processes: Record<string, TitleProcess> = {};
+  let controlChanged = false;
   for (const [id, runtime] of runtimes) {
     const context = contexts[runtime.sessionId];
-    if (context?.titleCli?.cli) agents[id] = context.titleCli.cli;
+    if (context?.titleCli?.cli) {
+      agents[id] = context.titleCli.cli;
+      processes[id] = context.titleCli;
+    }
     runtime.observeForegroundProgram(context?.foregroundProgram ?? null);
-    runtime.observeControl(context?.agentControlled ?? false);
+    controlChanged =
+      runtime.observeControl(context?.agentControlled ?? false, false) ||
+      controlChanged;
     if (context?.cwd) result[id] = context.cwd;
   }
-  updateTerminalAgents(agents);
+  const agentsChanged = updateTerminalAgents(agents, processes, false);
+  if (controlChanged || agentsChanged) terminalLifecycleChanged();
   return result;
 }
 if (import.meta.hot)
-  import.meta.hot.dispose(() => closeTerminals([...runtimes.keys()]));
+  import.meta.hot.dispose(() => {
+    closeTerminals([...runtimes.keys()], undefined, false);
+    void detachSharedHostView().catch(() => {});
+  });

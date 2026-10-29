@@ -286,7 +286,7 @@ test("settings reads report retained providers, revision pages and explicit reco
   expect(JSON.stringify(theme)).not.toContain("directory");
   await update("theme-update", theme.snapshot.revision, {
     type: "theme_builtin",
-    value: "deepmono",
+    value: "lomi",
   });
   await expect
     .poll(() =>
@@ -299,6 +299,23 @@ test("settings reads report retained providers, revision pages and explicit reco
       appearance: "system",
       fileIcons: null,
       productIcons: null,
+    });
+  await update("appearance-update", theme.snapshot.revision, {
+    type: "theme_appearance",
+    value: "light",
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as any).__settingsRead.prepares.at(-1)),
+    )
+    .toMatchObject({
+      operationId: "appearance-update",
+      current: {
+        active: null,
+        appearance: "system",
+        fileIcons: null,
+        productIcons: null,
+      },
     });
   expect(await page.evaluate(() => (window as any).__settingsRead.loads)).toBe(
     baseline,
@@ -353,7 +370,7 @@ test("settings reads report retained providers, revision pages and explicit reco
     });
   expect(
     await page.evaluate(() => (window as any).__settingsRead.prepares.length),
-  ).toBe(4);
+  ).toBe(5);
   expect(await page.evaluate(() => (window as any).__settingsRead.writes)).toBe(
     0,
   );

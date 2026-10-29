@@ -1,0 +1,164 @@
+.agent-control-page .agent-control-tabs {
+  width: fit-content;
+  max-width: 100%;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: var(--border-width) solid
+    color-mix(in srgb, var(--color-outline) 55%, transparent);
+  border-radius: var(--radius-menu);
+  background: var(--settings-group-background);
+}
+
+.agent-control-page .agent-control-tab {
+  flex: 1 0 auto;
+}
+
+.agent-control-page .agent-setup-server-status {
+  color: var(--color-surface-variant-text);
+  font-size: var(--font-size-12);
+}
+
+.agent-control-page .agent-control-server-section .setting-controls {
+  gap: var(--space-12);
+}
+
+.agent-control-page .agent-control-section-heading {
+  align-items: flex-start;
+  margin-bottom: var(--space-20);
+}
+
+.agent-control-page .agent-control-section-heading > div {
+  min-width: 0;
+}
+
+.agent-control-page .agent-control-section-heading h2 {
+  margin-bottom: var(--space-6);
+}
+
+.agent-control-page .agent-control-section-heading p {
+  max-width: 60ch;
+  font-size: var(--font-size-12);
+  line-height: 1.65;
+  text-wrap: pretty;
+}
+
+.agent-control-page .agent-client-picker-toolbar {
+  margin-bottom: var(--space-12);
+}
+
+.agent-control-page .agent-client-search-control {
+  max-width: 320px;
+}
+
+.agent-control-page .agent-client-search-field {
+  background: var(--input-background);
+}
+
+.agent-control-page .agent-client-search-field > input[type="search"] {
+  background: transparent;
+}
+
+.agent-control-page .agent-client-result-count {
+  font-size: var(--font-size-11);
+}
+
+.agent-control-page .agent-client-list {
+  padding: var(--space-4) var(--space-12);
+  border: var(--border-width) solid var(--color-outline);
+  border-radius: var(--radius-menu);
+  background: var(--settings-group-background);
+}
+
+.agent-control-page .agent-client-list > li {
+  border-bottom: 0;
+}
+
+.agent-control-page .agent-client-list > li + li {
+  border-top: var(--border-width) solid
+    color-mix(in srgb, var(--color-outline) 45%, transparent);
+}
+
+.agent-control-page .agent-client-row {
+  gap: var(--space-12);
+  min-height: 48px;
+  padding: var(--space-10) var(--space-4);
+  border-radius: var(--radius-xs);
+}
+
+.agent-control-page .agent-client-row:hover:not(:disabled) {
+  background: var(--color-surface-container-high);
+}
+
+.agent-control-page .agent-client-option-name {
+  font-size: var(--font-size-13);
+  font-weight: 500;
+}
+
+.agent-control-page .agent-client-option-status {
+  font-size: var(--font-size-11);
+}
+
+.agent-control-page .agent-client-configuration-help {
+  margin-block: var(--space-12) var(--space-24);
+  max-width: 64ch;
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+.agent-control-page .agent-setup-client-header {
+  gap: var(--space-12);
+  margin-bottom: var(--space-24);
+}
+
+.agent-control-page .agent-setup-client-icon {
+  flex-basis: 32px;
+  width: 32px;
+  height: 32px;
+}
+
+.agent-control-page .agent-setup-client-identity h2 {
+  font-size: var(--font-size-18);
+  line-height: 1.4;
+}
+
+.agent-control-page
+  .agent-setup-connection
+  .settings-section-body
+  > .settings-help {
+  margin: var(--space-12) 0 0;
+  line-height: 1.65;
+  text-wrap: pretty;
+}
+
+.agent-control-page .agent-setup-client-controls {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-8) var(--space-12);
+  margin-top: var(--space-16);
+}
+
+.agent-control-page .agent-setup-client-controls .settings-help {
+  margin: 0;
+}
+
+.agent-control-page .agent-control-automatic-approvals .setting-row:last-child {
+  border-bottom: 0;
+}
+
+@container settings-page (max-width: 420px) {
+  .agent-control-page .agent-client-list {
+    padding-inline: var(--space-8);
+  }
+
+  .agent-control-page .agent-client-row {
+    gap: var(--space-8);
+    flex-wrap: wrap;
+  }
+
+  .agent-control-page .agent-client-option-status {
+    white-space: normal;
+  }
+}

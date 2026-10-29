@@ -1,0 +1,10 @@
+{
+  "family": "Geist Variable",
+  "source": "https://fontsource.org/fonts/geist",
+  "package": "@fontsource-variable/geist",
+  "license": "Geist-OFL.txt",
+  "files": {
+    "Geist-Variable.woff2": "Latin variable subset; exact Lomi brandbook font",
+    "Geist-Variable-LatinExt.woff2": "Latin Extended variable subset; exact Lomi brandbook font"
+  }
+}

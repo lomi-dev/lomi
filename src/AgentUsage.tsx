@@ -413,6 +413,7 @@ export function useAgentUsage() {
   useEffect(() => {
     if (!targets.length) return;
     const timer = window.setInterval(() => {
+      setNow(Date.now());
       void refreshRef.current(false);
     }, 15_000);
     return () => window.clearInterval(timer);
@@ -433,7 +434,7 @@ export function useAgentUsage() {
     />
   );
 
-  return { observe, bar };
+  return { observe, bar, usage: { entries, now, failed: requestFailed } };
 }
 
 function AgentUsageBar({

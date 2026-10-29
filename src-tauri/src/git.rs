@@ -8,7 +8,7 @@ use std::{
     process::{Child, Command, Output, Stdio},
     sync::{Mutex, OnceLock},
 };
-use tauri::Window;
+use tauri::{AppHandle, Webview, Window};
 
 mod diff;
 pub mod history;
@@ -133,6 +133,17 @@ pub struct Change {
     original_path: Option<String>,
     index: char,
     worktree: char,
+}
+
+impl From<Change> for lomi_files::desktop::DesktopGitChange {
+    fn from(value: Change) -> Self {
+        Self {
+            path: value.path,
+            original_path: value.original_path,
+            index: value.index,
+            worktree: value.worktree,
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -597,6 +608,7 @@ pub async fn git_remotes(window: Window, root: String) -> Result<Vec<String>, St
         .map_err(|error| error.to_string())?
 }
 
+#[cfg(test)]
 fn fetch(root: &str, remote: Option<&str>) -> Result<(), String> {
     let _operation = mutation_guard(root)?;
     let root = repository(root)?;
@@ -614,13 +626,25 @@ fn fetch(root: &str, remote: Option<&str>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn git_fetch(window: Window, root: String, remote: Option<String>) -> Result<(), String> {
+pub async fn git_fetch(
+    window: Window,
+    webview: Webview,
+    app: AppHandle,
+    host: tauri::State<'_, crate::shared_host::SharedHost>,
+    root: String,
+    remote: Option<String>,
+) -> Result<(), String> {
     main_window(&window)?;
-    tauri::async_runtime::spawn_blocking(move || fetch(&root, remote.as_deref()))
-        .await
-        .map_err(|error| error.to_string())?
+    crate::shared_host::trusted_full_window(&window, &webview)?;
+    let host = host.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::native_git_effects::fetch(&app, &host, &root, remote.as_deref())
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
+#[cfg(test)]
 pub(crate) fn pull(root: &str, rebase: bool) -> Result<(), String> {
     let _operation = mutation_guard(root)?;
     let root = repository(root)?;
@@ -635,6 +659,7 @@ pub(crate) fn pull(root: &str, rebase: bool) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(test)]
 fn push(root: &str, remote: Option<&str>, force: bool) -> Result<(), String> {
     let _operation = mutation_guard(root)?;
     let root = repository(root)?;
@@ -655,14 +680,21 @@ fn push(root: &str, remote: Option<&str>, force: bool) -> Result<(), String> {
 #[tauri::command]
 pub async fn git_push(
     window: Window,
+    webview: Webview,
+    app: AppHandle,
+    host: tauri::State<'_, crate::shared_host::SharedHost>,
     root: String,
     remote: Option<String>,
     force: bool,
 ) -> Result<(), String> {
     main_window(&window)?;
-    tauri::async_runtime::spawn_blocking(move || push(&root, remote.as_deref(), force))
-        .await
-        .map_err(|error| error.to_string())?
+    crate::shared_host::trusted_full_window(&window, &webview)?;
+    let host = host.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::native_git_effects::push(&app, &host, &root, remote.as_deref(), force)
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 fn exact_status(root: &str) -> Result<GitStatus, String> {
@@ -746,6 +778,7 @@ fn relative(path: &str) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(test)]
 pub fn change_index(root: &str, paths: &[String], stage: bool) -> Result<(), String> {
     let _operation = mutation_guard(root)?;
     let root = repository(root)?;
@@ -778,6 +811,7 @@ pub fn change_index(root: &str, paths: &[String], stage: bool) -> Result<(), Str
     Ok(())
 }
 
+#[cfg(test)]
 pub(crate) fn discard(root: &str, expected: &Change) -> Result<(), String> {
     let _operation = mutation_guard(root)?;
     relative(&expected.path)?;
@@ -834,14 +868,21 @@ pub(crate) fn discard(root: &str, expected: &Change) -> Result<(), String> {
 #[tauri::command]
 pub async fn git_stage(
     window: Window,
+    webview: Webview,
+    app: AppHandle,
+    host: tauri::State<'_, crate::shared_host::SharedHost>,
     root: String,
     paths: Vec<String>,
     stage: bool,
 ) -> Result<(), String> {
     main_window(&window)?;
-    tauri::async_runtime::spawn_blocking(move || change_index(&root, &paths, stage))
-        .await
-        .map_err(|error| error.to_string())?
+    crate::shared_host::trusted_full_window(&window, &webview)?;
+    let host = host.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::native_git_effects::stage(&app, &host, &root, &paths, stage)
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -857,6 +898,7 @@ pub async fn git_diff(
         .map_err(|error| error.to_string())?
 }
 
+#[cfg(test)]
 fn commit(root: &str, message: &str) -> Result<(), String> {
     if message.trim().is_empty() {
         return Err("Enter a commit message.".into());
@@ -868,11 +910,22 @@ fn commit(root: &str, message: &str) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn git_commit(window: Window, root: String, message: String) -> Result<(), String> {
+pub async fn git_commit(
+    window: Window,
+    webview: Webview,
+    app: AppHandle,
+    host: tauri::State<'_, crate::shared_host::SharedHost>,
+    root: String,
+    message: String,
+) -> Result<(), String> {
     main_window(&window)?;
-    tauri::async_runtime::spawn_blocking(move || commit(&root, &message))
-        .await
-        .map_err(|error| error.to_string())?
+    crate::shared_host::trusted_full_window(&window, &webview)?;
+    let host = host.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::native_git_effects::commit(&app, &host, &root, &message)
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[cfg(test)]

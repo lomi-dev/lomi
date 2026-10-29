@@ -39,13 +39,11 @@ pub enum SettingsPatch {
 #[serde(rename_all = "lowercase")]
 pub enum SettingsBuiltinTheme {
     Lomi,
-    Deepmono,
 }
 impl SettingsBuiltinTheme {
     pub fn id(self) -> Option<String> {
         match self {
             Self::Lomi => None,
-            Self::Deepmono => Some("@builtin-deepmono".into()),
         }
     }
 }
@@ -680,11 +678,7 @@ impl SettingsPatch {
                 current.active = value.id()
             }
             (Self::ThemeAppearance { value }, SettingsUpdateValues::Themes(current)) => {
-                if current
-                    .active
-                    .as_deref()
-                    .is_some_and(|id| id != "@builtin-deepmono")
-                {
+                if current.active.is_some() {
                     return Err(crate::ErrorCode::UnsupportedCapability);
                 }
                 current.appearance = *value;
@@ -798,7 +792,7 @@ mod update_tests {
         );
         assert_eq!(values, before);
         SettingsPatch::ThemeBuiltin {
-            value: SettingsBuiltinTheme::Deepmono,
+            value: SettingsBuiltinTheme::Lomi,
         }
         .apply_values(&mut values)
         .unwrap();
@@ -810,10 +804,37 @@ mod update_tests {
         let SettingsUpdateValues::Themes(value) = values else {
             panic!()
         };
-        assert_eq!(value.active.as_deref(), Some("@builtin-deepmono"));
+        assert_eq!(value.active, None);
         assert_eq!(value.file_icons.as_deref(), Some("icons"));
         assert_eq!(value.appearance, SettingsAppearance::Light);
     }
+    #[test]
+    fn builtin_theme_patch_accepts_only_lomi() {
+        assert!(serde_json::from_value::<SettingsPatch>(
+            serde_json::json!({"type":"theme_builtin","value":"lomi"})
+        )
+        .is_ok());
+        assert!(serde_json::from_value::<SettingsPatch>(
+            serde_json::json!({"type":"theme_builtin","value":"deepmono"})
+        )
+        .is_err());
+        let mut values = SettingsUpdateValues::Themes(SettingsThemeValues {
+            active: Some("@builtin-deepmono".into()),
+            file_icons: None,
+            product_icons: None,
+            appearance: SettingsAppearance::System,
+        });
+        let before = values.clone();
+        assert_eq!(
+            SettingsPatch::ThemeAppearance {
+                value: SettingsAppearance::Dark
+            }
+            .apply_values(&mut values),
+            Err(crate::ErrorCode::UnsupportedCapability)
+        );
+        assert_eq!(values, before);
+    }
+
     #[test]
     fn shortcut_disable_requires_explicit_null_and_reset_has_no_value() {
         use serde_json::json;

@@ -166,12 +166,13 @@ export function useAgentGitApproval() {
         }
         descriptionId={description}
         initialFocus={cancel}
+        closeDisabled={busy}
         onClose={() => {
           if (!busy) void decide(false);
         }}
       >
-        <div className="dialog-form" aria-busy={busy}>
-          <div className="agent-git-details">
+        <div className="dialog-form dialog-layout" aria-busy={busy}>
+          <div className="dialog-content agent-git-details">
             <p id={description}>
               {plan.operation === "pull"
                 ? "Fetch the listed branch and integrate only the approved commit. A changed remote stops before integration. A conflict stays in the repository for you to resolve; Lomi does not stash or roll back your work."
@@ -364,8 +365,8 @@ export function useAgentGitApproval() {
               Changes to these files or the repository state require a new
               approval.
             </p>
+            {error && <p role="alert">{error}</p>}
           </div>
-          {error && <p role="alert">{error}</p>}
           <div className="dialog-actions">
             <button
               ref={cancel}

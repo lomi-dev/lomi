@@ -19,7 +19,14 @@ async function calls(page: Page, command: string) {
 
 async function terminal(page: Page, pane: string) {
   return page.evaluate(async (pane) => {
-    const { runningTerminal } = await import("/src/terminal-runtime.ts");
+    const runtimeUrl = performance
+      .getEntriesByType("resource")
+      .map((entry) => entry.name)
+      .filter((url) => new URL(url).pathname === "/src/terminal-runtime.ts")
+      .at(-1);
+    const { runningTerminal } = await import(
+      runtimeUrl ?? "/src/terminal-runtime.ts"
+    );
     const runtime = runningTerminal(pane)!;
     return {
       id: runtime.sessionId,
@@ -50,7 +57,7 @@ for (const mode of ["light", "dark"] as const) {
     await expect(page.locator("html")).toHaveAttribute("data-appearance", mode);
     await expect(page.locator(".app-shell")).toHaveCSS(
       "background-color",
-      mode === "light" ? "rgb(247, 248, 243)" : "rgb(16, 17, 20)",
+      mode === "light" ? "rgb(247, 248, 243)" : "rgb(8, 10, 12)",
     );
     await expect(page.locator("html")).toHaveCSS("color-scheme", mode);
     const painted = await page.evaluate(
@@ -117,7 +124,7 @@ test("system changes update both windows, hidden terminals, and an edited docume
     for (const pane of [first, second])
       await expect
         .poll(async () => (await terminal(page, pane)).foreground)
-        .toBe(mode === "dark" ? "#f3f4f6ff" : "#0b0d0cff");
+        .toBe(mode === "dark" ? "#f0f3f7ff" : "#0b0d0cff");
     await expect
       .poll(() =>
         page.locator(".cm-editor").evaluate(async (node) => {

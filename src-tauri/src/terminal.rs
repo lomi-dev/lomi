@@ -492,7 +492,7 @@ struct RemoteSink {
     sender: SyncSender<RemoteObservedEvent>,
     healthy: Arc<std::sync::atomic::AtomicBool>,
     observer: RemoteObserver,
-    activity: crate::remote::activity::Activity,
+    activity: crate::activity::Activity,
 }
 
 impl RemoteSink {
@@ -579,7 +579,7 @@ pub(crate) struct RemoteReceipt {
 pub struct Terminals {
     sessions: Arc<Mutex<HashMap<String, Arc<Session>>>>,
     remote_sink: Arc<Mutex<Option<RemoteSink>>>,
-    pub(crate) activity: crate::remote::activity::Activity,
+    pub(crate) activity: crate::activity::Activity,
 }
 
 #[derive(Clone)]

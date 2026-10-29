@@ -11,6 +11,10 @@ import {
   reportNotificationError,
   subscribeNotificationErrors,
   clearNotificationError,
+  acceptNotificationSnapshot,
+  getNotificationSnapshot,
+  subscribeNotificationSnapshot,
+  unreadTerminalPaneIds,
 } from "../src/notifications.ts";
 import type { NotificationSnapshot } from "../src/notifications.ts";
 
@@ -27,6 +31,41 @@ test("canonical inbox ignores stale and equal initial loads or mutation response
   const next = { revision: 9, items: [] };
   assert.equal(newestNotificationSnapshot(current, next), next);
   assert.equal(newestNotificationSnapshot(null, current), current);
+});
+
+test("inbox observers share unread targets and reject stale responses after reading", () => {
+  const first: NotificationSnapshot = {
+    revision: 20,
+    items: [
+      {
+        id: "notification-20",
+        kind: "attention",
+        title: "Needs input",
+        body: "Workspace",
+        createdAt: 1,
+        read: false,
+        paneId: "pane-a",
+      },
+    ],
+  };
+  const observed: Array<NotificationSnapshot | null> = [];
+  const stop = subscribeNotificationSnapshot(() =>
+    observed.push(getNotificationSnapshot()),
+  );
+  acceptNotificationSnapshot(first);
+  const read = {
+    revision: 21,
+    items: first.items.map((item) => ({ ...item, read: true })),
+  };
+  acceptNotificationSnapshot(read);
+  acceptNotificationSnapshot(first);
+  acceptNotificationSnapshot({ ...first, revision: 21 });
+  assert.deepEqual(observed, [first, read]);
+  assert.equal(getNotificationSnapshot(), read);
+  assert.deepEqual([...unreadTerminalPaneIds(getNotificationSnapshot())], []);
+  stop();
+  acceptNotificationSnapshot({ revision: 22, items: [] });
+  assert.equal(observed.length, 2);
 });
 
 test("unread counts use explicit read state and displayed badges cap at nine", () => {

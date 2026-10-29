@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "nativeEvidence": {
+    "abi": 1,
+    "maxInputBytes": 131072,
+    "maxOutputBytes": 131072
+  }
+}

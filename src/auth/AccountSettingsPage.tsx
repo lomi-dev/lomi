@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { api, errorMessage, native } from "../api";
-import { ExternalLink, Github, RefreshCw } from "../icons";
+import { ExternalLink, Github } from "../icons";
 import {
   SettingRow,
   SettingsNotice,
   SettingsPage,
   SettingsSection,
 } from "../settings-ui";
-import { authStatusLabel, newestAuthState, unavailableState } from "./model";
+import { newestAuthState, unavailableState } from "./model";
 import type { AuthState } from "./model";
 import "./styles.css";
 
@@ -136,35 +136,57 @@ export default function AccountSettingsPage() {
       ? expiry.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
       : null;
 
+  const retryAction = native && ready && status !== "authorizing" && (
+    <button
+      className="text-button"
+      disabled={busy}
+      onClick={() => void run("auth_refresh_state")}
+    >
+      {status === "storage-locked" ? "Retry access" : "Retry connection"}
+    </button>
+  );
+
+  const accountActions = native && ready && status !== "unavailable" && (
+    <div className="account-access-actions">
+      <button
+        className="button"
+        disabled={busy}
+        onClick={() => void run("auth_open_account_portal")}
+      >
+        <ExternalLink size={14} aria-hidden="true" />
+        Manage account
+      </button>
+      {canSignOut && (
+        <button
+          className="button"
+          disabled={busy}
+          onClick={() => void run("auth_sign_out")}
+        >
+          Sign out of this device
+        </button>
+      )}
+    </div>
+  );
+  const accountAccessDescription =
+    "Manage sessions in your browser. Signing out leaves your projects, files, and AI connections on this device.";
+
   return (
     <SettingsPage
       title="Account"
-      description="Your Lomi account. Local projects and terminals remain available without signing in."
-      status={
-        !ready
-          ? "Loading…"
-          : state
-            ? authStatusLabel(state.status)
-            : "Unavailable"
-      }
+      description="Local projects and terminals remain available without signing in."
       busy={busy || !ready}
       className="account-settings"
-      actions={
-        native &&
-        ready &&
-        status !== "authorizing" && (
-          <button
-            className="button"
-            disabled={busy}
-            onClick={() => void run("auth_refresh_state")}
-          >
-            <RefreshCw size={14} aria-hidden="true" />
-            Check connection
-          </button>
-        )
-      }
     >
-      {error && <SettingsNotice tone="error">{error}</SettingsNotice>}
+      {error && (
+        <SettingsNotice
+          tone="error"
+          action={
+            status !== "offline" && status !== "storage-locked" && retryAction
+          }
+        >
+          {error}
+        </SettingsNotice>
+      )}
       {state?.message && (
         <SettingsNotice
           tone={
@@ -173,6 +195,7 @@ export default function AccountSettingsPage() {
               : "info"
           }
           role="status"
+          action={status === "error" && !error && retryAction}
         >
           {state.message}
         </SettingsNotice>
@@ -188,16 +211,22 @@ export default function AccountSettingsPage() {
         </SettingsNotice>
       )}
       {status === "offline" && (
-        <SettingsNotice tone="warning">
+        <SettingsNotice tone="warning" action={retryAction}>
           Your account could not be checked. Online services will resume after a
           successful connection. Your local work is unaffected.
         </SettingsNotice>
       )}
       {status === "storage-locked" && (
-        <SettingsNotice tone="warning" role="status">
-          Use Check connection to retry access. To replace the saved sign-in,
-          choose Sign out of this device. To sign in only until Lomi closes,
-          turn off Remember me on this device.
+        <SettingsNotice tone="warning" role="status" action={retryAction}>
+          Unlock your system credential store and retry access. To replace the
+          saved sign-in, choose Sign out of this device. To sign in only until
+          Lomi closes, turn off Remember me on this device.
+        </SettingsNotice>
+      )}
+      {status === "error" && !state?.message && !error && (
+        <SettingsNotice tone="warning" action={retryAction}>
+          Your account could not be checked. Retry the connection to restore
+          account access. Your local work is unaffected.
         </SettingsNotice>
       )}
       {state?.remoteRevocationConfirmed === false && !hasAccount && (
@@ -208,7 +237,11 @@ export default function AccountSettingsPage() {
         </SettingsNotice>
       )}
       {state?.user && (
-        <SettingsSection title="Your account">
+        <SettingsSection
+          title="Your account"
+          description={accountAccessDescription}
+          actions={accountActions}
+        >
           <SettingRow label="Name">
             <span className="setting-value">{state.user.displayName}</span>
           </SettingRow>
@@ -274,6 +307,22 @@ export default function AccountSettingsPage() {
           title="Sign in with GitHub"
           description="Connect your GitHub identity to Lomi. Signing in does not grant access to your private repositories."
         >
+          <div className="account-actions">
+            <button
+              className="button button-primary"
+              disabled={busy || (status === "storage-locked" && remember)}
+              onClick={() =>
+                void run(
+                  "auth_begin_login",
+                  { storage: remember ? "persistent" : "session" },
+                  true,
+                )
+              }
+            >
+              <Github size={15} aria-hidden="true" />
+              Sign in with GitHub
+            </button>
+          </div>
           <SettingRow
             label="Remember me on this device"
             htmlFor="account-remember"
@@ -295,48 +344,14 @@ export default function AccountSettingsPage() {
               onChange={(event) => setRemember(event.target.checked)}
             />
           </SettingRow>
-          <div className="account-actions">
-            <button
-              className="button button-primary"
-              disabled={busy || (status === "storage-locked" && remember)}
-              onClick={() =>
-                void run(
-                  "auth_begin_login",
-                  { storage: remember ? "persistent" : "session" },
-                  true,
-                )
-              }
-            >
-              <Github size={15} aria-hidden="true" />
-              Sign in with GitHub
-            </button>
-          </div>
         </SettingsSection>
       )}
-      {native && ready && status !== "unavailable" && (
+      {!state?.user && accountActions && (
         <SettingsSection
           title="Account access"
-          description="Manage sessions in your browser. Signing out leaves your projects, files, and AI connections on this device."
+          description={accountAccessDescription}
         >
-          <div className="account-actions">
-            <button
-              className="button"
-              disabled={busy}
-              onClick={() => void run("auth_open_account_portal")}
-            >
-              <ExternalLink size={14} aria-hidden="true" />
-              Manage account
-            </button>
-            {canSignOut && (
-              <button
-                className="button"
-                disabled={busy}
-                onClick={() => void run("auth_sign_out")}
-              >
-                Sign out of this device
-              </button>
-            )}
-          </div>
+          {accountActions}
         </SettingsSection>
       )}
     </SettingsPage>

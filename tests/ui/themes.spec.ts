@@ -175,11 +175,22 @@ test("theme cards filter local and package themes and preserve selection and imm
   });
   await page.goto("/?window=settings&page=themes");
   const cards = page.getByRole("article");
-  await expect(cards).toHaveCount(6);
+  await expect(cards).toHaveCount(5);
   const first = await cards.nth(0).boundingBox();
   const second = await cards.nth(1).boundingBox();
-  const list = await page.locator(".theme-list").boundingBox();
-  expect(first!.width).toBe(list!.width);
+  const listContentWidth = await page
+    .locator(".theme-list")
+    .evaluate((list) => {
+      const style = getComputedStyle(list);
+      return (
+        list.getBoundingClientRect().width -
+        parseFloat(style.borderLeftWidth) -
+        parseFloat(style.borderRightWidth) -
+        parseFloat(style.paddingLeft) -
+        parseFloat(style.paddingRight)
+      );
+    });
+  expect(first!.width).toBeCloseTo(listContentWidth, 2);
   expect(first!.x).toBe(second!.x);
   expect(second!.y).toBeGreaterThanOrEqual(first!.y + first!.height);
   await page.screenshot({
@@ -207,7 +218,7 @@ test("theme cards filter local and package themes and preserve selection and imm
   ).toBeVisible();
   await page.getByRole("button", { name: "Clear filters" }).click();
   await expect(search).toBeFocused();
-  await expect(cards).toHaveCount(6);
+  await expect(cards).toHaveCount(5);
 
   await sources.getByRole("button", { name: "Packages", exact: true }).click();
   await expect(cards).toHaveCount(1);
@@ -232,7 +243,7 @@ test("theme cards filter local and package themes and preserve selection and imm
     editor.getByText("immutable plugin package", { exact: false }),
   ).toHaveCount(0);
   await editor.getByRole("button", { name: "Close", exact: true }).click();
-  await expect(cards).toHaveCount(7);
+  await expect(cards).toHaveCount(6);
   await expect(
     sources.getByRole("button", { name: "All sources" }),
   ).toHaveAttribute("aria-pressed", "true");
@@ -246,10 +257,11 @@ test("theme cards filter local and package themes and preserve selection and imm
     "Unsupported theme version",
   );
 
+  await page.getByText("Manage themes", { exact: true }).click();
   await page
     .getByRole("button", { name: "Import folder", exact: true })
     .click();
-  await expect(cards).toHaveCount(8);
+  await expect(cards).toHaveCount(7);
   expect(await calls(page, "save_theme_preferences")).toHaveLength(1);
   expect(await calls(page, "prepare_plugin")).toHaveLength(0);
   expect(await calls(page, "enable_plugin")).toHaveLength(0);
@@ -257,7 +269,7 @@ test("theme cards filter local and package themes and preserve selection and imm
   await expect(cards).toHaveCount(1);
   await chooseOption(status, "All themes");
   await page.getByRole("button", { name: "Use Lomi theme" }).click();
-  await expect(cards).toHaveCount(8);
+  await expect(cards).toHaveCount(7);
   await expect(
     page.getByRole("button", { name: "Use Lomi theme" }),
   ).toHaveAttribute("aria-pressed", "true");
@@ -362,10 +374,11 @@ test("a theme updates both windows and hidden terminals without replacing PTYs",
     manifests.glass.stylesheets = [];
     localStorage.setItem("test-theme-manifests", JSON.stringify(manifests));
   });
-  await preferences
-    .getByRole("button", { name: "Refresh", exact: true })
-    .click();
-  await expect(page.locator(".tab").first()).toHaveCSS("border-radius", "8px");
+  for (const view of [page, preferences])
+    await view.evaluate(() =>
+      (window as any).__nativeTest.emitEvent("theme-changed"),
+    );
+  await expect(page.locator(".tab").first()).toHaveCSS("border-radius", "10px");
   await expect(page.locator(".statusbar")).toHaveCSS("height", "34px");
   await expect
     .poll(async () => (await terminal(page, second)).letterSpacing)
@@ -378,9 +391,10 @@ test("a theme updates both windows and hidden terminals without replacing PTYs",
     manifests.glass.stylesheets = ["styles/components.css", "styles/base.css"];
     localStorage.setItem("test-theme-manifests", JSON.stringify(manifests));
   });
-  await preferences
-    .getByRole("button", { name: "Refresh", exact: true })
-    .click();
+  for (const view of [page, preferences])
+    await view.evaluate(() =>
+      (window as any).__nativeTest.emitEvent("theme-changed"),
+    );
   await expect(page.locator(".tab").first()).toHaveCSS("border-radius", "8px");
   await expect
     .poll(async () => (await terminal(page, second)).letterSpacing)
@@ -404,7 +418,7 @@ test("a theme updates both windows and hidden terminals without replacing PTYs",
   await expect
     .poll(async () => (await terminal(page, first)).fontSize)
     .toBe(16);
-  await expect(page.locator(".statusbar")).toHaveCSS("height", "28px");
+  await expect(page.locator(".statusbar")).toHaveCSS("height", "26px");
   await expect(page.locator('link[data-theme-layer="css"]')).toHaveCount(0);
   expect(
     await page
@@ -428,7 +442,9 @@ test("invalid edits and failed saves preserve the previous theme, and reset reco
     manifests.glass.terminal.fontSize = 0;
     localStorage.setItem("test-theme-manifests", JSON.stringify(manifests));
   });
-  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await page.evaluate(() =>
+    (window as any).__nativeTest.emitEvent("theme-changed"),
+  );
   await expect(page.getByRole("alert")).toContainText("fontSize");
   await expect(
     page.getByRole("heading", { name: "Themes", exact: true }),
@@ -471,6 +487,7 @@ test("folder controls import themes without selecting them and fit the minimum w
 }, testInfo) => {
   await install(page);
   await settings(page);
+  await page.getByText("Manage themes", { exact: true }).click();
   await page
     .getByRole("button", { name: "Import folder", exact: true })
     .click();
@@ -740,6 +757,7 @@ test("theme controls save section spacing and layouts in both windows without re
     "flex-direction",
     "row",
   );
+  await preferences.getByText("Manage themes", { exact: true }).click();
   await preferences
     .getByRole("button", { name: "Create theme", exact: true })
     .click();

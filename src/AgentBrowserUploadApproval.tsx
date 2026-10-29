@@ -16,7 +16,7 @@ export function AgentBrowserUploadApproval({
 }) {
   if (!requests.length) return null;
   return (
-    <SettingsSection title="Browser upload requests">
+    <SettingsSection title="Browser upload requests" grouped={false}>
       {requests.map((request) => (
         <article className="agent-control-request" key={request.operationId}>
           <h3>

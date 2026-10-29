@@ -3,8 +3,8 @@ import { emitTo } from "@tauri-apps/api/event";
 import { api, errorMessage } from "../../api";
 import { cliNames, type CliAgent } from "../../cli-agents";
 import { newId, type AppInfo } from "../../model";
-import { SettingsSection } from "../../settings-ui";
-import { Modal } from "../../ui";
+import { SettingRow, SettingsSection } from "../../settings-ui";
+import { DisclosureSummary, Modal } from "../../ui";
 import { useAccountsSnapshot } from "../useAccountsSnapshot";
 import type { AccountInstance } from "../types";
 import "./accounts.css";
@@ -22,6 +22,9 @@ export default function AccountsSettings() {
   const [shellProfileId, setShellProfileId] = useState("");
   const cancel = useRef<HTMLButtonElement>(null);
   const reviewHelpId = useId();
+  const cliId = useId();
+  const labelId = useId();
+  const shellId = useId();
   useEffect(() => {
     let live = true;
     void api<AppInfo>("app_info")
@@ -54,15 +57,15 @@ export default function AccountsSettings() {
     account.recovery.recoverable &&
     !account.recovery.requiresVerifiedBootChange;
   return (
-    <div className="dialog-form agent-accounts-settings" aria-busy={busy}>
+    <div className="agent-accounts-settings" aria-busy={busy}>
       <SettingsSection
         title="CLI Accounts"
         description="Separate native CLI logins. Each task explicitly selects its next account."
       >
-        <div className="dialog-form agent-account-create">
-          <label>
-            CLI
+        <div className="agent-account-create">
+          <SettingRow label="CLI" htmlFor={cliId}>
             <select
+              id={cliId}
               value={cli}
               disabled={busy}
               onChange={(event) => setCli(event.target.value as CliAgent)}
@@ -73,32 +76,18 @@ export default function AccountsSettings() {
                 </option>
               ))}
             </select>
-          </label>
-          <label>
-            Account label
+          </SettingRow>
+          <SettingRow label="Account label" htmlFor={labelId}>
             <input
+              id={labelId}
               value={label}
               disabled={busy}
               onChange={(event) => setLabel(event.target.value)}
             />
-          </label>
-          <button
-            className="button button-primary"
-            disabled={busy || !label.trim()}
-            onClick={() =>
-              void perform("agent_account_create", {
-                cli,
-                label: label.trim(),
-              }).then((next) => {
-                if (next) setLabel("");
-              })
-            }
-          >
-            Add account
-          </button>
-          <label>
-            Shell for verification
+          </SettingRow>
+          <SettingRow label="Shell for verification" htmlFor={shellId}>
             <select
+              id={shellId}
               value={shellProfileId}
               onChange={(event) => setShellProfileId(event.target.value)}
             >
@@ -108,7 +97,23 @@ export default function AccountsSettings() {
                 </option>
               ))}
             </select>
-          </label>
+          </SettingRow>
+          <div className="agent-account-create-actions">
+            <button
+              className="button button-primary"
+              disabled={busy || !label.trim()}
+              onClick={() =>
+                void perform("agent_account_create", {
+                  cli,
+                  label: label.trim(),
+                }).then((next) => {
+                  if (next) setLabel("");
+                })
+              }
+            >
+              Add account
+            </button>
+          </div>
         </div>
         <p role="note" aria-label="Native account operation limitation">
           Native login and verification can require a computer restart before
@@ -167,7 +172,7 @@ export default function AccountsSettings() {
                   </button>
                 </div>
               )}
-              <div className="dialog-actions">
+              <div className="agent-account-actions">
                 <button
                   className="button"
                   disabled={busy || !!account.recovery}
@@ -243,63 +248,74 @@ export default function AccountsSettings() {
           );
         })}
       </SettingsSection>
-      <SettingsSection
-        title="CLI capabilities"
-        description="Execution support depends on the exact admitted CLI version and platform."
-      >
-        <div className="agent-capabilities-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>CLI</th>
-                <th>Account terminal</th>
-                <th>Native task</th>
-                <th>Admitted versions</th>
-                <th>Qualification</th>
-              </tr>
-            </thead>
-            <tbody>
-              {snapshot?.capabilities.map((capability) => (
-                <tr key={capability.cli}>
-                  <td>{cliNames[capability.cli]}</td>
-                  <td>
-                    {capability.accountTerminal ? "Available" : "Unavailable"}
-                  </td>
-                  <td>
-                    {capability.managedExecution ? "Available" : "Unavailable"}
-                  </td>
-                  <td>{capability.versions.join(", ") || "None"}</td>
-                  <td>{capability.reason}</td>
+      <details className="settings-disclosure agent-capabilities">
+        <DisclosureSummary>CLI capabilities</DisclosureSummary>
+        <div className="settings-disclosure-body">
+          <p className="settings-help">
+            Execution support depends on the exact admitted CLI version and
+            platform.
+          </p>
+          <div className="agent-capabilities-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>CLI</th>
+                  <th>Account terminal</th>
+                  <th>Native task</th>
+                  <th>Admitted versions</th>
+                  <th>Qualification</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {snapshot?.capabilities.map((capability) => (
+                  <tr key={capability.cli}>
+                    <td>{cliNames[capability.cli]}</td>
+                    <td>
+                      {capability.accountTerminal ? "Available" : "Unavailable"}
+                    </td>
+                    <td>
+                      {capability.managedExecution
+                        ? "Available"
+                        : "Unavailable"}
+                    </td>
+                    <td>{capability.versions.join(", ") || "None"}</td>
+                    <td>{capability.reason}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </SettingsSection>
+      </details>
       {recovering && (
         <Modal
           title={`Review ${recovering.label}`}
+          tone="warning"
           initialFocus={cancel}
           closeDisabled={busy}
           onClose={() => setRecovering(undefined)}
         >
-          <div className="dialog-form">
-            <p>{currentRecovery?.reason ?? recovering.recovery?.reason}</p>
-            <p id={reviewHelpId}>
-              Review the account and any project changes from the interrupted
-              operation. Completing recovery invalidates previous login
-              verification and history access grants.
-            </p>
-            <label className="agent-account-recovery-confirmation">
-              <input
-                type="checkbox"
-                aria-describedby={reviewHelpId}
-                checked={reviewedEffects}
-                disabled={busy}
-                onChange={(event) => setReviewedEffects(event.target.checked)}
-              />
-              I reviewed the account and project effects
-            </label>
+          <div className="dialog-form dialog-layout">
+            <div className="dialog-content">
+              <p>{currentRecovery?.reason ?? recovering.recovery?.reason}</p>
+              <p id={reviewHelpId}>
+                Review the account and any project changes from the interrupted
+                operation. Completing recovery invalidates previous login
+                verification and history access grants.
+              </p>
+              <label className="agent-account-recovery-confirmation">
+                <input
+                  type="checkbox"
+                  aria-describedby={reviewHelpId}
+                  checked={reviewedEffects}
+                  disabled={busy}
+                  onChange={(event) => setReviewedEffects(event.target.checked)}
+                />
+                I reviewed the account and project effects
+              </label>
+
+              {error && <p role="alert">{error}</p>}
+            </div>
             <div className="dialog-actions">
               <button
                 ref={cancel}
@@ -331,7 +347,6 @@ export default function AccountsSettings() {
                 Complete recovery
               </button>
             </div>
-            {error && <p role="alert">{error}</p>}
           </div>
         </Modal>
       )}
@@ -341,15 +356,19 @@ export default function AccountsSettings() {
           closeDisabled={busy}
           onClose={() => setRenaming(undefined)}
         >
-          <div className="dialog-form">
-            <label>
-              Account label
-              <input
-                autoFocus
-                value={newLabel}
-                onChange={(event) => setNewLabel(event.target.value)}
-              />
-            </label>
+          <div className="dialog-form dialog-layout">
+            <div className="dialog-content">
+              <label>
+                Account label
+                <input
+                  autoFocus
+                  value={newLabel}
+                  onChange={(event) => setNewLabel(event.target.value)}
+                />
+              </label>
+
+              {error && <p role="alert">{error}</p>}
+            </div>
             <div className="dialog-actions">
               <button
                 className="button"
@@ -375,22 +394,26 @@ export default function AccountsSettings() {
                 Save label
               </button>
             </div>
-            {error && <p role="alert">{error}</p>}
           </div>
         </Modal>
       )}
       {removing && (
         <Modal
           title="Remove CLI account?"
+          tone="danger"
           initialFocus={cancel}
           closeDisabled={busy}
           onClose={() => setRemoving(undefined)}
         >
-          <div className="dialog-form">
-            <p>
-              Remove {removing.label} from available accounts? Its physical
-              login and history files remain preserved.
-            </p>
+          <div className="dialog-form dialog-layout">
+            <div className="dialog-content">
+              <p>
+                Remove {removing.label} from available accounts? Its physical
+                login and history files remain preserved.
+              </p>
+
+              {error && <p role="alert">{error}</p>}
+            </div>
             <div className="dialog-actions">
               <button
                 ref={cancel}
@@ -415,7 +438,6 @@ export default function AccountsSettings() {
                 Remove account
               </button>
             </div>
-            {error && <p role="alert">{error}</p>}
           </div>
         </Modal>
       )}

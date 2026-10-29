@@ -6,7 +6,6 @@ export function SettingsPage({
   description,
   status,
   actions,
-  wide = false,
   busy,
   className = "",
   contentClassName = "",
@@ -16,7 +15,6 @@ export function SettingsPage({
   description?: ReactNode;
   status?: ReactNode;
   actions?: ReactNode;
-  wide?: boolean;
   busy?: boolean;
   className?: string;
   contentClassName?: string;
@@ -25,7 +23,7 @@ export function SettingsPage({
   const titleId = useId();
   return (
     <main
-      className={`settings-page${wide ? " settings-page-wide" : ""}${className ? ` ${className}` : ""}`}
+      className={`settings-page${className ? ` ${className}` : ""}`}
       aria-busy={busy}
       aria-labelledby={titleId}
     >
@@ -59,6 +57,7 @@ export function SettingsSection({
   count,
   description,
   actions,
+  grouped = true,
   className = "",
   children,
 }: {
@@ -66,6 +65,7 @@ export function SettingsSection({
   count?: number;
   description?: ReactNode;
   actions?: ReactNode;
+  grouped?: boolean;
   className?: string;
   children: ReactNode;
 }) {
@@ -86,7 +86,11 @@ export function SettingsSection({
         </div>
         {actions && <div className="settings-section-actions">{actions}</div>}
       </header>
-      <div className="settings-section-body">{children}</div>
+      <div
+        className={`settings-section-body${grouped ? " settings-group" : ""}`}
+      >
+        {children}
+      </div>
     </section>
   );
 }

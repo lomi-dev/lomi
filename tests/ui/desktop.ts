@@ -600,6 +600,7 @@ export async function mockDesktop(
                 kind: args.kind,
                 title: `${claude ? "Claude Code" : "Agent"} ${args.kind === "attention" ? "needs your input" : "finished responding"}`,
                 body: args.context,
+                ...(args.paneId ? { paneId: args.paneId } : {}),
                 createdAt: Date.now(),
                 read: false,
                 ...(agent ? { agent } : {}),
@@ -1116,14 +1117,10 @@ export async function mockDesktop(
             const manifests = JSON.parse(
               localStorage.getItem("test-theme-manifests") ?? "{}",
             );
-            const { builtinTheme, deepmonoTheme, deepmonoThemeId } =
-              await import(location.origin + "/src/theme/format.ts");
-            manifests.copy =
-              args.id === deepmonoThemeId
-                ? deepmonoTheme
-                : args.id
-                  ? manifests[args.id]
-                  : builtinTheme;
+            const { builtinTheme } = await import(
+              location.origin + "/src/theme/format.ts"
+            );
+            manifests.copy = args.id ? manifests[args.id] : builtinTheme;
             localStorage.setItem(
               "test-theme-manifests",
               JSON.stringify(manifests),
@@ -1152,15 +1149,9 @@ export async function mockDesktop(
             };
           }
           if (command === "load_theme") {
-            const { deepmonoTheme, deepmonoThemeId } = await import(
-              location.origin + "/src/theme/format.ts"
-            );
-            const manifest =
-              args.id === deepmonoThemeId
-                ? deepmonoTheme
-                : JSON.parse(
-                    localStorage.getItem("test-theme-manifests") ?? "{}",
-                  )[args.id];
+            const manifest = JSON.parse(
+              localStorage.getItem("test-theme-manifests") ?? "{}",
+            )[args.id];
             if (!manifest) throw new Error("Theme folder is missing.");
             return themeBundle(args.id, manifest);
           }
@@ -1175,21 +1166,17 @@ export async function mockDesktop(
               throw new Error(
                 "Unsupported theme settings version. The file has been left intact.",
               );
+            if (preferences.active === "@builtin-deepmono")
+              preferences.active = null;
             delete preferences.customCss;
             preferences.appearance ??= "system";
             if (!["system", "light", "dark"].includes(preferences.appearance))
               throw new Error(
                 "Invalid color mode. The file has been left intact.",
               );
-            const { deepmonoTheme, deepmonoThemeId } = await import(
-              location.origin + "/src/theme/format.ts"
-            );
-            const manifest =
-              preferences.active === deepmonoThemeId
-                ? deepmonoTheme
-                : JSON.parse(
-                    localStorage.getItem("test-theme-manifests") ?? "{}",
-                  )[preferences.active];
+            const manifest = JSON.parse(
+              localStorage.getItem("test-theme-manifests") ?? "{}",
+            )[preferences.active];
             if (preferences.active && !manifest)
               throw new Error("Theme folder is missing.");
             return {

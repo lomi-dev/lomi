@@ -10,6 +10,12 @@ interface Props {
   mergeContainer: RefObject<HTMLDivElement | null>;
   onMove: (id: string, beforeId: string | null) => void;
   onMerge: (id: string, targetId: string, side: TabDropSide) => void;
+  canMove?: (id: string, beforeId: string | null) => boolean | string;
+  canMerge?: (
+    id: string,
+    targetId: string,
+    side: TabDropSide,
+  ) => boolean | string;
 }
 
 type Destination =
@@ -79,8 +85,18 @@ export function useTabDrag(props: Props) {
           before?.getBoundingClientRect().left ??
           candidates.at(-1)?.getBoundingClientRect().right ??
           bounds.left;
-        destination = { type: "move", beforeId: before?.dataset.tabId ?? null };
-        indicator.className = "tab-drop-marker";
+        const beforeId = before?.dataset.tabId ?? null;
+        const permission = latest.current.canMove?.(tab.id, beforeId) ?? true;
+        const allowed = permission === true;
+        destination = allowed ? { type: "move", beforeId } : undefined;
+        ghost.textContent = allowed
+          ? tabTitle(tab)
+          : typeof permission === "string"
+            ? permission
+            : "This tab cannot be moved here.";
+        indicator.className = allowed
+          ? "tab-drop-marker"
+          : "tab-merge-preview is-blocked";
         indicator.textContent = "";
         Object.assign(indicator.style, {
           left: `${Math.max(bounds.left, Math.min(bounds.right - 2, edge))}px`,
@@ -136,7 +152,11 @@ export function useTabDrag(props: Props) {
           12 / Math.min(area.width, area.height)
       )
         side = destination.side;
-      const allowed = canMergeTabs(source, target, side, area);
+      const fits = canMergeTabs(source, target, side, area);
+      const permission = fits
+        ? (latest.current.canMerge?.(tab.id, target.id, side) ?? true)
+        : false;
+      const allowed = fits && permission === true;
       const sourceLayout = source.type !== "terminal" ? source : source.layout;
       destination = allowed
         ? { type: "merge", targetId: target.id, side }
@@ -145,7 +165,9 @@ export function useTabDrag(props: Props) {
       indicator.dataset.side = side;
       indicator.textContent = allowed
         ? `Move ${source.title} here`
-        : "Not enough room for these panels";
+        : typeof permission === "string"
+          ? permission
+          : "Not enough room for these panels";
       const columns = side === "left" || side === "right";
       const before = side === "left" || side === "top";
       const geometry = splitGeometry(

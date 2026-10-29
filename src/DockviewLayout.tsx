@@ -30,6 +30,7 @@ export default function DockviewLayout(props: Props) {
     if (!hosts.current.has(pane.id)) {
       const host = document.createElement("div");
       host.className = "dock-pane-host";
+      host.dataset.desktopPanelId = pane.id;
       hosts.current.set(pane.id, host);
     }
   const topology = JSON.stringify(props.layout, (key, value) =>

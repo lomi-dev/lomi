@@ -55,6 +55,7 @@ export function useAgentNotifications(
         if (context === null) return;
         await api("notify_agent", {
           kind: event.kind,
+          paneId: event.paneId,
           context,
           source: event.source,
           sessionId: event.sessionId,
@@ -149,35 +150,38 @@ export function useAgentNotifications(
         descriptionId={descriptionId}
         initialFocus={cancel}
         className="cli-title-dialog"
+        closeDisabled={busy}
         onClose={() => {
           if (!busy) setSetup(undefined);
         }}
       >
-        <div className="dialog-form">
-          <div className="cli-title-description" id={descriptionId}>
-            <p>
-              {setup.configured
-                ? "Lomi notification hooks are already configured. You can check notification permission below."
-                : "Add hooks that notify Lomi when Claude Code finishes responding or needs your input. They only send signals inside Lomi terminals."}
-            </p>
-            <p>
-              <code>{setup.path}</code>
-            </p>
-            <p>
-              Existing settings and hooks are preserved. A backup is created
-              before changing the file.
-            </p>
-            <p>
-              This configures local Claude Code sessions using this file. Start
-              a new Claude Code session afterward. You can turn alerts off in
-              Settings → Notifications.
-            </p>
+        <div className="dialog-form dialog-layout">
+          <div className="dialog-content">
+            <div className="cli-title-description" id={descriptionId}>
+              <p>
+                {setup.configured
+                  ? "Lomi notification hooks are already configured. You can check notification permission below."
+                  : "Add hooks that notify Lomi when Claude Code finishes responding or needs your input. They only send signals inside Lomi terminals."}
+              </p>
+              <p>
+                <code>{setup.path}</code>
+              </p>
+              <p>
+                Existing settings and hooks are preserved. A backup is created
+                before changing the file.
+              </p>
+              <p>
+                This configures local Claude Code sessions using this file.
+                Start a new Claude Code session afterward. You can turn alerts
+                off in Settings → Notifications.
+              </p>
+            </div>
+            {error && (
+              <p className="error" role="alert">
+                {error}
+              </p>
+            )}
           </div>
-          {error && (
-            <p className="error" role="alert">
-              {error}
-            </p>
-          )}
           <div className="dialog-actions">
             <button
               ref={cancel}

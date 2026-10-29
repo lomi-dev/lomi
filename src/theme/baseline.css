@@ -1,34 +1,34 @@
 /* Startup tokens from themes/lomi.json. Keep both modes in sync. */
 @font-face {
-  font-family: "Manrope";
-  src: url("/fonts/manrope/Manrope.woff") format("woff");
+  font-family: "Geist Variable";
   font-style: normal;
-  font-weight: 200 800;
   font-display: swap;
+  font-weight: 100 900;
+  src: url(/fonts/geist/Geist-Variable-LatinExt.woff2)
+    format("woff2-variations");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304,
+    U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB,
+    U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Geist Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url(/fonts/geist/Geist-Variable.woff2) format("woff2-variations");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212,
+    U+2215, U+FEFF, U+FFFD;
 }
 
 :root {
-  --color-background: #101114;
-  --color-background-text: #f3f4f6;
-  --color-surface: #181a1f;
-  --color-surface-text: #f3f4f6;
-  --color-surface-variant: #202329;
-  --color-surface-variant-text: #bec3cc;
-  --color-outline: #343943;
-  --color-surface-container: #202329;
-  --color-surface-container-high: #282c34;
-  --color-surface-container-highest: #343943;
   --color-primary: #c8ff3d;
   --color-primary-text: #0b0d0c;
-  --color-primary-container: #29351c;
-  --color-secondary: #989fac;
   --color-surface-tint: #c8ff3d;
-  --color-error: #f1aba8;
-  --color-warning: #f1d28a;
-  --color-info: #aecdf5;
-  --color-accent-text: #d3f59b;
-  --color-muted-text: #989fac;
-  --font-family: "Manrope", "Arial", sans-serif;
+  --font-family: "Geist Variable", "Arial", sans-serif;
   --font-family-mono:
     "Cascadia Code", "SFMono-Regular", "Liberation Mono", monospace;
   --font-size: 13px;
@@ -36,52 +36,55 @@
   --border-width: 1px;
   --focus-width: 2px;
   --icon-stroke-width: 1.75;
-  --radius-xs: 4px;
+  --radius-xs: 3px;
   --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-control: 8px;
-  --radius-tab: 8px;
+  --radius-md: 6px;
+  --radius-control: 6px;
+  --radius-tab: 10px;
   --radius-menu: 12px;
   --radius-modal: 16px;
   --radius-window: 0px;
   --radius-pane: 0px;
   --opacity-disabled: 0.4;
   --opacity-window: 1;
-  --shadow-menu: 0px 8px 24px -4px rgb(0 0 0 / 0.38);
-  --shadow-modal: 0 24px 80px -16px #00000099, 0 8px 24px -8px #00000066;
-  --color-backdrop: #0b0d0c99;
   --color-drop-overlay: color-mix(
     in srgb,
     var(--color-surface-container-high) 85%,
     transparent
   );
   --titlebar-height: 44px;
-  --statusbar-height: 28px;
+  --statusbar-height: 26px;
   --tab-height: 32px;
-  --tab-min-width: 128px;
-  --tab-max-width: 164px;
-  --titlebar-background: var(--color-background);
-  --sidebar-background: color-mix(
+  --tab-min-width: 148px;
+  --tab-max-width: 220px;
+  --titlebar-background: var(--color-surface-variant);
+  --sidebar-background: var(--color-surface-variant);
+  --statusbar-background: var(--color-surface-variant);
+  --settings-background: var(--color-surface);
+  --menu-background: var(--lomi-raised);
+  --modal-background: var(--lomi-raised);
+  --input-background: color-mix(
     in srgb,
-    var(--color-surface) 70%,
-    var(--color-background)
+    var(--color-surface-container-high) 70%,
+    var(--color-surface-container)
   );
-  --statusbar-background: var(--color-background);
-  --settings-background: var(--color-background);
-  --menu-background: var(--color-surface);
-  --modal-background: var(--color-surface);
-  --input-background: var(--color-surface);
-  --button-background: var(--color-surface);
+  --input-border-color: color-mix(
+    in srgb,
+    var(--color-muted-text) 50%,
+    var(--color-outline)
+  );
+  --input-border-color-hover: var(--color-muted-text);
+  --button-background: #2a2b2f;
   --tab-background-active: var(--color-surface-container-high);
   --sidebar-min-width: 180px;
-  --settings-nav-width: clamp(192px, 16vw, 224px);
-  --settings-page-padding: clamp(24px, 3vw, 32px) clamp(20px, 4vw, 56px);
+  --settings-nav-width: clamp(180px, 16vw, 216px);
+  --settings-page-padding: clamp(16px, 3vw, 28px) clamp(16px, 4vw, 40px);
   --tree-row-height: 30px;
   --tree-indent: 14px;
   --icon-button-size: 28px;
   --scrollbar-width: 8px;
   --scrollbar-height: 5px;
-  --terminal-padding: 16px 14px 12px 18px;
+  --terminal-padding: 12px 14px;
   --terminal-font-family: "JetBrains Mono", var(--font-family-mono);
   --terminal-font-size: 16px;
   --terminal-line-height: 1.25;
@@ -101,7 +104,6 @@
   --terminal-cursor-accent: var(--color-background);
   --terminal-selection-background: var(--lomi-selection);
   --terminal-selection-inactive-background: var(--color-surface-container-high);
-  --terminal-black: #101114;
   --terminal-red: var(--color-error);
   --terminal-green: var(--lomi-success);
   --terminal-yellow: var(--color-warning);
@@ -171,23 +173,22 @@
   --tab-bar-gap: var(--space-6);
   --tab-gap: var(--space-4);
   --tab-padding: 0 var(--space-5) 0 var(--space-9);
-  --sidebar-heading-height: 42px;
-  --sidebar-heading-padding: var(--space-5) var(--space-10) var(--space-5)
-    var(--space-16);
+  --sidebar-heading-height: 32px;
+  --sidebar-heading-padding: 0 var(--space-12);
   --tree-heading-padding: var(--space-6) var(--space-8);
   --tree-padding: var(--space-4) var(--space-8) var(--space-12);
   --tree-entry-gap: var(--space-6);
-  --terminal-heading-padding: var(--space-8) var(--space-12) 0;
+  --terminal-heading-padding: var(--space-4) var(--space-12) 0;
   --terminal-heading-align: center;
   --terminal-title-gap: var(--space-8);
   --editor-heading-gap: var(--space-12);
-  --editor-heading-padding: var(--space-6) var(--space-12);
-  --editor-heading-height: 42px;
+  --editor-heading-padding: 0 var(--space-12);
+  --editor-heading-height: 32px;
   --editor-font-family: "JetBrains Mono", var(--font-family-mono);
   --editor-font-size: var(--font-size-14);
   --editor-line-height: 1.6;
-  --editor-background: var(--color-background);
-  --editor-foreground: var(--color-background-text);
+  --editor-background: var(--color-surface);
+  --editor-foreground: var(--color-surface-text);
   --editor-gutter-background: var(--editor-background);
   --editor-gutter-foreground: var(--color-surface-variant-text);
   --editor-active-line: var(--color-surface-container);
@@ -198,22 +199,22 @@
   --markdown-padding: var(--space-24) clamp(16px, 4%, 48px) 72px;
   --markdown-max-width: 80ch;
   --markdown-line-height: 1.7;
-  --button-padding: var(--space-7) var(--space-12);
+  --button-padding: var(--space-6) var(--space-12);
   --button-gap: var(--space-7);
-  --menu-padding: var(--space-7);
-  --menu-item-padding: var(--space-8);
+  --menu-padding: var(--space-4);
+  --menu-item-padding: var(--space-6) var(--space-8);
   --menu-item-gap: var(--space-8);
   --statusbar-gap: var(--space-10);
   --statusbar-padding: 0 var(--space-12) 0 var(--space-6);
-  --settings-nav-padding: var(--space-18) var(--space-10);
-  --settings-nav-item-padding: var(--space-9) var(--space-12);
+  --settings-nav-padding: var(--space-12) var(--space-8);
+  --settings-nav-item-padding: var(--space-7) var(--space-10);
   --settings-nav-item-gap: var(--space-9);
-  --settings-heading-margin: var(--space-28);
-  --settings-row-padding: var(--space-14) 0;
-  --editor-setting-padding: var(--space-18) 0;
+  --settings-heading-margin: var(--space-24);
+  --settings-row-padding: var(--space-12) 0;
+  --editor-setting-padding: var(--space-14) 0;
   --theme-library-padding: var(--space-18);
   --theme-card-padding: var(--space-16);
-  --theme-list-gap: var(--space-10);
+  --theme-list-gap: var(--space-4);
   --git-toolbar-padding: var(--space-5) var(--space-12);
   --git-repository-padding: var(--space-6) var(--space-12);
   --git-commit-flex: 0 0 clamp(112px, 21vh, 184px);
@@ -221,8 +222,8 @@
   --git-file-padding: 0 var(--space-6);
   --git-file-gap: var(--space-4);
   --commit-file-list-flex: 0 0 26%;
-  --modal-heading-padding: 24px 24px 8px;
-  --modal-content-padding: 12px 24px 24px;
+  --modal-heading-padding: 16px 20px 12px;
+  --modal-content-padding: 4px 20px 20px;
   --titlebar-border-width: var(--border-width);
   --statusbar-border-width: var(--border-width);
   --tab-border-width: var(--border-width);
@@ -235,20 +236,41 @@
   --editor-border: var(--pane-border);
   --editor-shadow: var(--pane-shadow);
   --editor-overflow: hidden;
-  --input-padding: var(--space-8) var(--space-10);
+  --input-padding: var(--space-6) var(--space-10);
   --sidebar-max-width: 520px;
-  --lomi-control-border: #7d8694;
-  --lomi-focus: #d8ff93;
-  --lomi-selection: #29351c;
-  --lomi-selection-text: #e0f2c0;
-  --lomi-primary-hover: #daff7a;
-  --lomi-primary-pressed: #b5e535;
-  --lomi-success: #a8d8b9;
-  --lomi-success-background: #1c3026;
-  --lomi-syntax-type: #d6c9ff;
-  --lomi-raised: #282c34;
-  --lomi-danger-background: #3a2328;
-  --lomi-warning-background: #352d1d;
+  --lomi-primary-hover: var(--color-primary);
+  --lomi-primary-pressed: var(--color-primary);
+  --color-background: #151618;
+  --color-background-text: #ededf0;
+  --color-surface: #191a1d;
+  --color-surface-text: #ededf0;
+  --color-surface-variant: #1b1c1f;
+  --color-surface-variant-text: #c1c3ca;
+  --color-outline: #3b3d43;
+  --color-surface-container: #232427;
+  --color-surface-container-high: #2a2b2f;
+  --color-surface-container-highest: #35373c;
+  --color-primary-container: #303237;
+  --color-secondary: #b7bac2;
+  --color-error: #f4a89b;
+  --color-warning: #e8c37d;
+  --color-info: #a8c7fa;
+  --color-accent-text: #c8ff3d;
+  --color-muted-text: #adb0b8;
+  --shadow-menu: 0 8px 24px -4px #00000066;
+  --shadow-modal: 0 24px 64px -16px #00000099, 0 8px 24px -8px #00000066;
+  --color-backdrop: #0c0d0fb3;
+  --terminal-black: #151618;
+  --lomi-control-border: #777a83;
+  --lomi-focus: var(--color-accent-text);
+  --lomi-selection: var(--color-primary-container);
+  --lomi-selection-text: var(--color-surface-text);
+  --lomi-success: #a2d6ae;
+  --lomi-success-background: #1b3021;
+  --lomi-syntax-type: #c9b4eb;
+  --lomi-raised: #25262a;
+  --lomi-danger-background: #3a211d;
+  --lomi-warning-background: #342b1b;
   font-family: var(--font-family);
   color: var(--color-background-text);
   background: transparent;
@@ -260,36 +282,44 @@
 }
 
 :root:where([data-appearance="light"]) {
+  --input-border-color: color-mix(
+    in srgb,
+    var(--color-muted-text) 75%,
+    var(--color-outline)
+  );
+  --menu-background: var(--color-surface);
+  --modal-background: var(--color-surface);
+  --input-background: color-mix(
+    in srgb,
+    var(--color-surface-container-high) 70%,
+    var(--color-surface-container)
+  );
+  --button-background: var(--color-surface);
   --color-background: #f7f8f3;
   --color-background-text: #0b0d0c;
   --color-surface: #ffffff;
   --color-surface-text: #0b0d0c;
-  --color-surface-variant: #edf0e8;
+  --color-surface-variant: #eff2e9;
   --color-surface-variant-text: #535c56;
-  --color-outline: #d5dad2;
-  --color-surface-container: #edf0e8;
-  --color-surface-container-high: #e4e8df;
-  --color-surface-container-highest: #d5dad2;
-  --color-primary-container: #eaf5cc;
-  --color-secondary: #626d60;
+  --color-outline: #d5dccf;
+  --color-surface-container: #f1f4ec;
+  --color-surface-container-high: #e7ecdf;
+  --color-surface-container-highest: #d5dccf;
+  --color-primary-container: #e7eedb;
+  --color-secondary: #535c56;
   --color-error: #a12a1d;
   --color-warning: #754600;
   --color-info: #2445ae;
   --color-accent-text: #345600;
-  --color-muted-text: #626d60;
-  --shadow-menu: 0px 8px 24px -4px rgb(11 13 12 / 0.14);
-  --shadow-modal: 0 24px 80px -16px #0b0d0c33, 0 8px 24px -8px #0b0d0c1a;
+  --color-muted-text: #535c56;
+  --shadow-menu: 0 8px 24px -4px #0b0d0c24;
+  --shadow-modal: 0 24px 64px -16px #0b0d0c33, 0 8px 24px -8px #0b0d0c1a;
   --color-backdrop: #0b0d0c47;
   --terminal-black: #0b0d0c;
-  --lomi-control-border: #798478;
-  --lomi-focus: #345600;
-  --lomi-selection: #eaf5cc;
-  --lomi-selection-text: #0b0d0c;
-  --lomi-primary-hover: #b6ef2b;
-  --lomi-primary-pressed: #a5d822;
+  --lomi-control-border: #7a8576;
   --lomi-success: #20683b;
   --lomi-success-background: #e7f5e9;
-  --lomi-syntax-type: #5740b8;
+  --lomi-syntax-type: #65409a;
   --lomi-raised: #ffffff;
   --lomi-danger-background: #fdeae7;
   --lomi-warning-background: #fff1cc;

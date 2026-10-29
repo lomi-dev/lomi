@@ -244,6 +244,7 @@ test("Remote navigation and browser revocation follow login and logout events", 
   await expect(remoteNav).toBeDisabled();
   await expect(revoke).toBeDisabled();
   await expect(page.getByText(/sign in.*remote/i)).toBeVisible();
+  await page.getByText("Background session controls", { exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Show workspace" }),
   ).toBeEnabled();

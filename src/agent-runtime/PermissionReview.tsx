@@ -15,6 +15,16 @@ export default function PermissionReview({ taskId }: { taskId?: string }) {
   const cancel = useRef<HTMLButtonElement>(null);
   const [text, setText] = useState("");
   const controls = pending ? permissionControls(pending) : undefined;
+  const scrollChoices =
+    !!controls &&
+    (controls.choices.length > 3 ||
+      controls.choices.some((choice) => choice.label.length > 72));
+  const bodyChoices = scrollChoices
+    ? controls?.choices.filter((choice) => choice !== controls.cancel)
+    : [];
+  const footerChoices = scrollChoices
+    ? controls?.choices.filter((choice) => choice === controls.cancel)
+    : controls?.choices;
   useEffect(
     () => setText(controls?.textInput?.initial ?? ""),
     [pending?.approvalToken],
@@ -90,6 +100,8 @@ export default function PermissionReview({ taskId }: { taskId?: string }) {
   return (
     <Modal
       title="Review native CLI permission"
+      className="native-permission-dialog"
+      tone="warning"
       wide
       initialFocus={cancel}
       closeDisabled={busy || !controls?.cancel}
@@ -97,36 +109,62 @@ export default function PermissionReview({ taskId }: { taskId?: string }) {
         if (controls?.cancel) void decide(false, controls.cancel.value);
       }}
     >
-      <div className="dialog-form agent-task-dialog" aria-busy={busy}>
-        <p>
-          This operation belongs to the active native attempt in{" "}
-          {pending.projectRoot}. Save or close unsaved project editors before
-          allowing it. Editors stay frozen until the attempt settles.
-        </p>
-        <pre>{JSON.stringify(pending.permission.raw, null, 2)}</pre>
-        {error && <p role="alert">{error}</p>}
-        {controls?.textInput && (
-          <div>
-            <label htmlFor={textFieldId}>{controls.textInput.label}</label>
-            {controls.textInput.multiline ? (
-              <textarea
-                id={textFieldId}
-                value={text}
-                disabled={busy}
-                onChange={(event) => setText(event.target.value)}
-              />
-            ) : (
-              <input
-                id={textFieldId}
-                value={text}
-                disabled={busy}
-                onChange={(event) => setText(event.target.value)}
-              />
-            )}
-          </div>
-        )}
+      <div className="dialog-form dialog-layout" aria-busy={busy}>
+        <div className="dialog-content agent-task-dialog">
+          <p>
+            This operation belongs to the active native attempt in{" "}
+            {pending.projectRoot}. Save or close unsaved project editors before
+            allowing it. Editors stay frozen until the attempt settles.
+          </p>
+          <pre>{JSON.stringify(pending.permission.raw, null, 2)}</pre>
+          {error && <p role="alert">{error}</p>}
+          {controls?.textInput && (
+            <div>
+              <label htmlFor={textFieldId}>{controls.textInput.label}</label>
+              {controls.textInput.multiline ? (
+                <textarea
+                  id={textFieldId}
+                  value={text}
+                  disabled={busy}
+                  onChange={(event) => setText(event.target.value)}
+                />
+              ) : (
+                <input
+                  id={textFieldId}
+                  value={text}
+                  disabled={busy}
+                  onChange={(event) => setText(event.target.value)}
+                />
+              )}
+            </div>
+          )}
+          {!!bodyChoices?.length && (
+            <div
+              className="agent-permission-choices"
+              role="group"
+              aria-label="Native choices"
+            >
+              {bodyChoices.map((choice, index) => (
+                <button
+                  key={index}
+                  className={`button${choice.allow ? " button-primary" : ""}`}
+                  disabled={busy}
+                  onClick={() => void decide(choice.allow, choice.value)}
+                >
+                  {choice.label}
+                </button>
+              ))}
+            </div>
+          )}
+          {!controls?.choices.length && !controls?.textInput && (
+            <p role="alert">
+              The native client did not provide an enforceable permission
+              choice. Stop the task to settle it.
+            </p>
+          )}
+        </div>
         <div className="dialog-actions">
-          {controls?.choices.map((choice, index) => (
+          {footerChoices?.map((choice, index) => (
             <button
               key={index}
               ref={!choice.allow ? cancel : undefined}
@@ -147,12 +185,6 @@ export default function PermissionReview({ taskId }: { taskId?: string }) {
             >
               Submit response
             </button>
-          )}
-          {!controls?.choices.length && !controls?.textInput && (
-            <p role="alert">
-              The native client did not provide an enforceable permission
-              choice. Stop the task to settle it.
-            </p>
           )}
         </div>
       </div>

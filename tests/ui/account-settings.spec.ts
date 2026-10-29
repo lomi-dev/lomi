@@ -27,52 +27,63 @@ const signedIn: AuthState = {
   session: { id: "session-1", expiresAt: "2026-10-01T12:00:00Z" },
 };
 
-async function mockAccount(page: Page, state = signedOut) {
+async function mockAccount(
+  page: Page,
+  state = signedOut,
+  failInitialLoad = false,
+) {
   await mockDesktop(page, false);
-  await page.addInitScript((initial) => {
-    const desktop = window as any;
-    desktop.__authTest = {
-      state: initial,
-      calls: [],
-      delayedRefresh: false,
-      resolveRefresh: null,
-    };
-    desktop.__authInvoke = async (command: string, args: any) => {
-      const fixture = desktop.__authTest;
-      fixture.calls.push({ command, args });
-      if (command === "auth_begin_login") {
-        fixture.state = {
-          ...fixture.state,
-          revision: fixture.state.revision + 1,
-          status: "authorizing",
-          storage: args.storage,
-          attempt: {
-            id: "attempt-1",
-            expiresAt: new Date(Date.now() + 600000).toISOString(),
-          },
-        };
-      }
-      if (command === "auth_cancel_login" || command === "auth_sign_out") {
-        fixture.state = {
-          ...fixture.state,
-          revision: fixture.state.revision + 1,
-          status: "signed-out",
-          user: null,
-          session: null,
-          attempt: null,
-          storage: null,
-          remoteRevocationConfirmed: command === "auth_sign_out" ? false : null,
-        };
-      }
-      if (command === "auth_refresh_state" && fixture.delayedRefresh) {
-        const captured = structuredClone(fixture.state);
-        return new Promise((resolve) => {
-          fixture.resolveRefresh = () => resolve(captured);
-        });
-      }
-      return fixture.state;
-    };
-  }, state);
+  await page.addInitScript(
+    ({ initial, failInitialLoad }) => {
+      const desktop = window as any;
+      desktop.__authTest = {
+        state: initial,
+        calls: [],
+        delayedRefresh: false,
+        resolveRefresh: null,
+      };
+      desktop.__authInvoke = async (command: string, args: any) => {
+        const fixture = desktop.__authTest;
+        fixture.calls.push({ command, args });
+        if (command === "auth_get_state" && failInitialLoad) {
+          throw new Error("Account connection is unavailable.");
+        }
+        if (command === "auth_begin_login") {
+          fixture.state = {
+            ...fixture.state,
+            revision: fixture.state.revision + 1,
+            status: "authorizing",
+            storage: args.storage,
+            attempt: {
+              id: "attempt-1",
+              expiresAt: new Date(Date.now() + 600000).toISOString(),
+            },
+          };
+        }
+        if (command === "auth_cancel_login" || command === "auth_sign_out") {
+          fixture.state = {
+            ...fixture.state,
+            revision: fixture.state.revision + 1,
+            status: "signed-out",
+            user: null,
+            session: null,
+            attempt: null,
+            storage: null,
+            remoteRevocationConfirmed:
+              command === "auth_sign_out" ? false : null,
+          };
+        }
+        if (command === "auth_refresh_state" && fixture.delayedRefresh) {
+          const captured = structuredClone(fixture.state);
+          return new Promise((resolve) => {
+            fixture.resolveRefresh = () => resolve(captured);
+          });
+        }
+        return fixture.state;
+      };
+    },
+    { initial: state, failInitialLoad },
+  );
   await page.goto("/?window=settings&page=account");
   await expect(
     page.getByRole("heading", { name: "Account", exact: true }),
@@ -84,7 +95,7 @@ test("locked storage explains recovery and keeps session-only login an explicit 
 }, testInfo) => {
   await mockAccount(page, storageLocked);
   await expect(
-    page.getByText(/Use Check connection to retry access/),
+    page.getByText(/Unlock your system credential store and retry access/),
   ).toBeVisible();
   const remember = page.getByRole("switch", {
     name: "Remember me on this device",
@@ -178,17 +189,17 @@ test("failed durable sign-out keeps recovery blocked without claiming local succ
   ).toBeDisabled();
 });
 
-test("Check connection can restore a locked saved account without starting a new login", async ({
+test("Retry access can restore a locked saved account without starting a new login", async ({
   page,
 }) => {
   await mockAccount(page, storageLocked);
   await page.evaluate((state) => {
     (window as any).__authTest.state = state;
   }, signedIn);
-  await page.getByRole("button", { name: "Check connection" }).click();
+  await page.getByRole("button", { name: "Retry access" }).click();
   await expect(page.getByText("Lomi User", { exact: true })).toBeVisible();
   await expect(
-    page.getByText(/Use Check connection to retry access/),
+    page.getByText(/Unlock your system credential store and retry access/),
   ).toHaveCount(0);
   expect(
     await page.evaluate(() =>
@@ -291,10 +302,9 @@ test("remembered login can finish with a clearly disclosed session-only fallback
     fullPage: true,
   });
 
-  await page.getByRole("button", { name: "Check connection" }).click();
   await expect(
-    page.getByText("This session only", { exact: true }),
-  ).toBeVisible();
+    page.getByRole("button", { name: /Retry (access|connection)/ }),
+  ).toHaveCount(0);
   expect(
     await page.evaluate(() =>
       (window as any).__authTest.calls.filter(
@@ -305,14 +315,14 @@ test("remembered login can finish with a clearly disclosed session-only fallback
 });
 
 test("new logout event wins over an old refresh response", async ({ page }) => {
-  await mockAccount(page, signedIn);
+  await mockAccount(page, { ...signedIn, status: "offline" });
   await expect(
     page.getByText("user@example.test", { exact: true }),
   ).toBeVisible();
   await page.evaluate(() => {
     (window as any).__authTest.delayedRefresh = true;
   });
-  await page.getByRole("button", { name: "Check connection" }).click();
+  await page.getByRole("button", { name: "Retry connection" }).click();
   await page.evaluate(async () => {
     const desktop = window as any;
     await desktop.__nativeTest.emitEvent("auth-state-changed", {
@@ -363,4 +373,19 @@ test("account remains usable at the minimum settings width", async ({
     path: "/tmp/lomi-account-settings.png",
     fullPage: true,
   });
+});
+
+test("failed initial account load can be retried from its error notice", async ({
+  page,
+}) => {
+  await mockAccount(page, signedIn, true);
+  await expect(page.getByRole("alert")).toContainText(
+    "Account connection is unavailable.",
+  );
+  await page.getByRole("button", { name: "Retry connection" }).click();
+  await expect(page.getByText("Lomi User", { exact: true })).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Retry connection" }),
+  ).toHaveCount(0);
 });

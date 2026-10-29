@@ -9,8 +9,6 @@ export default function RemoteWorkspaceStatus({
   busy,
   error,
   stopSharing,
-  paused,
-  resume,
 }: {
   workspace: { id: string; name: string };
   available: boolean;
@@ -18,8 +16,6 @@ export default function RemoteWorkspaceStatus({
   busy: boolean;
   error: string;
   stopSharing: () => Promise<void>;
-  paused?: boolean;
-  resume: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
   const [attempted, setAttempted] = useState(false);
@@ -33,18 +29,8 @@ export default function RemoteWorkspaceStatus({
       >
         <span className="remote-workspace-status-label">
           <Globe size={12} aria-hidden="true" />
-          {paused ? "Remote paused" : "Shared remotely"}
+          Shared remotely
         </span>
-        {paused && (
-          <button
-            type="button"
-            className="remote-workspace-stop"
-            disabled={!available || busy}
-            onClick={() => void resume()}
-          >
-            {busy ? "Resuming…" : "Resume remote"}
-          </button>
-        )}
         <button
           type="button"
           className="remote-workspace-stop"
@@ -60,7 +46,7 @@ export default function RemoteWorkspaceStatus({
           Stop sharing
         </button>
       </div>
-      {paused && error && <span role="alert">{error}</span>}
+      {error && <span role="alert">{error}</span>}
       {open && (
         <Modal
           className="remote-sharing-dialog"
@@ -73,13 +59,15 @@ export default function RemoteWorkspaceStatus({
           closeDisabled={busy}
           onClose={() => setOpen(false)}
         >
-          <div className="dialog-form" aria-busy={busy}>
-            <p id={descriptionId}>
-              Stop sharing “{workspace.name}” remotely? Remote access will end.
-              Local terminals will keep running.
-              {!available && " Sign in to use remote sharing."}
-            </p>
-            {attempted && error && <p role="alert">{error}</p>}
+          <div className="dialog-form dialog-layout" aria-busy={busy}>
+            <div className="dialog-content">
+              <p id={descriptionId}>
+                Stop sharing “{workspace.name}” remotely? Existing local
+                terminals will keep running.
+                {!available && " Remote sharing requires the Lomi desktop app."}
+              </p>
+              {attempted && error && <p role="alert">{error}</p>}
+            </div>
             <div className="dialog-actions">
               <button
                 ref={cancel}

@@ -6,7 +6,6 @@ import {
   SettingsSection,
 } from "./settings-ui";
 import { useEffect, useRef, useState } from "react";
-import type { CSSProperties } from "react";
 import Select from "./Select";
 import { RotateCcw } from "./icons";
 import { errorMessage, windows } from "./api";
@@ -236,7 +235,6 @@ export default function TerminalSettingsPage() {
   const preferences = useTerminalPreferences();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [status, setStatus] = useState("");
   const [appearance, setAppearance] = useState(terminalAppearance);
   const [palette, setPalette] = useState(terminalPalette);
   const [fontMode, setFontMode] = useState<FontChoice>(() =>
@@ -270,14 +268,11 @@ export default function TerminalSettingsPage() {
     saving.current = true;
     setBusy(true);
     setError("");
-    setStatus("Saving…");
     try {
       await preferences.save(value);
-      setStatus("Saved");
       return true;
     } catch (error) {
       setError(errorMessage(error));
-      setStatus("");
       return false;
     } finally {
       saving.current = false;
@@ -424,70 +419,44 @@ export default function TerminalSettingsPage() {
   };
   const resetFont = () => void changeFontChoice("theme");
 
-  const theme = appearance.theme as Record<string, string | undefined>;
-  const previewStyle: CSSProperties = {
-    backgroundColor:
-      palette.background ?? theme.background ?? "var(--color-surface)",
-    color:
-      palette.foreground ?? theme.foreground ?? "var(--color-surface-text)",
-    fontFamily: appearance.fontFamily,
-    fontSize: `${appearance.fontSize}px`,
-    fontWeight: appearance.fontWeight,
-    lineHeight: appearance.lineHeight,
-    letterSpacing: `${appearance.letterSpacing}px`,
-  };
-  const cursorColor = palette.cursor ?? theme.cursor ?? theme.foreground;
-  const cursorAccent = palette.cursorAccent ?? theme.cursorAccent;
-  const cursorStyle = appearance.cursorStyle;
-  const cursorWidth = `${appearance.cursorWidth}px`;
-  const cursorGlyphWidth = `max(1px, calc(1ch + ${appearance.letterSpacing}px))`;
-  const cursorShapeStyle: CSSProperties = {
-    backgroundColor: cursorColor,
-    color: cursorAccent ?? previewStyle.backgroundColor,
-    width: cursorStyle === "bar" ? cursorWidth : cursorGlyphWidth,
-    height: cursorStyle === "underline" ? "2px" : "1em",
-    alignSelf: cursorStyle === "underline" ? "end" : "stretch",
-  };
-
   return (
     <SettingsPage
       title="Terminal"
       className="terminal-settings-page"
       description="Text, colors and behavior for all terminals."
-      status={!preferences.ready ? "Loading…" : busy ? "Saving…" : status}
-      actions={
-        <button
-          type="button"
-          className="button"
-          disabled={!preferences.ready || busy}
-          onClick={() => {
-            void persist(defaultTerminalPreferences).then((saved) => {
-              if (saved) {
-                setFontMode("theme");
-                setFontDraft("");
-              }
-            });
-          }}
-        >
-          <RotateCcw size={14} /> Reset all
-        </button>
-      }
+      busy={!preferences.ready || busy}
     >
       {(error || preferences.error) && (
         <SettingsNotice
           tone="error"
           action={
             preferences.error ? (
-              <button
-                className="text-button"
-                disabled={!preferences.ready || busy}
-                onClick={() => {
-                  setError("");
-                  void preferences.reload();
-                }}
-              >
-                Retry loading
-              </button>
+              <>
+                <button
+                  className="text-button"
+                  disabled={!preferences.ready || busy}
+                  onClick={() => {
+                    setError("");
+                    void preferences.reload();
+                  }}
+                >
+                  Retry loading
+                </button>
+                <button
+                  className="text-button"
+                  disabled={!preferences.ready || busy}
+                  onClick={() => {
+                    void persist(defaultTerminalPreferences).then((saved) => {
+                      if (saved) {
+                        setFontMode("theme");
+                        setFontDraft("");
+                      }
+                    });
+                  }}
+                >
+                  Reset to defaults
+                </button>
+              </>
             ) : (
               <button className="text-button" onClick={() => setError("")}>
                 Dismiss
@@ -499,29 +468,7 @@ export default function TerminalSettingsPage() {
         </SettingsNotice>
       )}
 
-      <SettingsSection title="Preview">
-        <div
-          className="terminal-preview-surface"
-          role="img"
-          aria-label="Terminal preview showing Welcome to Lomi and a prompt"
-          style={previewStyle}
-        >
-          <div className="terminal-preview-content">
-            <div className="terminal-preview-line">Welcome to Lomi</div>
-            <div className="terminal-preview-line terminal-preview-prompt">
-              <span aria-hidden="true">$ </span>
-              <span
-                className="terminal-preview-cursor"
-                style={cursorShapeStyle}
-              >
-                &nbsp;
-              </span>
-            </div>
-          </div>
-        </div>
-      </SettingsSection>
-
-      <SettingsSection title="Text & cursor">
+      <SettingsSection title="Basics">
         <SettingRow label="Font" htmlFor="terminal-setting-font">
           <Select
             id="terminal-setting-font"
@@ -586,9 +533,7 @@ export default function TerminalSettingsPage() {
           </SettingRow>
         )}
         {(["fontSize", "cursorStyle"] as const).map(appearanceSetting)}
-      </SettingsSection>
 
-      <SettingsSection title="General">
         <Setting
           name="alwaysShowTitles"
           value={preferences.value.alwaysShowTitles}

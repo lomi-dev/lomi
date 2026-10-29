@@ -322,9 +322,9 @@ test("Android metadata approval requires a selected device and grants only read 
         operationId: "theme-operation",
         section: "themes",
         clientLabel: "Fixture client",
-        requestKey: "deepmono",
+        requestKey: "lomi",
         before: { active: null, appearance: "system" },
-        after: { active: "@builtin-deepmono", appearance: "light" },
+        after: { active: null, appearance: "light" },
         secondsRemaining: 119,
       },
     ];
@@ -332,7 +332,7 @@ test("Android metadata approval requires a selected device and grants only read 
   const themeChange = page.locator(
     '[data-settings-operation="theme-operation"]',
   );
-  await expect(themeChange).toContainText("Lomi → DeepMono");
+  await expect(themeChange).toContainText("Lomi → Lomi");
   await expect(themeChange).toContainText("Follow system → Light");
   await themeChange.scrollIntoViewIfNeeded();
   await page.screenshot({

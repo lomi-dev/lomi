@@ -220,4 +220,136 @@ impl Broker {
         )?;
         result.map_err(|_| ErrorCode::OutcomeUnknown)
     }
+
+    /// Commit an MCP editor save through the joined native-files executor.
+    /// The publisher receives the broker-validated destination, raw disk
+    /// revision, UTF-8 buffer text, and a live authorization check to answer
+    /// Host challenges while publication is in progress.
+    pub fn commit_editor_save_with_host(
+        &self,
+        operation: &str,
+        nonce: &str,
+        body: EditorSaveBody,
+        encode: impl FnOnce(&[u8], &str) -> Result<Vec<u8>, ErrorCode>,
+        publish: impl FnOnce(
+            &str,
+            &str,
+            &Path,
+            &str,
+            &str,
+            &str,
+            &str,
+            &mut dyn FnMut() -> Result<(), ErrorCode>,
+        ) -> Result<String, ReplaceError>,
+    ) -> Result<EditorSaved, ErrorCode> {
+        let _request_permit = self.check_work_request(operation)?;
+        let _project_write = self.project_write_admission()?;
+        let (command, owner, directory, permit, connected, policy) = {
+            let mut state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
+            let work = state.work.get(operation).ok_or(ErrorCode::ControlRevoked)?;
+            if !work.claimed
+                || work.native_committed
+                || work.command.nonce != nonce
+                || work.command.ui_epoch != state.projection.ui_epoch
+            {
+                return Err(ErrorCode::ControlRevoked);
+            }
+            work.native_permit.check_local()?;
+            let UiAction::EditorSave(command) = &work.command.action else {
+                return Err(ErrorCode::ScopeDenied);
+            };
+            Self::validate_editor_save(&state, &work.pairing, &command.input)?;
+            let directory =
+                Self::project_file_access(&state, &work.pairing, &command.workspace_id)?;
+            let expected_path = Path::new(&command.project_path).join(&command.input.relative_path);
+            if body.document_id != command.input.document_id
+                || body.buffer_revision != command.input.expected_buffer_revision
+                || body.disk_revision != command.input.expected_disk_revision
+                || expected_path.to_str() != Some(body.source_path.as_str())
+            {
+                return Err(ErrorCode::RevisionConflict);
+            }
+            if body.content.len() > 4 * 1024 * 1024 || body.content.contains('\0') {
+                return Err(ErrorCode::ResourceExhausted);
+            }
+            let session = &state.sessions[&work.pairing];
+            let result = (
+                command.clone(),
+                work.pairing.clone(),
+                directory,
+                work.native_permit.clone(),
+                session.alive.clone(),
+                state.policy_revision,
+            );
+            state.work.get_mut(operation).unwrap().native_committed = true;
+            result
+        };
+        let check = || {
+            permit.revalidate()?;
+            if !connected.load(Ordering::SeqCst)
+                || self.authorization.load(Ordering::SeqCst) != policy
+            {
+                return Err(ErrorCode::ControlRevoked);
+            }
+            directory.check()
+        };
+        let write = || -> Result<EditorSaved, ReplaceError> {
+            let _producer = self
+                .file_reads
+                .clone()
+                .try_acquire_owned()
+                .map_err(|_| ErrorCode::ResourceExhausted)?;
+            check()?;
+            let original = directory
+                .open_file(&command.input.relative_path, 4 * 1024 * 1024)?
+                .read_bytes(4 * 1024 * 1024, || check())?;
+            if format!("{:x}", Sha256::digest(&original)) != command.input.expected_disk_revision {
+                return Err(ErrorCode::RevisionConflict.into());
+            }
+            let bytes = encode(&original, &body.content)?;
+            if bytes.len() > 4 * 1024 * 1024 {
+                return Err(ErrorCode::ResourceExhausted.into());
+            }
+            let expected_result_revision = format!("{:x}", Sha256::digest(&bytes));
+            check()?;
+            let path = Path::new(&command.project_path).join(&command.input.relative_path);
+            let disk_revision = publish(
+                &owner,
+                operation,
+                &path,
+                &command.project_path,
+                &command.input.relative_path,
+                &command.input.expected_disk_revision,
+                &body.content,
+                &mut || check(),
+            )?;
+            if disk_revision != expected_result_revision {
+                return Err(ReplaceError::Uncertain);
+            }
+            Ok(EditorSaved {
+                workspace_id: command.workspace_id.clone(),
+                panel_id: command.input.panel_id.clone(),
+                relative_path: command.input.relative_path.clone(),
+                document_id: command.input.document_id.clone(),
+                saved_buffer_revision: command.input.expected_buffer_revision.clone(),
+                previous_disk_revision: command.input.expected_disk_revision.clone(),
+                disk_revision,
+                byte_length: bytes.len() as u32,
+            })
+        };
+        let result = write();
+        self.finish_native_file_write(
+            operation,
+            nonce,
+            &owner,
+            result
+                .as_ref()
+                .map(|saved| OperationResult::EditorSaved(Box::new(saved.clone())))
+                .map_err(|error| match error {
+                    ReplaceError::Before(code) => ReplaceError::Before(*code),
+                    ReplaceError::Uncertain => ReplaceError::Uncertain,
+                }),
+        )?;
+        result.map_err(|_| ErrorCode::OutcomeUnknown)
+    }
 }

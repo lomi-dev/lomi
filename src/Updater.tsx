@@ -158,9 +158,14 @@ export function useUpdater(
   return {
     busy,
     dialog: open && (
-      <Modal title="Software update" className="updater-dialog" onClose={close}>
-        <div className="dialog-form">
-          <div className="update-content">
+      <Modal
+        title="Software update"
+        className="updater-dialog"
+        onClose={close}
+        closeDisabled={busy.current}
+      >
+        <div className="dialog-form dialog-layout">
+          <div className="dialog-content update-content">
             {update && (
               <p>
                 Lomi {update.currentVersion} → {update.version}

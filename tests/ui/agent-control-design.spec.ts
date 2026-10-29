@@ -71,6 +71,20 @@ async function setup(
   }, initialBroker);
 }
 
+async function setupMutations(page: Page) {
+  return page.evaluate(() =>
+    (window as any).__nativeTest.calls.filter((call: { command: string }) =>
+      [
+        "agent_control_enable",
+        "agent_control_set_auto_start",
+        "agent_control_set_yolo_mode",
+        "agent_control_approve",
+        "install_mcp_client",
+      ].includes(call.command),
+    ),
+  );
+}
+
 async function setAppearance(page: Page, appearance: "light" | "dark") {
   await page.emulateMedia({ colorScheme: appearance });
   await expect(page.locator("html")).toHaveAttribute(
@@ -111,13 +125,19 @@ test("Connect setup is the default and fits the native Settings window sizes", a
     name: "Connect an agent",
     exact: true,
   });
-  await expect(connectTab).toHaveAttribute("aria-selected", "true");
+  await expect(connectTab).toHaveAttribute("aria-selected", "true", {
+    timeout: 15_000,
+  });
   await expect(
     page.getByRole("tabpanel", { name: "Connect an agent" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Choose a client", exact: true }),
+    page.getByRole("heading", { name: "Choose your agent", exact: true }),
   ).toBeVisible();
+  const guide = page.locator(".agent-control-section-heading p").first();
+  await expect(guide).toContainText("Choose the coding agent you already use.");
+  await expect(guide).toContainText("restart the agent");
+  await expect(guide).toContainText("review its request in Sessions");
   const codingAgents = clientList(page);
   await expect(codingAgents).toBeVisible();
   await expect(codingAgents.getByRole("button")).toHaveCount(1);
@@ -125,9 +145,13 @@ test("Connect setup is the default and fits the native Settings window sizes", a
   await expect(
     page.getByRole("button", { name: "Install Lomi MCP for Codex" }),
   ).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Start server" })).toHaveCount(
+    0,
+  );
   await expect(
-    page.getByRole("button", { name: "Start server" }),
-  ).toBeVisible();
+    page.getByRole("region", { name: "Local connection", exact: true }),
+  ).toHaveCount(0);
+  expect(await setupMutations(page)).toEqual([]);
 
   await page.setViewportSize({ width: 920, height: 680 });
   await setAppearance(page, "light");
@@ -141,6 +165,7 @@ test("Connect setup is the default and fits the native Settings window sizes", a
     page.getByRole("heading", { name: "Codex", exact: true }),
   ).toBeVisible();
   await expect(codingAgents).toHaveCount(0);
+  expect(await setupMutations(page)).toEqual([]);
   await expect(
     page.getByRole("button", { name: "Install Lomi MCP for Codex" }),
   ).toBeVisible();
@@ -160,7 +185,27 @@ test("Connect setup is the default and fits the native Settings window sizes", a
   await expect(
     page.getByRole("switch", { name: /Start MCP server when Lomi opens/ }),
   ).toBeVisible();
-  await expect(page.getByRole("switch", { name: "YOLO mode" })).toBeVisible();
+  const localConnection = page.getByRole("region", {
+    name: "Local connection",
+    exact: true,
+  });
+  await expect(
+    localConnection.getByRole("button", { name: "Start server", exact: true }),
+  ).toBeEnabled();
+  const yolo = page.getByRole("switch", { name: "YOLO mode", exact: true });
+  await expect(yolo).toBeHidden();
+  const automaticApprovals = page
+    .locator("summary")
+    .filter({ hasText: "Automatic approvals (YOLO)" });
+  await expect(automaticApprovals.locator("xpath=..")).toHaveJSProperty(
+    "open",
+    false,
+  );
+  expect(await setupMutations(page)).toEqual([]);
+  await automaticApprovals.click();
+  await expect(yolo).toBeVisible();
+  await expect(yolo).not.toBeChecked();
+  expect(await setupMutations(page)).toEqual([]);
   for (const label of ["Manual configuration", "File recovery"]) {
     const summary = page
       .locator("details.agent-control-details > summary")
@@ -209,6 +254,52 @@ test("Connect setup is the default and fits the native Settings window sizes", a
   await page.screenshot({
     path: testInfo.outputPath("agent-control-design-setup-560x420-dark.png"),
   });
+});
+
+test("a configured agent starts its stopped server only after an explicit action", async ({
+  page,
+}) => {
+  await setup(page, null);
+  await page.addInitScript((readyBroker) => {
+    const desktop = window as any;
+    desktop.__nativeTest.mcpClients[0].configured = true;
+    const invoke = desktop.__TAURI_INTERNALS__.invoke;
+    desktop.__TAURI_INTERNALS__.invoke = async (
+      command: string,
+      args: Record<string, unknown>,
+    ) => {
+      if (command === "agent_control_enable") {
+        desktop.__nativeTest.calls.push({ command, args });
+        desktop.__nativeTest.agentControlState = {
+          ...desktop.__nativeTest.agentControlState,
+          broker: args.enabled ? readyBroker : null,
+        };
+        return;
+      }
+      return invoke(command, args);
+    };
+  }, broker([]));
+  await page.goto("/?window=settings&page=agent-control");
+  await expect(
+    page.getByRole("button", { name: "Start server", exact: true }),
+  ).toHaveCount(0);
+  expect(await setupMutations(page)).toEqual([]);
+  await clientList(page)
+    .getByRole("button", { name: "Codex", exact: true })
+    .click();
+  const start = page.getByRole("button", { name: "Start server", exact: true });
+  await expect(start).toBeEnabled();
+  expect(await setupMutations(page)).toEqual([]);
+  await start.click();
+  await expect
+    .poll(() => setupMutations(page))
+    .toEqual([{ command: "agent_control_enable", args: { enabled: true } }]);
+  await expect(start).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Back to agents", exact: true }),
+  ).toBeFocused();
+  await page.getByRole("tab", { name: "Preferences", exact: true }).click();
+  await expect(page.locator(".agent-control-badge")).toHaveText("Ready");
 });
 
 test("pending requests select Sessions once and later requests show a review banner", async ({

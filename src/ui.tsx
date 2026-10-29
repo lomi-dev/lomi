@@ -128,7 +128,7 @@ export function Modal({
       }}
     >
       <div className="modal-surface">
-        <header>
+        <header className="modal-header">
           {tone && (
             <span className="modal-symbol" aria-hidden="true">
               <CircleAlert size={21} />
@@ -136,6 +136,7 @@ export function Modal({
           )}
           <h2 id={titleId}>{title}</h2>
           <IconButton
+            className="icon-button modal-close"
             title="Close dialog"
             disabled={closeDisabled}
             onClick={onClose}

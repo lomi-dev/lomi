@@ -37,13 +37,21 @@ test("context polling stays single-flight, retries failures and ignores unmounte
   await expect(page.locator(".xterm-screen")).toBeVisible();
   await page.evaluate(async () => {
     const modulePath = "/src/terminal-runtime.ts";
-    const { runningTerminal } = await import(modulePath);
+    const { getTerminalAgents, runningTerminal, subscribeTerminalLifecycle } =
+      await import(modulePath);
     const id = document
       .querySelector("[data-pane-id]")!
       .getAttribute("data-pane-id")!;
     const runtime = runningTerminal(id)!;
     const state = (window as any).__contextTest;
     state.sessionId = runtime.sessionId;
+    state.lifecycle = [];
+    subscribeTerminalLifecycle(() => {
+      state.lifecycle.push({
+        agentControlled: runtime.getSnapshot().agentControlled,
+        titleCli: getTerminalAgents()[id] ?? null,
+      });
+    });
     const observe = runtime.observeForegroundProgram.bind(runtime);
     runtime.observeForegroundProgram = (value: string | null) => {
       state.observations.push(value);
@@ -74,12 +82,17 @@ test("context polling stays single-flight, retries failures and ignores unmounte
       [state.sessionId]: {
         cwd: "/project/current",
         foregroundProgram: "current",
+        agentControlled: true,
+        titleCli: { cli: "codex", pid: 123 },
       },
     });
   });
   await expect
     .poll(() => page.evaluate(() => (window as any).__contextTest.observations))
     .toEqual(["current"]);
+  expect(
+    await page.evaluate(() => (window as any).__contextTest.lifecycle),
+  ).toEqual([{ agentControlled: true, titleCli: "codex" }]);
 
   await page.clock.runFor(1000);
   expect(

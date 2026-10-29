@@ -141,6 +141,7 @@ export default function ThemeEditor({
         : themes.snapshot.appearance
       : section;
   const tokens = {
+    ...builtinTheme.common?.tokens,
     ...builtinTheme[mode]?.tokens,
     ...(draft?.vscode && !diagnostic ? vscodeValues(draft.vscode).tokens : {}),
     ...(section !== "common" ? draft?.common?.tokens : {}),
@@ -151,6 +152,7 @@ export default function ThemeEditor({
       title={`Edit theme: ${savedName}`}
       wide
       className={`theme-editor${json ? " theme-editor-json" : ""}`}
+      closeDisabled={busy}
       onClose={requestClose}
     >
       <form
@@ -159,7 +161,7 @@ export default function ThemeEditor({
           void save();
         }}
       >
-        <div className="theme-editor-fields">
+        <div className="theme-editor-fields dialog-editor-content">
           <fieldset disabled={busy} className="theme-editor-controls">
             <div className="theme-editor-toolbar">
               <p className="settings-help">
@@ -396,7 +398,7 @@ export default function ThemeEditor({
             )}
           </fieldset>
         </div>
-        <footer className="theme-editor-footer">
+        <footer className="theme-editor-footer dialog-footer">
           {(error || diagnostic) && (
             <p className="text-error" role="alert">
               {error || diagnostic}
@@ -457,8 +459,10 @@ export default function ThemeEditor({
           tone="warning"
           onClose={() => setDiscard(false)}
         >
-          <div className="dialog-form">
-            <p>Your unsaved theme changes will be lost.</p>
+          <div className="dialog-form dialog-layout">
+            <div className="dialog-content">
+              <p>Your unsaved theme changes will be lost.</p>
+            </div>
             <div className="dialog-actions">
               <button className="button" onClick={() => setDiscard(false)}>
                 Keep editing

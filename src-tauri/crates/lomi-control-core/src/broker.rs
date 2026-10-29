@@ -31,10 +31,12 @@ use tokio::{
 };
 mod browsers;
 mod chat_close;
+mod native_git;
 mod operations;
 mod request_admission;
 pub use browsers::{BrowserNavigationDispatch, BrowserStart};
 pub use chat_close::ChatCloseDispatch;
+pub use native_git::{GitMutationHost, GitMutationHostPrepare, GitMutationHostPrepared};
 pub use operations::NativePermit;
 pub use request_admission::{SessionEffectPermit, SessionRequestAdmission, SessionRequestPolicy};
 mod panel_control;
@@ -43,6 +45,7 @@ mod android;
 mod android_layout;
 pub use android_layout::{AndroidCloseDispatch, AndroidCloseTarget};
 mod artifact_export;
+pub use artifact_export::ArtifactExportPublisher;
 mod browser_download;
 mod browser_upload;
 pub use browser_download::BrowserDownloadFailure;
@@ -64,6 +67,7 @@ mod git_open;
 pub use editor::EditorReadDispatch;
 mod files_search;
 pub use files::{DecodedFile, FilesReadDispatch};
+pub use files_mutate::FilesProjectMutationPublisher;
 pub use files_search::{FileSearchBatch, FilesSearchDispatch};
 mod android_setup;
 pub use android_setup::{

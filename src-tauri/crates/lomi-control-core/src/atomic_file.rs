@@ -5,7 +5,7 @@ use sha2::{Digest, Sha256};
 use std::{
     ffi::CString,
     fs::{File, Metadata, Permissions},
-    io::{Read, Write},
+    io::Write,
     os::{
         fd::{AsRawFd, FromRawFd},
         unix::{
@@ -48,66 +48,23 @@ impl Drop for Temporary<'_> {
 }
 
 pub(crate) fn stamp(m: &Metadata) -> (u64, u64, u64, u64, i64, i64, i64, i64) {
-    (
-        m.dev(),
-        m.ino(),
-        m.len(),
-        m.nlink(),
-        m.mtime(),
-        m.mtime_nsec(),
-        m.ctime(),
-        m.ctime_nsec(),
-    )
+    lomi_native_project_files::stamp_file(m)
 }
 fn identity(m: &Metadata) -> (u64, u64) {
     (m.dev(), m.ino())
 }
 pub(crate) fn open_file(parent: &File, name: &CString) -> Result<File, ErrorCode> {
-    let fd = unsafe {
-        libc::openat(
-            parent.as_raw_fd(),
-            name.as_ptr(),
-            libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK,
-        )
-    };
-    if fd < 0 {
-        return Err(ErrorCode::RevisionConflict);
-    }
-    Ok(unsafe { File::from_raw_fd(fd) })
+    lomi_native_project_files::open_file_at(parent, name)
+        .map_err(crate::project_files::to_protocol_error)
 }
 pub(crate) fn snapshot(
     file: &mut File,
     check: &impl Fn() -> Result<(), ErrorCode>,
 ) -> Result<(String, Metadata), ErrorCode> {
-    let before = file.metadata().map_err(|_| ErrorCode::StorageUnavailable)?;
-    if !before.is_file() || before.nlink() != 1 {
-        return Err(ErrorCode::ScopeDenied);
-    }
-    if before.len() > LIMIT {
-        return Err(ErrorCode::ResourceExhausted);
-    }
-    let mut hash = Sha256::new();
-    let mut bytes = [0; 65536];
-    let mut total = 0;
-    loop {
-        check()?;
-        let count = file
-            .read(&mut bytes)
-            .map_err(|_| ErrorCode::StorageUnavailable)?;
-        if count == 0 {
-            break;
-        }
-        total += count as u64;
-        if total > LIMIT {
-            return Err(ErrorCode::ResourceExhausted);
-        }
-        hash.update(&bytes[..count]);
-    }
-    let after = file.metadata().map_err(|_| ErrorCode::StorageUnavailable)?;
-    if stamp(&before) != stamp(&after) || total != before.len() {
-        return Err(ErrorCode::RevisionConflict);
-    }
-    Ok((format!("{:x}", hash.finalize()), before))
+    lomi_native_project_files::snapshot_file(file, || {
+        check().map_err(crate::project_files::to_native_error)
+    })
+    .map_err(crate::project_files::to_protocol_error)
 }
 
 pub fn replace(

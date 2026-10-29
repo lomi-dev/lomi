@@ -53,6 +53,12 @@ interface Props {
   onRename: (tab: Tab) => void;
   onMove: (id: string, beforeId: string | null) => void;
   onMerge: (id: string, targetId: string, side: TabDropSide) => void;
+  canMove?: (id: string, beforeId: string | null) => boolean | string;
+  canMerge?: (
+    id: string,
+    targetId: string,
+    side: TabDropSide,
+  ) => boolean | string;
   mergeContainer: RefObject<HTMLDivElement | null>;
   stripRef?: RefObject<HTMLDivElement | null>;
   modified?: ReadonlySet<string>;
@@ -121,6 +127,8 @@ export default function TabBar({
   onRename,
   onMove,
   onMerge,
+  canMove,
+  canMerge,
   mergeContainer,
   stripRef,
   modified = new Set<string>(),
@@ -149,6 +157,8 @@ export default function TabBar({
     mergeContainer,
     onMove,
     onMerge,
+    canMove,
+    canMerge,
   });
   const [contextMenu, setContextMenu] = useState<TabMenuAnchor | null>(null);
   const dismissMenu = useCallback(() => setContextMenu(null), []);

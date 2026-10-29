@@ -206,7 +206,7 @@ test("keybindings update another window immediately and survive reloading", asyn
   await expect(page.locator("[data-pane-id]")).toHaveCount(3);
 });
 
-test("Explorer click mode persists, syncs, and Reset all restores defaults", async ({
+test("Explorer click mode persists and syncs without changing other preferences", async ({
   page,
   context,
 }) => {
@@ -250,26 +250,23 @@ test("Explorer click mode persists, syncs, and Reset all restores defaults", asy
   await expect(readme).toBeVisible();
   await readme.click();
   await page.waitForTimeout(100);
-  await expect(editorPath).toHaveCount(0);
   await expect(editorPath).toContainText("README.md");
 
   await settings.reload();
   await expect(mode).toBeChecked();
-  const loadsBeforeReset = (await calls(page, "load_keybindings")).length;
-  await settings
-    .getByRole("button", { name: "Reset all", exact: true })
-    .click();
+  const loadsBeforeChange = (await calls(page, "load_keybindings")).length;
+  await mode.click();
   await expect(mode).not.toBeChecked();
   await expect
     .poll(async () => (await calls(page, "load_keybindings")).length)
-    .toBeGreaterThan(loadsBeforeReset);
+    .toBeGreaterThan(loadsBeforeChange);
   expect(
     await settings.evaluate(() =>
       JSON.parse(localStorage.getItem("test-keybindings")!),
     ),
   ).toMatchObject({
-    bindings: { newTerminal: "Ctrl+KeyD" },
-    focusFollowsPointer: false,
+    bindings: { newTerminal: "Ctrl+KeyK" },
+    focusFollowsPointer: true,
     explorerOpenOnSingleClick: false,
   });
 
@@ -290,6 +287,9 @@ test("recording rejects conflicts, supports clearing and preserves bindings afte
 }) => {
   await mockDesktop(page);
   await page.goto("/?window=settings");
+  await expect(
+    page.locator(".keybindings-page .settings-page-actions"),
+  ).toHaveCount(0);
   const recorder = page.getByRole("button", {
     name: "Shortcut for New terminal",
     exact: true,
@@ -328,7 +328,12 @@ test("recording rejects conflicts, supports clearing and preserves bindings afte
   await page.evaluate(() => {
     (window as any).__nativeTest.failKeybindingsSave = false;
   });
-  await page.getByRole("button", { name: "Reset all", exact: true }).click();
+  await page
+    .getByRole("button", {
+      name: "Reset shortcut for New terminal",
+      exact: true,
+    })
+    .click();
   await expect(recorder).toHaveText("Ctrl+D");
   expect(await calls(page, "start_terminal")).toHaveLength(0);
   await page.screenshot({ path: "test-results/keybindings.png" });
@@ -397,7 +402,9 @@ test("unsupported keybindings remain intact until an explicit reset", async ({
   expect(
     await page.evaluate(() => localStorage.getItem("test-keybindings")),
   ).toBe(saved);
-  await page.getByRole("button", { name: "Reset all", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Reset to defaults", exact: true })
+    .click();
   await expect(page.getByRole("alert")).toHaveCount(0);
   expect(
     await page.evaluate(
@@ -430,7 +437,9 @@ test("invalid Explorer click mode stays intact until an explicit reset", async (
     await page.evaluate(() => localStorage.getItem("test-keybindings")),
   ).toBe(saved);
 
-  await page.getByRole("button", { name: "Reset all", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Reset to defaults", exact: true })
+    .click();
   await expect(page.getByRole("alert")).toHaveCount(0);
   expect(
     await page.evaluate(

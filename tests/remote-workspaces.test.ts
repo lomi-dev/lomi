@@ -6,11 +6,14 @@ import {
   newSession,
   newTab,
   newBrowserTab,
+  newChatTab,
+  newFileTab,
   newPane,
   panes,
 } from "../src/model.ts";
 import {
   WorkspacePublisher,
+  isAgentTerminalState,
   workspaceTerminals,
 } from "../src/remote-workspace-domain.ts";
 import type { WorkspaceProjection } from "../src/remote-workspace-domain.ts";
@@ -63,6 +66,7 @@ function fixture(start?: (id: string) => Promise<void>) {
     session: () => session,
     profiles: () => profiles,
     sessionId: (id) => ids.get(id) ?? null,
+    isAgentTerminal: () => false,
     begin: async () => ({ epoch: "epoch" }),
     sync: async (_, revision, workspaces) => {
       publications.push({ revision, workspaces });
@@ -97,6 +101,117 @@ test("sharing starts every hidden terminal with its own profile and excludes non
   assert.deepEqual(
     f.publications.map((p) => p.revision),
     [1, 2],
+  );
+});
+test("private local file, browser, and chat tabs are absent from the shared projection", () => {
+  const session = addWorkspace(newSession(), "/project", "bash", "Shared");
+  const workspace = active(session)!.workspace;
+  const editor = {
+    ...newFileTab(session),
+    root: "/private/customer-project",
+    relative: "secrets/notes.md",
+  };
+  const browser = newBrowserTab("https://private.example/account");
+  const chat = newChatTab("private-conversation-id");
+  workspace.tabs.push(editor, browser, chat);
+
+  const projection = workspaceTerminals(session)[0];
+  assert.deepEqual(
+    projection.tabs?.map((tab) => tab.id),
+    [workspace.tabs[0].id],
+  );
+  assert.equal(projection.terminals.length, 1);
+  const serialized = JSON.stringify(projection);
+  for (const privateValue of [
+    editor.root,
+    editor.relative,
+    browser.url,
+    chat.conversationId,
+  ])
+    assert.equal(serialized.includes(privateValue), false);
+});
+test("agent terminal classifications are excluded from projection and shell starts", async () => {
+  const session = addWorkspace(newSession(), "/project", "bash", "Shared");
+  const workspace = active(session)!.workspace;
+  const tab = newTab("/project", "bash", "Mixed", 3);
+  if (tab.layout.type !== "split" || tab.layout.first.type !== "split")
+    throw new Error("Expected three-pane split fixture");
+  const [staged, controlled, detected] = panes(tab.layout);
+  const normal = newPane("/project");
+  tab.layout = {
+    type: "split",
+    id: "mixed-agents",
+    axis: "horizontal",
+    ratio: 0.5,
+    first: {
+      type: "split",
+      id: "agents",
+      axis: "vertical",
+      ratio: 0.5,
+      first: staged,
+      second: controlled,
+    },
+    second: {
+      type: "split",
+      id: "detected-normal",
+      axis: "vertical",
+      ratio: 0.5,
+      first: detected,
+      second: normal,
+    },
+  };
+  workspace.tabs = [tab];
+  const classifications = new Map([
+    [staged.id, { staged: true }],
+    [controlled.id, { agentControlled: true }],
+    [detected.id, { titleCli: true }],
+    [normal.id, {}],
+  ]);
+  const isAgentTerminal = (id: string) =>
+    isAgentTerminalState(classifications.get(id));
+  assert.equal(isAgentTerminal(staged.id), true);
+  assert.equal(isAgentTerminal(controlled.id), true);
+  assert.equal(isAgentTerminal(detected.id), true);
+  assert.equal(isAgentTerminal(normal.id), false);
+  const projection = workspaceTerminals(session, isAgentTerminal)[0];
+  assert.deepEqual(
+    projection.terminals.map((terminal) => terminal.pane.id),
+    [normal.id],
+  );
+  assert.deepEqual(
+    projection.tabs.map((projected) => projected.layout),
+    [{ type: "terminal", paneId: normal.id }],
+  );
+
+  const started: string[] = [];
+  const publisher = new WorkspacePublisher({
+    session: () => session,
+    profiles: () => profiles,
+    sessionId: () => null,
+    isAgentTerminal,
+    start: async (pane) => {
+      started.push(pane.id);
+    },
+    begin: async () => ({ epoch: "epoch" }),
+    sync: async () => {},
+  });
+  publisher.desired.add(workspace.id);
+  await publisher.notify();
+  assert.deepEqual(started, [normal.id]);
+});
+test("agent-only tabs are omitted from remote projection", () => {
+  const session = addWorkspace(newSession(), "/project", "bash", "Shared");
+  const workspace = active(session)!.workspace;
+  const agentTab = newTab("/project", "bash", "Private agent");
+  workspace.tabs = [agentTab];
+  const pane = panes(agentTab.layout)[0];
+  assert.deepEqual(
+    workspaceTerminals(session, (id) => id === pane.id)[0].tabs,
+    [],
+  );
+  assert.deepEqual(
+    workspaceTerminals(session, (id) => id === pane.id)[0].terminals,
+    [],
   );
 });
 test("a deleted workspace during asynchronous startup cannot be resurrected or start remaining terminals", async () => {

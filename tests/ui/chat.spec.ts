@@ -138,7 +138,9 @@ test("settings route supports named connections without reading a secret", async
   await expect(
     page.getByRole("heading", { name: "Chat AI", exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Add provider", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Connect AI service", exact: true })
+    .click();
   await page
     .getByRole("dialog")
     .getByRole("button", { name: "Google (AI Studio)", exact: true })
@@ -161,7 +163,7 @@ test("settings route supports named connections without reading a secret", async
     .click();
   await page
     .getByRole("dialog")
-    .getByRole("button", { name: "Add provider", exact: true })
+    .getByRole("button", { name: "Save connection", exact: true })
     .click();
   await expect(
     page.getByRole("button", { name: /Second connection/ }),

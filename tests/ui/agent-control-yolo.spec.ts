@@ -22,6 +22,7 @@ async function openAgentControlSettings(page: Page) {
   });
   await page.goto("/?window=settings&page=agent-control");
   await page.getByRole("tab", { name: "Preferences", exact: true }).click();
+  await page.getByText("Automatic approvals (YOLO)", { exact: true }).click();
 }
 
 async function yoloWrites(page: Page) {
@@ -123,7 +124,10 @@ test("YOLO requires confirmation, stays open while saving, and disables without 
   await expect(automaticStart).toBeChecked();
 
   await page.reload();
+  await expect(page.getByRole("note")).toContainText("YOLO mode is on.");
   await page.getByRole("tab", { name: "Preferences", exact: true }).click();
+  await expect(page.getByRole("switch", { name: /YOLO mode/i })).toBeHidden();
+  await page.getByText("Automatic approvals (YOLO)", { exact: true }).click();
   const savedYolo = page.getByRole("switch", { name: /YOLO mode/i });
   const savedAutomaticStart = page.getByRole("switch", {
     name: /Start MCP server when Lomi opens/,
@@ -140,6 +144,7 @@ test("YOLO requires confirmation, stays open while saving, and disables without 
 
   await page.reload();
   await page.getByRole("tab", { name: "Preferences", exact: true }).click();
+  await page.getByText("Automatic approvals (YOLO)", { exact: true }).click();
   await expect(
     page.getByRole("switch", { name: /YOLO mode/i }),
   ).not.toBeChecked();

@@ -44,6 +44,10 @@
   },
   "dependencies": {
     "@ai-sdk/react": "4.0.108",
+    "@lomi/remote-contracts": "file:../lomi-remote/packages/remote-contracts",
+    "@lomi/authority-crypto-wasm": "file:../remote-web/packages/authority-crypto-wasm",
+    "@lomi/protocol-codec-wasm": "file:../remote-web/packages/protocol-codec-wasm",
+    "@lomi/terminal-renderer-experimental": "file:../lomi-remote/packages/terminal-renderer",
     "@codemirror/autocomplete": "^6.20.3",
     "@codemirror/commands": "^6.11.0",
     "@codemirror/lang-cpp": "^6.0.3",
@@ -96,9 +100,11 @@
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
+    "@tailwindcss/vite": "4.3.3",
     "@vitejs/plugin-react": "^6.1.1",
     "prettier": "^3.9.6",
     "typescript": "~7.0.2",
+    "tailwindcss": "4.3.3",
     "vite": "^8.2.2",
     "ajv": "8.18.0"
   }

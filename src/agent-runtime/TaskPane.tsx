@@ -477,27 +477,30 @@ export default function TaskPane({
       {review && (
         <Modal
           title="Allow account access to task history?"
+          tone="warning"
           wide
           initialFocus={cancel}
           closeDisabled={state.busy}
           onClose={() => setReview(undefined)}
         >
-          <div className="dialog-form agent-task-dialog">
-            <p>
-              Allow <strong>{review.account.label}</strong>, login revision{" "}
-              {review.account.authRevision}, to read this task’s messages and
-              observed tool results? This permission remains valid for this
-              login.
-            </p>
-            <p>
-              {review.task.history.length} records in {review.task.cwd}. Model:{" "}
-              {review.task.model}.
-            </p>
-            <details>
-              <summary>Review task history</summary>
-              <pre>{JSON.stringify(review.task.history, null, 2)}</pre>
-            </details>
-            {error && <p role="alert">{error}</p>}
+          <div className="dialog-form dialog-layout">
+            <div className="dialog-content agent-task-dialog">
+              <p>
+                Allow <strong>{review.account.label}</strong>, login revision{" "}
+                {review.account.authRevision}, to read this task’s messages and
+                observed tool results? This permission remains valid for this
+                login.
+              </p>
+              <p>
+                {review.task.history.length} records in {review.task.cwd}.
+                Model: {review.task.model}.
+              </p>
+              <details>
+                <summary>Review task history</summary>
+                <pre>{JSON.stringify(review.task.history, null, 2)}</pre>
+              </details>
+              {error && <p role="alert">{error}</p>}
+            </div>
             <div className="dialog-actions">
               <button
                 ref={cancel}
@@ -523,35 +526,38 @@ export default function TaskPane({
       {transferReview && (
         <Modal
           title="Review native Pi history transfer"
+          tone="warning"
           initialFocus={cancel}
           closeDisabled={state.busy}
           onClose={() => setTransferReview(undefined)}
         >
-          <div className="dialog-form agent-task-dialog">
-            <p>
-              Transfer the settled native Pi session to{" "}
-              {transferReview.account.label} (login revision{" "}
-              {transferReview.account.authRevision}).
-            </p>
-            <p>
-              Complete observed history through record{" "}
-              {transferReview.preview.coverage}
-              {" · "}
-              {transferReview.preview.bytes.toLocaleString()} bytes
-            </p>
-            <p className="settings-help">
-              Source attempt: {transferReview.preview.sourceAttemptId}
-            </p>
-            <details>
-              <summary>Reviewed history fingerprint</summary>
-              <pre>{transferReview.preview.digest}</pre>
-            </details>
-            <p>
-              Applying this review prepares the selected account. Choose Send or
-              Continue separately to start new work. Historical tools are not
-              replayed.
-            </p>
-            {error && <p role="alert">{error}</p>}
+          <div className="dialog-form dialog-layout">
+            <div className="dialog-content agent-task-dialog">
+              <p>
+                Transfer the settled native Pi session to{" "}
+                {transferReview.account.label} (login revision{" "}
+                {transferReview.account.authRevision}).
+              </p>
+              <p>
+                Complete observed history through record{" "}
+                {transferReview.preview.coverage}
+                {" · "}
+                {transferReview.preview.bytes.toLocaleString()} bytes
+              </p>
+              <p className="settings-help">
+                Source attempt: {transferReview.preview.sourceAttemptId}
+              </p>
+              <details>
+                <summary>Reviewed history fingerprint</summary>
+                <pre>{transferReview.preview.digest}</pre>
+              </details>
+              <p>
+                Applying this review prepares the selected account. Choose Send
+                or Continue separately to start new work. Historical tools are
+                not replayed.
+              </p>
+              {error && <p role="alert">{error}</p>}
+            </div>
             <div className="dialog-actions">
               <button
                 ref={cancel}

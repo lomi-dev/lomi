@@ -28,6 +28,7 @@ pub(crate) fn deliver(
     window: &Window,
     kind: crate::notifications::NotificationKind,
     agent: Option<crate::cli_catalog::TitleCli>,
+    pane_id: Option<&str>,
     title: &str,
     context: &str,
 ) -> Result<(bool, Result<(), String>), String> {
@@ -56,7 +57,7 @@ pub(crate) fn deliver(
         )
     };
     let recorded = if decision.inbox {
-        crate::notifications::record(app, kind, agent, title, context)
+        crate::notifications::record(app, kind, agent, pane_id, title, context)
     } else {
         Ok(())
     };

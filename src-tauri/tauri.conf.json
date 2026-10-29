@@ -4,9 +4,9 @@
   "version": "0.6.1",
   "identifier": "dev.lomi.desktop",
   "build": {
-    "beforeDevCommand": "pnpm ai:prepare && pnpm --filter @lomi-dev/remote-terminal-runtime build && pnpm dev",
+    "beforeDevCommand": "pnpm ai:prepare && pnpm dev",
     "devUrl": "http://127.0.0.1:1420",
-    "beforeBuildCommand": "pnpm ai:prepare && pnpm --filter @lomi-dev/remote-terminal-runtime build && pnpm build",
+    "beforeBuildCommand": "pnpm ai:prepare && pnpm build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -27,7 +27,7 @@
       }
     ],
     "security": {
-      "capabilities": ["default", "browser", "updater"],
+      "capabilities": ["default", "browser", "updater", "remote-view"],
       "csp": "default-src 'self'; script-src 'self' plugin: http://plugin.localhost https://plugin.localhost; connect-src 'self' ipc: http://ipc.localhost; style-src 'self' plugin: http://plugin.localhost https://plugin.localhost 'unsafe-inline' theme: http://theme.localhost https://theme.localhost; img-src 'self' plugin: http://plugin.localhost https://plugin.localhost data: https://avatars.githubusercontent.com theme: http://theme.localhost https://theme.localhost; font-src 'self' plugin: http://plugin.localhost https://plugin.localhost theme: http://theme.localhost https://theme.localhost; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
       "devCsp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost ws://127.0.0.1:1420; script-src 'self' 'unsafe-inline' plugin: http://plugin.localhost https://plugin.localhost; style-src 'self' plugin: http://plugin.localhost https://plugin.localhost 'unsafe-inline' theme: http://theme.localhost https://theme.localhost; img-src 'self' plugin: http://plugin.localhost https://plugin.localhost data: https://avatars.githubusercontent.com theme: http://theme.localhost https://theme.localhost; font-src 'self' plugin: http://plugin.localhost https://plugin.localhost theme: http://theme.localhost https://theme.localhost; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
     }
@@ -50,15 +50,13 @@
     "createUpdaterArtifacts": true,
     "externalBin": ["binaries/lomi-node"],
     "resources": {
+      "resources/native-runtime-capabilities.json": "native-runtime-capabilities.json",
       "resources/grok/": "agent-grok/",
       "resources/ai-runtime/index.cjs": "ai-runtime/index.cjs",
       "resources/ai-runtime/NODE-LICENSE": "ai-runtime/NODE-LICENSE",
       "resources/ai-runtime/node.json": "ai-runtime/node.json",
       "resources/ai-runtime/THIRD-PARTY-NOTICES": "ai-runtime/THIRD-PARTY-NOTICES",
-      "resources/ai-runtime/index.cjs.sha256": "ai-runtime/index.cjs.sha256",
-      "resources/remote-terminal/index.cjs": "remote-terminal/index.cjs",
-      "resources/remote-terminal/index.cjs.sha256": "remote-terminal/index.cjs.sha256",
-      "resources/remote-terminal/THIRD-PARTY-NOTICES": "remote-terminal/THIRD-PARTY-NOTICES"
+      "resources/ai-runtime/index.cjs.sha256": "ai-runtime/index.cjs.sha256"
     },
     "linux": {
       "deb": {

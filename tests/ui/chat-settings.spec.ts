@@ -14,10 +14,12 @@ test.beforeEach(async ({ page }) => {
 test("provider presets connect with the right service and keep entered keys private", async ({
   page,
 }) => {
-  const providers = page.getByRole("list", { name: "Your providers" });
+  const providers = page.getByRole("list", { name: "Your AI services" });
   await expect(providers.getByRole("button")).toHaveCount(1);
   await expect(page.getByRole("button", { name: /NVIDIA/ })).toHaveCount(0);
-  await page.getByRole("button", { name: "Add provider", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Connect AI service", exact: true })
+    .click();
   const dialog = page.getByRole("dialog");
   await dialog
     .getByRole("button", { name: "NVIDIA Build", exact: true })
@@ -29,7 +31,9 @@ test("provider presets connect with the right service and keep entered keys priv
   await dialog.getByRole("button", { name: "Show key" }).click();
   await expect(key).toHaveAttribute("type", "text");
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
-  await page.getByRole("button", { name: "Add provider", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Connect AI service", exact: true })
+    .click();
   await dialog
     .getByRole("button", { name: "NVIDIA Build", exact: true })
     .click();
@@ -37,7 +41,7 @@ test("provider presets connect with the right service and keep entered keys priv
   await expect(key).toHaveAttribute("type", "password");
   await key.fill("fixture-key");
   await dialog
-    .getByRole("button", { name: "Add provider", exact: true })
+    .getByRole("button", { name: "Save connection", exact: true })
     .click();
   await expect(
     providers.getByRole("button", { name: /NVIDIA Build/ }),
@@ -102,6 +106,7 @@ test("models can be added, refreshed, searched and used as defaults without a pa
 test("chat defaults save on blur and keep text when saving fails", async ({
   page,
 }) => {
+  await page.getByText("Advanced defaults", { exact: true }).click();
   const instructions = page.getByRole("textbox", {
     name: "System instructions",
   });
@@ -136,6 +141,11 @@ test("chat defaults save on blur and keep text when saving fails", async ({
   await page.getByRole("button", { name: /Fixture/ }).click();
   await page.getByRole("switch", { name: "Enable Fixture" }).uncheck();
   await expect(instructions).toHaveValue("Kept after a failure");
+  await page.getByText("Advanced defaults", { exact: true }).click();
+  await expect(page.locator(".chat-defaults-summary")).toContainText(
+    "Custom system instructions",
+  );
+  await expect(instructions).toBeHidden();
 });
 
 test("provider settings fit dark, light, narrow and zoomed windows", async ({
@@ -178,7 +188,10 @@ test("provider settings fit dark, light, narrow and zoomed windows", async ({
 test("changing providers clears the draft key and cancelling restores keyboard focus", async ({
   page,
 }) => {
-  const add = page.getByRole("button", { name: "Add provider", exact: true });
+  const add = page.getByRole("button", {
+    name: "Connect AI service",
+    exact: true,
+  });
   await add.focus();
   await page.keyboard.press("Enter");
   const dialog = page.getByRole("dialog");
@@ -202,7 +215,7 @@ test("changing providers clears the draft key and cancelling restores keyboard f
   await expect(dialog).toHaveCount(0);
   await expect(add).toBeFocused();
   await expect(
-    page.getByRole("list", { name: "Your providers" }).getByRole("listitem"),
+    page.getByRole("list", { name: "Your AI services" }).getByRole("listitem"),
   ).toHaveCount(1);
   expect(
     await page.evaluate(() => localStorage.getItem("chat-preferences")),
@@ -247,11 +260,11 @@ test("the provider context menu supports keyboard dismissal and confirmed remova
     .getByRole("button", { name: "Remove provider", exact: true })
     .click();
   await expect(
-    page.getByRole("heading", { name: "Connect your first provider" }),
+    page.getByRole("heading", { name: "Set up your first AI service" }),
   ).toBeVisible();
-  await expect(page.getByRole("list", { name: "Your providers" })).toHaveCount(
-    0,
-  );
+  await expect(
+    page.getByRole("list", { name: "Your AI services" }),
+  ).toHaveCount(0);
   const saved = await page.evaluate(() =>
     JSON.parse(localStorage.getItem("chat-preferences")!),
   );
@@ -259,10 +272,12 @@ test("the provider context menu supports keyboard dismissal and confirmed remova
   expect(saved.defaults.connectionId).toBeNull();
   await page.reload();
   await expect(
-    page.getByRole("heading", { name: "Connect your first provider" }),
+    page.getByRole("heading", { name: "Set up your first AI service" }),
   ).toBeVisible();
   await page.screenshot({ path: info.outputPath("settings-empty.png") });
-  await page.getByRole("button", { name: "Add provider", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Connect AI service", exact: true })
+    .click();
   await expect(
     page
       .getByRole("dialog")
@@ -273,14 +288,16 @@ test("the provider context menu supports keyboard dismissal and confirmed remova
 test("provider removal targets the clicked connection and preserves it after a failed save", async ({
   page,
 }) => {
-  await page.getByRole("button", { name: "Add provider", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Connect AI service", exact: true })
+    .click();
   const setup = page.getByRole("dialog");
   await setup.getByRole("button", { name: "OpenAI", exact: true }).click();
   await setup.getByLabel("API key", { exact: true }).fill("second-fixture-key");
   await setup.getByText("Advanced options", { exact: true }).click();
   await setup.getByLabel("Connection name").fill("Second OpenAI");
   await setup
-    .getByRole("button", { name: "Add provider", exact: true })
+    .getByRole("button", { name: "Save connection", exact: true })
     .click();
   const second = page.getByRole("button", { name: /Second OpenAI/ });
   await expect(second).toHaveAttribute("aria-expanded", "true");
@@ -372,7 +389,7 @@ test("saved providers stay manageable when disabled or missing a key", async ({
     );
   });
   await page.reload();
-  const providers = page.getByRole("list", { name: "Your providers" });
+  const providers = page.getByRole("list", { name: "Your AI services" });
   for (const colorScheme of ["dark", "light"] as const) {
     await page.emulateMedia({ colorScheme });
     await page.setViewportSize({ width: 1000, height: 720 });
@@ -380,13 +397,13 @@ test("saved providers stay manageable when disabled or missing a key", async ({
       providers.getByRole("button", { name: /Anthropic/ }),
     ).toContainText("Disabled");
     await expect(
-      providers.getByRole("button", { name: /OpenRouter/ }),
+      providers.getByRole("button", { name: /OpenRouter.*Manage/ }),
     ).toContainText("Needs API key");
     await page.screenshot({
       path: info.outputPath(`settings-providers-${colorScheme}.png`),
     });
   }
-  await providers.getByRole("button", { name: /OpenRouter/ }).click();
+  await providers.getByRole("button", { name: /OpenRouter.*Manage/ }).click();
   await page.getByRole("button", { name: "Add key", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByLabel("API key", { exact: true })).toHaveAttribute(
@@ -398,7 +415,7 @@ test("saved providers stay manageable when disabled or missing a key", async ({
     .fill("replacement-fixture-key");
   await dialog.getByRole("button", { name: "Save changes" }).click();
   await expect(
-    providers.getByRole("button", { name: /OpenRouter/ }),
+    providers.getByRole("button", { name: /OpenRouter.*Manage/ }),
   ).toContainText("Key saved");
   await providers.getByRole("button", { name: /Anthropic/ }).click();
   await page.getByRole("switch", { name: "Enable Anthropic" }).check();
@@ -415,7 +432,9 @@ test("saved providers stay manageable when disabled or missing a key", async ({
 test("provider picker and setup fit both themes and small windows", async ({
   page,
 }, info) => {
-  await page.getByRole("button", { name: "Add provider", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Connect AI service", exact: true })
+    .click();
   const dialog = page.getByRole("dialog");
   for (const colorScheme of ["dark", "light"] as const) {
     await page.emulateMedia({ colorScheme });
@@ -444,7 +463,7 @@ test("provider picker and setup fit both themes and small windows", async ({
     await choice.click();
     await expect(dialog.getByLabel("API key", { exact: true })).toBeFocused();
     const save = dialog.getByRole("button", {
-      name: "Add provider",
+      name: "Save connection",
       exact: true,
     });
     await save.scrollIntoViewIfNeeded();
@@ -459,7 +478,9 @@ test("provider picker and setup fit both themes and small windows", async ({
 test("custom model selects support keyboard choices without closing or submitting setup", async ({
   page,
 }, info) => {
-  await page.getByRole("button", { name: "Add provider", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Connect AI service", exact: true })
+    .click();
   const dialog = page.getByRole("dialog");
   await dialog
     .getByRole("button", { name: "Google (AI Studio)", exact: true })
@@ -521,7 +542,7 @@ test("custom model selects support keyboard choices without closing or submittin
     .click();
   await expect(dialog.getByLabel("Custom model ID")).toHaveCount(0);
   await dialog
-    .getByRole("button", { name: "Add provider", exact: true })
+    .getByRole("button", { name: "Save connection", exact: true })
     .click();
   await expect(dialog).toHaveCount(0);
   const saved = await page.evaluate(() =>
@@ -536,7 +557,9 @@ test("new provider models load only after a key and ignore stale responses", asy
   await page.evaluate(() => {
     (window as any).__chatTest.holdModelPreviews = true;
   });
-  await page.getByRole("button", { name: "Add provider", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Connect AI service", exact: true })
+    .click();
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("button", { name: "OpenAI", exact: true }).click();
   await dialog
@@ -544,7 +567,10 @@ test("new provider models load only after a key and ignore stale responses", asy
     .check();
   const key = dialog.getByLabel("API key", { exact: true });
   const model = dialog.getByRole("combobox", { name: "Model", exact: true });
-  const add = dialog.getByRole("button", { name: "Add provider", exact: true });
+  const add = dialog.getByRole("button", {
+    name: "Save connection",
+    exact: true,
+  });
   await expect(model).toBeDisabled();
   await expect(model).toHaveText("Enter an API key first");
   await expect(add).toBeDisabled();
@@ -654,7 +680,9 @@ test("model discovery errors and empty catalogs block saving and allow retry", a
   await page.evaluate(() => {
     (window as any).__chatTest.failModelPreview = "auth";
   });
-  await page.getByRole("button", { name: "Add provider", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Connect AI service", exact: true })
+    .click();
   const dialog = page.getByRole("dialog");
   await dialog
     .getByRole("button", { name: "Google (AI Studio)", exact: true })
@@ -666,7 +694,10 @@ test("model discovery errors and empty catalogs block saving and allow retry", a
     .getByLabel("API key", { exact: true })
     .fill("private-catalog-key");
   const model = dialog.getByRole("combobox", { name: "Model", exact: true });
-  const add = dialog.getByRole("button", { name: "Add provider", exact: true });
+  const add = dialog.getByRole("button", {
+    name: "Save connection",
+    exact: true,
+  });
   await expect(dialog.getByRole("alert")).toContainText(
     "API key was not accepted",
   );
@@ -708,13 +739,16 @@ test("custom selects save conversation defaults and disable models without a con
   page,
 }, info) => {
   const connection = page.getByRole("combobox", {
-    name: "Connection",
+    name: "AI service",
     exact: true,
   });
-  const model = page.getByRole("combobox", { name: "Model", exact: true });
+  const model = page.getByRole("combobox", {
+    name: "Default model",
+    exact: true,
+  });
   await connection.click();
   await page
-    .getByRole("option", { name: "Choose connection", exact: true })
+    .getByRole("option", { name: "Choose a service", exact: true })
     .click();
   await expect(model).toBeDisabled();
   await expect(model).toHaveText("Choose a model");
@@ -734,6 +768,7 @@ test("custom selects save conversation defaults and disable models without a con
     })
     .click();
   await expect(sendMode).toHaveAccessibleDescription("Enter adds a new line.");
+  await page.getByText("Advanced defaults", { exact: true }).click();
   const tokens = page.getByRole("spinbutton", {
     name: "Maximum output tokens",
   });
@@ -771,6 +806,7 @@ test("custom selects save conversation defaults and disable models without a con
     });
   }
   await page.reload();
+  await page.getByText("Advanced defaults", { exact: true }).click();
   await expect(model).toHaveText("GPT-4.1 · Apr 2025");
   await expect(sendMode).toHaveText("Ctrl+Enter");
   await expect(
@@ -781,6 +817,7 @@ test("custom selects save conversation defaults and disable models without a con
   await tokens.blur();
   await expect(tokens).toHaveAccessibleDescription("Enter 1 to 32,768.");
   await page.reload();
+  await page.getByText("Advanced defaults", { exact: true }).click();
   await expect(tokens).toHaveValue("8192");
   expect(
     await page.evaluate(() => (window as any).__chatTest.connectionActions),
@@ -796,7 +833,7 @@ for (const [format, label] of [
     page,
   }, testInfo) => {
     await page
-      .getByRole("button", { name: "Add provider", exact: true })
+      .getByRole("button", { name: "Connect AI service", exact: true })
       .click();
     const dialog = page.getByRole("dialog");
     await dialog
@@ -816,14 +853,14 @@ for (const [format, label] of [
       "required",
     );
     await expect(
-      dialog.getByRole("button", { name: "Add provider", exact: true }),
+      dialog.getByRole("button", { name: "Save connection", exact: true }),
     ).toBeEnabled();
     if (format === "chat-completions")
       await page.screenshot({
         path: testInfo.outputPath("custom-api-form.png"),
       });
     await dialog
-      .getByRole("button", { name: "Add provider", exact: true })
+      .getByRole("button", { name: "Save connection", exact: true })
       .click();
     await expect(dialog).toHaveCount(0);
     expect(
@@ -846,8 +883,9 @@ for (const [format, label] of [
       model: "local/model",
     });
     await page.reload();
+    await page.getByText("Advanced defaults", { exact: true }).click();
     await page
-      .getByRole("list", { name: "Your providers" })
+      .getByRole("list", { name: "Your AI services" })
       .getByRole("button", { name: /Custom API/ })
       .click();
     await page.getByText("Connection tools", { exact: true }).click();
@@ -898,7 +936,7 @@ for (const tested of [false, true]) {
     page,
   }) => {
     await page
-      .getByRole("button", { name: "Add provider", exact: true })
+      .getByRole("button", { name: "Connect AI service", exact: true })
       .click();
     const dialog = page.getByRole("dialog");
     await dialog
@@ -908,7 +946,7 @@ for (const tested of [false, true]) {
     await dialog.getByLabel("Model ID", { exact: true }).fill("model-a");
     await dialog.getByLabel("Use for new conversations").uncheck();
     await dialog
-      .getByRole("button", { name: "Add provider", exact: true })
+      .getByRole("button", { name: "Save connection", exact: true })
       .click();
     await expect(dialog).toHaveCount(0);
     await page.getByText("Connection tools", { exact: true }).click();
@@ -931,8 +969,9 @@ for (const tested of [false, true]) {
       .click();
     await expect(dialog).toHaveCount(0);
     await page.reload();
+    await page.getByText("Advanced defaults", { exact: true }).click();
     await page
-      .getByRole("list", { name: "Your providers" })
+      .getByRole("list", { name: "Your AI services" })
       .getByRole("button", { name: /Custom API/ })
       .click();
     await page.getByText("Connection tools", { exact: true }).click();
@@ -952,11 +991,13 @@ for (const tested of [false, true]) {
     expect(custom.testStatus).toBe(tested ? "completed" : null);
     expect(saved.defaults.connectionId).not.toBe(custom.id);
     await page
-      .getByRole("combobox", { name: "Connection", exact: true })
+      .getByRole("combobox", { name: "AI service", exact: true })
       .click();
     await page.getByRole("option", { name: "Custom API", exact: true }).click();
     await expect(
-      page.getByRole("combobox", { name: "Model", exact: true }).first(),
+      page
+        .getByRole("combobox", { name: "Default model", exact: true })
+        .first(),
     ).toHaveText("model-b");
   });
 }
@@ -964,14 +1005,19 @@ for (const tested of [false, true]) {
 test("Custom API validates its URL and asks to re-enter a saved key when changing destination", async ({
   page,
 }) => {
-  await page.getByRole("button", { name: "Add provider", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Connect AI service", exact: true })
+    .click();
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("button", { name: "Custom API", exact: true }).click();
   await dialog
     .getByLabel("Base URL")
     .fill("https://user:secret@example.com/v1");
   await dialog.getByLabel("Model ID", { exact: true }).fill("custom-model");
-  const add = dialog.getByRole("button", { name: "Add provider", exact: true });
+  const add = dialog.getByRole("button", {
+    name: "Save connection",
+    exact: true,
+  });
   await expect(add).toBeDisabled();
   await dialog.getByLabel("Base URL").fill("https://api.example.com/v1");
   await dialog.getByLabel("API key (optional)").fill("private-custom-key");

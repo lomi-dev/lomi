@@ -100,7 +100,7 @@ export default function CommandPicker({
       initialFocus={search}
       onClose={onClose}
     >
-      <div className="dialog-form">
+      <div className="dialog-form dialog-layout">
         <div className="command-picker-search">
           <Search size={17} aria-hidden="true" />
           <input
@@ -112,7 +112,7 @@ export default function CommandPicker({
             onChange={(event) => setQuery(event.target.value)}
           />
         </div>
-        <div className="command-picker-list">
+        <div className="dialog-content command-picker-list">
           {commands.length === 0 && views.length === 0 && (
             <p className="command-picker-empty" role="status">
               No matching commands. Try another name.

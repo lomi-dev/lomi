@@ -54,7 +54,7 @@ test("light appearance keeps command search and inbox keyboard focus visible", a
 });
 
 for (const mode of ["dark", "light"] as const) {
-  test(`compact commands keep focus, results and footer inside both ${mode} built-in themes`, async ({
+  test(`compact commands keep focus, results and footer inside the ${mode} Lomi theme`, async ({
     page,
   }, testInfo) => {
     await mockDesktop(page);
@@ -62,60 +62,35 @@ for (const mode of ["dark", "light"] as const) {
     await page.setViewportSize({ width: 800, height: 420 });
     await page.goto("/");
     await expect(page.locator(".xterm-screen")).toBeVisible();
-    for (const builtin of ["lomi", "deepmono"] as const) {
-      await page.evaluate(
-        async ({ builtin, mode }) => {
-          const { prepareTheme } = await import("/src/theme/runtime.ts");
-          const { deepmonoTheme } = await import("/src/theme/format.ts");
-          const bundle =
-            builtin === "deepmono"
-              ? {
-                  id: "@builtin-deepmono",
-                  revision: "test",
-                  directory: "",
-                  raw: JSON.stringify(deepmonoTheme),
-                }
-              : null;
-          await (
-            await prepareTheme(bundle, {
-              version: 1,
-              active: bundle?.id ?? null,
-              appearance: mode,
-            })
-          ).commit();
-        },
-        { builtin, mode },
-      );
-      await page.keyboard.press("Control+Shift+p");
-      const dialog = page.getByRole("dialog", {
-        name: "Commands",
-        exact: true,
-      });
-      await expect(
-        dialog.getByRole("textbox", { name: "Find command" }),
-      ).toBeFocused();
-      for (const target of [dialog, dialog.locator(".command-picker-footer")]) {
-        const bounds = (await target.boundingBox())!;
-        expect(bounds.y).toBeGreaterThanOrEqual(0);
-        expect(bounds.y + bounds.height).toBeLessThanOrEqual(420);
-      }
-      await expect(
-        dialog.getByRole("button", { name: "Close dialog", exact: true }),
-      ).toBeInViewport({ ratio: 1 });
-      await dialog
-        .getByRole("textbox", { name: "Find command" })
-        .fill("Open settings");
-      await expect(dialog.locator(".command-picker-list > button")).toHaveCount(
-        1,
-      );
-      await expect(
-        dialog.locator(".command-picker-list > button"),
-      ).toBeInViewport({ ratio: 1 });
-      await page.screenshot({
-        path: testInfo.outputPath(`commands-${builtin}-${mode}.png`),
-      });
-      await page.keyboard.press("Escape");
-      await expect(dialog).toHaveCount(0);
+    await page.keyboard.press("Control+Shift+p");
+    const dialog = page.getByRole("dialog", {
+      name: "Commands",
+      exact: true,
+    });
+    await expect(
+      dialog.getByRole("textbox", { name: "Find command" }),
+    ).toBeFocused();
+    for (const target of [dialog, dialog.locator(".command-picker-footer")]) {
+      const bounds = (await target.boundingBox())!;
+      expect(bounds.y).toBeGreaterThanOrEqual(0);
+      expect(bounds.y + bounds.height).toBeLessThanOrEqual(420);
     }
+    await expect(
+      dialog.getByRole("button", { name: "Close dialog", exact: true }),
+    ).toBeInViewport({ ratio: 1 });
+    await dialog
+      .getByRole("textbox", { name: "Find command" })
+      .fill("Open settings");
+    await expect(dialog.locator(".command-picker-list > button")).toHaveCount(
+      1,
+    );
+    await expect(
+      dialog.locator(".command-picker-list > button"),
+    ).toBeInViewport({ ratio: 1 });
+    await page.screenshot({
+      path: testInfo.outputPath(`commands-lomi-${mode}.png`),
+    });
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
   });
 }

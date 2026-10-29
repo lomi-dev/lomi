@@ -1,5 +1,5 @@
 //! Native Remote authority. Cloud records cannot create local grants.
-pub(crate) mod activity;
+pub(crate) use crate::activity;
 mod channel;
 mod policy;
 mod runtime;

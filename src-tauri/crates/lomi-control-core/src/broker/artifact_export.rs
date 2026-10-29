@@ -1,8 +1,23 @@
 use super::{operations::UiMutation, *};
 use crate::{atomic_file::ReplaceError, project_files::ProjectDirectory};
+use lomi_native_project_files::{NativeArtifactCreated, NativeProjectMutationError};
 use std::{io::Read, os::unix::fs::MetadataExt};
 
 const MAX_EXPORT_BYTES: u32 = 4 * 1024 * 1024;
+
+pub type ArtifactExportPublisher = Arc<
+    dyn Fn(
+            &Path,
+            &str,
+            &str,
+            &str,
+            &str,
+            &[u8],
+            &mut dyn FnMut() -> Result<(), ErrorCode>,
+        ) -> Result<NativeArtifactCreated, NativeProjectMutationError>
+        + Send
+        + Sync,
+>;
 
 impl Broker {
     /// Artifact IDs never replace their original source authority.
@@ -294,4 +309,147 @@ impl Broker {
         )?;
         result.map_err(|_| ErrorCode::OutcomeUnknown)
     }
+
+    /// Commit an artifact through the guarded canonical Host publisher while
+    /// retaining the MCP operation receipt and artifact source authority.
+    pub fn commit_artifact_export_with_host(
+        &self,
+        operation: &str,
+        nonce: &str,
+        publish: &ArtifactExportPublisher,
+    ) -> Result<ArtifactExported, ErrorCode> {
+        let _request_permit = self.check_work_request(operation)?;
+        let _project_write = self.project_write_admission()?;
+        let (input, owner, root, directory, permit, alive, policy, mut leased) = {
+            let mut state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
+            let work = state.work.get(operation).ok_or(ErrorCode::ControlRevoked)?;
+            if !work.claimed
+                || work.native_committed
+                || work.command.nonce != nonce
+                || work.command.ui_epoch != state.projection.ui_epoch
+            {
+                return Err(ErrorCode::ControlRevoked);
+            }
+            work.native_permit.check_local()?;
+            let UiAction::ExportArtifact(command) = &work.command.action else {
+                return Err(ErrorCode::ScopeDenied);
+            };
+            let input = &command.input;
+            let directory = Self::validate_artifact_export(&state, &work.pairing, input)?;
+            let artifact = self
+                .store
+                .lock()
+                .map_err(|_| ErrorCode::StorageUnavailable)?
+                .lease_artifact(&work.pairing, &work.project, &input.artifact_id, now())
+                .map_err(|_| ErrorCode::TargetNotFound)?;
+            if artifact.artifact.source.workspace() != input.workspace_id {
+                return Err(ErrorCode::TargetNotFound);
+            }
+            Self::artifact_source_access(&state, &work.pairing, &artifact.artifact)?;
+            if artifact.artifact.sha256 != input.expected_sha256 {
+                return Err(ErrorCode::RevisionConflict);
+            }
+            if artifact.artifact.byte_length > MAX_EXPORT_BYTES {
+                return Err(ErrorCode::ArtifactTooLarge);
+            }
+            let result = (
+                input.clone(),
+                work.pairing.clone(),
+                directory.canonical_path().to_owned(),
+                directory,
+                work.native_permit.clone(),
+                state.sessions[&work.pairing].alive.clone(),
+                state.policy_revision,
+                artifact,
+            );
+            state.work.get_mut(operation).unwrap().native_committed = true;
+            result
+        };
+        let artifact = leased.artifact.clone();
+        let check = || {
+            permit.revalidate()?;
+            if !alive.load(Ordering::SeqCst) || self.authorization.load(Ordering::SeqCst) != policy
+            {
+                return Err(ErrorCode::ControlRevoked);
+            }
+            let state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
+            if state.policy_revision != policy {
+                return Err(ErrorCode::ControlRevoked);
+            }
+            let current = Self::validate_artifact_export(&state, &owner, &input)?;
+            if !Arc::ptr_eq(&directory, &current) {
+                return Err(ErrorCode::ControlRevoked);
+            }
+            Self::artifact_source_access(&state, &owner, &artifact)?;
+            directory.check()
+        };
+        let write = || -> Result<ArtifactExported, ReplaceError> {
+            let _producer = self
+                .file_reads
+                .clone()
+                .try_acquire_owned()
+                .map_err(|_| ErrorCode::ResourceExhausted)?;
+            leased.verify(check)?;
+            let mut bytes = Vec::with_capacity(artifact.byte_length as usize);
+            leased
+                .file
+                .take(u64::from(artifact.byte_length) + 1)
+                .read_to_end(&mut bytes)
+                .map_err(|_| ErrorCode::StorageUnavailable)?;
+            if bytes.len() != artifact.byte_length as usize
+                || format!("{:x}", Sha256::digest(&bytes)) != artifact.sha256
+            {
+                return Err(ErrorCode::StorageUnavailable.into());
+            }
+            let created = publish(
+                &root,
+                &owner,
+                operation,
+                &input.relative_path,
+                &input.expected_parent_revision,
+                &bytes,
+                &mut || check(),
+            )
+            .map_err(|error| match error {
+                NativeProjectMutationError::Before(code) => {
+                    ReplaceError::Before(crate::project_files::to_protocol_error(code))
+                }
+                NativeProjectMutationError::Uncertain => ReplaceError::Uncertain,
+            })?;
+            check().map_err(|_| ReplaceError::Uncertain)?;
+            if created.relative_path != input.relative_path
+                || created.byte_length != u64::from(artifact.byte_length)
+                || created.disk_revision != artifact.sha256
+                || !valid_revision(&created.disk_revision)
+            {
+                return Err(ReplaceError::Uncertain);
+            }
+            Ok(ArtifactExported {
+                workspace_id: input.workspace_id.clone(),
+                relative_path: input.relative_path.clone(),
+                artifact: Box::new(artifact.clone()),
+            })
+        };
+        let result = write();
+        self.finish_native_file_write(
+            operation,
+            nonce,
+            &owner,
+            result
+                .as_ref()
+                .map(|value| OperationResult::ArtifactExported(Box::new(value.clone())))
+                .map_err(|error| match error {
+                    ReplaceError::Before(code) => ReplaceError::Before(*code),
+                    ReplaceError::Uncertain => ReplaceError::Uncertain,
+                }),
+        )?;
+        result.map_err(|_| ErrorCode::OutcomeUnknown)
+    }
+}
+
+fn valid_revision(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }

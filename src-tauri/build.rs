@@ -1,4 +1,7 @@
+use lomi_remote_protocol::ipc::{LocalAuthClientId, LocalAuthOrigin, LocalRelayEndpoint};
+
 fn main() {
+    configure_host_auth_bootstrap();
     for feature in [
         "NATIVE_SMOKE",
         "CHAT_PROBE",
@@ -36,15 +39,19 @@ fn main() {
         "AI runtime preparation failed"
     );
 
-    println!("cargo:rerun-if-changed=../packages/remote-terminal-runtime");
-    assert!(
-        std::process::Command::new("node")
-            .arg("../packages/remote-terminal-runtime/build.mjs")
-            .status()
-            .expect("Remote runtime build requires Node and pnpm install")
-            .success(),
-        "Remote terminal runtime preparation failed"
-    );
+    if std::env::var_os("CARGO_FEATURE_REMOTE_PROBE").is_some()
+        && std::env::var("PROFILE").as_deref() != Ok("release")
+    {
+        println!("cargo:rerun-if-changed=../packages/remote-terminal-runtime");
+        assert!(
+            std::process::Command::new("node")
+                .arg("../packages/remote-terminal-runtime/build.mjs")
+                .status()
+                .expect("Remote runtime build requires Node and pnpm install")
+                .success(),
+            "Remote terminal runtime preparation failed"
+        );
+    }
 
     {
         println!("cargo:rerun-if-changed=android-proto/emulator_controller.proto");
@@ -76,4 +83,49 @@ fn main() {
         println!("cargo:rustc-link-arg=/MANIFESTINPUT:{}", manifest.display());
     }
     tauri_build::try_build(attributes).expect("failed to build Tauri permissions");
+}
+
+fn configure_host_auth_bootstrap() {
+    const VARIABLES: [&str; 5] = [
+        "LOMI_HOST_IDENTITY_ORIGIN",
+        "LOMI_HOST_REMOTE_API_ORIGIN",
+        "LOMI_HOST_RELAY_ENDPOINT",
+        "LOMI_HOST_CLIENT_ID",
+        "LOMI_HOST_REMOTE_WEB_ORIGIN",
+    ];
+    let values: Vec<Option<String>> = VARIABLES
+        .iter()
+        .map(|name| {
+            println!("cargo:rerun-if-env-changed={name}");
+            std::env::var(name)
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+        })
+        .collect();
+    let configured = values.iter().filter(|value| value.is_some()).count();
+    if configured != 0 && configured != VARIABLES.len() {
+        panic!("Set all five Lomi host authentication bootstrap variables together.");
+    }
+    let release = std::env::var("PROFILE").as_deref() == Ok("release");
+    if release && configured != VARIABLES.len() {
+        panic!("Release builds require the five public Lomi host authentication bootstrap values.");
+    }
+
+    if configured == VARIABLES.len() {
+        let values: Vec<String> = values.into_iter().map(Option::unwrap).collect();
+        LocalAuthOrigin::try_from(values[0].clone()).expect("LOMI_HOST_IDENTITY_ORIGIN is invalid");
+        LocalAuthOrigin::try_from(values[1].clone())
+            .expect("LOMI_HOST_REMOTE_API_ORIGIN is invalid");
+        LocalRelayEndpoint::try_from(values[2].clone())
+            .expect("LOMI_HOST_RELAY_ENDPOINT is invalid");
+        LocalAuthClientId::try_from(values[3].clone()).expect("LOMI_HOST_CLIENT_ID is invalid");
+        LocalAuthOrigin::try_from(values[4].clone())
+            .expect("LOMI_HOST_REMOTE_WEB_ORIGIN is invalid");
+        for (key, value) in VARIABLES.iter().zip(values) {
+            println!("cargo:rustc-env={key}={value}");
+        }
+        println!("cargo:rustc-env=LOMI_HOST_AUTH_BOOTSTRAP_CONFIGURED=1");
+    } else {
+        println!("cargo:rustc-env=LOMI_HOST_AUTH_BOOTSTRAP_CONFIGURED=0");
+    }
 }

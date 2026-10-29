@@ -74,12 +74,14 @@ export function useGitFileActions(props: {
   };
   const ignore = (local: boolean) =>
     run(async () => {
-      const action = () =>
-        api<void>("ignore_project_item", {
+      const action = async () => {
+        const result = await api<{ warning?: string | null }>("ignore_project_item", {
           root: props.root,
           relative: context!.file.path,
           local,
         });
+        if (result.warning) props.onError(result.warning);
+      };
       if (props.working) await props.working.onRun(action);
       else await action();
       props.working?.onRefresh();
@@ -177,14 +179,16 @@ export function useGitFileActions(props: {
           className="file-history-dialog"
           onClose={() => setHistory(undefined)}
         >
-          <GitHistory
-            root={props.root}
-            path={history}
-            onOpenCommit={(commit) => {
-              setHistory(undefined);
-              props.onOpenCommit(commit);
-            }}
-          />
+          <div className="dialog-content dialog-history-content">
+            <GitHistory
+              root={props.root}
+              path={history}
+              onOpenCommit={(commit) => {
+                setHistory(undefined);
+                props.onOpenCommit(commit);
+              }}
+            />
+          </div>
         </Modal>
       )}
       {discard && (
@@ -192,12 +196,13 @@ export function useGitFileActions(props: {
           protectTheme
           title="Discard Changes"
           tone="danger"
+          closeDisabled={busy}
           onClose={() => {
             if (!busy) setDiscard(undefined);
           }}
         >
           <form
-            className="dialog-form"
+            className="dialog-form dialog-layout"
             onSubmit={(event) => {
               event.preventDefault();
               if (disabled || !props.working) return;
@@ -213,7 +218,7 @@ export function useGitFileActions(props: {
                 .finally(() => setBusy(false));
             }}
           >
-            <div className="dialog-body">
+            <div className="dialog-content">
               <p>
                 {discard.index === "?" ? (
                   <>

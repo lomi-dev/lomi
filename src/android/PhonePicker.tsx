@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { Smartphone } from "../icons";
+import { ChevronRight, Smartphone } from "../icons";
 import { deviceStatusLabels } from "./device-status";
 import { imageTitle } from "./settings-model";
 import type { Snapshot } from "./types";
@@ -20,16 +20,23 @@ export default function PhonePicker({
   const devices = snapshot.devices?.devices ?? [];
   const id = useId();
   return (
-    <div className="android-phone-picker">
-      <header>
-        <h2>{devices.length ? "Choose a phone" : "Create your first phone"}</h2>
-        <p>
-          {missing
-            ? "This phone is unavailable. Choose another one or manage your devices in Settings."
-            : devices.length
-              ? "Open a phone to use its apps and data here."
-              : "Set up a virtual phone in Android settings to get started."}
-        </p>
+    <div className="android-panel-state android-phone-picker">
+      <header className="android-state-heading">
+        <span className="android-state-icon" aria-hidden="true">
+          <Smartphone size={22} />
+        </span>
+        <div className="android-state-copy">
+          <h2>
+            {devices.length ? "Choose a phone" : "Create your first phone"}
+          </h2>
+          <p>
+            {missing
+              ? "This phone is unavailable. Choose another one or manage your devices in Settings."
+              : devices.length
+                ? "Open a phone to use its apps and data here."
+                : "Set up a virtual phone in Android settings to get started."}
+          </p>
+        </div>
       </header>
       {!!devices.length && (
         <ul className="android-phone-choices" aria-label="Available phones">
@@ -46,7 +53,7 @@ export default function PhonePicker({
                   disabled={disabled || phase === "stopping"}
                   onClick={() => onChoose(device.id)}
                 >
-                  <Smartphone size={22} aria-hidden="true" />
+                  <Smartphone size={18} aria-hidden="true" />
                   <span className="android-phone-choice-info">
                     <strong>{device.name}</strong>
                     <span id={`${id}-${device.id}`}>
@@ -63,25 +70,26 @@ export default function PhonePicker({
                       {deviceStatusLabels[phase]}
                     </span>
                   </span>
-                  <span
+                  <ChevronRight
+                    size={14}
                     className="android-phone-choice-action"
                     aria-hidden="true"
-                  >
-                    Open
-                  </span>
+                  />
                 </button>
               </li>
             );
           })}
         </ul>
       )}
-      <button
-        className={devices.length ? "text-button" : "button button-primary"}
-        disabled={disabled}
-        onClick={onManage}
-      >
-        {devices.length ? "Manage devices" : "Create a phone"}
-      </button>
+      <div className="android-state-actions">
+        <button
+          className={devices.length ? "text-button" : "button button-primary"}
+          disabled={disabled}
+          onClick={onManage}
+        >
+          {devices.length ? "Manage devices" : "Create a phone"}
+        </button>
+      </div>
     </div>
   );
 }

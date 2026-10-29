@@ -1,7 +1,7 @@
 mod callback;
 mod config;
 pub(crate) mod controller;
-mod http;
+pub(crate) mod http;
 mod storage;
 
 pub use controller::AuthController;

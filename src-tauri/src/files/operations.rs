@@ -40,8 +40,11 @@ pub enum Operation {
 pub struct FileChange {
     pub old_path: Option<String>,
     pub new_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub warning: Option<String>,
 }
 
+#[cfg(test)]
 fn name(value: &str) -> Result<(), String> {
     if value.is_empty()
         || value.eq_ignore_ascii_case(".git")
@@ -57,7 +60,7 @@ fn name(value: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_relative(relative: &str) -> Result<(), String> {
+pub(crate) fn validate_relative(relative: &str) -> Result<(), String> {
     if Path::new(relative).components().any(|part| {
         !matches!(part, Component::Normal(_) | Component::CurDir)
             || part
@@ -71,7 +74,7 @@ fn validate_relative(relative: &str) -> Result<(), String> {
 }
 
 // Resolve the parent, retaining the leaf so rename/delete operate on a symlink itself.
-pub(super) fn entry_path(root: &str, relative: &str) -> Result<PathBuf, String> {
+pub(crate) fn entry_path(root: &str, relative: &str) -> Result<PathBuf, String> {
     validate_relative(relative)?;
     if relative.is_empty() {
         return directory(root);
@@ -87,6 +90,7 @@ pub(super) fn entry_path(root: &str, relative: &str) -> Result<PathBuf, String> 
     Ok(path)
 }
 
+#[cfg(test)]
 fn unused(path: &Path) -> Result<(), String> {
     match fs::symlink_metadata(path) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -96,6 +100,7 @@ fn unused(path: &Path) -> Result<(), String> {
 }
 
 #[cfg(unix)]
+#[cfg(test)]
 fn same_entry(source: &Path, target: &Path) -> std::io::Result<bool> {
     use std::os::unix::fs::MetadataExt;
     let source = fs::symlink_metadata(source)?;
@@ -104,6 +109,7 @@ fn same_entry(source: &Path, target: &Path) -> std::io::Result<bool> {
 }
 
 #[cfg(windows)]
+#[cfg(test)]
 fn same_entry(source: &Path, target: &Path) -> std::io::Result<bool> {
     use std::os::windows::{fs::OpenOptionsExt, io::AsRawHandle};
     use windows_sys::Win32::Storage::FileSystem::{
@@ -130,6 +136,7 @@ fn same_entry(source: &Path, target: &Path) -> std::io::Result<bool> {
     Ok(identity(source)? == identity(target)?)
 }
 
+#[cfg(test)]
 fn copy_tree(source: &Path, target: &Path) -> Result<(), String> {
     let metadata = fs::symlink_metadata(source).map_err(|error| error.to_string())?;
     if metadata.is_symlink() || (!metadata.is_file() && !metadata.is_dir()) {
@@ -156,6 +163,7 @@ fn copy_tree(source: &Path, target: &Path) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(test)]
 fn copy(source: &Path, target: &Path) -> Result<(), String> {
     let _admission = crate::project_write_guard::admit(&[
         target,
@@ -174,6 +182,7 @@ fn copy(source: &Path, target: &Path) -> Result<(), String> {
     fs::rename(staged, target).map_err(|error| error.to_string())
 }
 
+#[cfg(test)]
 fn move_entry(source: &Path, target: &Path) -> Result<(), String> {
     let _admission = crate::project_write_guard::admit(&[source, target])?;
     // On case-insensitive volumes a differently cased name resolves to the
@@ -203,11 +212,13 @@ fn move_entry(source: &Path, target: &Path) -> Result<(), String> {
     fs::rename(source, target).map_err(|error| error.to_string())
 }
 
+#[cfg(test)]
 fn perform(root: &str, relative: &str, operation: Operation) -> Result<FileChange, String> {
     let source = entry_path(root, relative)?;
     let mut result = FileChange {
         old_path: None,
         new_path: None,
+        warning: None,
     };
     let destination = match operation {
         Operation::NewFile { ref name } | Operation::NewFolder { ref name } => {
@@ -318,6 +329,7 @@ fn perform(root: &str, relative: &str, operation: Operation) -> Result<FileChang
             return Ok(FileChange {
                 old_path: Some(source.to_string_lossy().into_owned()),
                 new_path: None,
+                warning: None,
             });
         }
     };
@@ -342,24 +354,34 @@ pub async fn resolve_project_entry(
 #[tauri::command]
 pub async fn file_operation(
     window: Window,
+    webview: tauri::Webview,
+    app: tauri::AppHandle,
     root: String,
     relative: String,
     operation: Operation,
     expected_path: Option<String>,
 ) -> Result<FileChange, String> {
     main_window(&window)?;
+    crate::shared_host::trusted_full_window(&window, &webview)?;
+    let deadline = std::time::Instant::now()
+        .checked_add(std::time::Duration::from_secs(120))
+        .ok_or("File operation deadline is unavailable.")?;
     tauri::async_runtime::spawn_blocking(move || {
         let state = window.state::<super::editor::EditorFiles>();
         let _lock = state
             .writes
             .lock()
             .map_err(|_| "File writes are unavailable.")?;
-        if let Some(expected) = expected_path {
-            if entry_path(&root, &relative)? != Path::new(&expected) {
-                return Err("The selected path changed. Please try the operation again.".into());
-            }
-        }
-        perform(&root, &relative, operation)
+        crate::desktop_file_effects::file_operation(
+            &app,
+            &window,
+            &webview,
+            &root,
+            &relative,
+            operation,
+            expected_path,
+            deadline,
+        )
     })
     .await
     .map_err(|error| error.to_string())?
@@ -389,8 +411,17 @@ pub async fn open_project_item(
 }
 
 #[tauri::command]
-pub async fn git_pull(window: Window, root: String, rebase: bool) -> Result<(), String> {
+pub async fn git_pull(
+    window: Window,
+    webview: tauri::Webview,
+    app: tauri::AppHandle,
+    host: tauri::State<'_, super::super::shared_host::SharedHost>,
+    root: String,
+    rebase: bool,
+) -> Result<(), String> {
     main_window(&window)?;
+    crate::shared_host::trusted_full_window(&window, &webview)?;
+    let host = host.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let state = window.state::<super::editor::EditorFiles>();
         // Hold the editor write lock through pull to serialize worktree mutations.
@@ -398,7 +429,7 @@ pub async fn git_pull(window: Window, root: String, rebase: bool) -> Result<(), 
             .writes
             .lock()
             .map_err(|_| "File writes are unavailable.")?;
-        crate::git::pull(&root, rebase)
+        crate::native_git_effects::pull(&app, &host, &root, rebase)
     })
     .await
     .map_err(|error| error.to_string())?
@@ -407,17 +438,30 @@ pub async fn git_pull(window: Window, root: String, rebase: bool) -> Result<(), 
 #[tauri::command]
 pub async fn git_discard(
     window: Window,
+    webview: tauri::Webview,
+    app: tauri::AppHandle,
     root: String,
     change: crate::git::Change,
-) -> Result<(), String> {
+) -> Result<FileChange, String> {
     main_window(&window)?;
+    crate::shared_host::trusted_full_window(&window, &webview)?;
+    let deadline = std::time::Instant::now()
+        .checked_add(std::time::Duration::from_secs(120))
+        .ok_or("Git operation deadline is unavailable.")?;
     tauri::async_runtime::spawn_blocking(move || {
         let state = window.state::<super::editor::EditorFiles>();
         let _lock = state
             .writes
             .lock()
             .map_err(|_| "File writes are unavailable.")?;
-        crate::git::discard(&root, &change)
+        crate::desktop_file_effects::git_discard(
+            &app,
+            &window,
+            &webview,
+            &root,
+            change.into(),
+            deadline,
+        )
     })
     .await
     .map_err(|error| error.to_string())?
@@ -426,23 +470,32 @@ pub async fn git_discard(
 #[tauri::command]
 pub async fn ignore_project_item(
     window: Window,
+    webview: tauri::Webview,
+    app: tauri::AppHandle,
     root: String,
     relative: String,
     local: bool,
-) -> Result<(), String> {
+) -> Result<FileChange, String> {
     main_window(&window)?;
+    crate::shared_host::trusted_full_window(&window, &webview)?;
+    let deadline = std::time::Instant::now()
+        .checked_add(std::time::Duration::from_secs(120))
+        .ok_or("Git operation deadline is unavailable.")?;
     tauri::async_runtime::spawn_blocking(move || {
         let state = window.state::<super::editor::EditorFiles>();
         let _lock = state
             .writes
             .lock()
             .map_err(|_| "File writes are unavailable.")?;
-        ignore_item(&root, &relative, local)
+        crate::desktop_file_effects::git_ignore(
+            &app, &window, &webview, &root, &relative, local, deadline,
+        )
     })
     .await
     .map_err(|error| error.to_string())?
 }
 
+#[cfg(test)]
 fn ignore_item(root: &str, relative: &str, local: bool) -> Result<(), String> {
     let path = entry_path(root, relative)?;
     let _operation = crate::git::mutation_guard(root)?;

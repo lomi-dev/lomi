@@ -3,9 +3,24 @@ use super::{
     *,
 };
 use crate::atomic_file::ReplaceError;
+use lomi_native_project_files::{
+    NativeProjectEntryKind, NativeProjectMutation, NativeProjectMutationError,
+    NativeProjectMutationResult,
+};
 use std::collections::BTreeSet;
 
 pub type FilesTrashDispatch = Arc<dyn Fn(&Path) -> Result<(), ErrorCode> + Send + Sync>;
+pub type FilesProjectMutationPublisher = Arc<
+    dyn Fn(
+            &Path,
+            &str,
+            &str,
+            &NativeProjectMutation,
+            &mut dyn FnMut() -> Result<(), ErrorCode>,
+        ) -> Result<NativeProjectMutationResult, NativeProjectMutationError>
+        + Send
+        + Sync,
+>;
 pub(super) struct TrashApproval {
     hash: String,
     approved: bool,
@@ -521,6 +536,244 @@ impl Broker {
                 .as_ref()
                 .map(|v| OperationResult::FilesMutated(v.clone()))
                 .map_err(|e| match e {
+                    ReplaceError::Before(code) => ReplaceError::Before(*code),
+                    ReplaceError::Uncertain => ReplaceError::Uncertain,
+                }),
+        )?;
+        result.map_err(|_| ErrorCode::OutcomeUnknown)
+    }
+
+    /// Commit MCP project-file effects through the joined canonical Host
+    /// publisher. The broker retains scope, receipt, revision, and live permit
+    /// checks; the publisher only receives the normalized filesystem action.
+    pub fn commit_files_mutate_with_host(
+        &self,
+        operation: &str,
+        nonce: &str,
+        publish: &FilesProjectMutationPublisher,
+    ) -> Result<FilesMutated, ErrorCode> {
+        let _request_permit = self.check_work_request(operation)?;
+        let _project_write = self.project_write_admission()?;
+        let (command, owner, directory, permit, connected, policy) = {
+            let mut state = self.lock_state().map_err(|_| ErrorCode::ControlRevoked)?;
+            let work = state.work.get(operation).ok_or(ErrorCode::ControlRevoked)?;
+            if !work.claimed
+                || work.native_committed
+                || work.command.nonce != nonce
+                || work.command.ui_epoch != state.projection.ui_epoch
+            {
+                return Err(ErrorCode::ControlRevoked);
+            }
+            work.native_permit.check_local()?;
+            let UiAction::FilesMutate(command) = &work.command.action else {
+                return Err(ErrorCode::ScopeDenied);
+            };
+            if command.input.operation.is_trash()
+                && work
+                    .file_trash_plan
+                    .as_ref()
+                    .is_none_or(|plan| !plan.approved)
+            {
+                return Err(ErrorCode::ScopeDenied);
+            }
+            if command.input.operation.is_trash()
+                && work.command.domain_revision != state.projection.revision
+            {
+                return Err(ErrorCode::RevisionConflict);
+            }
+            Self::validate_files_mutate(&state, &work.pairing, &command.input)?;
+            let directory =
+                Self::project_file_access(&state, &work.pairing, &command.workspace_id)?;
+            let session = &state.sessions[&work.pairing];
+            let result = (
+                command.clone(),
+                work.pairing.clone(),
+                directory,
+                work.native_permit.clone(),
+                session.alive.clone(),
+                state.policy_revision,
+            );
+            state.work.get_mut(operation).unwrap().native_committed = true;
+            result
+        };
+        let check = || {
+            permit.revalidate()?;
+            if !connected.load(Ordering::SeqCst)
+                || self.authorization.load(Ordering::SeqCst) != policy
+            {
+                return Err(ErrorCode::ControlRevoked);
+            }
+            directory.check()
+        };
+        let write = || -> Result<FilesMutated, ReplaceError> {
+            let _producer = self
+                .file_reads
+                .clone()
+                .try_acquire_owned()
+                .map_err(|_| ErrorCode::ResourceExhausted)?;
+            let native_operation = match &command.input.operation {
+                FileMutation::Create {
+                    relative_path,
+                    kind,
+                    expected_parent_revision,
+                } => NativeProjectMutation::Create {
+                    relative_path: relative_path.clone(),
+                    kind: match kind {
+                        FileEntryKind::File => NativeProjectEntryKind::File,
+                        FileEntryKind::Directory => NativeProjectEntryKind::Directory,
+                    },
+                    expected_parent_revision: expected_parent_revision.clone(),
+                },
+                FileMutation::Rename {
+                    relative_path,
+                    new_name: _,
+                    expected_disk_revision,
+                    expected_parent_revision,
+                }
+                | FileMutation::Move {
+                    relative_path,
+                    expected_disk_revision,
+                    expected_parent_revision,
+                    ..
+                } => NativeProjectMutation::RenameMoveFile {
+                    relative_path: relative_path.clone(),
+                    target_relative_path: command.input.operation.destination(),
+                    expected_disk_revision: expected_disk_revision.clone(),
+                    expected_parent_revision: expected_parent_revision.clone(),
+                },
+                FileMutation::RenameDirectory {
+                    relative_path,
+                    expected_directory_revision,
+                    expected_parent_revision,
+                    ..
+                }
+                | FileMutation::MoveDirectory {
+                    relative_path,
+                    expected_directory_revision,
+                    expected_parent_revision,
+                    ..
+                } => NativeProjectMutation::RenameMoveDirectory {
+                    relative_path: relative_path.clone(),
+                    target_relative_path: command.input.operation.destination(),
+                    expected_directory_revision: expected_directory_revision.clone(),
+                    expected_parent_revision: expected_parent_revision.clone(),
+                },
+                FileMutation::Trash {
+                    relative_path,
+                    kind,
+                    expected_entry_revision,
+                    expected_parent_revision,
+                } => {
+                    let recovery_root = self
+                        .store
+                        .lock()
+                        .map_err(|_| ErrorCode::StorageUnavailable)?
+                        .trash_recovery_root()?;
+                    NativeProjectMutation::TrashStage {
+                        relative_path: relative_path.clone(),
+                        kind: match kind {
+                            FileEntryKind::File => NativeProjectEntryKind::File,
+                            FileEntryKind::Directory => NativeProjectEntryKind::Directory,
+                        },
+                        expected_revision: expected_entry_revision.clone(),
+                        expected_parent_revision: expected_parent_revision.clone(),
+                        recovery_root,
+                        operation_id: operation.to_owned(),
+                    }
+                }
+            };
+            let result = publish(
+                directory.canonical_path(),
+                &owner,
+                operation,
+                &native_operation,
+                &mut || check(),
+            )
+            .map_err(|error| match error {
+                NativeProjectMutationError::Before(code) => {
+                    ReplaceError::Before(crate::project_files::to_protocol_error(code))
+                }
+                NativeProjectMutationError::Uncertain => ReplaceError::Uncertain,
+            })?;
+
+            // The Host may have published before a session or project permit
+            // was revoked. Such a result cannot be recorded as a clean failure.
+            check().map_err(|_| ReplaceError::Uncertain)?;
+            let destination = command.input.operation.destination();
+            let (old_path, new_path, entry_kind) = match (&command.input.operation, result) {
+                (
+                    FileMutation::Create {
+                        relative_path,
+                        kind,
+                        ..
+                    },
+                    NativeProjectMutationResult::Created {
+                        relative_path: created,
+                    },
+                ) if *relative_path == created => (None, Some(created), kind.clone()),
+                (
+                    FileMutation::Rename { relative_path, .. }
+                    | FileMutation::Move { relative_path, .. },
+                    NativeProjectMutationResult::FileMoved {
+                        relative_path: moved,
+                        target_relative_path,
+                    },
+                ) if *relative_path == moved && destination == target_relative_path => {
+                    (Some(moved), Some(target_relative_path), FileEntryKind::File)
+                }
+                (
+                    FileMutation::RenameDirectory { relative_path, .. }
+                    | FileMutation::MoveDirectory { relative_path, .. },
+                    NativeProjectMutationResult::DirectoryMoved {
+                        relative_path: moved,
+                        target_relative_path,
+                    },
+                ) if *relative_path == moved && destination == target_relative_path => (
+                    Some(moved),
+                    Some(target_relative_path),
+                    FileEntryKind::Directory,
+                ),
+                (
+                    FileMutation::Trash {
+                        relative_path,
+                        kind,
+                        ..
+                    },
+                    NativeProjectMutationResult::TrashStaged { ticket },
+                ) => {
+                    if !ticket.matches_request(directory.canonical_path(), &native_operation) {
+                        return Err(ReplaceError::Uncertain);
+                    }
+                    let staged = crate::file_trash::from_ticket(ticket)
+                        .map_err(|_| ReplaceError::Uncertain)?;
+                    check().map_err(|_| ReplaceError::Uncertain)?;
+                    let dispatch = self
+                        .files_trash_dispatch
+                        .lock()
+                        .map_err(|_| ReplaceError::Uncertain)?
+                        .clone()
+                        .ok_or(ReplaceError::Uncertain)?;
+                    staged.finish(|path| dispatch(path))?;
+                    (Some(relative_path.clone()), None, kind.clone())
+                }
+                _ => return Err(ReplaceError::Uncertain),
+            };
+            Ok(FilesMutated {
+                workspace_id: command.workspace_id.clone(),
+                old_path,
+                new_path,
+                entry_kind,
+            })
+        };
+        let result = write();
+        self.finish_native_file_write(
+            operation,
+            nonce,
+            &owner,
+            result
+                .as_ref()
+                .map(|value| OperationResult::FilesMutated(value.clone()))
+                .map_err(|error| match error {
                     ReplaceError::Before(code) => ReplaceError::Before(*code),
                     ReplaceError::Uncertain => ReplaceError::Uncertain,
                 }),

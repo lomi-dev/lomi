@@ -44,7 +44,26 @@ or acronym.
   Workspaces, Explorer, and Source Control have independently assigned sidebar sides; opposite
   sides can stay open together. `src/Sidebar.tsx` resizes them, and
   `src/SidebarToggle.tsx` exposes placement through the status-bar context menus.
-  `src/Workspaces.tsx` lists workspaces across all project folders. Adding a
+  `src/Workspaces.tsx` lists workspaces across all project folders, with
+  a flat list of all open panels beneath each workspace. Disclosures do not
+  start runtimes; selecting a panel activates its owning workspace, tab and
+  pane. Double-clicking also reveals that panel's border for one second,
+  including standalone tabs and every mixed-layout panel type. Repeated
+  double-clicks restart the reveal; navigation clears it. Reduced motion uses
+  a static border. Retained Dockview hosts provide the shared reveal target;
+  browser viewports reserve its frame outside the native child webview.
+  CLI icons
+  show blue working, orange attention and red error dots from retained terminal
+  signals, with errors taking precedence over attention and work. Codex activity
+  uses its structured OSC 7501 lifecycle states; account quota windows remain
+  in the usage display and never override the Codex icon's turn state. For other
+  CLIs, fresh confirmed quota exhaustion is matched to the same terminal
+  session, CLI and native PID. Usage-reader failures and stale quota values are
+  not CLI errors. Freeform OSC 9
+  notifications enter the inbox without changing activity; completion text is
+  not evidence of a question. Known CLI labels fall back to their display names
+  when a conversation title is missing or is only a UUID or version number.
+  Do not infer agent activity from arbitrary terminal output. Adding a
   workspace from this panel may reuse a folder with separate tabs and terminals.
   Workspace creation and context-menu rename/delete actions live only in this
   sidebar. Removing the last workspace removes its project from the session,
@@ -196,9 +215,13 @@ or acronym.
   annotation files without starting the GUI or reading transcripts. Never
   configure a CLI silently or restart it automatically.
 - `src/NotificationCenter.tsx` exposes the local notification inbox from the
-  titlebar account menu for signed-in and signed-out users. Arrivals stay quiet
-  in the interface; only the signed-in avatar shows an unread count capped at
-  `9+`. Signed-out counts appear inside the menu. Reading and dismissing entries
+  titlebar account menu for signed-in and signed-out users. Arrivals show no
+  toasts; the signed-in avatar shows an unread count capped at `9+`, and the
+  Workspaces hierarchy shows green dots for unread terminal notifications.
+  Optional persisted pane IDs follow current panel ownership across moves and
+  renames; application alerts and legacy items without IDs have no workspace
+  dot. The titlebar and sidebar share one revisioned inbox snapshot. Signed-out
+  counts appear inside the menu. Reading and dismissing entries
   are explicit actions. The inbox footer clears all entries, including unread
   ones, only when clicked. `src-tauri/src/notifications.rs` persists a bounded,
   versioned inbox independently of the workspace session and OS alert delivery.
@@ -540,11 +563,15 @@ or acronym.
 
 - Lomi is the default built-in theme, defined in `themes/lomi.json` and the
   matching startup tokens in `src/theme/baseline.css`. It follows the Lomi
-  Brandbook and Design System v1.0.0: Electric Lime, graphite/chalk surfaces,
-  semantic status colors, and bundled Manrope. Keep code and terminals monospace.
-- Preserve `themes/deepmono.json` as the optional built-in DeepMono 1.1.0
-  Mono/Mono Light palette with Graphite. The default selection is `active: null`;
-  DeepMono uses `active: "@builtin-deepmono"`. Both are read-only and duplicable.
+  Brandbook and Design System v2.0.0: Electric Lime, Ink/Chalk/Paper and charcoal
+  dark surfaces, semantic status colors, and bundled Geist Variable. Keep code
+  and terminals monospace. See `docs/desktop-theme.md` for design references and
+  the workbench hierarchy.
+- Preserve the established File Explorer, terminal desktop, Workspaces list
+  and Source Control layouts, spacing, pane framing and selection treatments
+  when refining other interface surfaces.
+- Lomi is the only built-in theme, selected with `active: null`. It is read-only
+  and duplicable into an editable local package.
 - Reuse semantic tokens instead of inventing additional colors. Built-in themes
   must work offline without files from the source brandbook or design system.
 - Follow system appearance by default, including startup and live changes.
@@ -625,7 +652,7 @@ Example commit:
 ```text
 feat(app): initialize the desktop foundation
 
-Add a Tauri window and an empty React workspace using the DeepMono palette.
+Add a Tauri window and an empty React workspace using the Lomi palette.
 Keep the first milestone small so ADE features can be added incrementally.
 
 Validation:

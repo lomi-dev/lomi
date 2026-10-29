@@ -1,68 +1,14 @@
-//! Crash-recoverable handoff from a pinned project entry to the system Trash.
-//! Staging and source must share a volume. There is no copy/delete fallback.
+//! Compatibility facade over the protocol-neutral staged-trash engine.
 use crate::{
-    atomic_file::{open_file, snapshot, stamp, ReplaceError},
-    file_mutation::rename_exclusive,
-    project_files::{open_absolute_directory, validate_relative, ProjectDirectory},
+    atomic_file::ReplaceError,
+    project_files::{to_native_error, to_protocol_error, ProjectDirectory},
 };
-use lomi_control_protocol::{control::valid_id, files::FileEntryKind, ErrorCode};
-use rustix::fs::{mkdirat, openat, Mode, OFlags};
-use serde::Serialize;
-use std::{
-    ffi::CString,
-    fs::File,
-    io::Write,
-    os::unix::{ffi::OsStrExt, fs::MetadataExt},
-    path::{Path, PathBuf},
+use lomi_control_protocol::{files::FileEntryKind, ErrorCode};
+use lomi_native_project_files::{
+    NativeProjectEntryKind, NativeProjectMutation, NativeProjectMutationError,
+    NativeProjectMutationResult, NativeProjectStagedTrash, NativeProjectTrashTicket,
 };
-
-fn identity(file: &File) -> Result<(u64, u64), ErrorCode> {
-    let m = file.metadata().map_err(|_| ErrorCode::StorageUnavailable)?;
-    Ok((m.dev(), m.ino()))
-}
-fn private_directory(parent: &File, name: &str, create: bool) -> Result<File, ErrorCode> {
-    if create {
-        mkdirat(parent, name, Mode::from_raw_mode(0o700))
-            .map_err(|_| ErrorCode::StorageUnavailable)?;
-    }
-    let directory = File::from(
-        openat(
-            parent,
-            name,
-            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
-            Mode::empty(),
-        )
-        .map_err(|_| ErrorCode::StorageUnavailable)?,
-    );
-    let metadata = directory
-        .metadata()
-        .map_err(|_| ErrorCode::StorageUnavailable)?;
-    if metadata.uid() != unsafe { libc::geteuid() } || metadata.mode() & 0o777 != 0o700 {
-        return Err(ErrorCode::StorageUnavailable);
-    }
-    Ok(directory)
-}
-fn durable_json(directory: &File, name: &str, value: &impl Serialize) -> Result<(), ErrorCode> {
-    let bytes = serde_json::to_vec(value).map_err(|_| ErrorCode::StorageUnavailable)?;
-    if bytes.len() > 16384 {
-        return Err(ErrorCode::ResourceExhausted);
-    }
-    let mut file = File::from(
-        openat(
-            directory,
-            name,
-            OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC,
-            Mode::from_raw_mode(0o600),
-        )
-        .map_err(|_| ErrorCode::StorageUnavailable)?,
-    );
-    file.write_all(&bytes)
-        .and_then(|_| file.sync_all())
-        .map_err(|_| ErrorCode::StorageUnavailable)?;
-    directory
-        .sync_all()
-        .map_err(|_| ErrorCode::StorageUnavailable)
-}
+use std::path::Path;
 
 pub struct TrashTarget<'a> {
     pub relative_path: &'a str,
@@ -75,76 +21,40 @@ pub struct TrashTarget<'a> {
 /// A failed handoff retains the staged entry and immutable plan for recovery.
 /// Dropping this value never deletes or restores anything automatically.
 pub struct StagedTrash {
-    path: PathBuf,
-    directory: File,
-    payload: File,
-    leaf: CString,
-    entry_identity: (u64, u64),
-    kind: FileEntryKind,
+    inner: NativeProjectStagedTrash,
 }
+
 impl StagedTrash {
     pub fn path(&self) -> &Path {
-        &self.path
+        self.inner.path()
+    }
+
+    pub fn ticket(&self) -> NativeProjectTrashTicket {
+        self.inner.ticket()
     }
 
     pub fn finish(
         self,
         trash: impl FnOnce(&Path) -> Result<(), ErrorCode>,
     ) -> Result<(), ReplaceError> {
-        let operation_path = self
-            .path
-            .parent()
-            .and_then(Path::parent)
-            .ok_or(ReplaceError::Uncertain)?;
-        if identity(&open_absolute_directory(operation_path).map_err(|_| ReplaceError::Uncertain)?)
-            .map_err(|_| ReplaceError::Uncertain)?
-            != identity(&self.directory).map_err(|_| ReplaceError::Uncertain)?
-            || identity(
-                &open_absolute_directory(self.path.parent().unwrap())
-                    .map_err(|_| ReplaceError::Uncertain)?,
-            )
-            .map_err(|_| ReplaceError::Uncertain)?
-                != identity(&self.payload).map_err(|_| ReplaceError::Uncertain)?
-        {
-            return Err(ReplaceError::Uncertain);
-        }
-        let flags = OFlags::RDONLY
-            | OFlags::NOFOLLOW
-            | OFlags::NONBLOCK
-            | OFlags::CLOEXEC
-            | if self.kind == FileEntryKind::Directory {
-                OFlags::DIRECTORY
-            } else {
-                OFlags::empty()
-            };
-        let entry = File::from(
-            openat(&self.payload, &self.leaf, flags, Mode::empty())
-                .map_err(|_| ReplaceError::Uncertain)?,
-        );
-        if identity(&entry).map_err(|_| ReplaceError::Uncertain)? != self.entry_identity {
-            return Err(ReplaceError::Uncertain);
-        }
-        trash(&self.path).map_err(|_| ReplaceError::Uncertain)?;
-        if !matches!(
-            rustix::fs::statat(
-                &self.payload,
-                &self.leaf,
-                rustix::fs::AtFlags::SYMLINK_NOFOLLOW
-            ),
-            Err(rustix::io::Errno::NOENT)
-        ) {
-            return Err(ReplaceError::Uncertain);
-        }
-        // The OS accepted the Trash operation; a missing durable completion record
-        // still requires recovery, never replaying the original project mutation.
-        durable_json(
-            &self.directory,
-            "completed.json",
-            &serde_json::json!({"trashed":true}),
-        )
-        .map_err(|_| ReplaceError::Uncertain)?;
-        Ok(())
+        self.inner
+            .finish(|path| trash(path).map_err(to_native_error))
+            .map_err(mutation_error)
     }
+}
+
+fn mutation_error(error: NativeProjectMutationError) -> ReplaceError {
+    match error {
+        NativeProjectMutationError::Before(code) => ReplaceError::Before(to_protocol_error(code)),
+        NativeProjectMutationError::Uncertain => ReplaceError::Uncertain,
+    }
+}
+
+/// Reopen a staged entry after validating its durable plan and private paths.
+pub fn from_ticket(ticket: NativeProjectTrashTicket) -> Result<StagedTrash, ReplaceError> {
+    lomi_native_project_files::from_ticket(ticket)
+        .map(|inner| StagedTrash { inner })
+        .map_err(mutation_error)
 }
 
 pub fn stage(
@@ -154,119 +64,28 @@ pub fn stage(
     operation: &str,
     check: impl Fn() -> Result<(), ErrorCode>,
 ) -> Result<StagedTrash, ReplaceError> {
-    if !valid_id(operation) {
-        return Err(ErrorCode::ScopeDenied.into());
-    }
-    validate_relative(target.relative_path)?;
-    check()?;
-    let relative = Path::new(target.relative_path);
-    let parent_name = relative
-        .parent()
-        .and_then(Path::to_str)
-        .ok_or(ErrorCode::ScopeDenied)?;
-    let leaf_name = relative.file_name().ok_or(ErrorCode::ScopeDenied)?;
-    let leaf = CString::new(leaf_name.as_bytes()).map_err(|_| ErrorCode::ScopeDenied)?;
-    let parent = project.open_directory(parent_name)?;
-    let parent_identity = identity(&parent)?;
-    if project.list(parent_name, &check)?.revision != target.expected_parent_revision {
-        return Err(ErrorCode::RevisionConflict.into());
-    }
-    let (entry, expected_stamp) = match target.kind {
-        FileEntryKind::File => {
-            let mut entry = open_file(&parent, &leaf)?;
-            if entry
-                .metadata()
-                .map_err(|_| ErrorCode::StorageUnavailable)?
-                .len()
-                > 4 * 1024 * 1024
-            {
-                return Err(ErrorCode::ResourceExhausted.into());
-            }
-            let (revision, metadata) = snapshot(&mut entry, &check)?;
-            if revision != target.expected_revision {
-                return Err(ErrorCode::RevisionConflict.into());
-            }
-            (entry, Some(stamp(&metadata)))
-        }
-        FileEntryKind::Directory => {
-            let entry = project.open_directory(target.relative_path)?;
-            if project.list(target.relative_path, &check)?.revision != target.expected_revision {
-                return Err(ErrorCode::RevisionConflict.into());
-            }
-            (entry, None)
-        }
+    let kind = match target.kind {
+        FileEntryKind::File => NativeProjectEntryKind::File,
+        FileEntryKind::Directory => NativeProjectEntryKind::Directory,
     };
-    let entry_identity = identity(&entry)?;
-    let recovery = open_absolute_directory(recovery_root)?;
-    let recovery_identity = identity(&recovery)?;
-    let metadata = recovery
-        .metadata()
-        .map_err(|_| ErrorCode::StorageUnavailable)?;
-    if metadata.uid() != unsafe { libc::geteuid() } || metadata.mode() & 0o777 != 0o700 {
-        return Err(ErrorCode::StorageUnavailable.into());
-    }
-    if entry_identity.0 != recovery_identity.0 {
-        return Err(ErrorCode::UnsupportedCapability.into());
-    }
-    let directory = private_directory(&recovery, operation, true)?;
-    let payload = private_directory(&directory, "entry", true)?;
-    durable_json(
-        &directory,
-        "plan.json",
-        &serde_json::json!({
-            "version":1, "operationId":operation, "projectPath":project.canonical_path(),
-            "relativePath":target.relative_path, "kind":target.kind,
-            "expectedRevision":target.expected_revision, "expectedParentRevision":target.expected_parent_revision,
-            "device":entry_identity.0.to_string(), "inode":entry_identity.1.to_string()
-        }),
-    )?;
-    recovery
-        .sync_all()
-        .map_err(|_| ErrorCode::StorageUnavailable)?;
-    check()?;
-    project.check()?;
-    if identity(&project.open_directory(parent_name)?)? != parent_identity
-        || identity(&open_absolute_directory(recovery_root)?)? != recovery_identity
-    {
-        return Err(ErrorCode::RevisionConflict.into());
-    }
-    match target.kind {
-        FileEntryKind::File => {
-            let (revision, metadata) = snapshot(&mut open_file(&parent, &leaf)?, &check)?;
-            if revision != target.expected_revision || Some(stamp(&metadata)) != expected_stamp {
-                return Err(ErrorCode::RevisionConflict.into());
-            }
-        }
-        FileEntryKind::Directory => {
-            if identity(&project.open_directory(target.relative_path)?)? != entry_identity
-                || project.list(target.relative_path, &check)?.revision != target.expected_revision
-            {
-                return Err(ErrorCode::RevisionConflict.into());
-            }
-        }
-    }
-    check()?;
-    project.check()?;
-    if identity(&project.open_directory(parent_name)?)? != parent_identity
-        || identity(&open_absolute_directory(recovery_root)?)? != recovery_identity
-        || identity(&open_absolute_directory(&recovery_root.join(operation))?)?
-            != identity(&directory)?
-    {
-        return Err(ErrorCode::RevisionConflict.into());
-    }
-    rename_exclusive(&parent, &leaf, &payload, &leaf)?;
-    parent
-        .sync_all()
-        .and_then(|_| payload.sync_all())
-        .map_err(|_| ReplaceError::Uncertain)?;
-    Ok(StagedTrash {
-        path: recovery_root.join(operation).join("entry").join(leaf_name),
-        directory,
-        payload,
-        leaf,
-        entry_identity,
-        kind: target.kind.clone(),
-    })
+    let result = project
+        .native()
+        .apply(
+            NativeProjectMutation::TrashStage {
+                relative_path: target.relative_path.to_owned(),
+                kind,
+                expected_revision: target.expected_revision.to_owned(),
+                expected_parent_revision: target.expected_parent_revision.to_owned(),
+                recovery_root: recovery_root.to_path_buf(),
+                operation_id: operation.to_owned(),
+            },
+            || check().map_err(to_native_error),
+        )
+        .map_err(mutation_error)?;
+    let NativeProjectMutationResult::TrashStaged { ticket } = result else {
+        return Err(ReplaceError::Uncertain);
+    };
+    from_ticket(ticket)
 }
 
 #[cfg(test)]

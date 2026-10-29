@@ -14,6 +14,103 @@ mod agent_control;
 mod agent_notifications;
 mod agent_runtime;
 
+/// Fixed, headless evidence helper. It performs no GUI initialization, task
+/// execution, account login, or configuration mutation.
+pub fn internal_native_evidence(mode: &str) -> i32 {
+    use std::io::{Read, Write};
+    const LIMIT: usize = 128 * 1024;
+    if !matches!(mode, "capture" | "verify") {
+        return 2;
+    }
+    #[cfg(target_os = "macos")]
+    if native_evidence_parent_lifetime().is_err() {
+        return 4;
+    }
+    let mut input = Vec::new();
+    if std::io::stdin()
+        .lock()
+        .take((LIMIT + 1) as u64)
+        .read_to_end(&mut input)
+        .is_err()
+        || input.len() > LIMIT
+    {
+        return 2;
+    }
+    let Ok(output) = agent_runtime::native_evidence_helper_reply(mode, &input) else {
+        return 2;
+    };
+    if std::io::stdout().lock().write_all(&output).is_err() {
+        return 4;
+    }
+    0
+}
+
+/// ABI 1 reserves FD 3 for a private Unix socket whose other end belongs to
+/// the host holding the profile OwnerLock. The helper only reads evidence, so
+/// immediate exit on host death cannot leave an outstanding mutation behind.
+#[cfg(target_os = "macos")]
+fn native_evidence_parent_lifetime() -> Result<(), ()> {
+    const FD: libc::c_int = 3;
+    let mut metadata = std::mem::MaybeUninit::<libc::stat>::uninit();
+    if unsafe { libc::fstat(FD, metadata.as_mut_ptr()) } != 0 {
+        return Err(());
+    }
+    let metadata = unsafe { metadata.assume_init() };
+    if metadata.st_mode & libc::S_IFMT != libc::S_IFSOCK {
+        return Err(());
+    }
+    let mut kind: libc::c_int = 0;
+    let mut size = std::mem::size_of_val(&kind) as libc::socklen_t;
+    if unsafe {
+        libc::getsockopt(
+            FD,
+            libc::SOL_SOCKET,
+            libc::SO_TYPE,
+            (&mut kind as *mut libc::c_int).cast(),
+            &mut size,
+        )
+    } != 0
+        || kind != libc::SOCK_STREAM
+    {
+        return Err(());
+    }
+    let mut peer = std::mem::MaybeUninit::<libc::sockaddr_un>::zeroed();
+    let mut peer_size = std::mem::size_of::<libc::sockaddr_un>() as libc::socklen_t;
+    if unsafe { libc::getpeername(FD, peer.as_mut_ptr().cast(), &mut peer_size) } != 0
+        || unsafe { peer.assume_init() }.sun_family as libc::c_int != libc::AF_UNIX
+    {
+        return Err(());
+    }
+    let flags = unsafe { libc::fcntl(FD, libc::F_GETFD) };
+    if flags < 0 || unsafe { libc::fcntl(FD, libc::F_SETFD, flags | libc::FD_CLOEXEC) } < 0 {
+        return Err(());
+    }
+    std::thread::Builder::new()
+        .name("native-evidence-parent".into())
+        .spawn(|| {
+            let mut event = libc::pollfd {
+                fd: FD,
+                events: libc::POLLIN | libc::POLLHUP | libc::POLLERR,
+                revents: 0,
+            };
+            loop {
+                let ready = unsafe { libc::poll(&mut event, 1, -1) };
+                if ready < 0
+                    && std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted
+                {
+                    continue;
+                }
+                // This channel has no messages. Readability, EOF, an invalid
+                // descriptor, or any error means the lifetime is no longer valid.
+                if ready != 0 {
+                    unsafe { libc::_exit(4) };
+                }
+            }
+        })
+        .map(|_| ())
+        .map_err(|_| ())
+}
+
 #[cfg(target_os = "macos")]
 pub fn agent_runtime_host_worker_entry() -> Option<i32> {
     agent_runtime::host_worker_entry()
@@ -53,6 +150,7 @@ mod mcp_browser_probe;
 mod mcp_control_probe;
 mod notifications;
 mod push;
+#[cfg(feature = "remote-probe")]
 mod remote;
 #[cfg(all(
     feature = "remote-visual-probe",
@@ -65,6 +163,14 @@ mod remote_browser_capture_probe;
 #[path = "../../tests/native/remote-support.rs"]
 mod remote_probe;
 pub use cli_titles::print_agy_title;
+
+pub fn canonical_host_entry() -> Option<i32> {
+    shared_host::canonical_host_entry(&std::env::args_os().skip(1).collect::<Vec<_>>())
+}
+
+#[path = "remote/activity.rs"]
+mod activity;
+mod desktop_file_effects;
 mod editor_preferences;
 mod external_files;
 mod files;
@@ -74,14 +180,18 @@ mod keybindings;
 mod linux_instance;
 #[cfg(target_os = "macos")]
 mod macos;
+mod native_file_effects;
+mod native_git_effects;
 #[cfg(feature = "native-smoke")]
 #[path = "../../tests/native/support.rs"]
 mod native_smoke;
 mod plugins;
 mod project_write_guard;
+mod remote_v2;
 #[cfg(unix)]
 mod settings_control;
 mod settings_window;
+mod shared_host;
 mod shell;
 mod terminal;
 mod terminal_preferences;
@@ -90,6 +200,8 @@ mod themes;
 mod updater;
 #[cfg(windows)]
 mod windows_instance;
+
+mod window_lifecycle;
 
 use tauri::{Manager, State, Window};
 
@@ -195,6 +307,8 @@ pub fn run() {
         None => return,
     };
     let builder = tauri::Builder::default().manage(external_files::Requests::default());
+    #[cfg(feature = "remote-probe")]
+    let builder = builder.manage(remote::Remote::default());
     #[cfg(target_os = "linux")]
     let builder = builder
         .manage(linux_instance::Reopen::default())
@@ -227,7 +341,6 @@ pub fn run() {
         .manage(chat::commands::Chats::default())
         .manage(auth::AuthController::default())
         .manage(push::Push::default())
-        .manage(remote::Remote::default())
         .manage(agent_control::Control::default())
         .manage(android::manager::Android::default())
         .manage(android::open::Requests::default())
@@ -247,6 +360,8 @@ pub fn run() {
         .manage(themes::Themes::default())
         .manage(plugins::Plugins::default())
         .manage(settings_window::SettingsTabs::default())
+        .manage(shared_host::SharedHost::default())
+        .manage(remote_v2::RemoteV2::default())
         .on_window_event(|window, event| {
             if window.label() == "main" {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -283,8 +398,6 @@ pub fn run() {
 
             let integration = app.path().app_data_dir()?.join("shell-integration");
             shell::prepare(&integration).map_err(std::io::Error::other)?;
-            app.state::<remote::Remote>()
-                .initialize(app.handle().clone());
             app.state::<push::Push>().initialize(app.handle());
             let account_auth = app.path().app_data_dir()?.join("account-auth");
             app.state::<auth::AuthController>()
@@ -315,14 +428,16 @@ pub fn run() {
             #[cfg(feature = "remote-probe")]
             remote_probe::start(app.handle().clone());
             #[cfg(not(target_os = "macos"))]
-            remote::install_tray(app)?;
+            window_lifecycle::install_tray(app)?;
             agent_control::initialize_startup(app.handle().clone());
             Ok(())
         })
         .invoke_handler(|invoke| {
             // Child browser views share the main window, but never its application privileges.
             let view = invoke.message.webview();
-            if !browser::trusted_app_view(view.label(), view.window().label()) {
+            if !browser::trusted_app_view(view.label(), view.window().label())
+                && shared_host::trusted_full_window(&view.window(), &view).is_err()
+            {
                 invoke
                     .resolver
                     .reject("Web pages cannot call application commands.");
@@ -513,20 +628,9 @@ pub fn run() {
                 chat::commands::chat_export,
                 chat::commands::chat_discard,
                 chat::commands::chat_recover,
-                remote::remote_get_state,
-                remote::remote_set_enabled,
-                remote::remote_resume,
-                remote::remote_note_activity,
-                remote::remote_share_session,
-                remote::workspace::remote_begin_workspace_sync,
-                remote::workspace::remote_sync_workspaces,
-                remote::workspace::remote_share_workspace,
-                remote::remote_approve_pairing,
-                remote::remote_deny_pairing,
-                remote::remote_revoke_grant,
-                remote::hide_main_window,
-                remote::request_quit,
-                remote::reopen_main_window,
+                window_lifecycle::hide_main_window,
+                window_lifecycle::request_quit,
+                window_lifecycle::reopen_main_window,
                 push::push_get_state,
                 push::push_refresh_state,
                 push::push_set_current_source_enabled,
@@ -555,6 +659,41 @@ pub fn run() {
                 finish_window_startup,
                 settings_window::open_settings,
                 settings_window::settings_tab_ready,
+                shared_host::shared_host_status,
+                shared_host::shared_host_auth_setup,
+                shared_host::shared_host_auth_configure,
+                shared_host::shared_host_login_status,
+                shared_host::shared_host_login_start,
+                shared_host::shared_host_login_presentation,
+                shared_host::shared_host_logout,
+                shared_host::shared_host_workspaces,
+                shared_host::shared_host_workspace_bindings,
+                shared_host::shared_host_set_workspace_sharing,
+                shared_host::shared_host_detach_view,
+                shared_host::shared_host_import_workspace,
+                shared_host::shared_host_close_terminal,
+                shared_host::shared_host_workspace_state,
+                shared_host::shared_host_rpc,
+                shared_host::shared_host_validate_workspace_frame,
+                shared_host::shared_host_stream_ack,
+                shared_host::shared_host_register_shell_profile,
+                shared_host::shared_host_terminal_aliases,
+                shared_host::shared_host_save_terminal_alias,
+                remote_v2::remote_v2_request,
+                remote_v2::remote_v2_account_id,
+                remote_v2::remote_v2_open_view,
+                remote_v2::remote_v2_authorize_consumer,
+                remote_v2::remote_v2_existing_window_identity,
+                remote_v2::remote_v2_register_consumer_window,
+                remote_v2::remote_v2_clear_revoked_consumer_window,
+                remote_v2::remote_v2_channel_open,
+                remote_v2::remote_v2_channel_send,
+                remote_v2::remote_v2_channel_close,
+                remote_v2::remote_v2_terminal_claim,
+                remote_v2::remote_v2_terminal_input,
+                remote_v2::remote_v2_terminal_resize,
+                remote_v2::remote_v2_terminal_release,
+                remote_v2::remote_v2_terminal_focus,
                 files::list_directory,
                 files::watch::watch_explorer_directories,
                 files::search::search_project,
@@ -675,6 +814,7 @@ pub fn run() {
             if let Err(error) = app.state::<agent_runtime::AgentRuntime>().drain_all(app) {
                 eprintln!("Agent runtime exit cleanup could not confirm completion: {error}");
             }
+            #[cfg(feature = "remote-probe")]
             app.state::<remote::Remote>().shutdown();
             tauri::async_runtime::block_on(agent_control::shutdown(app));
             app.state::<auth::AuthController>().shutdown();

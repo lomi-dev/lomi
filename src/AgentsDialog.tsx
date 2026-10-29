@@ -120,7 +120,7 @@ export default function AgentsDialog({
       onClose={onClose}
     >
       <form
-        className="dialog-form"
+        className="dialog-form dialog-layout"
         noValidate
         onSubmit={async (event) => {
           event.preventDefault();
@@ -152,7 +152,7 @@ export default function AgentsDialog({
           }
         }}
       >
-        <div className="agents-dialog-body">
+        <div className="dialog-content agents-dialog-body">
           <p id={`${id}-description`} className="agents-description">
             Choose an agent and how many terminals to open.
           </p>

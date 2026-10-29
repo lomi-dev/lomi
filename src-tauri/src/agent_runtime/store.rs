@@ -134,6 +134,18 @@ impl Store {
             ))
             .map_err(error)?;
         }
+        if version <= 3 {
+            db.execute_batch("BEGIN IMMEDIATE; PRAGMA user_version=4; COMMIT;")
+                .map_err(error)?;
+        }
+        if version <= 4 {
+            db.execute_batch("BEGIN IMMEDIATE; PRAGMA user_version=5; COMMIT;")
+                .map_err(error)?;
+        }
+        if version <= 5 {
+            db.execute_batch("BEGIN IMMEDIATE; PRAGMA user_version=6; COMMIT;")
+                .map_err(error)?;
+        }
         crate::push::ledger::validate(&db)?;
 
         for suffix in ["-wal", "-shm"] {
@@ -1075,7 +1087,7 @@ fn preflight_named(root: &Path, name: &str) -> Result<(), String> {
         }
         return Ok(());
     }
-    if !matches!(version, 1..=3) || app != 1280265545 {
+    if !matches!(version, 1..=6) || app != 1280265545 {
         return Err(
             "Unknown Agent runtime schema; storage was preserved without migration.".into(),
         );
@@ -1109,7 +1121,7 @@ fn preflight_named(root: &Path, name: &str) -> Result<(), String> {
         expected_tables.push("native_operations");
         expected_tables.sort();
     }
-    if version == 3 {
+    if version >= 3 {
         expected_tables.extend([
             "notification_admissions",
             "push_notification_intents",
@@ -1281,6 +1293,12 @@ impl Store {
             }
             Some(NativeOperation {
                 host_boundary_owned: true,
+                native_writer_participant: true,
+                native_writer_finish_observed: false,
+                native_writer_ack_pending: false,
+                native_writer_bind_attempted: false,
+                native_writer_bind_rejected: false,
+                native_writer_no_start_observed: false,
                 physical_account_root: Some(binding.physical_root.clone()),
                 operation_id: a.operation_id.clone(),
                 cli: account.cli,
@@ -1423,7 +1441,98 @@ impl Store {
 
     pub fn process_not_spawned(&mut self, attempt: &str) -> Result<(), String> {
         #[cfg(target_os = "macos")]
-        if let Some(completed) = self.owned_attempt_completed(attempt)? {
+        let prebind_participant = {
+            let matching = self
+                .native_operations()?
+                .into_iter()
+                .filter(|operation| {
+                    operation.purpose == "attempt"
+                        && operation.attempt_id.as_deref() == Some(attempt)
+                })
+                .collect::<Vec<_>>();
+            if matching.len() > 1 {
+                return Err("Native Attempt ownership has duplicate durable records.".into());
+            }
+            matching.into_iter().next().filter(|operation| {
+                operation.native_writer_participant && !operation.native_writer_bind_attempted
+            })
+        };
+        #[cfg(target_os = "macos")]
+        if let Some(operation) = prebind_participant {
+            let process: Option<(
+                String,
+                String,
+                i64,
+                String,
+                Option<u32>,
+                Option<String>,
+                String,
+                String,
+                String,
+            )> = self
+                .db
+                .query_row(
+                    "SELECT task_id,account_id,generation,state,process_group,identity,unknown_tools,boot,ownership_marker FROM process_ownership WHERE attempt_id=?1",
+                    [attempt],
+                    |row| {
+                        Ok((
+                            row.get(0)?,
+                            row.get(1)?,
+                            row.get(2)?,
+                            row.get(3)?,
+                            row.get(4)?,
+                            row.get(5)?,
+                            row.get(6)?,
+                            row.get(7)?,
+                            row.get(8)?,
+                        ))
+                    },
+                )
+                .optional()
+                .map_err(error)?;
+            let Some((
+                task,
+                account,
+                generation,
+                state,
+                group,
+                identity,
+                unknown_tools,
+                boot,
+                marker,
+            )) = process
+            else {
+                return Err("Pre-bind native Attempt has no exact process ownership row.".into());
+            };
+            let tools = decode::<Vec<String>>(unknown_tools)?;
+            let prebind_tools = vec!["unqualified-boundary".to_owned()];
+            if operation.task_id.as_deref() != Some(task.as_str())
+                || operation.account_id != account
+                || operation
+                    .generation
+                    .and_then(|value| i64::try_from(value).ok())
+                    != Some(generation)
+                || operation.boot != boot
+                || marker.len() != 64
+                || !marker.bytes().all(|byte| byte.is_ascii_hexdigit())
+                || !matches!(state.as_str(), "spawn_intent" | "spawned" | "drained")
+                || group.is_some()
+                || identity.is_some()
+                || (state == "spawn_intent" && tools != prebind_tools)
+                || (state == "spawned" && !tools.is_empty())
+                || (state == "drained" && !tools.is_empty() && tools != prebind_tools)
+                || self.native_operations()?.iter().any(|other| {
+                    other.task_id.as_deref() == operation.task_id.as_deref()
+                        && other.operation_id != operation.operation_id
+                        && other.state != "reviewed"
+                })
+            {
+                return Err(
+                    "Pre-bind native Attempt still has unresolved process or helper obligations."
+                        .into(),
+                );
+            }
+        } else if let Some(completed) = self.owned_attempt_completed(attempt)? {
             let (state, tools): (String, String) = self
                 .db
                 .query_row(
@@ -1436,7 +1545,16 @@ impl Store {
                 return Err("Owned native intent has no verified retirement receipt or retains unknown tool effects.".into());
             }
         }
-        self.db.execute("UPDATE process_ownership SET state='drained',unknown_tools='[]' WHERE attempt_id=?1 AND process_group IS NULL",[attempt]).map_err(error)?;
+        let changed = self
+            .db
+            .execute(
+                "UPDATE process_ownership SET state='drained',unknown_tools='[]' WHERE attempt_id=?1 AND process_group IS NULL AND identity IS NULL",
+                [attempt],
+            )
+            .map_err(error)?;
+        if changed != 1 {
+            return Err("Native process ownership could not be durably marked not spawned.".into());
+        }
 
         Ok(())
     }
@@ -1791,6 +1909,16 @@ fn validate_native_operations(db: &Connection) -> Result<(), String> {
                 op.purpose.as_str(),
                 "attempt_prepare" | "verify" | "account_terminal" | "attempt"
             )
+            || op.native_writer_participant && (!op.host_boundary_owned || op.purpose != "attempt")
+            || op.native_writer_finish_observed != op.native_writer_ack_pending
+            || op.native_writer_finish_observed && !op.native_writer_participant
+            || op.native_writer_finish_observed && !op.native_writer_bind_attempted
+            || op.native_writer_bind_rejected
+                && (!op.native_writer_participant || !op.native_writer_bind_attempted)
+            || op.native_writer_no_start_observed
+                && (!op.native_writer_participant
+                    || !op.native_writer_bind_attempted
+                    || op.native_writer_bind_rejected)
         {
             return Err(
                 "Native helper provenance requires recovery; original storage was preserved."
@@ -1850,6 +1978,243 @@ impl Store {
             .map_err(error)?;
         rows.into_iter().map(decode).collect()
     }
+
+    pub(super) fn mark_native_writer_finished(&mut self, id: &str) -> Result<(), String> {
+        let raw: String = self
+            .db
+            .query_row(
+                "SELECT record FROM native_operations WHERE id=?1",
+                [id],
+                |row| row.get(0),
+            )
+            .map_err(error)?;
+        let mut operation: NativeOperation = decode(raw)?;
+        if !operation.host_boundary_owned
+            || operation.purpose != "attempt"
+            || operation.operation_id != id
+        {
+            return Err("Native writer receipt does not match its durable Attempt.".into());
+        }
+        if !operation.native_writer_participant {
+            return Ok(());
+        }
+        if operation.state != "reviewed" || !operation.native_writer_bind_attempted {
+            return Err("Native writer completion preceded durable helper settlement.".into());
+        }
+        operation.native_writer_finish_observed = true;
+        operation.native_writer_ack_pending = true;
+        self.persist_native_writer_operation(id, &operation)
+    }
+
+    pub(super) fn mark_native_writer_acknowledged(&mut self, id: &str) -> Result<(), String> {
+        let mut operation = self.read_native_writer_operation(id)?;
+        if !operation.native_writer_participant
+            || !operation.native_writer_finish_observed
+            || !operation.native_writer_ack_pending
+        {
+            return Err("Native writer ACK has no durable observed Finished receipt.".into());
+        }
+        operation.native_writer_participant = false;
+        operation.native_writer_finish_observed = false;
+        operation.native_writer_ack_pending = false;
+        operation.native_writer_bind_rejected = false;
+        operation.native_writer_no_start_observed = false;
+        self.persist_native_writer_operation(id, &operation)
+    }
+
+    pub(super) fn mark_native_writer_locally_unbound(&mut self, id: &str) -> Result<(), String> {
+        let mut operation = self.read_native_writer_operation(id)?;
+        if !operation.native_writer_participant
+            || operation.native_writer_finish_observed
+            || operation.native_writer_ack_pending
+            || operation.native_writer_bind_attempted
+            || operation.native_writer_bind_rejected
+            || operation.native_writer_no_start_observed
+        {
+            return Err("Native writer participant is not a pre-bind local close.".into());
+        }
+        operation.native_writer_participant = false;
+        operation.state = "reviewed".into();
+        self.persist_native_writer_operation(id, &operation)
+    }
+
+    pub(super) fn mark_native_writer_bind_attempted(&mut self, id: &str) -> Result<(), String> {
+        let mut operation = self.read_native_writer_operation(id)?;
+        if !operation.native_writer_participant
+            || operation.native_writer_finish_observed
+            || operation.native_writer_ack_pending
+            || operation.native_writer_no_start_observed
+        {
+            return Err("Native writer bind is missing its durable participation marker.".into());
+        }
+        if operation.native_writer_bind_attempted {
+            return Ok(());
+        }
+        operation.native_writer_bind_attempted = true;
+        self.persist_native_writer_operation(id, &operation)
+    }
+
+    pub(super) fn mark_native_writer_bind_rejected(&mut self, id: &str) -> Result<(), String> {
+        let mut operation = self.read_native_writer_operation(id)?;
+        if !operation.native_writer_participant
+            || !operation.native_writer_bind_attempted
+            || operation.native_writer_no_start_observed
+            || operation.native_writer_finish_observed
+            || operation.native_writer_ack_pending
+        {
+            return Err("Host rejection has no unresolved attempted native bind.".into());
+        }
+        if operation.native_writer_bind_rejected {
+            return Ok(());
+        }
+        operation.native_writer_bind_rejected = true;
+        self.persist_native_writer_operation(id, &operation)
+    }
+
+    pub(super) fn mark_native_writer_no_start_observed(&mut self, id: &str) -> Result<(), String> {
+        let mut operation = self.read_native_writer_operation(id)?;
+        if !operation.native_writer_participant
+            || !operation.native_writer_bind_attempted
+            || operation.native_writer_bind_rejected
+            || operation.native_writer_finish_observed
+            || operation.native_writer_ack_pending
+        {
+            return Err("NoStart evidence has no unresolved native bind participant.".into());
+        }
+        if operation.native_writer_no_start_observed {
+            return Ok(());
+        }
+        operation.native_writer_no_start_observed = true;
+        self.persist_native_writer_operation(id, &operation)
+    }
+
+    pub(super) fn process_rejected_unreleased_attempt(&mut self, id: &str) -> Result<(), String> {
+        let operation = self.read_native_writer_operation(id)?;
+        if !operation.native_writer_participant
+            || !operation.native_writer_bind_attempted
+            || !(operation.native_writer_bind_rejected || operation.native_writer_no_start_observed)
+            || operation.state != "reviewed"
+        {
+            return Err("Native bind rejection lacks its durable reviewed provenance.".into());
+        }
+        let attempt_id = operation
+            .attempt_id
+            .as_deref()
+            .ok_or("Rejected native Attempt identity is missing.")?;
+        let process: Option<(
+            String,
+            String,
+            i64,
+            String,
+            Option<u32>,
+            Option<String>,
+            String,
+            String,
+            String,
+        )> = self
+            .db
+            .query_row(
+                "SELECT task_id,account_id,generation,state,process_group,identity,unknown_tools,boot,ownership_marker FROM process_ownership WHERE attempt_id=?1",
+                [attempt_id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                        row.get(7)?,
+                        row.get(8)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(error)?;
+        let Some((task, account, generation, state, group, identity, unknown_tools, boot, marker)) =
+            process
+        else {
+            return Err("Rejected native Attempt has no exact process ownership row.".into());
+        };
+        let tools = decode::<Vec<String>>(unknown_tools)?;
+        let unqualified_boundary = vec!["unqualified-boundary".to_owned()];
+        if operation.task_id.as_deref() != Some(task.as_str())
+            || operation.account_id != account
+            || operation
+                .generation
+                .and_then(|value| i64::try_from(value).ok())
+                != Some(generation)
+            || operation.boot != boot
+            || marker.len() != 64
+            || !marker.bytes().all(|byte| byte.is_ascii_hexdigit())
+            || group.is_some()
+            || identity.is_some()
+            || !matches!(state.as_str(), "spawn_intent" | "spawned" | "drained")
+            || (state == "spawn_intent" && tools != unqualified_boundary)
+            || (state == "spawned" && !tools.is_empty())
+            || (state == "drained" && !tools.is_empty() && tools != unqualified_boundary)
+            || self.native_operations()?.iter().any(|other| {
+                other.task_id.as_deref() == operation.task_id.as_deref()
+                    && other.operation_id != operation.operation_id
+                    && other.state != "reviewed"
+            })
+        {
+            return Err(
+                "Rejected native Attempt still has unresolved process or helper obligations."
+                    .into(),
+            );
+        }
+        let changed = self
+            .db
+            .execute(
+                "UPDATE process_ownership SET state='drained',unknown_tools='[]' WHERE attempt_id=?1 AND task_id=?2 AND account_id=?3 AND generation=?4 AND boot=?5 AND ownership_marker=?6 AND process_group IS NULL AND identity IS NULL",
+                params![attempt_id, task, account, generation, boot, marker],
+            )
+            .map_err(error)?;
+        if changed != 1 {
+            return Err(
+                "Rejected native Attempt process ownership changed during settlement.".into(),
+            );
+        }
+        Ok(())
+    }
+
+    fn read_native_writer_operation(&self, id: &str) -> Result<NativeOperation, String> {
+        let raw: String = self
+            .db
+            .query_row(
+                "SELECT record FROM native_operations WHERE id=?1",
+                [id],
+                |row| row.get(0),
+            )
+            .map_err(error)?;
+        let operation: NativeOperation = decode(raw)?;
+        if !operation.host_boundary_owned
+            || operation.purpose != "attempt"
+            || operation.operation_id != id
+        {
+            return Err("Native writer receipt does not match its durable Attempt.".into());
+        }
+        Ok(operation)
+    }
+
+    fn persist_native_writer_operation(
+        &mut self,
+        id: &str,
+        operation: &NativeOperation,
+    ) -> Result<(), String> {
+        let tx = self.db.transaction().map_err(error)?;
+        tx.execute(
+            "UPDATE native_operations SET record=?2 WHERE id=?1",
+            params![id, encode(&operation)?],
+        )
+        .map_err(error)?;
+        tx.execute("UPDATE metadata SET revision=revision+1 WHERE id=1", [])
+            .map_err(error)?;
+        tx.commit().map_err(error)
+    }
+
     pub(super) fn helper_intent(
         &mut self,
         purpose: &str,
@@ -1917,6 +2282,12 @@ impl Store {
         let id = super::new_id()?;
         let op = NativeOperation {
             host_boundary_owned: owned,
+            native_writer_participant: false,
+            native_writer_finish_observed: false,
+            native_writer_ack_pending: false,
+            native_writer_bind_attempted: false,
+            native_writer_bind_rejected: false,
+            native_writer_no_start_observed: false,
             physical_account_root: if owned {
                 Some(self.binding(&account.account_id)?.physical_root)
             } else {

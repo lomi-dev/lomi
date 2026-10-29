@@ -32,10 +32,12 @@ import type { Json } from "@lomi-dev/plugin-sdk";
 import DockviewLayout from "./DockviewLayout";
 import { usePaneDrag } from "./pane-drag";
 import type { PaneTabDropOptions } from "./pane-drag";
+import type { SharedHostTerminalBinding } from "./shared-host";
 
 interface Props {
   layout: Layout;
   profile?: ShellProfile;
+  sharedHost?: SharedHostTerminalBinding;
   profiles: ShellProfile[];
   activePaneId: string;
   overview: boolean;
@@ -140,8 +142,9 @@ export default function SplitView({
                   <div key={layout.id} className="split-child">
                     <builtinViews.terminal
                       pane={layout}
+                      sharedHost={props.sharedHost}
                       profile={
-                        layout.profileId !== undefined
+                        layout.profileId !== undefined && layout.profileId !== ""
                           ? props.profiles.find(
                               (profile) => profile.id === layout.profileId,
                             )

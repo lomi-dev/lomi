@@ -24,6 +24,47 @@ use tauri::{AppHandle, Emitter, Manager};
 
 pub(crate) const CONTEXT_BUDGET: usize = 128 * 1024;
 
+#[cfg(target_os = "macos")]
+fn native_job_store_settled(
+    store: &Store,
+    task_id: &str,
+    operation_id: &str,
+    allow_rejected_unbound: bool,
+) -> Result<bool, String> {
+    let task = store.task(task_id)?;
+    let Some(attempt) = task
+        .attempts
+        .iter()
+        .find(|attempt| attempt.operation_id == operation_id)
+    else {
+        return Ok(false);
+    };
+    let terminal_task = matches!(task.state, TaskState::Completed | TaskState::Stopped);
+    let terminal_attempt = matches!(attempt.state.as_str(), "completed" | "stopped")
+        || (allow_rejected_unbound && attempt.state == "rejected");
+    let effects_reviewed = attempt.effects_state == "settled"
+        || (attempt.state == "stopped"
+            && task.state == TaskState::Stopped
+            && attempt.effects_state == "reviewed");
+    let durable_participant = store.native_operations()?.iter().any(|operation| {
+        operation.operation_id == operation_id
+            && operation.host_boundary_owned
+            && operation.purpose == "attempt"
+            && operation.native_writer_participant
+            && !operation.native_writer_finish_observed
+            && !operation.native_writer_ack_pending
+            && operation.state == "reviewed"
+    });
+    Ok(terminal_task
+        && terminal_attempt
+        && effects_reviewed
+        && durable_participant
+        && task.active_attempt_id.is_none()
+        && task.active_account_id.is_none()
+        && store.processes_settled(task_id)?
+        && store.helpers_settled(Some(task_id))?)
+}
+
 #[derive(Clone)]
 pub(crate) struct Active {
     pub attempt: String,
@@ -52,6 +93,10 @@ pub(crate) struct Inner {
     pub permissions: HashMap<String, Permission>,
     pub freezes: HashMap<String, (String, String, u64, bool)>,
     pub recovery_projects: HashMap<String, crate::project_write_guard::Lease>,
+    #[cfg(target_os = "macos")]
+    pub native_recovery_intents: HashMap<String, NativeRecoveryIntent>,
+    #[cfg(target_os = "macos")]
+    pub native_recovery_ceiling: Option<crate::project_write_guard::RecoveryCeiling>,
     pub pending_finishes: HashMap<String, (Active, Result<(), String>)>,
     pub pending_observations: HashMap<String, Task>,
     #[cfg(target_os = "macos")]
@@ -59,6 +104,13 @@ pub(crate) struct Inner {
     #[cfg(target_os = "macos")]
     pub account_terminal_finishes: HashMap<String, Arc<AtomicBool>>,
     pub pending_event_batches: HashMap<String, (Attempt, Vec<super::native_wire::NativeEvent>)>,
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Clone)]
+pub(crate) struct NativeRecoveryIntent {
+    pub task_id: String,
+    pub handle: crate::project_write_guard::NativeIntentHandle,
 }
 
 #[derive(Clone, Default)]
@@ -102,7 +154,12 @@ impl AgentRuntime {
                 .keys()
                 .map(|id| store.task(id).map(|t| t.cwd))
                 .collect::<Result<HashSet<_>, _>>()?;
-            for operation in store.native_operations()? {
+            let operations = store.native_operations()?;
+            for operation in operations {
+                #[cfg(target_os = "macos")]
+                if operation.native_writer_participant {
+                    continue;
+                }
                 if !store.helper_requires_live_fence(&operation)? {
                     continue;
                 }
@@ -116,6 +173,47 @@ impl AgentRuntime {
                 }
             }
             inner.store = Some(store);
+
+            #[cfg(target_os = "macos")]
+            {
+                super::execution::finalize_recovered_terminal_attempts(&mut inner)?;
+                let participants = inner
+                    .store
+                    .as_ref()
+                    .unwrap()
+                    .native_operations()?
+                    .into_iter()
+                    .filter(|operation| {
+                        operation.native_writer_participant
+                            && !operation.native_writer_finish_observed
+                            && !operation.native_writer_ack_pending
+                    })
+                    .collect::<Vec<_>>();
+                if !participants.is_empty() {
+                    inner.native_recovery_ceiling =
+                        Some(crate::project_write_guard::install_recovery_ceiling()?);
+                }
+                for operation in participants {
+                    let task_id = operation
+                        .task_id
+                        .clone()
+                        .filter(|_| operation.purpose == "attempt" && operation.host_boundary_owned)
+                        .ok_or("A native writer participant has incomplete Task provenance.")?;
+                    let handle = crate::project_write_guard::recovered_native_intent(
+                        &operation.operation_id,
+                    )?;
+                    if inner
+                        .native_recovery_intents
+                        .insert(
+                            operation.operation_id.clone(),
+                            NativeRecoveryIntent { task_id, handle },
+                        )
+                        .is_some()
+                    {
+                        return Err("A native writer participant ID is duplicated.".into());
+                    }
+                }
+            }
         }
 
         #[cfg(target_os = "macos")]
@@ -171,7 +269,811 @@ impl AgentRuntime {
             inner.account_leases.insert(account);
         }
 
-        f(&mut inner)
+        let result = f(&mut inner);
+        drop(inner);
+
+        #[cfg(target_os = "macos")]
+        self.drain_settled_native_intents();
+
+        result
+    }
+
+    #[cfg(target_os = "macos")]
+    pub(super) fn track_native_recovery_intent(
+        &self,
+        task_id: &str,
+        operation_id: &str,
+        handle: crate::project_write_guard::NativeIntentHandle,
+    ) -> Result<(), String> {
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|_| "Runtime owner unavailable.")?;
+        if let Some(existing) = inner.native_recovery_intents.get(operation_id) {
+            if existing.task_id == task_id && existing.handle.operation_id() == operation_id {
+                return Ok(());
+            }
+            return Err("A different native Host participant owns this operation ID.".into());
+        }
+        inner.native_recovery_intents.insert(
+            operation_id.to_owned(),
+            NativeRecoveryIntent {
+                task_id: task_id.to_owned(),
+                handle,
+            },
+        );
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    fn drain_settled_native_intents(&self) {
+        let prebind = {
+            let Ok(mut inner) = self.inner.lock() else {
+                return;
+            };
+            let Some(store) = inner.store.as_ref() else {
+                return;
+            };
+            let operations = store.native_operations().unwrap_or_default();
+            let unresolved = operations
+                .into_iter()
+                .filter(|operation| {
+                    operation.native_writer_participant
+                        && !operation.native_writer_finish_observed
+                        && !operation.native_writer_ack_pending
+                })
+                .collect::<Vec<_>>();
+            if !unresolved.is_empty() && inner.native_recovery_ceiling.is_none() {
+                match crate::project_write_guard::install_recovery_ceiling() {
+                    Ok(ceiling) => inner.native_recovery_ceiling = Some(ceiling),
+                    Err(_) => {
+                        self.closing.store(true, Ordering::SeqCst);
+                        return;
+                    }
+                }
+            }
+            for operation in unresolved {
+                let Some(task_id) = operation
+                    .task_id
+                    .as_deref()
+                    .filter(|_| operation.purpose == "attempt" && operation.host_boundary_owned)
+                else {
+                    self.closing.store(true, Ordering::SeqCst);
+                    return;
+                };
+                if inner.active.contains_key(task_id)
+                    || inner
+                        .native_recovery_intents
+                        .contains_key(&operation.operation_id)
+                {
+                    continue;
+                }
+                let Ok(handle) =
+                    crate::project_write_guard::recovered_native_intent(&operation.operation_id)
+                else {
+                    self.closing.store(true, Ordering::SeqCst);
+                    return;
+                };
+                inner.native_recovery_intents.insert(
+                    operation.operation_id.clone(),
+                    NativeRecoveryIntent {
+                        task_id: task_id.to_owned(),
+                        handle,
+                    },
+                );
+            }
+            let Some(store) = inner.store.as_ref() else {
+                return;
+            };
+            let operations = store.native_operations().unwrap_or_default();
+            inner
+                .native_recovery_intents
+                .iter()
+                .filter_map(|(operation_id, participant)| {
+                    operations
+                        .iter()
+                        .find(|operation| operation.operation_id.as_str() == operation_id.as_str())
+                        .filter(|operation| {
+                            operation.native_writer_participant
+                                && !operation.native_writer_bind_attempted
+                                && !operation.native_writer_finish_observed
+                                && !operation.native_writer_ack_pending
+                        })
+                        .map(|_| {
+                            (
+                                operation_id.clone(),
+                                participant.task_id.clone(),
+                                participant.handle.clone(),
+                            )
+                        })
+                })
+                .collect::<Vec<_>>()
+        };
+
+        // A bind reply can be lost after Host committed. Reconcile only
+        // persisted participants with no live Task worker, always on a fresh
+        // Host connection. A Host Finished/Quarantine state alone is not
+        // completion: the exact captured schema-2 Attempt must also prove the
+        // monotonic release marker stayed false and the whole cohort retired.
+        let reconcile = {
+            let Ok(inner) = self.inner.lock() else {
+                return;
+            };
+            let Some(store) = inner.store.as_ref() else {
+                return;
+            };
+            let operations = store.native_operations().unwrap_or_default();
+            inner
+                .native_recovery_intents
+                .iter()
+                .filter_map(|(operation_id, participant)| {
+                    let operation = operations.iter().find(|operation| {
+                        operation.operation_id.as_str() == operation_id.as_str()
+                    })?;
+                    (operation.native_writer_participant
+                        && operation.native_writer_bind_attempted
+                        && !operation.native_writer_bind_rejected
+                        && !operation.native_writer_finish_observed
+                        && !operation.native_writer_ack_pending
+                        && !inner.active.contains_key(&participant.task_id)
+                        && participant.handle.recovery_reconcile_needed())
+                    .then(|| {
+                        (
+                            participant.task_id.clone(),
+                            operation_id.clone(),
+                            participant.handle.clone(),
+                            operation.native_writer_no_start_observed,
+                        )
+                    })
+                })
+                .collect::<Vec<_>>()
+        };
+        for (task_id, operation_id, handle, no_start_observed) in reconcile {
+            let Ok(state) = handle.reconcile_recovered() else {
+                continue;
+            };
+            if !self.retired_unreleased_attempt(&task_id, &operation_id) {
+                continue;
+            }
+            match state {
+                lomi_remote_protocol::ipc::NativeWriterState::Finished => {
+                    if !no_start_observed {
+                        let Ok(mut inner) = self.inner.lock() else {
+                            continue;
+                        };
+                        let Some(store) = inner.store.as_mut() else {
+                            continue;
+                        };
+                        if store
+                            .mark_native_writer_bind_rejected(&operation_id)
+                            .is_err()
+                        {
+                            continue;
+                        }
+                        drop(inner);
+                        if handle.confirm_bind_rejected_from_durable_proof().is_err() {
+                            continue;
+                        }
+                    }
+                    if self
+                        .settle_rejected_native_intent(&task_id, &operation_id)
+                        .is_ok()
+                    {
+                        self.complete_native_writer_participant(&task_id, &operation_id, &handle);
+                    }
+                }
+                lomi_remote_protocol::ipc::NativeWriterState::Quarantine => {
+                    if !no_start_observed {
+                        let Ok(mut inner) = self.inner.lock() else {
+                            continue;
+                        };
+                        let Some(store) = inner.store.as_mut() else {
+                            continue;
+                        };
+                        if store
+                            .mark_native_writer_no_start_observed(&operation_id)
+                            .is_err()
+                        {
+                            continue;
+                        }
+                    }
+                    if self
+                        .settle_rejected_native_intent(&task_id, &operation_id)
+                        .is_ok()
+                        && handle.finish_after_settlement().is_ok()
+                    {
+                        self.complete_native_writer_participant(&task_id, &operation_id, &handle);
+                    }
+                }
+                lomi_remote_protocol::ipc::NativeWriterState::Registered
+                | lomi_remote_protocol::ipc::NativeWriterState::Active => {}
+            }
+        }
+
+        let direct_rejections = {
+            let Ok(inner) = self.inner.lock() else {
+                return;
+            };
+            inner
+                .native_recovery_intents
+                .iter()
+                .filter(|(_, participant)| participant.handle.bind_rejected_observed())
+                .map(|(operation_id, _)| operation_id.clone())
+                .collect::<Vec<_>>()
+        };
+        for operation_id in direct_rejections {
+            let Ok(mut inner) = self.inner.lock() else {
+                return;
+            };
+            let Some(store) = inner.store.as_mut() else {
+                return;
+            };
+            if store
+                .mark_native_writer_bind_rejected(&operation_id)
+                .is_err()
+            {
+                return;
+            }
+        }
+
+        let rejected = {
+            let Ok(inner) = self.inner.lock() else {
+                return;
+            };
+            let Some(store) = inner.store.as_ref() else {
+                return;
+            };
+            let Ok(operations) = store.native_operations() else {
+                return;
+            };
+            inner
+                .native_recovery_intents
+                .iter()
+                .filter_map(|(operation_id, participant)| {
+                    operations
+                        .iter()
+                        .find(|operation| operation.operation_id.as_str() == operation_id.as_str())
+                        .filter(|operation| {
+                            operation.native_writer_participant
+                                && operation.native_writer_bind_attempted
+                                && operation.native_writer_bind_rejected
+                                && !operation.native_writer_finish_observed
+                                && !operation.native_writer_ack_pending
+                        })
+                        .map(|_| {
+                            (
+                                operation_id.clone(),
+                                participant.task_id.clone(),
+                                participant.handle.clone(),
+                            )
+                        })
+                })
+                .collect::<Vec<_>>()
+        };
+        for (operation_id, task_id, handle) in rejected {
+            if self
+                .settle_rejected_native_intent(&task_id, &operation_id)
+                .is_ok()
+                && handle.confirm_bind_rejected_from_durable_proof().is_ok()
+            {
+                self.complete_native_writer_participant(&task_id, &operation_id, &handle);
+            }
+        }
+
+        for (operation_id, task_id, handle) in prebind {
+            if self
+                .settle_prebind_native_intent(&task_id, &operation_id)
+                .is_ok()
+            {
+                let _ = handle.close_confirmed_prebind();
+            }
+        }
+
+        let candidates = {
+            let Ok(inner) = self.inner.lock() else {
+                return;
+            };
+            let Some(store) = inner.store.as_ref() else {
+                return;
+            };
+            let Ok(operations) = store.native_operations() else {
+                return;
+            };
+            inner
+                .native_recovery_intents
+                .iter()
+                .filter_map(|(operation_id, participant)| {
+                    let operation = operations
+                        .iter()
+                        .find(|operation| operation.operation_id == *operation_id)?;
+                    let allow_unbound_rejection = if operation.native_writer_bind_attempted {
+                        participant.handle.host_finished_observed()
+                            || operation.native_writer_bind_rejected
+                            || operation.native_writer_no_start_observed
+                    } else {
+                        participant.handle.definitively_unbound()
+                    };
+                    native_job_store_settled(
+                        store,
+                        &participant.task_id,
+                        operation_id,
+                        allow_unbound_rejection,
+                    )
+                    .ok()
+                    .filter(|settled| *settled)
+                    .map(|_| {
+                        (
+                            operation_id.clone(),
+                            participant.task_id.clone(),
+                            participant.handle.clone(),
+                        )
+                    })
+                })
+                .collect::<Vec<_>>()
+        };
+
+        for (operation_id, task_id, handle) in candidates {
+            if handle.finish_after_settlement().is_ok() {
+                self.complete_native_writer_participant(&task_id, &operation_id, &handle);
+            }
+        }
+
+        let acknowledgements = {
+            let Ok(inner) = self.inner.lock() else {
+                return;
+            };
+            let Some(store) = inner.store.as_ref() else {
+                return;
+            };
+            store
+                .native_operations()
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|operation| {
+                    operation.native_writer_participant
+                        && operation.native_writer_finish_observed
+                        && operation.native_writer_ack_pending
+                })
+                .map(|operation| operation.operation_id)
+                .collect::<Vec<_>>()
+        };
+
+        for operation_id in acknowledgements {
+            if crate::project_write_guard::acknowledge_native_intent(&operation_id).is_ok() {
+                let Ok(mut inner) = self.inner.lock() else {
+                    continue;
+                };
+                if let Some(store) = inner.store.as_mut() {
+                    let _ = store.mark_native_writer_acknowledged(&operation_id);
+                }
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    fn settle_rejected_native_intent(
+        &self,
+        task_id: &str,
+        operation_id: &str,
+    ) -> Result<(), String> {
+        let (storage_root, attempt_id, account_id, auth_revision, generation) = {
+            let inner = self
+                .inner
+                .lock()
+                .map_err(|_| "Runtime owner unavailable.")?;
+            if inner.active.contains_key(task_id) {
+                return Err("The rejected native Attempt still has a live runtime owner.".into());
+            }
+            let store = inner.store.as_ref().ok_or("Runtime storage unavailable.")?;
+            let operation = store
+                .native_operations()?
+                .into_iter()
+                .find(|operation| operation.operation_id == operation_id)
+                .ok_or("The rejected native Attempt record is missing.")?;
+            if !operation.native_writer_participant
+                || !operation.native_writer_bind_attempted
+                || !(operation.native_writer_bind_rejected
+                    || operation.native_writer_no_start_observed)
+                || operation.native_writer_finish_observed
+                || operation.native_writer_ack_pending
+                || operation.purpose != "attempt"
+                || !operation.host_boundary_owned
+                || operation.task_id.as_deref() != Some(task_id)
+            {
+                return Err("The native Attempt lacks a durable Host rejection proof.".into());
+            }
+            let attempt_id = operation
+                .attempt_id
+                .ok_or("The rejected native Attempt identity is missing.")?;
+            let generation = operation
+                .generation
+                .filter(|generation| *generation > 0)
+                .ok_or("The rejected native Attempt generation is missing.")?;
+            let task = store.task(task_id)?;
+            if task.active_attempt_id.is_some()
+                || task.active_account_id.is_some()
+                || task.generation != generation
+                || !matches!(
+                    task.state,
+                    TaskState::DeliveryUncertain | TaskState::RecoveryRequired | TaskState::Stopped
+                )
+            {
+                return Err(
+                    "The task has not reached settled recovery for its rejected Attempt.".into(),
+                );
+            }
+            let attempt = task
+                .attempts
+                .iter()
+                .find(|attempt| attempt.attempt_id == attempt_id)
+                .ok_or("The rejected native Attempt row is missing.")?;
+            if attempt.operation_id != operation_id
+                || attempt.generation != generation
+                || attempt.account_id != operation.account_id
+                || attempt.auth_revision != operation.auth_revision
+            {
+                return Err("The rejected native Attempt provenance changed.".into());
+            }
+            (
+                store.root.clone(),
+                attempt_id,
+                operation.account_id,
+                operation.auth_revision,
+                generation,
+            )
+        };
+
+        if !super::host_boundary::parent_completed(&storage_root, operation_id)? {
+            super::host_boundary::settle_parent(&storage_root, operation_id)?;
+        }
+        if !super::host_boundary::retired_attempt_without_release(
+            &storage_root,
+            operation_id,
+            task_id,
+            &attempt_id,
+            &account_id,
+            auth_revision,
+            generation,
+        )? {
+            return Err(
+                "The rejected Attempt journal does not prove a retired pre-release state.".into(),
+            );
+        }
+
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|_| "Runtime owner unavailable.")?;
+        if inner.active.contains_key(task_id) {
+            return Err("The rejected native Attempt regained a live runtime owner.".into());
+        }
+        let store = inner.store.as_mut().ok_or("Runtime storage unavailable.")?;
+        let operation = store
+            .native_operations()?
+            .into_iter()
+            .find(|operation| operation.operation_id == operation_id)
+            .ok_or("The rejected native Attempt record is missing.")?;
+        if !(operation.native_writer_bind_rejected || operation.native_writer_no_start_observed)
+            || operation.native_writer_finish_observed
+            || operation.native_writer_ack_pending
+        {
+            return Err("The Host rejection marker changed during source verification.".into());
+        }
+        if operation.state != "reviewed" {
+            store.complete_owned_helper(operation_id)?;
+        }
+        store.process_rejected_unreleased_attempt(operation_id)?;
+        let mut task = store.task(task_id)?;
+        let attempt = task
+            .attempts
+            .iter_mut()
+            .find(|attempt| attempt.operation_id == operation_id)
+            .ok_or("The rejected native Attempt row is missing.")?;
+        if !matches!(
+            attempt.state.as_str(),
+            "spawn_intent" | "delivery_uncertain" | "recovery_required" | "rejected" | "stopped"
+        ) || !matches!(
+            attempt.effects_state.as_str(),
+            "uncertain" | "settled" | "reviewed"
+        ) {
+            return Err("The rejected native Attempt is not in a recoverable state.".into());
+        }
+        attempt.state = "rejected".into();
+        attempt.effects_state = "settled".into();
+        task.state = TaskState::Stopped;
+        task.status_message = if operation.native_writer_no_start_observed {
+            "The native Attempt was stopped before its durable release boundary.".into()
+        } else {
+            "The Host rejected this native Attempt before its release record.".into()
+        };
+        task.active_attempt_id = None;
+        task.active_account_id = None;
+        task.revision = task
+            .revision
+            .checked_add(1)
+            .ok_or("Task revision exhausted.")?;
+        store.update_task(&task, None, Some((operation_id, "settled")))?;
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    fn retired_unreleased_attempt(&self, task_id: &str, operation_id: &str) -> bool {
+        let context = {
+            let Ok(inner) = self.inner.lock() else {
+                return false;
+            };
+            if inner.active.contains_key(task_id) {
+                return false;
+            }
+            let Some(store) = inner.store.as_ref() else {
+                return false;
+            };
+            let Ok(operations) = store.native_operations() else {
+                return false;
+            };
+            let Some(operation) = operations
+                .into_iter()
+                .find(|operation| operation.operation_id == operation_id)
+            else {
+                return false;
+            };
+            if !operation.native_writer_participant
+                || !operation.native_writer_bind_attempted
+                || operation.purpose != "attempt"
+                || !operation.host_boundary_owned
+                || operation.task_id.as_deref() != Some(task_id)
+            {
+                return false;
+            }
+            let Some(attempt_id) = operation.attempt_id else {
+                return false;
+            };
+            let Some(generation) = operation.generation.filter(|generation| *generation > 0) else {
+                return false;
+            };
+            (
+                store.root.clone(),
+                attempt_id,
+                operation.account_id,
+                operation.auth_revision,
+                generation,
+            )
+        };
+        let (storage_root, attempt_id, account_id, auth_revision, generation) = context;
+        if !matches!(
+            super::host_boundary::attempt_release_absent(
+                &storage_root,
+                operation_id,
+                task_id,
+                &attempt_id,
+                &account_id,
+                auth_revision,
+                generation,
+            ),
+            Ok(true)
+        ) {
+            return false;
+        }
+        if !matches!(
+            super::host_boundary::parent_completed(&storage_root, operation_id),
+            Ok(true)
+        ) && super::host_boundary::settle_parent(&storage_root, operation_id).is_err()
+        {
+            return false;
+        }
+        matches!(
+            super::host_boundary::retired_attempt_without_release(
+                &storage_root,
+                operation_id,
+                task_id,
+                &attempt_id,
+                &account_id,
+                auth_revision,
+                generation,
+            ),
+            Ok(true)
+        )
+    }
+
+    #[cfg(target_os = "macos")]
+    fn settle_prebind_native_intent(
+        &self,
+        task_id: &str,
+        operation_id: &str,
+    ) -> Result<(), String> {
+        let context = {
+            let mut inner = self
+                .inner
+                .lock()
+                .map_err(|_| "Runtime owner unavailable.")?;
+            if inner.active.contains_key(task_id) {
+                return Err("The native Attempt still has a live runtime owner.".into());
+            }
+            let store = inner.store.as_mut().ok_or("Runtime storage unavailable.")?;
+            let operation = store
+                .native_operations()?
+                .into_iter()
+                .find(|operation| operation.operation_id == operation_id)
+                .ok_or("The pre-bind native Attempt record is missing.")?;
+            if !operation.native_writer_participant
+                || operation.native_writer_bind_attempted
+                || operation.native_writer_finish_observed
+                || operation.native_writer_ack_pending
+                || operation.purpose != "attempt"
+                || operation.task_id.as_deref() != Some(task_id)
+            {
+                return Err("The native Attempt no longer has pre-bind provenance.".into());
+            }
+            let attempt_id = operation
+                .attempt_id
+                .as_deref()
+                .ok_or("The pre-bind native Attempt identity is missing.")?;
+            let task = store.task(task_id)?;
+            if task.active_attempt_id.is_some()
+                || task.active_account_id.is_some()
+                || !matches!(
+                    task.state,
+                    TaskState::DeliveryUncertain | TaskState::RecoveryRequired | TaskState::Stopped
+                )
+            {
+                return Err(
+                    "The task has not reached startup recovery for its pre-bind Attempt.".into(),
+                );
+            }
+            let attempt = task
+                .attempts
+                .iter()
+                .find(|attempt| attempt.attempt_id == attempt_id)
+                .ok_or("The pre-bind native Attempt row is missing.")?;
+            if attempt.operation_id != operation_id
+                || attempt.generation != operation.generation.unwrap_or(0)
+                || attempt.account_id != operation.account_id
+                || task.generation != attempt.generation
+            {
+                return Err("The pre-bind native Attempt provenance changed.".into());
+            }
+
+            // This checks the exact empty process identity and all same-task
+            // helper obligations before it marks the row drained.
+            store.process_not_spawned(attempt_id)?;
+            if operation.state == "reviewed" {
+                None
+            } else {
+                Some(store.host_context(operation_id)?)
+            }
+        };
+
+        if let Some(context) = context {
+            if !super::host_boundary::parent_completed(
+                &context.storage_root,
+                &context.parent_operation_id,
+            )? {
+                super::host_boundary::settle_parent(
+                    &context.storage_root,
+                    &context.parent_operation_id,
+                )?;
+            }
+            if !super::host_boundary::parent_completed(
+                &context.storage_root,
+                &context.parent_operation_id,
+            )? {
+                return Err("Pre-bind native helper retirement remains unknown.".into());
+            }
+        }
+
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|_| "Runtime owner unavailable.")?;
+        if inner.active.contains_key(task_id) {
+            return Err("The native Attempt regained a live runtime owner.".into());
+        }
+        let store = inner.store.as_mut().ok_or("Runtime storage unavailable.")?;
+        let current_operation = store
+            .native_operations()?
+            .into_iter()
+            .find(|operation| operation.operation_id == operation_id)
+            .ok_or("The pre-bind native Attempt record is missing.")?;
+        let attempt_id = current_operation
+            .attempt_id
+            .as_deref()
+            .ok_or("The pre-bind native Attempt identity is missing.")?;
+        store.process_not_spawned(attempt_id)?;
+        if current_operation.state != "reviewed" {
+            store.complete_owned_helper(operation_id)?;
+        }
+        let mut task = store.task(task_id)?;
+        let attempt = task
+            .attempts
+            .iter_mut()
+            .find(|attempt| attempt.operation_id == operation_id)
+            .ok_or("The pre-bind native Attempt row is missing.")?;
+        if !matches!(
+            attempt.state.as_str(),
+            "spawn_intent" | "delivery_uncertain" | "recovery_required" | "rejected" | "stopped"
+        ) || !matches!(
+            attempt.effects_state.as_str(),
+            "uncertain" | "settled" | "reviewed"
+        ) {
+            return Err("The pre-bind native Attempt is not in a recoverable state.".into());
+        }
+        attempt.state = "rejected".into();
+        attempt.effects_state = "settled".into();
+        task.state = TaskState::Stopped;
+        task.status_message =
+            "The interrupted native Attempt never entered its release gate.".into();
+        task.active_attempt_id = None;
+        task.active_account_id = None;
+        task.revision = task
+            .revision
+            .checked_add(1)
+            .ok_or("Task revision exhausted.")?;
+        store.update_task(&task, None, Some((operation_id, "settled")))?;
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    fn complete_native_writer_participant(
+        &self,
+        task_id: &str,
+        operation_id: &str,
+        handle: &crate::project_write_guard::NativeIntentHandle,
+    ) {
+        let Ok(mut inner) = self.inner.lock() else {
+            return;
+        };
+        let has_unresolved_persisted_participant = {
+            let Some(store) = inner.store.as_mut() else {
+                return;
+            };
+            if handle.host_finished_observed() {
+                if store.mark_native_writer_finished(operation_id).is_err() {
+                    return;
+                }
+            } else if handle.locally_unbound() {
+                if store
+                    .mark_native_writer_locally_unbound(operation_id)
+                    .is_err()
+                {
+                    return;
+                }
+            } else {
+                return;
+            }
+            store
+                .native_operations()
+                .map(|operations| {
+                    operations.iter().any(|operation| {
+                        operation.native_writer_participant
+                            && !operation.native_writer_finish_observed
+                            && !operation.native_writer_ack_pending
+                    })
+                })
+                .unwrap_or(true)
+        };
+        inner.native_recovery_intents.remove(operation_id);
+        crate::project_write_guard::forget_native_intent(operation_id);
+        let release_project_lease = inner
+            .recovery_projects
+            .get(task_id)
+            .and_then(crate::project_write_guard::Lease::native_intent)
+            .is_some_and(|handle| handle.operation_id() == operation_id);
+        if release_project_lease {
+            inner.recovery_projects.remove(task_id);
+        }
+        if inner.native_recovery_intents.is_empty() && !has_unresolved_persisted_participant {
+            inner.native_recovery_ceiling.take();
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    pub(super) fn finish_settled_native_intent(
+        &self,
+        _app: &AppHandle,
+        _task_id: &str,
+        _attempt_id: &str,
+    ) {
+        self.drain_settled_native_intents();
     }
 
     pub(crate) fn changed(&self, app: &AppHandle, task_id: Option<&str>) {
@@ -550,7 +1452,7 @@ Ok(result)}
     }
 
     pub(crate) fn recover(&self, app: &AppHandle, r: TaskRecover) -> Result<Task, String> {
-        self.with(app,|i|{
+        let task = self.with(app,|i|{
 
         let s=i.store.as_mut().unwrap();
 
@@ -578,10 +1480,14 @@ return Err("Review retained observations and acknowledge uncertain effects after
         t.status_message="Effects explicitly reviewed. A new explicit Send or Continue may use complete observed context; no input was replayed.".into();
 
         for a in &mut t.attempts{
-if a.effects_state!="settled"{
+if a.effects_state!="settled" || a.state=="recovery_required"{
+a.state="stopped".into();
 a.effects_state="reviewed".into();
 }
 }
+
+        t.active_attempt_id=None;
+        t.active_account_id=None;
 
         if s.directory_identity(&t.task_id)?==(0,0){
 s.adopt_directory(&t.task_id,workspace(Path::new(&t.cwd))?.1)?;
@@ -591,6 +1497,19 @@ s.adopt_directory(&t.task_id,workspace(Path::new(&t.cwd))?.1)?;
 
         s.mutate_task(&r,&r.operation_id,&t,None)?;
 
+        #[cfg(target_os = "macos")]
+        if !i.native_recovery_intents.values().any(|participant| {
+            participant.task_id == t.task_id
+        })
+            && !i
+                .recovery_projects
+                .get(&t.task_id)
+                .and_then(crate::project_write_guard::Lease::native_intent)
+                .is_some()
+        {
+            i.recovery_projects.remove(&t.task_id);
+        }
+        #[cfg(not(target_os = "macos"))]
         i.recovery_projects.remove(&t.task_id);
 
         for freeze in i.freezes.values_mut(){
@@ -601,7 +1520,8 @@ freeze.3=true;
 
         Ok(t)
       }
-)
+    )?;
+        Ok(task)
     }
 
     pub(crate) fn prepare_switch(&self, app: &AppHandle, r: SwitchPrepare) -> Result<Task, String> {
@@ -1064,9 +1984,15 @@ pub(super) fn capabilities() -> Vec<Capability> {
 let kind=NativeKind::from_cli(cli);
 
 let available=super::native_accounts::available(cli);
+let supported_host_job=super::native_evidence::native_host_kernel_admitted();
+let managed=available&&supported_host_job&&cli!=TitleCli::Agy&&(cli!=TitleCli::Pi||cfg!(all(target_os="macos",target_arch="aarch64")));
 
 Capability{
-cli,account_terminal:available,managed_execution:available&&cli!=TitleCli::Agy&&(cli!=TitleCli::Pi||cfg!(all(target_os="macos",target_arch="aarch64"))),versions:kind.map(|k|k.versions().iter().map(|s|(*s).into()).collect()).unwrap_or_default(),cross_account_native_resume:false,reviewed_transfer:available&&cli==TitleCli::Pi,stop_and_continue_qualified:false,stop_and_continue_reason:Some("Remote and tool-specific effects are not qualified for stop and continue.".into()),reason:if available{
+cli,account_terminal:available,managed_execution:managed,versions:kind.map(|k|k.versions().iter().map(|s|(*s).into()).collect()).unwrap_or_default(),cross_account_native_resume:false,reviewed_transfer:managed&&cli==TitleCli::Pi,stop_and_continue_qualified:false,stop_and_continue_reason:Some("Remote and tool-specific effects are not qualified for stop and continue.".into()),reason:if available && cli==TitleCli::Agy{
+"Qualified account terminal only; native PTY confirmations apply."}
+else if available && !supported_host_job{
+"Native account terminals remain available, but managed task execution requires the exact admitted macOS ARM64 host-boundary kernel. This host is not currently admitted; managed execution fails closed."}
+else if available{
 if cli==TitleCli::Agy{
 "Qualified account terminal only; native PTY confirmations apply."}
 else{

@@ -3,7 +3,7 @@ import { active, addWorkspace, newSession, openFileTab } from "../../src/model";
 import { buffer, mockDesktop } from "./desktop";
 import { mockRemoteAccount } from "./remote-auth";
 
-test("workspace disclosures list and select tabs without activating hidden terminals", async ({
+test("workspace disclosures list and select every open panel without activating hidden terminals", async ({
   page,
 }, testInfo) => {
   let session = addWorkspace(
@@ -64,31 +64,45 @@ test("workspace disclosures list and select tabs without activating hidden termi
   await page.goto("/");
   await expect(page.locator(".xterm-screen")).toBeVisible();
   const list = page.getByRole("navigation", { name: "Workspace list" });
-  const voiceTabs = list.getByRole("list", {
-    name: "Tabs in Voice",
+  const voiceItems = list.getByRole("list", {
+    name: "Open items in Voice",
     exact: true,
   });
-  const benchTabs = list.getByRole("list", {
-    name: "Tabs in Bench",
+  const benchItems = list.getByRole("list", {
+    name: "Open items in Bench",
     exact: true,
   });
   const toggleVoice = list.getByRole("button", {
-    name: /^(Expand|Collapse) tabs in Voice$/,
+    name: /^(Expand|Collapse) items in Voice$/,
   });
   await expect(toggleVoice).toHaveAttribute("aria-expanded", "false");
-  await expect(voiceTabs).toBeHidden();
+  await expect(voiceItems).toBeHidden();
   await toggleVoice.focus();
   await page.keyboard.press("Enter");
   await list
-    .getByRole("button", { name: "Expand tabs in Bench", exact: true })
+    .getByRole("button", { name: "Expand items in Bench", exact: true })
     .click();
   await expect(toggleVoice).toHaveAttribute("aria-expanded", "true");
-  await expect(voiceTabs.getByRole("button")).toHaveText([
-    "Terminal",
+  const voicePanels = voiceItems.locator(".workspace-open-item");
+  await expect(voicePanels.locator(".workspace-item-label")).toHaveText([
+    "Terminal 1",
     "README.md",
     commit.subject,
   ]);
-  await expect(benchTabs).toBeVisible();
+  await expect(benchItems).toBeVisible();
+  const firstTabId = voice.tabs[0].id;
+  await expect(voicePanels.nth(0)).toHaveAttribute(
+    "data-owner-tab-id",
+    firstTabId,
+  );
+  await expect(voicePanels.nth(1)).toHaveAttribute(
+    "data-owner-tab-id",
+    "readme",
+  );
+  await expect(voicePanels.nth(2)).toHaveAttribute(
+    "data-owner-tab-id",
+    "commit",
+  );
   await expect(list.getByRole("button", { name: /^Bench / })).toHaveAttribute(
     "aria-current",
     "true",
@@ -109,10 +123,9 @@ test("workspace disclosures list and select tabs without activating hidden termi
       ),
     ),
   ).toBe(false);
-  const readme = voiceTabs.getByRole("button", {
-    name: "README.md",
-    exact: true,
-  });
+  const readme = voiceItems.locator(
+    '.workspace-open-item[data-workspace-pane-id="readme"]',
+  );
   await readme.click();
   await expect(page.locator(".cm-content")).toBeVisible();
   await expect(page.getByRole("tab", { selected: true })).toHaveText(
@@ -124,51 +137,51 @@ test("workspace disclosures list and select tabs without activating hidden termi
   await page.locator(".cm-content").focus();
   await page.keyboard.press("Control+a");
   await page.keyboard.insertText("Keep this workspace draft");
-  await benchTabs
-    .getByRole("button", { name: "Terminal", exact: true })
+  await benchItems
+    .getByRole("button", { name: "Terminal 1", exact: true })
     .click();
   await expect(page.locator(".xterm-screen")).toBeVisible();
   await readme.click();
   await expect(page.locator(".cm-content")).toHaveText(
     "Keep this workspace draft",
   );
-  await voiceTabs
-    .getByRole("button", { name: commit.subject, exact: true })
+  await voiceItems
+    .locator('.workspace-open-item[data-workspace-pane-id="commit"]')
     .click();
   await expect(page.getByRole("article")).toContainText(commit.subject);
   await expect.poll(starts).toBe(1);
-  await voiceTabs
-    .getByRole("button", { name: "Terminal", exact: true })
+  await voiceItems
+    .locator(`.workspace-open-item[data-owner-tab-id="${firstTabId}"]`)
     .click();
   await expect(page.locator(".xterm-screen")).toBeVisible();
   await expect.poll(starts).toBe(2);
   await page.keyboard.press("Control+Shift+t");
-  await expect(voiceTabs.getByRole("button")).toHaveCount(4);
   await expect(
-    voiceTabs.getByRole("button", { name: "Terminal 4", exact: true }),
-  ).toHaveAttribute("aria-current", "true");
+    page.getByRole("tab", { name: "Terminal 4", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+  await expect(voiceItems.locator(".workspace-open-item")).toHaveCount(4);
   await page
     .getByRole("button", { name: "Close Terminal 4", exact: true })
     .click();
-  await expect(voiceTabs.getByRole("button")).toHaveCount(3);
+  await expect(voiceItems.locator(".workspace-open-item")).toHaveCount(3);
   await readme.click();
   await toggleVoice.focus();
   await page.keyboard.press("Space");
-  await expect(voiceTabs).toBeHidden();
-  await expect(benchTabs).toBeVisible();
+  await expect(voiceItems).toBeHidden();
+  await expect(benchItems).toBeVisible();
   await expect(page.locator(".cm-content")).toHaveText(
     "Keep this workspace draft",
   );
   await page.keyboard.press("Space");
-  await expect(voiceTabs).toBeVisible();
+  await expect(voiceItems).toBeVisible();
   await page.screenshot({
-    path: testInfo.outputPath("workspace-tabs-dark.png"),
+    path: testInfo.outputPath("workspace-panels-dark.png"),
   });
   await page.setViewportSize({ width: 800, height: 420 });
   await page.emulateMedia({ colorScheme: "light" });
   await expect(toggleVoice).toBeInViewport();
   await expect(
-    voiceTabs.getByRole("button", { name: commit.subject, exact: true }),
+    voiceItems.locator('.workspace-open-item[data-workspace-pane-id="commit"]'),
   ).toBeInViewport();
   expect(
     await list.evaluate(
@@ -176,7 +189,7 @@ test("workspace disclosures list and select tabs without activating hidden termi
     ),
   ).toBe(true);
   await page.screenshot({
-    path: testInfo.outputPath("workspace-tabs-light-minimum.png"),
+    path: testInfo.outputPath("workspace-panels-light-minimum.png"),
   });
 });
 

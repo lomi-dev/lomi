@@ -98,7 +98,7 @@ async function setup(
     page.getByRole("heading", { name: "Agent control" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Choose a client" }),
+    page.getByRole("heading", { name: "Choose your agent" }),
   ).toBeVisible();
 }
 
@@ -137,7 +137,7 @@ async function chooseClient(page: Page, name: string) {
 async function backToAgents(page: Page) {
   await page.getByRole("button", { name: "Back to agents" }).click();
   await expect(
-    page.getByRole("heading", { name: "Choose a client", exact: true }),
+    page.getByRole("heading", { name: "Choose your agent", exact: true }),
   ).toBeVisible();
   await expect(clientList(page)).toBeVisible();
 }
@@ -171,7 +171,7 @@ test("installs per client and reports partial results for bulk installation", as
   await expect(clientButton(page, "Cursor CLI")).toBeVisible();
   await expect(codingAgents.getByRole("button")).toHaveCount(1);
   await expect(
-    page.getByRole("heading", { name: "Choose a client", exact: true }),
+    page.getByRole("heading", { name: "Choose your agent", exact: true }),
   ).toBeVisible();
   expect(await calls(page, "install_mcp_client")).toHaveLength(0);
   await search.fill("agent-with-no-match");
@@ -182,7 +182,7 @@ test("installs per client and reports partial results for bulk installation", as
     page.getByRole("button", { name: "Clear search" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Choose a client", exact: true }),
+    page.getByRole("heading", { name: "Choose your agent", exact: true }),
   ).toBeVisible();
   expect(await calls(page, "install_mcp_client")).toHaveLength(0);
   await page.getByRole("button", { name: "Clear search" }).click();
@@ -419,7 +419,7 @@ test("shows the selected catalog and installs only pending clients", async ({
     page.getByText("No agents match “no-client-matches-this-query”."),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Choose a client", exact: true }),
+    page.getByRole("heading", { name: "Choose your agent", exact: true }),
   ).toBeVisible();
   expect(await calls(page, "install_mcp_client")).toHaveLength(0);
   await page.getByRole("button", { name: "Clear search" }).click();
@@ -474,7 +474,7 @@ test("refresh removes unavailable clients from selection and bulk setup", async 
   });
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "Choose a client", exact: true }),
+    page.getByRole("heading", { name: "Choose your agent", exact: true }),
   ).toBeVisible();
   const agents = clientList(page);
   await expect(agents.getByRole("button")).toHaveCount(2);

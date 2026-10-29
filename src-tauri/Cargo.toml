@@ -19,6 +19,9 @@ exclude = ["crates/lomi-remote-crypto/vendor/snow", "vendor/glib", "vendor/tao"]
 glib = { path = "vendor/glib" }
 # Preserve AppKit exception propagation through the native event callbacks.
 tao = { path = "vendor/tao" }
+# Share the canonical host's terminal grid and parser sources.
+alacritty_terminal = { path = "../../lomi-remote/vendor/alacritty_terminal" }
+vte = { path = "../../lomi-remote/vendor/vte" }
 
 [lib]
 # A distinct library name avoids a Windows artifact name collision with the binary.
@@ -31,11 +34,12 @@ incremental = false
 
 [features]
 native-smoke = []
-remote-probe = ["native-smoke"]
+remote-probe = ["native-smoke", "dep:lomi-remote-crypto"]
 chat-probe = ["native-smoke"]
 android-probe = ["native-smoke", "dep:turbojpeg", "objc2/exception"]
 remote-visual-probe = []
 mcp-probe = ["objc2-app-kit/NSGraphicsContext"]
+experimental-macos-coalition-cleanup = ["lomi-terminal/experimental-macos-coalition-cleanup"]
 
 [[example]]
 name = "macos-traffic-lights"
@@ -49,14 +53,24 @@ path = "../tests/native/macos-keyboard-exception.rs"
 protoc-bin-vendored = { version = "3.2.0" }
 tauri-build = { version = "2", features = [] }
 tonic-prost-build = { version = "0.14.6" }
+lomi-remote-protocol = { path = "../../lomi-remote/crates/lomi-remote-protocol" }
 
 [dependencies]
-lomi-remote-crypto = { path = "crates/lomi-remote-crypto" }
+lomi-remote-crypto = { package = "lomi-remote-crypto-desktop", path = "crates/lomi-remote-crypto", optional = true }
+lomi-remote-crypto-canonical = { package = "lomi-remote-crypto", path = "../../lomi-remote/crates/lomi-remote-crypto" }
 zeroize = { version = "=1.8.2", features = ["serde"] }
 tokio-tungstenite = { version = "=0.28.0", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
 lomi-mcp = { path = "crates/lomi-mcp" }
 lomi-control-core = { path = "crates/lomi-control-core" }
 lomi-control-protocol = { path = "crates/lomi-control-protocol" }
+lomi-host = { path = "../../lomi-remote/crates/lomi-host" }
+lomi-git = { path = "../../lomi-remote/crates/lomi-git" }
+lomi-files = { path = "../../lomi-remote/crates/lomi-files" }
+lomi-native-files = { path = "../../lomi-remote/crates/lomi-native-files" }
+lomi-native-project-files = { path = "../../lomi-remote/crates/lomi-native-project-files" }
+lomi-platform = { path = "../../lomi-remote/crates/lomi-platform" }
+lomi-remote-protocol = { path = "../../lomi-remote/crates/lomi-remote-protocol" }
+lomi-terminal = { path = "../../lomi-remote/crates/lomi-terminal" }
 tauri = { version = "2", features = ["macos-private-api", "unstable", "tray-icon"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
@@ -91,7 +105,7 @@ tonic-prost = { version = "0.14.6" }
 prost = { version = "0.14.4" }
 tokio = { version = "1", features = ["time", "sync", "macros", "process", "io-util", "fs", "net"] }
 reqwest = { version = "0.13.4", default-features = false, features = ["rustls-no-provider"] }
-rustls = { version = "0.23", default-features = false, features = ["ring"] }
+rustls = { version = "=0.23.46", default-features = false, features = ["ring"] }
 turbojpeg = { version = "1.5.1", default-features = false, features = ["cmake", "require-simd"], optional = true }
 ring = { version = "0.17.14" }
 base64 = { version = "0.22.1" }
@@ -105,6 +119,10 @@ tauri-plugin-single-instance = "=2.4.2"
 keyring = { version = "=3.6.3", features = ["sync-secret-service", "crypto-rust"] }
 gtk = "0.18"
 webkit2gtk = "2"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = "=0.3.103"
+web-sys = "=0.3.103"
 
 [target.'cfg(windows)'.dependencies]
 keyring = { version = "=3.6.3", features = ["windows-native"] }

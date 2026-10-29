@@ -584,9 +584,6 @@ fn bundle(root: &Path, id: &str) -> Result<Bundle, String> {
 
 fn theme_root(app: &tauri::AppHandle, id: &str) -> Result<PathBuf, String> {
     valid_id(id)?;
-    if builtin_bundle(id).is_some() {
-        return Err("Built-in themes have no editable folder. Duplicate the theme first.".into());
-    }
     if id.starts_with("@plugin-") {
         return crate::plugins::theme_directories(app)?
             .into_iter()
@@ -597,9 +594,6 @@ fn theme_root(app: &tauri::AppHandle, id: &str) -> Result<PathBuf, String> {
     inside(&library(app)?, id)
 }
 fn app_bundle(app: &tauri::AppHandle, id: &str) -> Result<Bundle, String> {
-    if let Some(bundle) = builtin_bundle(id) {
-        return Ok(bundle);
-    }
     if !id.starts_with("@plugin-") {
         return bundle(&library(app)?, id);
     }
@@ -612,21 +606,6 @@ fn app_bundle(app: &tauri::AppHandle, id: &str) -> Result<Bundle, String> {
         raw,
         directory: folder.to_string_lossy().into_owned(),
         migration,
-        read_only: true,
-    })
-}
-fn builtin_bundle(id: &str) -> Option<Bundle> {
-    let raw = match id {
-        "@builtin-deepmono" => include_str!("../../themes/deepmono.json"),
-        _ => return None,
-    };
-    Some(Bundle {
-        id: id.into(),
-        raw: raw.into(),
-        revision: hash(raw.as_bytes()),
-        icon_theme: None,
-        directory: String::new(),
-        migration: Vec::new(),
         read_only: true,
     })
 }
@@ -656,7 +635,8 @@ fn read_preferences(path: &Path) -> Result<Preferences, String> {
 }
 
 fn parse_preferences(bytes: &[u8]) -> Result<Preferences, String> {
-    let value: Preferences = serde_json::from_slice(bytes).map_err(|error| error.to_string())?;
+    let mut value: Preferences =
+        serde_json::from_slice(bytes).map_err(|error| error.to_string())?;
     if value.version != 1 {
         return Err("Unsupported theme settings version.".into());
     }
@@ -665,6 +645,9 @@ fn parse_preferences(bytes: &[u8]) -> Result<Preferences, String> {
         .flatten()
     {
         valid_id(id)?;
+    }
+    if value.active.as_deref() == Some("@builtin-deepmono") {
+        value.active = None;
     }
     Ok(value)
 }
@@ -716,6 +699,9 @@ pub(crate) fn agent_prepare(
         .transpose()
         .map_err(|_| ErrorCode::UnsupportedCapability)?
         .unwrap_or_else(|| serde_json::json!({"version":1,"active":null}));
+    if stored["active"] == "@builtin-deepmono" {
+        stored["active"] = Value::Null;
+    }
     match patch {
         SettingsPatch::ThemeBuiltin { value } => stored["active"] = serde_json::json!(value.id()),
         SettingsPatch::ThemeAppearance { value } => stored["appearance"] = serde_json::json!(value),
@@ -827,7 +813,6 @@ pub fn list_themes(window: Window, app: tauri::AppHandle) -> Result<Catalog, Str
         let entry = entry.map_err(|error| error.to_string())?;
         let id = entry.file_name().to_string_lossy().into_owned();
         if id.starts_with('.')
-            || builtin_bundle(&id).is_some()
             || !entry
                 .file_type()
                 .map_err(|error| error.to_string())?
@@ -958,9 +943,6 @@ pub fn save_theme_manifest(
     let _guard = state.lock.lock().map_err(|e| e.to_string())?;
     if id.starts_with("@plugin-") {
         return Err("Duplicate a plugin theme before editing it.".into());
-    }
-    if builtin_bundle(&id).is_some() {
-        return Err("Duplicate a built-in theme before editing it.".into());
     }
     let root = library(&app)?;
     save_manifest(&root, &id, &expected, &raw)?;
@@ -1343,37 +1325,47 @@ mod tests {
     use super::*;
 
     #[test]
-    fn builtins_are_embedded_read_only_and_duplicate_into_editable_packages() {
+    fn lomi_duplicates_into_an_editable_package() {
         let root = tempfile::tempdir().unwrap();
-        let deepmono = builtin_bundle("@builtin-deepmono").unwrap();
-        assert!(deepmono.read_only);
-        assert!(deepmono.directory.is_empty());
-        assert_eq!(deepmono.revision, hash(deepmono.raw.as_bytes()));
-        let data = parse_raw(&deepmono.raw).unwrap();
-        validate_modern(root.path(), &data).unwrap();
-        assert_eq!(data["name"], "DeepMono");
-        assert_eq!(icons::kind(&data), "color");
-        assert!(builtin_bundle("missing-theme").is_none());
-
-        let default_id = duplicate(root.path(), None).unwrap();
-        assert_eq!(
-            manifest(&root.path().join(default_id)).unwrap()["name"],
-            "Lomi"
-        );
-        let copied = duplicate_builtin(root.path(), &deepmono.raw).unwrap();
-        let copy = bundle(root.path(), &copied).unwrap();
+        let id = duplicate(root.path(), None).unwrap();
+        let copy = bundle(root.path(), &id).unwrap();
         assert!(!copy.read_only);
         assert!(!copy.directory.is_empty());
-        assert_eq!(copy.raw, deepmono.raw);
+        assert_eq!(copy.raw, include_str!("../../themes/lomi.json"));
+        let data = parse_raw(&copy.raw).unwrap();
+        validate_modern(root.path(), &data).unwrap();
+        assert_eq!(data["name"], "Lomi");
+        assert_eq!(icons::kind(&data), "color");
+    }
 
+    #[test]
+    fn legacy_deepmono_preferences_use_lomi_without_changing_saved_selections() {
+        let root = tempfile::tempdir().unwrap();
         let path = root.path().join("theme-settings.json");
         assert!(read_preferences(&path).unwrap().active.is_none());
-        let preferences = Preferences {
-            active: Some(deepmono.id),
-            ..Preferences::builtin()
-        };
-        fs::write(&path, serde_json::to_vec(&preferences).unwrap()).unwrap();
-        assert_eq!(read_preferences(&path).unwrap().active, preferences.active);
+        let raw = br#"{"version":1,"active":"@builtin-deepmono","appearance":"light","fileIcons":"file-icons","productIcons":"product-icons","customCss":true}"#;
+        fs::write(&path, raw).unwrap();
+        let preferences = read_preferences(&path).unwrap();
+        assert!(preferences.active.is_none());
+        assert_eq!(preferences.appearance, Appearance::Light);
+        assert_eq!(preferences.file_icons.as_deref(), Some("file-icons"));
+        assert_eq!(preferences.product_icons.as_deref(), Some("product-icons"));
+        assert!(preferences._legacy_custom_css);
+        assert_eq!(fs::read(&path).unwrap(), raw);
+
+        let mut value: Value = serde_json::from_slice(raw).unwrap();
+        value["active"] = serde_json::json!("missing-theme");
+        let preferences = parse_preferences(&serde_json::to_vec(&value).unwrap()).unwrap();
+        assert_eq!(preferences.active.as_deref(), Some("missing-theme"));
+        value["active"] = serde_json::json!("@builtin-deepmono");
+        value["version"] = serde_json::json!(2);
+        assert!(parse_preferences(&serde_json::to_vec(&value).unwrap()).is_err());
+        value["version"] = serde_json::json!(1);
+        value["fileIcons"] = serde_json::json!("@builtin-deepmono");
+        let preferences = parse_preferences(&serde_json::to_vec(&value).unwrap()).unwrap();
+        assert_eq!(preferences.file_icons.as_deref(), Some("@builtin-deepmono"));
+        value["fileIcons"] = serde_json::json!("../invalid");
+        assert!(parse_preferences(&serde_json::to_vec(&value).unwrap()).is_err());
     }
 
     #[test]
@@ -1695,9 +1687,6 @@ pub fn duplicate_theme(
 ) -> Result<String, String> {
     authorize(window.label(), true)?;
     let _guard = state.lock.lock().map_err(|e| e.to_string())?;
-    if let Some(bundle) = id.as_deref().and_then(builtin_bundle) {
-        return duplicate_builtin(&library(&app)?, &bundle.raw);
-    }
     if id.is_none() && kind.as_deref().is_some_and(|kind| kind != "color") {
         let root = library(&app)?;
         let stage = tempfile::tempdir_in(&root).map_err(|e| e.to_string())?;
@@ -1709,11 +1698,6 @@ pub fn duplicate_theme(
     }
     let source = id.as_ref().map(|id| theme_root(&app, id)).transpose()?;
     duplicate(&library(&app)?, source.as_deref())
-}
-fn duplicate_builtin(root: &Path, raw: &str) -> Result<String, String> {
-    let stage = tempfile::tempdir_in(root).map_err(|e| e.to_string())?;
-    fs::write(stage.path().join("theme.jsonc"), raw).map_err(|e| e.to_string())?;
-    duplicate(root, Some(stage.path()))
 }
 fn duplicate(root: &Path, source: Option<&Path>) -> Result<String, String> {
     let stage = tempfile::Builder::new()

@@ -174,29 +174,34 @@ export default function AgentControlStartup() {
       {eligible && readyToPrompt && (
         <Modal
           protectTheme
+          tone="warning"
           title="Start the MCP server automatically?"
           className="agent-control-startup-dialog"
           descriptionId="agent-control-startup-description"
           initialFocus={disabledButton}
+          closeDisabled={saving}
           onClose={() => {
             if (saving) return;
             setDismissed(true);
             setReadyToPrompt(false);
           }}
         >
-          <div className="dialog-form">
-            <p id="agent-control-startup-description">
-              Enabling starts the MCP server now and on every Lomi launch. Local
-              clients may request access to Lomi workspaces. Lomi approvals
-              follow the YOLO mode choice in Settings → Agent control; your MCP
-              client's own confirmation prompts remain independent. You can
-              change this startup choice later in Settings → Agent control.
-            </p>
-            {saveError && (
-              <p className="keybindings-error" role="alert">
-                Could not save your choice: {saveError}
+          <div className="dialog-form dialog-layout">
+            <div className="dialog-content">
+              <p id="agent-control-startup-description">
+                Enabling starts the MCP server now and on every Lomi launch.
+                Local clients may request access to Lomi workspaces. Lomi
+                approvals follow the YOLO mode choice in Settings → Agent
+                control; your MCP client's own confirmation prompts remain
+                independent. You can change this startup choice later in
+                Settings → Agent control.
               </p>
-            )}
+              {saveError && (
+                <p className="keybindings-error" role="alert">
+                  Could not save your choice: {saveError}
+                </p>
+              )}
+            </div>
             <div className="dialog-actions">
               <button
                 ref={disabledButton}

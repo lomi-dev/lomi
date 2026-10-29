@@ -51,6 +51,8 @@ pub struct Notification {
     #[serde(default)]
     agent: Option<TitleCli>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pane_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     source: Option<ApplicationNotificationSource>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     action: Option<ApplicationNotificationAction>,
@@ -75,7 +77,7 @@ struct Stored {
     items: Vec<Notification>,
 }
 
-fn valid_id(id: &str) -> bool {
+pub(crate) fn valid_id(id: &str) -> bool {
     !id.is_empty() && id.len() <= 128 && id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-')
 }
 
@@ -90,6 +92,8 @@ impl Snapshot {
             || self.items.len() > MAX_ITEMS
             || self.items.iter().any(|item| {
                 !valid_id(&item.id)
+                    || item.pane_id.as_deref().is_some_and(|id| !valid_id(id))
+                    || (item.source.is_some() && item.pane_id.is_some())
                     || !item
                         .id
                         .strip_prefix("notification-")
@@ -273,10 +277,23 @@ fn publish(app: &tauri::AppHandle, snapshot: Snapshot) -> Result<Snapshot, Strin
     Ok(snapshot)
 }
 
+#[cfg(test)]
 fn append(
     path: &Path,
     kind: NotificationKind,
     agent: Option<TitleCli>,
+    title: &str,
+    body: &str,
+    now: u64,
+) -> Result<Snapshot, String> {
+    append_targeted(path, kind, agent, None, title, body, now)
+}
+
+fn append_targeted(
+    path: &Path,
+    kind: NotificationKind,
+    agent: Option<TitleCli>,
+    pane_id: Option<&str>,
     title: &str,
     body: &str,
     now: u64,
@@ -287,6 +304,7 @@ fn append(
             id: String::new(),
             kind,
             agent,
+            pane_id: pane_id.map(str::to_owned),
             source: None,
             action: None,
             title: title.into(),
@@ -298,6 +316,11 @@ fn append(
 }
 
 fn append_item(path: &Path, mut item: Notification) -> Result<Snapshot, String> {
+    if item.pane_id.as_deref().is_some_and(|id| !valid_id(id))
+        || (item.source.is_some() && item.pane_id.is_some())
+    {
+        return Err("Invalid notification target.".into());
+    }
     if item.title.is_empty()
         || !valid_text(&item.title, 100)
         || !valid_text(&item.body, if item.source.is_some() { 4000 } else { 300 })
@@ -363,6 +386,7 @@ pub fn record_app_notification(
             id: String::new(),
             kind,
             agent: None,
+            pane_id: None,
             source: Some(source),
             action,
             title,
@@ -380,6 +404,7 @@ pub(crate) fn record(
     app: &tauri::AppHandle,
     kind: NotificationKind,
     agent: Option<TitleCli>,
+    pane_id: Option<&str>,
     title: &str,
     body: &str,
 ) -> Result<(), String> {
@@ -387,7 +412,7 @@ pub(crate) fn record(
     let _guard = state.0.lock().map_err(|error| error.to_string())?;
     publish(
         app,
-        append(&path(app)?, kind, agent, title, body, timestamp()?)?,
+        append_targeted(&path(app)?, kind, agent, pane_id, title, body, timestamp()?)?,
     )?;
     Ok(())
 }
@@ -498,6 +523,7 @@ mod tests {
             id: String::new(),
             kind: NotificationKind::Info,
             agent: None,
+            pane_id: None,
             source: Some(ApplicationNotificationSource::App),
             action: None,
             title: "Application event".into(),
@@ -805,6 +831,70 @@ mod tests {
         assert_eq!(data["version"], 2);
         assert_eq!(data["items"][1]["agent"], "codex");
         assert_eq!(data["items"][2]["agent"], "claude");
+    }
+
+    #[test]
+    fn legacy_items_load_without_pane_ids_and_new_targets_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notifications.json");
+        let legacy = r#"{"version":2,"revision":1,"items":[{"id":"notification-1","kind":"finished","agent":"codex","title":"Finished","body":"","createdAt":1,"read":false}]}"#;
+        fs::write(&path, legacy).unwrap();
+
+        let loaded = read(&path).unwrap();
+        assert_eq!(loaded.items[0].pane_id, None);
+        assert_eq!(fs::read_to_string(&path).unwrap(), legacy);
+
+        let target = "12345678-1234-4234-8234-123456789abc";
+        let appended = append_targeted(
+            &path,
+            NotificationKind::Attention,
+            Some(TitleCli::Claude),
+            Some(target),
+            "Input needed",
+            "Project",
+            2,
+        )
+        .unwrap();
+        assert_eq!(appended.revision, 2);
+        assert_eq!(appended.items[0].pane_id.as_deref(), Some(target));
+        assert_eq!(appended.items[1].pane_id, None);
+
+        let saved: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(saved["version"], 2);
+        assert_eq!(saved["items"][0]["paneId"], target);
+        assert!(saved["items"][1].get("paneId").is_none());
+        assert_eq!(
+            read(&path).unwrap().items[0].pane_id.as_deref(),
+            Some(target)
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_pane_targets_and_application_attribution_without_changing_history() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notifications.json");
+        append(&path, NotificationKind::Finished, None, "Finished", "", 1).unwrap();
+        let before = fs::read(&path).unwrap();
+
+        let too_long = "x".repeat(129);
+        for target in ["", "not/a-pane", too_long.as_str()] {
+            assert!(append_targeted(
+                &path,
+                NotificationKind::Attention,
+                None,
+                Some(target),
+                "Input needed",
+                "Project",
+                2,
+            )
+            .is_err());
+            assert_eq!(fs::read(&path).unwrap(), before);
+        }
+
+        let mut application = app_item("Operational event");
+        application.pane_id = Some("12345678-1234-4234-8234-123456789abc".into());
+        assert!(append_item(&path, application).is_err());
+        assert_eq!(fs::read(&path).unwrap(), before);
     }
 
     #[test]

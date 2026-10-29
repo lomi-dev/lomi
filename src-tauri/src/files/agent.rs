@@ -19,6 +19,98 @@ pub(crate) fn encode_preserving(original: &[u8], content: &str) -> Result<Vec<u8
     super::editor::encode(content, encoding).map_err(|_| ErrorCode::ResourceExhausted)
 }
 
+pub(crate) fn publish_editor_save(
+    app: &tauri::AppHandle,
+    destination: &std::path::Path,
+    project_root: &str,
+    relative_path: &str,
+    expected_disk_revision: &str,
+    content: &str,
+    principal: &str,
+    operation_id: &str,
+    check: &mut dyn FnMut() -> Result<(), ErrorCode>,
+) -> Result<String, lomi_control_core::atomic_file::ReplaceError> {
+    use lomi_control_core::atomic_file::ReplaceError;
+    use lomi_remote_protocol::{
+        ipc::{LocalNativeEditorEffect, LocalNativeRelativePath, LocalRootPath},
+        HostKeyCommitmentHex,
+    };
+
+    let effect = LocalNativeEditorEffect::Save {
+        root: LocalRootPath::try_from(project_root.to_owned())
+            .map_err(|_| ErrorCode::UnsupportedCapability)?,
+        relative: LocalNativeRelativePath::try_from(relative_path.to_owned())
+            .map_err(|_| ErrorCode::UnsupportedCapability)?,
+        expected_revision: HostKeyCommitmentHex::try_from(expected_disk_revision.to_owned())
+            .map_err(|_| ErrorCode::RevisionConflict)?,
+    };
+    let result = crate::native_file_effects::save_guarded(
+        app,
+        destination,
+        content,
+        effect,
+        crate::native_file_effects::ExpectedResult::File,
+        principal,
+        operation_id,
+        check,
+    )
+    .map_err(|error| match error {
+        crate::native_file_effects::GuardedSaveError::Authorization(code)
+        | crate::native_file_effects::GuardedSaveError::Before(code) => ReplaceError::Before(code),
+        crate::native_file_effects::GuardedSaveError::Uncertain => ReplaceError::Uncertain,
+    })?;
+    match result {
+        lomi_native_files::NativeSaveResult::File(file)
+            if file.path == destination.to_str().unwrap_or_default()
+                && file.relative == relative_path =>
+        {
+            Ok(file.revision)
+        }
+        _ => Err(ReplaceError::Uncertain),
+    }
+}
+
+pub(crate) fn publish_project_mutation(
+    app: &tauri::AppHandle,
+    root: &std::path::Path,
+    principal: &str,
+    operation: &str,
+    mutation: &lomi_native_project_files::NativeProjectMutation,
+    check: &mut dyn FnMut() -> Result<(), ErrorCode>,
+) -> Result<
+    lomi_native_project_files::NativeProjectMutationResult,
+    lomi_native_project_files::NativeProjectMutationError,
+> {
+    crate::native_file_effects::project_mutation_guarded(
+        app, root, principal, operation, mutation, check,
+    )
+}
+
+pub(crate) fn publish_artifact_create(
+    app: &tauri::AppHandle,
+    root: &std::path::Path,
+    principal: &str,
+    operation: &str,
+    relative_path: &str,
+    expected_parent_revision: &str,
+    bytes: &[u8],
+    check: &mut dyn FnMut() -> Result<(), ErrorCode>,
+) -> Result<
+    lomi_native_project_files::NativeArtifactCreated,
+    lomi_native_project_files::NativeProjectMutationError,
+> {
+    crate::native_file_effects::artifact_create_guarded(
+        app,
+        root,
+        principal,
+        operation,
+        relative_path,
+        expected_parent_revision,
+        bytes,
+        check,
+    )
+}
+
 pub(crate) fn with_writer<T>(
     app: &tauri::AppHandle,
     write: impl FnOnce() -> Result<T, ErrorCode>,

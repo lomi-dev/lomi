@@ -277,6 +277,26 @@ pub(crate) struct AccountRecover {
 pub(super) struct NativeOperation {
     #[serde(default)]
     pub host_boundary_owned: bool,
+    /// Persisted before registering the cross-process native writer intent.
+    /// Legacy owned Attempt records default to false and are not restored as
+    /// participants in the Host writer protocol.
+    #[serde(default)]
+    pub native_writer_participant: bool,
+    /// Host returned independently verified Finished for this participant.
+    #[serde(default)]
+    pub native_writer_finish_observed: bool,
+    /// The local durable ACK outbox still needs an exact Host acknowledgment.
+    #[serde(default)]
+    pub native_writer_ack_pending: bool,
+    /// Persisted while the Attempt is still Held, immediately before bindJob
+    /// may be sent to the Host.
+    #[serde(default)]
+    pub native_writer_bind_attempted: bool,
+    /// The Host durably sealed a no-binding rejection for this bind attempt.
+    #[serde(default)]
+    pub native_writer_bind_rejected: bool,
+    #[serde(default)]
+    pub native_writer_no_start_observed: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub physical_account_root: Option<String>,
     pub operation_id: String,

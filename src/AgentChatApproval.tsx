@@ -110,72 +110,78 @@ export function useAgentChatApproval() {
         title="Send this message for the agent?"
         descriptionId={description}
         initialFocus={cancel}
+        closeDisabled={busy}
         onClose={() => {
           if (!busy) void decide(false);
         }}
       >
-        <div className="dialog-form" aria-busy={busy}>
-          <p id={description}>
-            Send the message, prior conversation context, system instructions
-            and listed attachments to {plan.provider} through{" "}
-            {plan.connectionName}. This may incur charges from your provider.
-          </p>
-          <dl className="agent-chat-send-details">
-            <dt>Conversation</dt>
-            <dd>{plan.conversationTitle}</dd>
-            <dt>Connection</dt>
-            <dd>
-              {plan.connectionName} ({plan.connectionId})
-            </dd>
-            <dt>Model</dt>
-            <dd>{plan.model}</dd>
-            <dt>Response limit</dt>
-            <dd>{plan.maxOutputTokens.toLocaleString()} tokens</dd>
-            <dt>Context</dt>
-            <dd>
-              {plan.messageCount.toLocaleString()} messages, including this
-              draft · {plan.contextBytes.toLocaleString()} bytes
-            </dd>
-          </dl>
-          <label>
-            Message to send
-            <textarea readOnly value={plan.draftText} rows={5} />
-          </label>
-          {plan.system ? (
-            <details>
-              <summary>System instructions included</summary>
-              <label>
-                System instructions
-                <textarea readOnly value={plan.system} rows={4} />
-              </label>
-            </details>
-          ) : (
-            <p>No system instructions.</p>
-          )}
-          {plan.attachments.length ? (
-            <details open>
-              <summary>{plan.attachments.length} attachments included</summary>
-              <ul>
-                {plan.attachments.map((file, index) => (
-                  <li key={index}>
-                    {file.name} · {file.mime} ·{" "}
-                    {file.byteLength.toLocaleString()} bytes
-                  </li>
-                ))}
-              </ul>
-            </details>
-          ) : (
-            <p>No attachments.</p>
-          )}
-          <p>
-            The price depends on your provider and token usage. Approval applies
-            only to this saved draft and this conversation’s current context.
-          </p>
-          {error && (
-            <p className="error-text" role="alert">
-              {error}
+        <div className="dialog-form dialog-layout" aria-busy={busy}>
+          <div className="dialog-content">
+            <p id={description}>
+              Send the message, prior conversation context, system instructions
+              and listed attachments to {plan.provider} through{" "}
+              {plan.connectionName}. This may incur charges from your provider.
             </p>
-          )}
+            <dl className="agent-chat-send-details">
+              <dt>Conversation</dt>
+              <dd>{plan.conversationTitle}</dd>
+              <dt>Connection</dt>
+              <dd>
+                {plan.connectionName} ({plan.connectionId})
+              </dd>
+              <dt>Model</dt>
+              <dd>{plan.model}</dd>
+              <dt>Response limit</dt>
+              <dd>{plan.maxOutputTokens.toLocaleString()} tokens</dd>
+              <dt>Context</dt>
+              <dd>
+                {plan.messageCount.toLocaleString()} messages, including this
+                draft · {plan.contextBytes.toLocaleString()} bytes
+              </dd>
+            </dl>
+            <label>
+              Message to send
+              <textarea readOnly value={plan.draftText} rows={5} />
+            </label>
+            {plan.system ? (
+              <details>
+                <summary>System instructions included</summary>
+                <label>
+                  System instructions
+                  <textarea readOnly value={plan.system} rows={4} />
+                </label>
+              </details>
+            ) : (
+              <p>No system instructions.</p>
+            )}
+            {plan.attachments.length ? (
+              <details open>
+                <summary>
+                  {plan.attachments.length} attachments included
+                </summary>
+                <ul>
+                  {plan.attachments.map((file, index) => (
+                    <li key={index}>
+                      {file.name} · {file.mime} ·{" "}
+                      {file.byteLength.toLocaleString()} bytes
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : (
+              <p>No attachments.</p>
+            )}
+            <p>
+              The price depends on your provider and token usage. Approval
+              applies only to this saved draft and this conversation’s current
+              context.
+            </p>
+            {error && (
+              <p className="error-text" role="alert">
+                {error}
+              </p>
+            )}
+          </div>
           <div className="dialog-actions">
             <button
               ref={cancel}

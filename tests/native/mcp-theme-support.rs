@@ -21,7 +21,7 @@ pub(super) async fn qualify_themes(
     javascript(main, "const m=await import('/src/editor-runtime.ts');const d=m.documents().find(d=>d.location.relative==='fixture.txt');window.__themeDocument=d;d.dispatch({changes:{from:0,to:d.state.doc.length,insert:'Theme retained draft 🙂\\n'}});return true;").await?;
     let mut evidence = Vec::new();
     for (case, patch) in [
-        ("create", json!({"type":"theme_builtin","value":"deepmono"})),
+        ("create", json!({"type":"theme_appearance","value":"dark"})),
         ("light", json!({"type":"theme_appearance","value":"light"})),
         ("dark", json!({"type":"theme_appearance","value":"dark"})),
         (
@@ -29,12 +29,12 @@ pub(super) async fn qualify_themes(
             json!({"type":"theme_appearance","value":"system"}),
         ),
         ("lomi", json!({"type":"theme_builtin","value":"lomi"})),
-        ("reject", json!({"type":"theme_builtin","value":"deepmono"})),
-        ("cancel", json!({"type":"theme_builtin","value":"deepmono"})),
-        ("stale", json!({"type":"theme_builtin","value":"deepmono"})),
+        ("reject", json!({"type":"theme_appearance","value":"light"})),
+        ("cancel", json!({"type":"theme_appearance","value":"light"})),
+        ("stale", json!({"type":"theme_appearance","value":"light"})),
         (
             "recovery",
-            json!({"type":"theme_builtin","value":"deepmono"}),
+            json!({"type":"theme_appearance","value":"light"}),
         ),
     ] {
         if case == "recovery" {
@@ -160,11 +160,7 @@ pub(super) async fn qualify_themes(
                 "appearance"
             };
             let value = if key == "active" {
-                if patch["value"] == "lomi" {
-                    Value::Null
-                } else {
-                    json!("@builtin-deepmono")
-                }
+                Value::Null
             } else {
                 patch["value"].clone()
             };

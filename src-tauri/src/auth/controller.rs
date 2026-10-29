@@ -1,7 +1,7 @@
 use super::{
     callback::{self, CallbackError},
     config::AuthConfig,
-    http::{ApiClient, HttpProblem, SessionCheck},
+    http::{ApiClient, HttpProblem, RemoteHttpError, SessionCheck},
     storage::{CredentialSaveError, CredentialStore},
     AuthAttempt, AuthState, AuthStatus, AuthStorage, STATE_CHANGED_EVENT,
 };
@@ -15,6 +15,7 @@ use std::{
 use tauri::{Emitter, EventTarget, Manager};
 
 pub(crate) use super::http::PushRequestError;
+pub(crate) use super::http::RemoteHttpError as RemoteV2HttpError;
 
 // Order: emission guard, auth core, notification preferences. Never hold this
 // guard across HTTP, source-store access, or an asynchronous OS result.
@@ -524,6 +525,57 @@ impl AuthController {
             return Err("Account session changed.".into());
         }
         let value = result.map_err(remote_request_message)?;
+        Ok((current, value))
+    }
+
+    /// Native Remote v2 access is allowed only when this account issuer is the
+    /// public identity authority pinned into the desktop executable.
+    pub(crate) async fn remote_v2_request(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&serde_json::Value>,
+    ) -> Result<(RemoteBinding, serde_json::Value), RemoteHttpError> {
+        if !self
+            .inner
+            .config
+            .as_ref()
+            .is_some_and(AuthConfig::is_host_identity_origin)
+        {
+            return Err(RemoteHttpError::local_code("IDENTITY_MISMATCH"));
+        }
+        let (token, binding) = {
+            let core = self
+                .inner
+                .core
+                .lock()
+                .map_err(|_| RemoteHttpError::local_code("ACCOUNT_UNAVAILABLE"))?;
+            let binding = remote_binding(&core)
+                .map_err(|_| RemoteHttpError::local_code("AUTHORIZATION_REQUIRED"))?;
+            let token = core
+                .token
+                .clone()
+                .ok_or_else(|| RemoteHttpError::local_code("AUTHORIZATION_REQUIRED"))?;
+            (token, binding)
+        };
+        let result = self
+            .inner
+            .api
+            .as_ref()
+            .ok_or_else(|| RemoteHttpError::local_code("SERVICE_UNAVAILABLE"))?
+            .remote_v2_request(token.exposed(), method, path, body)
+            .await;
+        let core = self
+            .inner
+            .core
+            .lock()
+            .map_err(|_| RemoteHttpError::local_code("ACCOUNT_UNAVAILABLE"))?;
+        let current = remote_binding(&core)
+            .map_err(|_| RemoteHttpError::local_code("AUTHORIZATION_REQUIRED"))?;
+        if !current.same_authority(&binding) {
+            return Err(RemoteHttpError::local_code("SESSION_CHANGED"));
+        }
+        let value = result?;
         Ok((current, value))
     }
 

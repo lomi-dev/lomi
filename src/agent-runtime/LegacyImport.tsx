@@ -113,32 +113,35 @@ export default function LegacyImport() {
       {preview && (
         <Modal
           title="Import saved CLI history?"
+          tone="warning"
           initialFocus={cancel}
           closeDisabled={busy}
           onClose={() => void cancelImport()}
         >
-          <div className="dialog-form agent-task-dialog">
-            <p>
-              Preserve original account logins and archive saved task history.
-              Import does not start tasks or replay old inputs.
-            </p>
-            <p>
-              {preview.accountCount} accounts · {preview.taskCount} tasks ·{" "}
-              {preview.missingCount} missing history records
-            </p>
-            <p role="status">
-              Workspace layout changes, task dispatch and autosave are paused
-              until you finish or cancel this import.
-            </p>
-            <p>
-              Original data and exact session bytes remain backed up. Archived
-              tasks require an explicit review before continuing.
-            </p>
-            <p>
-              Export a rollback archive to review original data alongside newer
-              task history. Export does not replace this workspace.
-            </p>
-            {error && <p role="alert">{error}</p>}
+          <div className="dialog-form dialog-layout">
+            <div className="dialog-content agent-task-dialog">
+              <p>
+                Preserve original account logins and archive saved task history.
+                Import does not start tasks or replay old inputs.
+              </p>
+              <p>
+                {preview.accountCount} accounts · {preview.taskCount} tasks ·{" "}
+                {preview.missingCount} missing history records
+              </p>
+              <p role="status">
+                Workspace layout changes, task dispatch and autosave are paused
+                until you finish or cancel this import.
+              </p>
+              <p>
+                Original data and exact session bytes remain backed up. Archived
+                tasks require an explicit review before continuing.
+              </p>
+              <p>
+                Export a rollback archive to review original data alongside
+                newer task history. Export does not replace this workspace.
+              </p>
+              {error && <p role="alert">{error}</p>}
+            </div>
             <div className="dialog-actions">
               <button
                 ref={cancel}

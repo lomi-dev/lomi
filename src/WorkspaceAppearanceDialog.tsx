@@ -37,14 +37,14 @@ export default function WorkspaceAppearanceDialog({
       className="workspace-appearance-dialog"
     >
       <form
-        className="dialog-form"
+        className="dialog-form dialog-layout"
         onSubmit={(event) => {
           event.preventDefault();
           onSave(sanitizeWorkspaceAppearance(appearance));
           onClose();
         }}
       >
-        <div className="workspace-appearance-body">
+        <div className="dialog-content workspace-appearance-body">
           <div className="workspace-appearance-preview">
             <WorkspaceAvatar appearance={appearance} />
             <div>

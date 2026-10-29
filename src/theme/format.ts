@@ -1,5 +1,4 @@
 import type { IconKind, IconTheme } from "./icon-theme";
-import deepmono from "../../themes/deepmono.json" with { type: "json" };
 import lomi from "../../themes/lomi.json" with { type: "json" };
 import { parseVSCodeTheme, vscodeValues, type VSCodeTheme } from "./vscode.ts";
 import {
@@ -445,12 +444,7 @@ export type ResolvedTheme = ThemeValues & {
   stylesheets?: string[];
 };
 export const builtinTheme = lomi as ThemeManifest;
-export const deepmonoTheme = deepmono as ThemeManifest;
-export const deepmonoThemeId = "@builtin-deepmono";
-export const builtinThemes = [
-  { id: null, manifest: builtinTheme },
-  { id: deepmonoThemeId, manifest: deepmonoTheme },
-] as const;
+export const builtinThemes = [{ id: null, manifest: builtinTheme }] as const;
 export function isBuiltinTheme(id: string | null) {
   return builtinThemes.some((theme) => theme.id === id);
 }

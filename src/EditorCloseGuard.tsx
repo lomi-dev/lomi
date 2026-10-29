@@ -135,82 +135,86 @@ export function useEditorCloseGuard() {
         className="editor-close-dialog"
         descriptionId={descriptionId}
         initialFocus={saveButton}
+        closeDisabled={busy}
         onClose={() => finish(false)}
       >
-        <div className="editor-close-content">
-          <p id={descriptionId} className="editor-close-description">
-            {request.decision && <>{request.decision.description} </>}
-            {request.documents.length === 1
-              ? "This file has unsaved changes."
-              : `${request.documents.length} files have unsaved changes.`}{" "}
-            Your edits will be lost if you discard them.
-          </p>
-          <ul
-            className="editor-unsaved-files"
-            aria-label="Files with unsaved changes"
-          >
-            {request.documents.map((document) => (
-              <li key={document.path} title={document.path}>
-                <ResourceIcon path={document.path} size={18} />
-                <span className="editor-unsaved-file">
-                  <span className="editor-unsaved-name">
-                    {basename(document.path)}
-                  </span>
-                  <span className="editor-unsaved-path">{document.path}</span>
-                </span>
-              </li>
-            ))}
-          </ul>
-          {error && (
-            <p className="editor-close-error" role="alert">
-              <CircleAlert size={16} aria-hidden="true" />
-              <span>{error}</span>
+        <div className="dialog-layout">
+          <div className="dialog-content editor-close-content">
+            <p id={descriptionId} className="editor-close-description">
+              {request.decision && <>{request.decision.description} </>}
+              {request.documents.length === 1
+                ? "This file has unsaved changes."
+                : `${request.documents.length} files have unsaved changes.`}{" "}
+              Your edits will be lost if you discard them.
             </p>
-          )}
-        </div>
-        <div className="editor-close-actions">
-          <button
-            type="button"
-            className="button editor-close-cancel"
-            disabled={busy}
-            onClick={() => finish(false)}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="button button-danger"
-            disabled={busy}
-            onClick={async () => {
-              if (busy) return;
-              setBusy(true);
-              setError("");
-              try {
-                if (request.cancelled) return;
-                await request.decision?.onDecision("discard");
-                for (const document of request.documents) document.discard?.();
-                request.finish(true);
-                current.current = undefined;
-                setRequest(undefined);
-              } catch (error) {
-                setError(errorMessage(error));
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            Discard changes
-          </button>
-          <button
-            ref={saveButton}
-            type="button"
-            className="button button-primary"
-            disabled={busy}
-            onClick={() => void save()}
-          >
-            <Save size={14} aria-hidden="true" />
-            {busy ? "Saving…" : "Save changes"}
-          </button>
+            <ul
+              className="editor-unsaved-files"
+              aria-label="Files with unsaved changes"
+            >
+              {request.documents.map((document) => (
+                <li key={document.path} title={document.path}>
+                  <ResourceIcon path={document.path} size={18} />
+                  <span className="editor-unsaved-file">
+                    <span className="editor-unsaved-name">
+                      {basename(document.path)}
+                    </span>
+                    <span className="editor-unsaved-path">{document.path}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {error && (
+              <p className="editor-close-error" role="alert">
+                <CircleAlert size={16} aria-hidden="true" />
+                <span>{error}</span>
+              </p>
+            )}
+          </div>
+          <div className="dialog-actions editor-close-actions">
+            <button
+              type="button"
+              className="button editor-close-cancel"
+              disabled={busy}
+              onClick={() => finish(false)}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="button button-danger"
+              disabled={busy}
+              onClick={async () => {
+                if (busy) return;
+                setBusy(true);
+                setError("");
+                try {
+                  if (request.cancelled) return;
+                  await request.decision?.onDecision("discard");
+                  for (const document of request.documents)
+                    document.discard?.();
+                  request.finish(true);
+                  current.current = undefined;
+                  setRequest(undefined);
+                } catch (error) {
+                  setError(errorMessage(error));
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Discard changes
+            </button>
+            <button
+              ref={saveButton}
+              type="button"
+              className="button button-primary"
+              disabled={busy}
+              onClick={() => void save()}
+            >
+              <Save size={14} aria-hidden="true" />
+              {busy ? "Saving…" : "Save changes"}
+            </button>
+          </div>
         </div>
       </Modal>
     ),

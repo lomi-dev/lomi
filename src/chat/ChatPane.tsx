@@ -707,12 +707,14 @@ export default function ChatPane({
           tone="warning"
           onClose={() => setDiscarding(false)}
         >
-          <div className="dialog-form">
-            <p>
-              Unsaved draft edits and response text may be lost. The last
-              committed history remains available. Export available data first
-              if you want to keep a copy.
-            </p>
+          <div className="dialog-form dialog-layout">
+            <div className="dialog-content">
+              <p>
+                Unsaved draft edits and response text may be lost. The last
+                committed history remains available. Export available data first
+                if you want to keep a copy.
+              </p>
+            </div>
             <div className="dialog-actions">
               <button className="button" onClick={() => setDiscarding(false)}>
                 Keep open
@@ -750,31 +752,35 @@ export default function ChatPane({
           tone="warning"
           onClose={() => setRecovering(false)}
         >
-          <div className="dialog-form">
-            <p>
-              The original database, WAL and attachments will be moved to a
-              private recovery folder inside the Chat AI data directory. New
-              history starts empty. Existing conversation tabs keep their IDs
-              and will be unavailable until you create or open another
-              conversation.
-            </p>
-            <button
-              className="button"
-              onClick={() =>
-                run(
-                  (async () => {
-                    await api("chat_recover", {
-                      target: "history",
-                      reset: true,
-                    });
-                    setRecovering(false);
-                    await replaceChat(tab);
-                  })(),
-                )
-              }
-            >
-              Back up and start empty history
-            </button>
+          <div className="dialog-form dialog-layout">
+            <div className="dialog-content">
+              <p>
+                The original database, WAL and attachments will be moved to a
+                private recovery folder inside the Chat AI data directory. New
+                history starts empty. Existing conversation tabs keep their IDs
+                and will be unavailable until you create or open another
+                conversation.
+              </p>
+            </div>
+            <div className="dialog-actions">
+              <button
+                className="button"
+                onClick={() =>
+                  run(
+                    (async () => {
+                      await api("chat_recover", {
+                        target: "history",
+                        reset: true,
+                      });
+                      setRecovering(false);
+                      await replaceChat(tab);
+                    })(),
+                  )
+                }
+              >
+                Back up and start empty history
+              </button>
+            </div>
           </div>
         </Modal>
       )}
@@ -784,24 +790,28 @@ export default function ChatPane({
           title="Edit message as a new variant"
           onClose={() => setEdit(null)}
         >
-          <div className="dialog-form">
-            <p>The original message and its responses remain in history.</p>
-            <textarea
-              aria-label="Edited message"
-              rows={7}
-              value={edit.text}
-              onChange={(e) => setEdit({ ...edit, text: e.target.value })}
-            />
-            <button
-              className="button"
-              disabled={!edit.text.trim()}
-              onClick={() => {
-                run(runtime.send("edit", edit.id, edit.text));
-                setEdit(null);
-              }}
-            >
-              Send new variant
-            </button>
+          <div className="dialog-form dialog-layout">
+            <div className="dialog-content">
+              <p>The original message and its responses remain in history.</p>
+              <textarea
+                aria-label="Edited message"
+                rows={7}
+                value={edit.text}
+                onChange={(e) => setEdit({ ...edit, text: e.target.value })}
+              />
+            </div>
+            <div className="dialog-actions">
+              <button
+                className="button"
+                disabled={!edit.text.trim()}
+                onClick={() => {
+                  run(runtime.send("edit", edit.id, edit.text));
+                  setEdit(null);
+                }}
+              >
+                Send new variant
+              </button>
+            </div>
           </div>
         </Modal>
       )}
@@ -813,16 +823,18 @@ export default function ChatPane({
           tone="warning"
           onClose={() => decideSensitive(false)}
         >
-          <div className="dialog-form">
-            <p>
-              <strong>
-                {"path" in sensitive
-                  ? sensitive.path.split(/[\\/]/).pop()
-                  : sensitive.name}
-              </strong>{" "}
-              may contain credentials. Its contents will be sent to the selected
-              provider when you send this message.
-            </p>
+          <div className="dialog-form dialog-layout">
+            <div className="dialog-content">
+              <p>
+                <strong>
+                  {"path" in sensitive
+                    ? sensitive.path.split(/[\\/]/).pop()
+                    : sensitive.name}
+                </strong>{" "}
+                may contain credentials. Its contents will be sent to the
+                selected provider when you send this message.
+              </p>
+            </div>
             <div className="dialog-actions">
               <button className="button" onClick={() => decideSensitive(false)}>
                 Cancel
@@ -840,7 +852,7 @@ export default function ChatPane({
           title={preview.attachment.name}
           onClose={() => setPreview(null)}
         >
-          <div className="dialog-form">
+          <div className="dialog-content">
             {preview.attachment.mime.startsWith("image/") ? (
               <img
                 className="chat-image-preview"
@@ -999,7 +1011,7 @@ function ConfigDialog({
       onClose={onClose}
     >
       <form
-        className="dialog-form chat-config"
+        className="dialog-form dialog-layout"
         onSubmit={(e) => {
           e.preventDefault();
           setBusy(true);
@@ -1010,100 +1022,104 @@ function ConfigDialog({
             .finally(() => setBusy(false));
         }}
       >
-        <div className="chat-select-field">
-          <label htmlFor={connectionId}>Connection</label>
-          <Select
-            id={connectionId}
-            value={next.connectionId ?? ""}
-            onChange={(value) =>
-              setNext({
-                ...next,
-                connectionId: value || null,
-                model: suggestedModel(connections.find((c) => c.id === value)),
-                temperature: null,
-              })
-            }
-            options={[
-              { value: "", label: "Choose connection" },
-              ...connections
-                .filter((c) => c.enabled)
-                .map((c) => ({
-                  value: c.id,
-                  label: `${c.name} · ${c.provider}`,
-                })),
-            ]}
-          />
-        </div>
-        <ModelSelect
-          key={next.connectionId}
-          connection={selected}
-          value={next.model}
-          onChange={(model) => setNext({ ...next, model, temperature: null })}
-        />
-        <details className="chat-advanced">
-          <DisclosureSummary>Advanced options</DisclosureSummary>
-          {!capability && (
-            <small>
-              Manual model IDs support basic text. Image and temperature support
-              must be verified for this model.
-            </small>
-          )}
-          <label>
-            System instructions
-            <textarea
-              rows={4}
-              value={next.system}
-              onChange={(e) => setNext({ ...next, system: e.target.value })}
-            />
-          </label>
-          <label>
-            Maximum output tokens
-            <input
-              type="number"
-              min={1}
-              max={32768}
-              value={next.maxOutputTokens}
-              onChange={(e) =>
-                setNext({ ...next, maxOutputTokens: Number(e.target.value) })
+        <div className="dialog-content chat-config">
+          <div className="chat-select-field">
+            <label htmlFor={connectionId}>Connection</label>
+            <Select
+              id={connectionId}
+              value={next.connectionId ?? ""}
+              onChange={(value) =>
+                setNext({
+                  ...next,
+                  connectionId: value || null,
+                  model: suggestedModel(
+                    connections.find((c) => c.id === value),
+                  ),
+                  temperature: null,
+                })
               }
+              options={[
+                { value: "", label: "Choose connection" },
+                ...connections
+                  .filter((c) => c.enabled)
+                  .map((c) => ({
+                    value: c.id,
+                    label: `${c.name} · ${c.provider}`,
+                  })),
+              ]}
             />
-          </label>
-          {capability?.temperature && (
+          </div>
+          <ModelSelect
+            key={next.connectionId}
+            connection={selected}
+            value={next.model}
+            onChange={(model) => setNext({ ...next, model, temperature: null })}
+          />
+          <details className="chat-advanced">
+            <DisclosureSummary>Advanced options</DisclosureSummary>
+            {!capability && (
+              <small>
+                Manual model IDs support basic text. Image and temperature
+                support must be verified for this model.
+              </small>
+            )}
             <label>
-              Temperature (optional)
+              System instructions
+              <textarea
+                rows={4}
+                value={next.system}
+                onChange={(e) => setNext({ ...next, system: e.target.value })}
+              />
+            </label>
+            <label>
+              Maximum output tokens
               <input
                 type="number"
-                min={0}
-                max={2}
-                step={0.1}
-                value={next.temperature ?? ""}
+                min={1}
+                max={32768}
+                value={next.maxOutputTokens}
                 onChange={(e) =>
-                  setNext({
-                    ...next,
-                    temperature:
-                      e.target.value === "" ? null : Number(e.target.value),
-                  })
+                  setNext({ ...next, maxOutputTokens: Number(e.target.value) })
                 }
               />
             </label>
+            {capability?.temperature && (
+              <label>
+                Temperature (optional)
+                <input
+                  type="number"
+                  min={0}
+                  max={2}
+                  step={0.1}
+                  value={next.temperature ?? ""}
+                  onChange={(e) =>
+                    setNext({
+                      ...next,
+                      temperature:
+                        e.target.value === "" ? null : Number(e.target.value),
+                    })
+                  }
+                />
+              </label>
+            )}
+            <small>
+              Visible text estimate: roughly{" "}
+              {Math.ceil(visibleBytes / 4).toLocaleString()}–
+              {visibleBytes.toLocaleString()} tokens. Files, earlier pages and
+              provider overhead are excluded; the model can reject a larger
+              context.
+            </small>
+          </details>
+          {hasHistory && config.connectionId !== next.connectionId && (
+            <p role="status">
+              On the next Send or Retry, the active conversation history and its
+              attachments will be sent to{" "}
+              {selected?.name ?? "the selected connection"}
+              {selected?.baseUrl ? ` (${selected.baseUrl})` : ""}.
+            </p>
           )}
-          <small>
-            Visible text estimate: roughly{" "}
-            {Math.ceil(visibleBytes / 4).toLocaleString()}–
-            {visibleBytes.toLocaleString()} tokens. Files, earlier pages and
-            provider overhead are excluded; the model can reject a larger
-            context.
-          </small>
-        </details>
-        {hasHistory && config.connectionId !== next.connectionId && (
-          <p role="status">
-            On the next Send or Retry, the active conversation history and its
-            attachments will be sent to{" "}
-            {selected?.name ?? "the selected connection"}
-            {selected?.baseUrl ? ` (${selected.baseUrl})` : ""}.
-          </p>
-        )}
-        {error && <p role="alert">{error}</p>}
+          {error && <p role="alert">{error}</p>}
+        </div>
         <div className="dialog-actions">
           <button
             type="button"

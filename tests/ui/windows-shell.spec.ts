@@ -32,7 +32,10 @@ test("Windows shell preference syncs to new tabs while existing and restored pan
   const shell = settings.getByLabel("Default shell", { exact: true });
   await expect(shell).toHaveText("PowerShell");
   await chooseOption(shell, "CMD");
-  await expect(settings.getByRole("status")).toHaveText("Saved");
+  await expect(settings.locator(".terminal-settings-page")).toHaveAttribute(
+    "aria-busy",
+    "false",
+  );
   await expect.poll(() => startedProfiles(page)).toEqual(["local:powershell"]);
   await page.bringToFront();
   await page.locator(".xterm-helper-textarea").focus();

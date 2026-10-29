@@ -8,6 +8,7 @@ export interface InboxNotification {
   body: string;
   createdAt: number;
   read: boolean;
+  paneId?: string | null;
   agent?: CliAgent | null;
   source?: ApplicationNotificationSource | null;
   action?: ApplicationNotificationAction | null;
@@ -69,6 +70,35 @@ export function newestNotificationSnapshot(
   incoming: NotificationSnapshot,
 ): NotificationSnapshot {
   return !current || incoming.revision > current.revision ? incoming : current;
+}
+
+let notificationSnapshot: NotificationSnapshot | null = null;
+const snapshotListeners = new Set<() => void>();
+
+export const getNotificationSnapshot = () => notificationSnapshot;
+
+export function subscribeNotificationSnapshot(listener: () => void) {
+  snapshotListeners.add(listener);
+  return () => {
+    snapshotListeners.delete(listener);
+  };
+}
+
+export function acceptNotificationSnapshot(incoming: NotificationSnapshot) {
+  const next = newestNotificationSnapshot(notificationSnapshot, incoming);
+  if (next !== notificationSnapshot) {
+    notificationSnapshot = next;
+    for (const listener of snapshotListeners) listener();
+  }
+  return next;
+}
+
+export function unreadTerminalPaneIds(snapshot: NotificationSnapshot | null) {
+  return new Set(
+    snapshot?.items.flatMap((item) =>
+      !item.read && !item.source && item.paneId ? [item.paneId] : [],
+    ),
+  );
 }
 
 export function unreadNotificationCount(snapshot: NotificationSnapshot | null) {

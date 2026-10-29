@@ -225,6 +225,10 @@ test("Settings records zoom keys and applies bindings to the same main window", 
   await page.goto("/");
   await expect(page.locator(".xterm-screen")).toBeVisible();
   await page.keyboard.press("Meta+Comma");
+  await page
+    .locator(".keybinding-group > summary")
+    .filter({ hasText: "Workspace" })
+    .click();
   const recorder = page.getByRole("button", {
     name: "Shortcut for Zoom out",
     exact: true,

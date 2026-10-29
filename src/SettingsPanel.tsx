@@ -11,8 +11,8 @@ import { RotateCcw, Search, X } from "./icons";
 import SettingsNavigation from "./SettingsNavigation";
 import AboutSettingsPage from "./AboutSettingsPage";
 import TerminalSettingsPage from "./TerminalSettingsPage";
-import { IconButton } from "./ui";
-import { errorMessage } from "./api";
+import { DisclosureSummary, IconButton } from "./ui";
+import { errorMessage, native } from "./api";
 import {
   bindingConflict,
   formatShortcut,
@@ -23,8 +23,6 @@ import { useKeybindings } from "./KeybindingsProvider";
 import { useProtectedTheme } from "./useProtectedTheme";
 import { defaultSettingsPage } from "./settings-pages";
 import type { SettingsPageId } from "./settings-pages";
-import { canShareRemotely } from "./auth/model";
-import { useAuthState } from "./auth/useAuthState";
 import {
   SettingRow,
   SettingsNotice,
@@ -60,8 +58,7 @@ export default function SettingsPanel({
   requestedPage,
   requestRevision,
 }: SettingsPanelProps) {
-  const auth = useAuthState();
-  const remoteAvailable = canShareRemotely(auth.state);
+  const remoteAvailable = native;
   const [page, setPage] = useState<SettingsPageId>(
     requestedPage ?? defaultSettingsPage,
   );
@@ -78,7 +75,6 @@ export default function SettingsPanel({
   const shortcutSearch = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [status, setStatus] = useState("");
   const busyRef = useRef(false);
   const recordingButton = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => {
@@ -106,7 +102,6 @@ export default function SettingsPanel({
     busyRef.current = true;
     setBusy(true);
     setError("");
-    setStatus("Saving…");
     setRecording(null);
     try {
       await preferences.save(
@@ -114,10 +109,8 @@ export default function SettingsPanel({
         focusFollowsPointer,
         explorerOpenOnSingleClick,
       );
-      setStatus("Saved");
     } catch (error) {
       setError(errorMessage(error));
-      setStatus("");
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -199,36 +192,31 @@ export default function SettingsPanel({
           <SettingsPage
             title="Keybinds"
             className="keybindings-page"
-            description="Click a shortcut to record new keys. Cleared shortcuts pass their keys to the terminal."
-            status={
-              !preferences.ready
-                ? "Loading…"
-                : recording
-                  ? "Press keys · Escape cancels"
-                  : status
-            }
-            actions={
-              <button
-                className="button"
-                disabled={!preferences.ready || busy}
-                onClick={() => void persist(preferences.defaults, false, false)}
-              >
-                <RotateCcw size={14} />
-                Reset all
-              </button>
-            }
+            description="Click a shortcut to record new keys. Escape cancels. Cleared shortcuts pass their keys to the terminal."
+            busy={!preferences.ready || busy}
           >
             {(error || preferences.error) && (
               <SettingsNotice
                 tone="error"
                 action={
                   preferences.error && (
-                    <button
-                      className="text-button"
-                      onClick={() => void preferences.reload()}
-                    >
-                      Retry loading
-                    </button>
+                    <>
+                      <button
+                        className="text-button"
+                        onClick={() => void preferences.reload()}
+                      >
+                        Retry loading
+                      </button>
+                      <button
+                        className="text-button"
+                        disabled={!preferences.ready || busy}
+                        onClick={() =>
+                          void persist(preferences.defaults, false, false)
+                        }
+                      >
+                        Reset to defaults
+                      </button>
+                    </>
                   )
                 }
               >
@@ -258,7 +246,7 @@ export default function SettingsPanel({
             </div>
             {shortcutTerms.length === 0 && (
               <>
-                <SettingsSection title="Panel focus">
+                <SettingsSection title="Interaction">
                   <SettingRow
                     label="Focus follows pointer"
                     htmlFor="focus-follows-pointer"
@@ -280,8 +268,6 @@ export default function SettingsPanel({
                       }
                     />
                   </SettingRow>
-                </SettingsSection>
-                <SettingsSection title="File Explorer">
                   <SettingRow
                     label="Open with one click"
                     htmlFor="explorer-open-on-single-click"
@@ -327,121 +313,141 @@ export default function SettingsPanel({
             )}
             {[...new Set(filteredActions.map((action) => action.group))].map(
               (group) => (
-                <SettingsSection title={group} key={group}>
-                  {filteredActions
-                    .filter((action) => action.group === group)
-                    .map((action) => (
-                      <SettingRow
-                        key={action.id}
-                        label={action.label}
-                        description={action.description}
-                      >
-                        <div className="keybinding-controls">
-                          <button
-                            ref={
-                              recording === action.id
-                                ? recordingButton
-                                : undefined
-                            }
-                            className={`shortcut-recorder${recording === action.id ? " recording" : ""}`}
-                            aria-label={`Shortcut for ${action.label}`}
-                            disabled={
-                              !preferences.ready || busy || !!preferences.error
-                            }
-                            onClick={() => {
-                              setRecording(action.id);
-                              setError("");
-                              setStatus("");
-                            }}
-                            onBlur={() => {
-                              if (recording === action.id) setRecording(null);
-                            }}
-                            onKeyDown={(event) => {
-                              if (recording !== action.id) return;
-                              event.preventDefault();
-                              event.stopPropagation();
-                              if (
-                                event.key === "Escape" &&
-                                !event.ctrlKey &&
-                                !event.altKey &&
-                                !event.metaKey &&
-                                !event.shiftKey
-                              ) {
-                                setRecording(null);
+                <details
+                  className="settings-disclosure keybinding-group"
+                  key={group}
+                  open={shortcutTerms.length > 0 || group === "Terminals"}
+                >
+                  <DisclosureSummary>
+                    {group}
+                    <span className="settings-count">
+                      {
+                        filteredActions.filter(
+                          (action) => action.group === group,
+                        ).length
+                      }
+                    </span>
+                  </DisclosureSummary>
+                  <div className="settings-disclosure-body">
+                    {filteredActions
+                      .filter((action) => action.group === group)
+                      .map((action) => (
+                        <SettingRow
+                          key={action.id}
+                          label={action.label}
+                          description={action.description}
+                        >
+                          <div className="keybinding-controls">
+                            <button
+                              ref={
+                                recording === action.id
+                                  ? recordingButton
+                                  : undefined
+                              }
+                              className={`shortcut-recorder${recording === action.id ? " recording" : ""}`}
+                              aria-label={`Shortcut for ${action.label}`}
+                              disabled={
+                                !preferences.ready ||
+                                busy ||
+                                !!preferences.error
+                              }
+                              onClick={() => {
+                                setRecording(action.id);
                                 setError("");
-                                return;
-                              }
-                              if (
-                                event.repeat ||
-                                ["Control", "Shift", "Alt", "Meta"].includes(
-                                  event.key,
+                              }}
+                              onBlur={() => {
+                                if (recording === action.id) setRecording(null);
+                              }}
+                              onKeyDown={(event) => {
+                                if (recording !== action.id) return;
+                                event.preventDefault();
+                                event.stopPropagation();
+                                if (
+                                  event.key === "Escape" &&
+                                  !event.ctrlKey &&
+                                  !event.altKey &&
+                                  !event.metaKey &&
+                                  !event.shiftKey
+                                ) {
+                                  setRecording(null);
+                                  setError("");
+                                  return;
+                                }
+                                if (
+                                  event.repeat ||
+                                  ["Control", "Shift", "Alt", "Meta"].includes(
+                                    event.key,
+                                  )
                                 )
-                              )
-                                return;
-                              const shortcut = shortcutFromEvent(
-                                event.nativeEvent,
-                              );
-                              if (!shortcut) {
-                                setError(
-                                  "Use Ctrl, Alt, or Cmd with a key, or use a function key.",
+                                  return;
+                                const shortcut = shortcutFromEvent(
+                                  event.nativeEvent,
                                 );
-                                return;
+                                if (!shortcut) {
+                                  setError(
+                                    "Use Ctrl, Alt, or Cmd with a key, or use a function key.",
+                                  );
+                                  return;
+                                }
+                                assign(action.id, shortcut);
+                              }}
+                            >
+                              {recording === action.id ? (
+                                <kbd>Press keys…</kbd>
+                              ) : preferences.bindings[action.id] ? (
+                                preferences.bindings[action.id]
+                                  ?.split("+")
+                                  .map((key, index) => (
+                                    <Fragment key={index}>
+                                      {index > 0 && (
+                                        <span className="shortcut-separator">
+                                          +
+                                        </span>
+                                      )}
+                                      <kbd>{formatShortcut(key)}</kbd>
+                                    </Fragment>
+                                  ))
+                              ) : (
+                                <span className="shortcut-unassigned">
+                                  Not set
+                                </span>
+                              )}
+                            </button>
+                            <IconButton
+                              title={`Clear shortcut for ${action.label}`}
+                              disabled={
+                                !preferences.ready ||
+                                busy ||
+                                !!preferences.error ||
+                                !preferences.bindings[action.id]
                               }
-                              assign(action.id, shortcut);
-                            }}
-                          >
-                            {recording === action.id ? (
-                              <kbd>Press keys…</kbd>
-                            ) : preferences.bindings[action.id] ? (
-                              preferences.bindings[action.id]
-                                ?.split("+")
-                                .map((key, index) => (
-                                  <Fragment key={index}>
-                                    {index > 0 && (
-                                      <span className="shortcut-separator">
-                                        +
-                                      </span>
-                                    )}
-                                    <kbd>{formatShortcut(key)}</kbd>
-                                  </Fragment>
-                                ))
-                            ) : (
-                              <span className="shortcut-unassigned">
-                                Not set
-                              </span>
-                            )}
-                          </button>
-                          <IconButton
-                            title={`Clear shortcut for ${action.label}`}
-                            disabled={
-                              !preferences.ready ||
-                              busy ||
-                              !!preferences.error ||
-                              !preferences.bindings[action.id]
-                            }
-                            onClick={() => assign(action.id, null)}
-                          >
-                            <X size={14} />
-                          </IconButton>
-                          <IconButton
-                            title={`Reset shortcut for ${action.label}`}
-                            disabled={
-                              !preferences.ready ||
-                              busy ||
-                              !!preferences.error ||
-                              preferences.bindings[action.id] ===
-                                preferences.defaults[action.id]
-                            }
-                            onClick={() =>
-                              assign(action.id, preferences.defaults[action.id])
-                            }
-                          >
-                            <RotateCcw size={14} />
-                          </IconButton>
-                        </div>
-                      </SettingRow>
-                    ))}
-                </SettingsSection>
+                              onClick={() => assign(action.id, null)}
+                            >
+                              <X size={14} />
+                            </IconButton>
+                            <IconButton
+                              title={`Reset shortcut for ${action.label}`}
+                              disabled={
+                                !preferences.ready ||
+                                busy ||
+                                !!preferences.error ||
+                                preferences.bindings[action.id] ===
+                                  preferences.defaults[action.id]
+                              }
+                              onClick={() =>
+                                assign(
+                                  action.id,
+                                  preferences.defaults[action.id],
+                                )
+                              }
+                            >
+                              <RotateCcw size={14} />
+                            </IconButton>
+                          </div>
+                        </SettingRow>
+                      ))}
+                  </div>
+                </details>
               ),
             )}
           </SettingsPage>

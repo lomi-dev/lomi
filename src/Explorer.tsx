@@ -300,7 +300,7 @@ export default function Explorer(props: Props) {
           onKeyDownCapture={cancelPendingActivation}
         >
           <header className="sidebar-heading">
-            <span>EXPLORER</span>
+            <span>Explorer</span>
             <div>
               <IconButton title="Search in project" onClick={() => search("")}>
                 <Search size={14} />

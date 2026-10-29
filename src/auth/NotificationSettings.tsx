@@ -315,7 +315,10 @@ export default function NotificationSettings({
   const preference = local.state?.preferences;
   return (
     <>
-      <SettingsSection title="On this computer">
+      <SettingsSection
+        title="On this computer"
+        description="Show system notifications when tasks finish."
+      >
         <Toggle
           id="completion-desktop-enabled"
           label="Notify when tasks finish"
@@ -350,7 +353,10 @@ export default function NotificationSettings({
           </SettingsNotice>
         )}
       </SettingsSection>
-      <SettingsSection title="On my phones">
+      <SettingsSection
+        title="On my phones"
+        description="Send completion notifications from this computer to your phones."
+      >
         <Toggle
           id="completion-push-enabled"
           label="Push notifications on my phones"

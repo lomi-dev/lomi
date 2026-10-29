@@ -1,4 +1,4 @@
-import { Check } from "../icons";
+import { Check, Smartphone } from "../icons";
 
 const steps = ["Prepare phone", "Start Android", "Connect screen"];
 const descriptions = [
@@ -17,16 +17,21 @@ export default function PhoneStartup({
   onCancel: () => void;
 }) {
   return (
-    <div className="android-startup">
-      <span className="android-startup-spinner" aria-hidden="true" />
-      <div role="status">
-        <h2>{stopping ? "Stopping phone…" : "Starting phone…"}</h2>
-        <p>
-          {stopping
-            ? "Saving phone data and closing Android safely."
-            : descriptions[step]}
-        </p>
-      </div>
+    <div className="android-panel-state android-startup">
+      <header className="android-state-heading" role="status">
+        <span className="android-state-icon" aria-hidden="true">
+          <Smartphone size={22} />
+          <span className="android-startup-spinner" />
+        </span>
+        <div className="android-state-copy">
+          <h2>{stopping ? "Stopping phone…" : "Starting phone…"}</h2>
+          <p>
+            {stopping
+              ? "Saving phone data and closing Android safely."
+              : descriptions[step]}
+          </p>
+        </div>
+      </header>
       {!stopping && (
         <ol className="android-startup-steps" aria-label="Phone startup">
           {steps.map((label, index) => (
@@ -43,9 +48,11 @@ export default function PhoneStartup({
           ))}
         </ol>
       )}
-      <button className="button" disabled={stopping} onClick={onCancel}>
-        {stopping ? "Stopping…" : "Cancel start"}
-      </button>
+      <div className="android-state-actions">
+        <button className="button" disabled={stopping} onClick={onCancel}>
+          {stopping ? "Stopping…" : "Cancel start"}
+        </button>
+      </div>
     </div>
   );
 }

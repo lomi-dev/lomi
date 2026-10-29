@@ -1,200 +1,240 @@
 import { useEffect, useRef, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
-import { api, errorMessage, native } from "./api";
-import { canShareRemotely } from "./auth/model";
-import { useAuthState } from "./auth/useAuthState";
+import { native } from "./api";
 import type { Session, ShellProfile } from "./model";
 import {
-  runningTerminal,
-  subscribeTerminalLifecycle,
-  terminalFor,
-} from "./terminal-runtime";
-import {
-  WorkspacePublisher,
-  workspaceTerminals,
-} from "./remote-workspace-domain";
+  importSharedWorkspace,
+  setSharedHostWorkspaceSharing,
+  sharedHostStatus,
+  sharedHostWorkspaceBindings,
+  sharedHostWorkspaces,
+} from "./shared-host";
+import type { SharedHostDesktopUncertaintyWarning } from "./shared-host";
 import type { RemoteState } from "./remote-workspace-domain";
 export type { RemoteState } from "./remote-workspace-domain";
 
 export function useRemoteWorkspaces(
-  session: Session | undefined,
+  _session: Session | undefined,
   current: { current: Session | undefined },
-  profiles: ShellProfile[] | undefined,
+  _profiles: ShellProfile[] | undefined,
+  relocateWorkspaceRoot: (
+    workspaceId: string,
+    previousRootPath: string,
+    rootPath: string,
+  ) => void | Promise<void>,
 ) {
-  const auth = useAuthState();
-  const available = canShareRemotely(auth.state);
   const [state, setState] = useState<RemoteState>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string>();
-  const acting = useRef(false);
-  const profileRef = useRef(profiles);
-  profileRef.current = profiles;
-  const publisher = useRef<WorkspacePublisher | undefined>(undefined);
-  const blocked = useRef(new Set<string>());
-  const preparing = useRef(new Set<string>());
-  const accept = useRef<(next: RemoteState) => void>(() => {});
-  accept.current = (next) => {
-    if (!next?.workspaces) return;
-    setState(next);
-    for (const workspace of next.workspaces) {
-      if (workspace.shared && !blocked.current.has(workspace.id))
-        publisher.current?.desired.add(workspace.id);
-      else if (!preparing.current.has(workspace.id))
-        publisher.current?.desired.delete(workspace.id);
-    }
-  };
+  const [uncertaintyWarnings, setUncertaintyWarnings] = useState<
+    SharedHostDesktopUncertaintyWarning[]
+  >([]);
+  const refreshRef = useRef<() => Promise<void>>(async () => {});
+
   useEffect(() => {
     if (!native) return;
     let alive = true;
-    const engine = new WorkspacePublisher({
-      session: () => current.current,
-      profiles: () => profileRef.current ?? [],
-      sessionId: (id) => runningTerminal(id)?.sessionId ?? null,
-      start: (pane, profile) => terminalFor(pane, profile).startInBackground(),
-      begin: () => api("remote_begin_workspace_sync"),
-      sync: async (epoch, revision, workspaces) => {
-        const next = await api<RemoteState>("remote_sync_workspaces", {
-          epoch,
-          revision,
-          workspaces,
-        });
-        if (alive) accept.current(next);
-      },
-    });
-    publisher.current = engine;
-    const publish = () => {
-      if (current.current && profileRef.current)
-        void engine.notify().catch((e) => {
-          if (alive) setError(errorMessage(e));
-        });
-    };
-    const unsubscribe = subscribeTerminalLifecycle(publish);
+    let refreshing = false;
     const refresh = async () => {
+      if (refreshing) return;
+      refreshing = true;
       try {
-        const next = await api<RemoteState>("remote_get_state");
-        if (alive) {
-          accept.current(next);
-          publish();
+        const workspaceIds =
+          current.current?.projects.flatMap((project) =>
+            project.workspaces.map((workspace) => workspace.id),
+          ) ?? [];
+        let bindingResponse = await sharedHostWorkspaceBindings(workspaceIds);
+        if (!alive) return;
+        setUncertaintyWarnings(bindingResponse.uncertaintyWarnings);
+        if (!bindingResponse.bindings)
+          throw new Error(
+            bindingResponse.bindingError ??
+              "The local Host workspace bindings are unavailable.",
+          );
+        let bindingList = bindingResponse.bindings;
+        const projectRoots = new Map(
+          current.current?.projects.flatMap((project) =>
+            project.workspaces.map(
+              (workspace) =>
+                [workspace.id, { projectId: project.id, path: project.path }] as const,
+            ),
+          ) ?? [],
+        );
+        const relocatedProjects = new Set<string>();
+        for (const binding of bindingList) {
+          if (binding.state === "active") {
+            const project = projectRoots.get(binding.workspaceId);
+            if (!project || project.path === binding.rootPath) continue;
+            const relocationKey = JSON.stringify([
+              project.projectId,
+              project.path,
+              binding.rootPath,
+            ]);
+            if (relocatedProjects.has(relocationKey)) continue;
+            relocatedProjects.add(relocationKey);
+            await relocateWorkspaceRoot(
+              binding.workspaceId,
+              project.path,
+              binding.rootPath,
+            );
+          }
         }
-      } catch (e) {
-        if (alive) setError(errorMessage(e));
+        const activeProject = current.current?.projects.find(
+          (project) => project.id === current.current?.activeProjectId,
+        );
+        const activeWorkspace = activeProject?.workspaces.find(
+          (workspace) => workspace.id === activeProject.activeWorkspaceId,
+        );
+        const activeBinding = bindingList.find(
+          (binding) => binding.workspaceId === activeWorkspace?.id,
+        );
+        if (
+          activeProject &&
+          activeWorkspace &&
+          activeBinding?.state === "missing" &&
+          !activeBinding.previousRootPath
+        ) {
+          await importSharedWorkspace(
+            activeWorkspace.id,
+            activeWorkspace.name,
+            activeProject.path,
+          );
+          bindingResponse = await sharedHostWorkspaceBindings(
+            current.current?.projects.flatMap((project) =>
+              project.workspaces.map((workspace) => workspace.id),
+            ) ?? [],
+          );
+          setUncertaintyWarnings(bindingResponse.uncertaintyWarnings);
+          if (!bindingResponse.bindings)
+            throw new Error(
+              bindingResponse.bindingError ??
+                "The local Host workspace bindings are unavailable.",
+            );
+          bindingList = bindingResponse.bindings;
+        }
+        const localByCanonical = new Map(
+          bindingList.flatMap((binding) =>
+            binding.state === "active"
+              ? [[binding.canonicalWorkspaceId, binding.workspaceId] as const]
+              : [],
+          ),
+        );
+        const [hostStatus, hostWorkspaces] = await Promise.all([
+          sharedHostStatus(),
+          sharedHostWorkspaces(),
+        ]);
+        if (!alive) return;
+        setUncertaintyWarnings(bindingResponse.uncertaintyWarnings);
+        setState({
+          qualified: true,
+          enabled: hostStatus.sharing === "enabled",
+          message: null,
+          workspaces: hostWorkspaces.map((workspace) => ({
+            id: localByCanonical.get(workspace.workspaceId) ?? workspace.workspaceId,
+            name: workspace.name,
+            shared: workspace.sharing === "enabled",
+            message: null,
+          })),
+        });
+        setError("");
+      } catch (cause) {
+        if (alive) {
+          setError(cause instanceof Error ? cause.message : String(cause));
+        }
+      } finally {
+        refreshing = false;
       }
     };
+    refreshRef.current = refresh;
     void refresh();
-    const timer = setInterval(() => void refresh(), 2000);
-    const listener = listen<RemoteState>("lomi-remote-state", (event) => {
-      if (alive) {
-        accept.current(event.payload);
-        publish();
-      }
-    });
+    const timer = setInterval(() => void refresh(), 5000);
     return () => {
       alive = false;
-      engine.stop();
-      publisher.current = undefined;
-      unsubscribe();
       clearInterval(timer);
-      void listener.then((unlisten) => unlisten()).catch(() => {});
+      if (refreshRef.current === refresh) refreshRef.current = async () => {};
     };
-  }, [current]);
-  useEffect(() => {
-    if (session && profiles)
-      void publisher.current?.notify().catch((e) => setError(errorMessage(e)));
-  }, [session, profiles]);
+  }, [current, _session, relocateWorkspaceRoot]);
+
   const share = async (workspaceId: string, shared: boolean) => {
-    if (!canShareRemotely(auth.current.current)) return;
-    if (shared && !state?.qualified) {
-      setError(
-        "Remote hosting currently requires Lomi on a Mac with Apple silicon.",
-      );
+    if (!native) {
+      setError("Remote sharing requires the Lomi desktop app.");
       return;
     }
-    if (acting.current) return;
-    const engine = publisher.current;
-    if (!engine) {
-      setError(
-        native
-          ? "Remote sharing is not ready. Try again shortly."
-          : "Remote sharing requires the Lomi desktop app.",
-      );
+    const session = current.current;
+    const project = session?.projects.find((candidate) =>
+      candidate.workspaces.some((workspace) => workspace.id === workspaceId),
+    );
+    const workspace = project?.workspaces.find(
+      (candidate) => candidate.id === workspaceId,
+    );
+    if (!project || !workspace) {
+      setError("The workspace was closed.");
       return;
     }
-    acting.current = true;
     setBusy(workspaceId);
     setError("");
     try {
-      if (shared) {
-        blocked.current.delete(workspaceId);
-        const selected = new Set([...engine.desired, workspaceId]);
-        const inventory = workspaceTerminals(current.current).filter((w) =>
-          selected.has(w.id),
-        );
-        if (
-          inventory.length > 32 ||
-          inventory.reduce((sum, w) => sum + w.terminals.length, 0) > 32
-        )
-          throw new Error(
-            "Remote supports up to 32 shared workspaces and 32 active desktop terminals in total, including terminals in unshared workspaces.",
-          );
-        preparing.current.add(workspaceId);
-        engine.desired.add(workspaceId);
-        await engine.notify();
-        if (publisher.current !== engine)
-          throw new Error(
-            "Remote sharing was interrupted. Try sharing the workspace again.",
-          );
-        if (
-          !workspaceTerminals(current.current).some((w) => w.id === workspaceId)
-        )
-          throw new Error("The workspace was closed.");
-      } else {
-        blocked.current.add(workspaceId);
-        engine.desired.delete(workspaceId);
-      }
-      if (!canShareRemotely(auth.current.current))
-        throw new Error("Sign in to use remote sharing.");
-      const next = await api<RemoteState>("remote_share_workspace", {
-        workspaceId,
-        shared,
-      });
-      if (
-        shared &&
-        !next?.workspaces?.some(
-          (w) => w.id === workspaceId && w.shared === true,
-        )
-      )
+      const bindings = await sharedHostWorkspaceBindings([workspace.id]);
+      setUncertaintyWarnings(bindings.uncertaintyWarnings);
+      if (!bindings.bindings)
         throw new Error(
-          "Remote sharing was not confirmed. Try sharing the workspace again.",
+          bindings.bindingError ??
+            "The local Host workspace bindings are unavailable.",
         );
-      accept.current(next);
-      void engine.notify().catch((e) => setError(errorMessage(e)));
-    } catch (e) {
-      setError(errorMessage(e));
-      if (shared) engine.desired.delete(workspaceId);
+      const binding = bindings.bindings.find(
+        (candidate) => candidate.workspaceId === workspace.id,
+      );
+      if (!binding)
+        throw new Error("The workspace has no authoritative local Host binding.");
+      if (binding.state === "retired")
+        throw new Error(
+          "The local Host retired this workspace. Its local project and drafts are preserved.",
+        );
+      if (binding.state === "pending")
+        throw new Error("The local Host is still resolving this workspace binding.");
+      if (binding.state === "missing") {
+        if (binding.previousRootPath)
+          throw new Error(
+            "The local Host no longer has this imported workspace. Its local project and drafts are preserved.",
+          );
+        await importSharedWorkspace(workspace.id, workspace.name, project.path);
+      }
+      await setSharedHostWorkspaceSharing(workspace.id, shared);
+      await refreshRef.current();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
-      acting.current = false;
-      preparing.current.delete(workspaceId);
       setBusy(undefined);
     }
   };
-  const resume = async () => {
-    if (
-      !canShareRemotely(auth.current.current) ||
-      !state?.qualified ||
-      acting.current
-    )
-      return;
-    acting.current = true;
-    setBusy("resume");
-    setError("");
+
+  const acknowledgeUncertaintyWarning = async (
+    warning: SharedHostDesktopUncertaintyWarning,
+  ) => {
+    if (!native) return;
     try {
-      accept.current(await api<RemoteState>("remote_resume"));
-    } catch (e) {
-      setError(errorMessage(e));
-    } finally {
-      acting.current = false;
-      setBusy(undefined);
+      const workspaceIds =
+        current.current?.projects.flatMap((project) =>
+          project.workspaces.map((workspace) => workspace.id),
+        ) ?? [];
+      const response = await sharedHostWorkspaceBindings(workspaceIds, {
+        operationId: warning.operationId,
+        requestHash: warning.requestHash,
+      });
+      setUncertaintyWarnings(response.uncertaintyWarnings);
+      if (response.bindings) await refreshRef.current();
+      else setError(response.bindingError ?? "The local Host is unavailable.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
     }
   };
-  return { state, error, busy, share, resume, available };
+
+  return {
+    state,
+    error,
+    busy,
+    share,
+    uncertaintyWarnings,
+    acknowledgeUncertaintyWarning,
+    available: native,
+  };
 }

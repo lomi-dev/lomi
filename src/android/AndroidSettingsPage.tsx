@@ -68,12 +68,13 @@ function Confirmation({
       className="android-dialog"
       title={value.title}
       tone="warning"
+      closeDisabled={busy}
       onClose={() => {
         if (!busy) onClose();
       }}
     >
       <form
-        className="android-device-form"
+        className="dialog-form dialog-layout"
         onSubmit={(event) => {
           event.preventDefault();
           if (busy || (value.name && text !== value.name)) return;
@@ -86,24 +87,26 @@ function Confirmation({
             .finally(() => setBusy(false));
         }}
       >
-        <p>{value.description}</p>
-        {value.name && (
-          <label>
-            Type “{value.name}” to confirm
-            <input
-              autoFocus
-              value={text}
-              onChange={(event) => setText(event.target.value)}
-              disabled={busy}
-              autoComplete="off"
-            />
-          </label>
-        )}
-        {error && (
-          <p className="keybindings-error" role="alert">
-            {error}
-          </p>
-        )}
+        <div className="dialog-content android-device-form">
+          <p>{value.description}</p>
+          {value.name && (
+            <label>
+              Type “{value.name}” to confirm
+              <input
+                autoFocus
+                value={text}
+                onChange={(event) => setText(event.target.value)}
+                disabled={busy}
+                autoComplete="off"
+              />
+            </label>
+          )}
+          {error && (
+            <p className="keybindings-error" role="alert">
+              {error}
+            </p>
+          )}
+        </div>
         <div className="dialog-actions">
           <button
             className="button"
@@ -145,12 +148,13 @@ function Installation({
       className="android-dialog"
       title="Review Android installation"
       wide
+      closeDisabled={busy}
       onClose={() => {
         if (!busy) onClose();
       }}
     >
       <form
-        className="android-device-form"
+        className="dialog-form dialog-layout"
         onSubmit={(event) => {
           event.preventDefault();
           if (busy || accepted.length !== plan.licenses.length) return;
@@ -162,63 +166,65 @@ function Installation({
             .finally(() => setBusy(false));
         }}
       >
-        <p>
-          {formatBytes(plan.downloadBytes)} to download. Extraction and virtual
-          phone data need additional space.
-        </p>
-        <details className="android-install-details">
-          <DisclosureSummary>Installation details</DisclosureSummary>
-          <p className="settings-help">
-            Managed SDK: <code>{snapshot.sdkPath}</code>. Existing SDKs, shell
-            settings and system Java remain separate.
+        <div className="dialog-content android-device-form">
+          <p>
+            {formatBytes(plan.downloadBytes)} to download. Extraction and
+            virtual phone data need additional space.
           </p>
-          <ul className="android-install-list">
-            {plan.bootstrap && (
-              <>
-                <li>Android CLI {plan.bootstrap.cli.version}</li>
-                <li>Private Java runtime {plan.bootstrap.java.version}</li>
-              </>
-            )}
-            {plan.packages.map((pkg) => (
-              <li key={pkg.id}>
-                {pkg.name} · {pkg.revision} · {formatBytes(pkg.size)}
-              </li>
-            ))}
-          </ul>
-        </details>
-        <p>Review and accept the provider terms to continue.</p>
-        {plan.licenses.map((license) => (
-          <section
-            className="android-license"
-            key={license.digest}
-            aria-label={license.id}
-          >
-            <h3>{license.id}</h3>
-            <pre tabIndex={0} aria-label={`${license.id} terms`}>
-              {license.text}
-            </pre>
-            <label className="android-checkbox">
-              <input
-                type="checkbox"
-                checked={accepted.includes(license.digest)}
-                disabled={busy}
-                onChange={(event) =>
-                  setAccepted((before) =>
-                    event.target.checked
-                      ? [...before, license.digest]
-                      : before.filter((digest) => digest !== license.digest),
-                  )
-                }
-              />
-              I accept {license.id}
-            </label>
-          </section>
-        ))}
-        {error && (
-          <p className="keybindings-error" role="alert">
-            {error}
-          </p>
-        )}
+          <details className="android-install-details">
+            <DisclosureSummary>Installation details</DisclosureSummary>
+            <p className="settings-help">
+              Managed SDK: <code>{snapshot.sdkPath}</code>. Existing SDKs, shell
+              settings and system Java remain separate.
+            </p>
+            <ul className="android-install-list">
+              {plan.bootstrap && (
+                <>
+                  <li>Android CLI {plan.bootstrap.cli.version}</li>
+                  <li>Private Java runtime {plan.bootstrap.java.version}</li>
+                </>
+              )}
+              {plan.packages.map((pkg) => (
+                <li key={pkg.id}>
+                  {pkg.name} · {pkg.revision} · {formatBytes(pkg.size)}
+                </li>
+              ))}
+            </ul>
+          </details>
+          <p>Review and accept the provider terms to continue.</p>
+          {plan.licenses.map((license) => (
+            <section
+              className="android-license"
+              key={license.digest}
+              aria-label={license.id}
+            >
+              <h3>{license.id}</h3>
+              <pre tabIndex={0} aria-label={`${license.id} terms`}>
+                {license.text}
+              </pre>
+              <label className="android-checkbox">
+                <input
+                  type="checkbox"
+                  checked={accepted.includes(license.digest)}
+                  disabled={busy}
+                  onChange={(event) =>
+                    setAccepted((before) =>
+                      event.target.checked
+                        ? [...before, license.digest]
+                        : before.filter((digest) => digest !== license.digest),
+                    )
+                  }
+                />
+                I accept {license.id}
+              </label>
+            </section>
+          ))}
+          {error && (
+            <p className="keybindings-error" role="alert">
+              {error}
+            </p>
+          )}
+        </div>
         <div className="dialog-actions">
           <button
             className="button"

@@ -81,69 +81,88 @@ export default function TaskCreateDialog({
       closeDisabled={busy}
       onClose={onClose}
     >
-      <div className="dialog-form agent-task-dialog" aria-busy={busy}>
-        <p>Work in {cwd} using a native CLI account.</p>
-        <div className="dialog-form">
-          <label htmlFor={accountFieldId}>Account</label>
-          <select
-            id={accountFieldId}
-            ref={initial}
-            value={accountId}
-            disabled={busy}
-            onChange={(event) => setAccountId(event.target.value)}
-          >
-            <option value="">Choose an account</option>
-            {accounts.map((account) => (
-              <option key={account.accountId} value={account.accountId}>
-                {account.label} · {cliNames[account.cli]}
-              </option>
-            ))}
-          </select>
+      <div className="dialog-form dialog-layout" aria-busy={busy}>
+        <div className="dialog-content agent-task-dialog">
+          <p>Work in {cwd} using a native CLI account.</p>
+          <div className="agent-task-account-field">
+            <label htmlFor={accountFieldId}>Account</label>
+            <select
+              id={accountFieldId}
+              ref={initial}
+              value={accountId}
+              disabled={busy}
+              onChange={(event) => setAccountId(event.target.value)}
+            >
+              <option value="">Choose an account</option>
+              {accounts.map((account) => (
+                <option key={account.accountId} value={account.accountId}>
+                  {account.label} · {cliNames[account.cli]}
+                </option>
+              ))}
+            </select>
+          </div>
+          {selected && (
+            <p role="status">
+              {selected.authState}
+              {selected.availabilityReason
+                ? ` · ${selected.availabilityReason}`
+                : ""}
+            </p>
+          )}
+          <label>
+            Task title
+            <input
+              value={title}
+              disabled={busy}
+              onChange={(event) => setTitle(event.target.value)}
+            />
+          </label>
+          <label>
+            Model
+            <input
+              value={model}
+              disabled={busy}
+              onChange={(event) => setModel(event.target.value)}
+              placeholder="Exact model identifier"
+            />
+          </label>
+          <label>
+            Reasoning effort (optional)
+            <input
+              value={reasoningEffort}
+              disabled={busy}
+              onChange={(event) => setReasoningEffort(event.target.value)}
+            />
+          </label>
+          {(error || accountsError) && (
+            <p role="alert">{error || accountsError}</p>
+          )}
+          <NativeQualificationNotice
+            cli={selected?.cli}
+            qualified={
+              snapshot?.capabilities.find(
+                (capability) => capability.cli === selected?.cli,
+              )?.stopAndContinueQualified
+            }
+          />
+
+          <LegacyImport />
+          {tasks.length > 0 && (
+            <section className="agent-saved-tasks" aria-label="Saved tasks">
+              <h3>Saved tasks</h3>
+              {tasks.map((task) => (
+                <button
+                  className="button"
+                  key={task.taskId}
+                  disabled={busy}
+                  onClick={() => onOpenTask(task)}
+                >
+                  {task.title} · {task.state}
+                </button>
+              ))}
+            </section>
+          )}
         </div>
-        {selected && (
-          <p role="status">
-            {selected.authState}
-            {selected.availabilityReason
-              ? ` · ${selected.availabilityReason}`
-              : ""}
-          </p>
-        )}
-        <label>
-          Task title
-          <input
-            value={title}
-            disabled={busy}
-            onChange={(event) => setTitle(event.target.value)}
-          />
-        </label>
-        <label>
-          Model
-          <input
-            value={model}
-            disabled={busy}
-            onChange={(event) => setModel(event.target.value)}
-            placeholder="Exact model identifier"
-          />
-        </label>
-        <label>
-          Reasoning effort (optional)
-          <input
-            value={reasoningEffort}
-            disabled={busy}
-            onChange={(event) => setReasoningEffort(event.target.value)}
-          />
-        </label>
-        {(error || accountsError) && (
-          <p role="alert">{error || accountsError}</p>
-        )}
-        <NativeQualificationNotice
-          cli={selected?.cli}
-          qualified={
-            snapshot?.capabilities.find(
-              (capability) => capability.cli === selected?.cli,
-            )?.stopAndContinueQualified
-          }
-        />
         <div className="dialog-actions">
           <button className="button" disabled={busy} onClick={onClose}>
             Cancel
@@ -156,22 +175,6 @@ export default function TaskCreateDialog({
             Create task
           </button>
         </div>
-        <LegacyImport />
-        {tasks.length > 0 && (
-          <section className="agent-saved-tasks" aria-label="Saved tasks">
-            <h3>Saved tasks</h3>
-            {tasks.map((task) => (
-              <button
-                className="button"
-                key={task.taskId}
-                disabled={busy}
-                onClick={() => onOpenTask(task)}
-              >
-                {task.title} · {task.state}
-              </button>
-            ))}
-          </section>
-        )}
       </div>
     </Modal>
   );

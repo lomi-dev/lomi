@@ -41,6 +41,15 @@ pub fn directory(path: &str) -> Result<PathBuf, String> {
 pub fn inside(root: &str, relative: &str) -> Result<PathBuf, String> {
     let root = directory(root)?;
     let relative = Path::new(relative);
+    let private = |path: &Path| {
+        path.components().any(|part| {
+            matches!(part, Component::Normal(name)
+                if lomi_files::is_private_staging_name(name.as_encoded_bytes()))
+        })
+    };
+    if private(&root) || private(relative) {
+        return Err("This path is reserved for private file recovery.".into());
+    }
     if relative.components().any(|part| {
         matches!(
             part,
@@ -50,6 +59,9 @@ pub fn inside(root: &str, relative: &str) -> Result<PathBuf, String> {
         return Err("The path must stay inside the project.".into());
     }
     let path = fs::canonicalize(root.join(relative)).map_err(|error| error.to_string())?;
+    if private(&path) {
+        return Err("This path is reserved for private file recovery.".into());
+    }
     if !path.starts_with(&root) {
         return Err("This symbolic link points outside the project.".into());
     }
@@ -72,7 +84,7 @@ pub fn read_directory(root: &str, relative: &str) -> Result<Vec<Entry>, String> 
     for entry in fs::read_dir(path).map_err(|error| error.to_string())? {
         let entry = entry.map_err(|error| error.to_string())?;
         let name = entry.file_name().to_string_lossy().into_owned();
-        if name == ".git" {
+        if name == ".git" || lomi_files::is_private_staging_name(name.as_bytes()) {
             continue;
         }
         let kind = entry.file_type().map_err(|error| error.to_string())?;

@@ -14,7 +14,10 @@ async function field(page: Page, label: string, value: string) {
   await expect(input).toBeEnabled();
   await input.fill(value);
   await input.press("Enter");
-  await expect(page.getByRole("status")).toHaveText("Saved");
+  await expect(page.locator(".terminal-settings-page")).toHaveAttribute(
+    "aria-busy",
+    "false",
+  );
   await expect(input).toBeEnabled();
 }
 async function options(page: Page, id: string) {
@@ -291,13 +294,15 @@ test("appearance overrides survive theme changes and resetting follows the activ
   await expect
     .poll(() => options(main, id))
     .toMatchObject({ fontSize: 17, theme: { red: "#ff1234ff" } });
-  await page.getByRole("button", { name: "Reset all", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Restore theme default for Red", exact: true })
+    .click();
   await expect
     .poll(() => options(main, id))
     .toMatchObject({ fontSize: 17, theme: { red: "#aabbccff" } });
 });
 
-test("font choices, collapsed settings, and the CSS preview follow saved appearance", async ({
+test("font choices and collapsed settings round-trip saved appearance", async ({
   page,
 }, testInfo) => {
   await mockDesktop(page, false);
@@ -321,8 +326,8 @@ test("font choices, collapsed settings, and the CSS preview follow saved appeara
     page.getByRole("button", { name: "Configure Claude Code…", exact: true }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Reset all", exact: true }),
-  ).toBeVisible();
+    page.locator(".terminal-settings-page .settings-page-actions"),
+  ).toHaveCount(0);
   await expect(page.getByText("More settings", { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("Line height", { exact: true })).toBeHidden();
   await expect(
@@ -422,7 +427,10 @@ test("font choices, collapsed settings, and the CSS preview follow saved appeara
       exact: true,
     })
     .click();
-  await expect(page.getByRole("status")).toHaveText("Saved");
+  await expect(page.locator(".terminal-settings-page")).toHaveAttribute(
+    "aria-busy",
+    "false",
+  );
   await expect(
     page.getByRole("combobox", { name: "Font", exact: true }),
   ).toHaveText("Theme default");
@@ -434,7 +442,10 @@ test("font choices, collapsed settings, and the CSS preview follow saved appeara
     page.getByRole("combobox", { name: "Font", exact: true }),
     "JetBrains Mono",
   );
-  await expect(page.getByRole("status")).toHaveText("Saved");
+  await expect(page.locator(".terminal-settings-page")).toHaveAttribute(
+    "aria-busy",
+    "false",
+  );
   await expect
     .poll(async () => (await savedPreferences(page))?.appearance?.fontFamily)
     .toContain("JetBrains Mono");
@@ -442,7 +453,10 @@ test("font choices, collapsed settings, and the CSS preview follow saved appeara
     page.getByRole("combobox", { name: "Font", exact: true }),
     "Theme default",
   );
-  await expect(page.getByRole("status")).toHaveText("Saved");
+  await expect(page.locator(".terminal-settings-page")).toHaveAttribute(
+    "aria-busy",
+    "false",
+  );
   expect((await savedPreferences(page)).appearance).not.toHaveProperty(
     "fontFamily",
   );
@@ -454,31 +468,38 @@ test("font choices, collapsed settings, and the CSS preview follow saved appeara
   await field(page, "Font family", "Fira Code, monospace");
   await field(page, "Font size", "21");
   await chooseOption(page.getByLabel("Cursor style", { exact: true }), "Block");
-  await expect(page.getByRole("status")).toHaveText("Saved");
+  await expect(page.locator(".terminal-settings-page")).toHaveAttribute(
+    "aria-busy",
+    "false",
+  );
   await page.getByText("Customize colors", { exact: true }).click();
   await field(page, "Background", "#102030");
   await field(page, "Text", "#f0e0d0");
 
-  const preview = page.getByRole("img", {
-    name: "Terminal preview showing Welcome to Lomi and a prompt",
-    exact: true,
-  });
-  await expect(preview).toBeVisible();
-  await expect(preview).toHaveCSS("font-family", /Fira Code/);
-  await expect(preview).toHaveCSS("font-size", "21px");
-  await expect(preview).toHaveCSS("background-color", "rgb(16, 32, 48)");
-  await expect(preview).toHaveCSS("color", "rgb(240, 224, 208)");
-  const previewCursor = preview.locator(".terminal-preview-cursor");
-  await expect(previewCursor).toBeVisible();
   await expect
-    .poll(async () =>
-      Number.parseFloat(
-        await previewCursor.evaluate(
-          (element) => getComputedStyle(element).width,
-        ),
-      ),
-    )
-    .toBeGreaterThan(1);
+    .poll(async () => (await savedPreferences(page))?.appearance)
+    .toMatchObject({
+      fontFamily: "Fira Code, monospace",
+      fontSize: 21,
+      cursorStyle: "block",
+      colors: { background: "#102030", foreground: "#f0e0d0" },
+    });
+  await page.reload();
+  await expect(
+    page.getByRole("combobox", { name: "Font", exact: true }),
+  ).toHaveText("Custom font…");
+  await expect(page.getByLabel("Font family", { exact: true })).toHaveValue(
+    "Fira Code, monospace",
+  );
+  await expect(page.getByLabel("Font size", { exact: true })).toHaveValue("21");
+  await expect(
+    page.getByRole("combobox", { name: "Cursor style", exact: true }),
+  ).toHaveText("Block");
+  await page.getByText("Customize colors", { exact: true }).click();
+  await expect(page.getByLabel("Background", { exact: true })).toHaveValue(
+    "#102030",
+  );
+  await expect(page.getByLabel("Text", { exact: true })).toHaveValue("#f0e0d0");
 
   await page.getByText("Customize colors", { exact: true }).click();
   await page.setViewportSize({ width: 920, height: 680 });
@@ -504,8 +525,16 @@ test("font choices, collapsed settings, and the CSS preview follow saved appeara
     path: testInfo.outputPath("terminal-settings-font-custom-small.png"),
   });
 
-  await page.getByRole("button", { name: "Reset all", exact: true }).click();
-  await expect(page.getByRole("status")).toHaveText("Saved");
+  await page
+    .getByRole("button", {
+      name: "Restore theme default for Font family",
+      exact: true,
+    })
+    .click();
+  await expect(page.locator(".terminal-settings-page")).toHaveAttribute(
+    "aria-busy",
+    "false",
+  );
   expect((await savedPreferences(page)).appearance).not.toHaveProperty(
     "fontFamily",
   );
@@ -553,7 +582,9 @@ test("failed saves retain working preferences and corrupt files require explicit
       localStorage.getItem("test-terminal-preferences"),
     ),
   ).toBe('{"version":99,"future":"preserve"}');
-  await page.getByRole("button", { name: "Reset all", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Reset to defaults", exact: true })
+    .click();
   await expect(page.getByRole("alert")).toHaveCount(0);
   await expect(page.getByLabel("Font size", { exact: true })).toHaveValue("16");
 });

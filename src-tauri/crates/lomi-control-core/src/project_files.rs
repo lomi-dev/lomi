@@ -1,349 +1,187 @@
-//! Descriptor-relative project reads. No pathname is reopened after selection.
-//! This is an application boundary, not an OS sandbox for the host account.
-use lomi_control_protocol::ErrorCode;
-use std::{
-    ffi::CString,
-    fs::{File, Metadata},
-    io::Read,
-    os::{
-        fd::{AsRawFd, FromRawFd},
-        unix::{ffi::OsStrExt, fs::MetadataExt},
-    },
-    path::{Component, Path, PathBuf},
+//! Compatibility facade over the protocol-neutral native project-files engine.
+use lomi_control_protocol::{ErrorCode, files::FileEntry};
+use lomi_native_project_files::{
+    NativeProjectDirectory, NativeProjectDirectorySnapshot, NativeProjectEntryKind,
+    NativeProjectErrorCode, NativeProjectFile,
 };
+use std::{fs::File, path::Path};
 
 pub struct ProjectDirectory {
-    path: PathBuf,
-    directory: File,
+    engine: NativeProjectDirectory,
 }
+
 pub struct ProjectFile {
     pub file: File,
-    stamp: FileStamp,
+    selected: NativeProjectFile,
 }
+
 pub struct DirectorySnapshot {
     pub revision: String,
-    pub entries: Vec<lomi_control_protocol::files::FileEntry>,
+    pub entries: Vec<FileEntry>,
 }
-#[derive(PartialEq, Eq)]
-struct FileStamp {
-    device: u64,
-    inode: u64,
-    bytes: u64,
-    links: u64,
-    modified: (i64, i64),
-    changed: (i64, i64),
-}
-impl FileStamp {
-    fn read(m: &Metadata) -> Self {
-        Self {
-            device: m.dev(),
-            inode: m.ino(),
-            bytes: m.len(),
-            links: m.nlink(),
-            modified: (m.mtime(), m.mtime_nsec()),
-            changed: (m.ctime(), m.ctime_nsec()),
-        }
+
+pub(crate) fn to_protocol_error(value: NativeProjectErrorCode) -> ErrorCode {
+    match value {
+        NativeProjectErrorCode::AppUnavailable => ErrorCode::AppUnavailable,
+        NativeProjectErrorCode::PairingRequired => ErrorCode::PairingRequired,
+        NativeProjectErrorCode::ScopeDenied => ErrorCode::ScopeDenied,
+        NativeProjectErrorCode::UiNotReady => ErrorCode::UiNotReady,
+        NativeProjectErrorCode::AppClosing => ErrorCode::AppClosing,
+        NativeProjectErrorCode::TargetNotFound => ErrorCode::TargetNotFound,
+        NativeProjectErrorCode::StaleGeneration => ErrorCode::StaleGeneration,
+        NativeProjectErrorCode::RevisionConflict => ErrorCode::RevisionConflict,
+        NativeProjectErrorCode::StaleSnapshot => ErrorCode::StaleSnapshot,
+        NativeProjectErrorCode::TargetBusy => ErrorCode::TargetBusy,
+        NativeProjectErrorCode::ControlRevoked => ErrorCode::ControlRevoked,
+        NativeProjectErrorCode::PromptStateUnknown => ErrorCode::PromptStateUnknown,
+        NativeProjectErrorCode::PanelNotRenderable => ErrorCode::PanelNotRenderable,
+        NativeProjectErrorCode::ProtectedOriginTerminal => ErrorCode::ProtectedOriginTerminal,
+        NativeProjectErrorCode::UnsupportedCapability => ErrorCode::UnsupportedCapability,
+        NativeProjectErrorCode::HostUnqualified => ErrorCode::HostUnqualified,
+        NativeProjectErrorCode::DeadlineExceeded => ErrorCode::DeadlineExceeded,
+        NativeProjectErrorCode::CursorExpired => ErrorCode::CursorExpired,
+        NativeProjectErrorCode::ArtifactTooLarge => ErrorCode::ArtifactTooLarge,
+        NativeProjectErrorCode::ArtifactInvalid => ErrorCode::ArtifactInvalid,
+        NativeProjectErrorCode::OutcomeUnknown => ErrorCode::OutcomeUnknown,
+        NativeProjectErrorCode::IdempotencyConflict => ErrorCode::IdempotencyConflict,
+        NativeProjectErrorCode::RetryWindowExpired => ErrorCode::RetryWindowExpired,
+        NativeProjectErrorCode::ResourceExhausted => ErrorCode::ResourceExhausted,
+        NativeProjectErrorCode::StorageUnavailable => ErrorCode::StorageUnavailable,
     }
 }
-fn open_at(
-    directory: &File,
-    name: &std::ffi::OsStr,
-    directory_only: bool,
-) -> Result<File, ErrorCode> {
-    let name = CString::new(name.as_bytes()).map_err(|_| ErrorCode::ScopeDenied)?;
-    let flags = libc::O_RDONLY
-        | libc::O_NOFOLLOW
-        | libc::O_CLOEXEC
-        | libc::O_NONBLOCK
-        | if directory_only { libc::O_DIRECTORY } else { 0 };
-    let fd = unsafe { libc::openat(directory.as_raw_fd(), name.as_ptr(), flags) };
-    if fd < 0 {
-        return Err(ErrorCode::TargetNotFound);
+
+pub(crate) fn to_native_error(value: ErrorCode) -> NativeProjectErrorCode {
+    match value {
+        ErrorCode::AppUnavailable => NativeProjectErrorCode::AppUnavailable,
+        ErrorCode::PairingRequired => NativeProjectErrorCode::PairingRequired,
+        ErrorCode::ScopeDenied => NativeProjectErrorCode::ScopeDenied,
+        ErrorCode::UiNotReady => NativeProjectErrorCode::UiNotReady,
+        ErrorCode::AppClosing => NativeProjectErrorCode::AppClosing,
+        ErrorCode::TargetNotFound => NativeProjectErrorCode::TargetNotFound,
+        ErrorCode::StaleGeneration => NativeProjectErrorCode::StaleGeneration,
+        ErrorCode::RevisionConflict => NativeProjectErrorCode::RevisionConflict,
+        ErrorCode::StaleSnapshot => NativeProjectErrorCode::StaleSnapshot,
+        ErrorCode::TargetBusy => NativeProjectErrorCode::TargetBusy,
+        ErrorCode::ControlRevoked => NativeProjectErrorCode::ControlRevoked,
+        ErrorCode::PromptStateUnknown => NativeProjectErrorCode::PromptStateUnknown,
+        ErrorCode::PanelNotRenderable => NativeProjectErrorCode::PanelNotRenderable,
+        ErrorCode::ProtectedOriginTerminal => NativeProjectErrorCode::ProtectedOriginTerminal,
+        ErrorCode::UnsupportedCapability => NativeProjectErrorCode::UnsupportedCapability,
+        ErrorCode::HostUnqualified => NativeProjectErrorCode::HostUnqualified,
+        ErrorCode::DeadlineExceeded => NativeProjectErrorCode::DeadlineExceeded,
+        ErrorCode::CursorExpired => NativeProjectErrorCode::CursorExpired,
+        ErrorCode::ArtifactTooLarge => NativeProjectErrorCode::ArtifactTooLarge,
+        ErrorCode::ArtifactInvalid => NativeProjectErrorCode::ArtifactInvalid,
+        ErrorCode::OutcomeUnknown => NativeProjectErrorCode::OutcomeUnknown,
+        ErrorCode::IdempotencyConflict => NativeProjectErrorCode::IdempotencyConflict,
+        ErrorCode::RetryWindowExpired => NativeProjectErrorCode::RetryWindowExpired,
+        ErrorCode::ResourceExhausted => NativeProjectErrorCode::ResourceExhausted,
+        ErrorCode::StorageUnavailable => NativeProjectErrorCode::StorageUnavailable,
     }
-    Ok(unsafe { File::from_raw_fd(fd) })
 }
-pub(crate) fn open_absolute_directory(path: &Path) -> Result<File, ErrorCode> {
-    if !path.is_absolute() || path.as_os_str().len() > 4096 {
-        return Err(ErrorCode::ScopeDenied);
-    }
-    let mut directory = File::open("/").map_err(|_| ErrorCode::StorageUnavailable)?;
-    for (index, component) in path.components().enumerate() {
-        if index > 128 {
-            return Err(ErrorCode::ResourceExhausted);
-        }
-        match component {
-            Component::RootDir => {}
-            Component::Normal(name) => directory = open_at(&directory, name, true)?,
-            _ => return Err(ErrorCode::ScopeDenied),
-        }
-    }
-    Ok(directory)
-}
-pub fn validate_relative(path: &str) -> Result<(), ErrorCode> {
-    if path.is_empty()
-        || path.len() > 4096
-        || path.contains('\0')
-        || path.contains('\\')
-        || path.split('/').count() > 128
-    {
-        return Err(ErrorCode::ScopeDenied);
-    }
-    for part in path.split('/') {
-        let lower = part.to_ascii_lowercase();
-        if part.is_empty()
-            || matches!(part, "." | "..")
-            || lower.starts_with(".env")
-            || matches!(
-                lower.as_str(),
-                ".git"
-                    | ".ssh"
-                    | ".aws"
-                    | ".azure"
-                    | ".gnupg"
-                    | ".codex"
-                    | ".netrc"
-                    | ".npmrc"
-                    | ".pypirc"
-                    | "credentials"
-                    | "credentials.json"
-                    | "id_rsa"
-                    | "id_ed25519"
-            )
-            || [".pem", ".key", ".p12", ".pfx", ".keystore", ".jks"]
-                .iter()
-                .any(|suffix| lower.ends_with(suffix))
-        {
-            return Err(ErrorCode::ScopeDenied);
-        }
-    }
-    Ok(())
-}
+
 impl ProjectDirectory {
     pub(crate) fn canonical_path(&self) -> &Path {
-        &self.path
+        self.engine.canonical_path()
     }
+
+    pub(crate) fn native(&self) -> &NativeProjectDirectory {
+        &self.engine
+    }
+
     pub(crate) fn open_directory(&self, relative: &str) -> Result<File, ErrorCode> {
-        self.check()?;
-        let mut directory = self
-            .directory
-            .try_clone()
-            .map_err(|_| ErrorCode::StorageUnavailable)?;
-        if !relative.is_empty() {
-            validate_relative(relative)?;
-            for name in relative.split('/') {
-                directory = open_at(&directory, std::ffi::OsStr::new(name), true)?;
-            }
-        }
-        Ok(directory)
+        self.engine
+            .open_directory(relative)
+            .map_err(to_protocol_error)
     }
+
     pub fn list(
         &self,
         relative: &str,
         check: impl Fn() -> Result<(), ErrorCode>,
     ) -> Result<DirectorySnapshot, ErrorCode> {
-        use lomi_control_protocol::files::{FileEntry, FileEntryKind};
-        use rustix::fs::{statat, AtFlags, Dir, FileType};
-        use sha2::{Digest, Sha256};
-        check()?;
-        let directory = self.open_directory(relative)?;
-        let stamp = FileStamp::read(
-            &directory
-                .metadata()
-                .map_err(|_| ErrorCode::StorageUnavailable)?,
-        );
-        let stream = Dir::read_from(&directory).map_err(|_| ErrorCode::StorageUnavailable)?;
-        let mut entries = Vec::new();
-        let mut bytes = 0;
-        for (visited, entry) in stream.enumerate() {
-            check()?;
-            if visited >= 10002 {
-                return Err(ErrorCode::ResourceExhausted);
-            }
-            let entry = entry.map_err(|_| ErrorCode::StorageUnavailable)?;
-            let Ok(name) = entry.file_name().to_str() else {
-                continue;
-            };
-            if matches!(name, "." | "..") {
-                continue;
-            }
-            let path = if relative.is_empty() {
-                name.to_owned()
-            } else {
-                format!("{relative}/{name}")
-            };
-            if validate_relative(&path).is_err() {
-                continue;
-            }
-            let metadata = statat(&directory, entry.file_name(), AtFlags::SYMLINK_NOFOLLOW)
-                .map_err(|_| ErrorCode::RevisionConflict)?;
-            let kind = match FileType::from_raw_mode(metadata.st_mode) {
-                FileType::Directory => FileEntryKind::Directory,
-                FileType::RegularFile if metadata.st_nlink == 1 && metadata.st_size >= 0 => {
-                    FileEntryKind::File
-                }
-                _ => continue,
-            };
-            let item = FileEntry {
-                name: name.into(),
-                relative_path: path,
-                byte_length: (kind == FileEntryKind::File).then(|| metadata.st_size.to_string()),
-                kind,
-            };
-            bytes += serde_json::to_vec(&item)
-                .map_err(|_| ErrorCode::ResourceExhausted)?
-                .len();
-            if bytes > 1024 * 1024 {
-                return Err(ErrorCode::ResourceExhausted);
-            }
-            entries.push(item);
-        }
-        entries.sort_by(|a, b| {
-            (a.kind != FileEntryKind::Directory)
-                .cmp(&(b.kind != FileEntryKind::Directory))
-                .then(a.name.cmp(&b.name))
-        });
-        if entries
-            .windows(2)
-            .any(|items| items[0].name == items[1].name)
-        {
-            return Err(ErrorCode::RevisionConflict);
-        }
-        check()?;
-        let current = self.open_directory(relative)?;
-        if FileStamp::read(
-            &current
-                .metadata()
-                .map_err(|_| ErrorCode::StorageUnavailable)?,
-        ) != stamp
-            || FileStamp::read(
-                &directory
-                    .metadata()
-                    .map_err(|_| ErrorCode::StorageUnavailable)?,
-            ) != stamp
-        {
-            return Err(ErrorCode::RevisionConflict);
-        }
-        let mut hash = Sha256::new();
-        hash.update(stamp.device.to_le_bytes());
-        hash.update(stamp.inode.to_le_bytes());
-        for value in [
-            stamp.modified.0,
-            stamp.modified.1,
-            stamp.changed.0,
-            stamp.changed.1,
-        ] {
-            hash.update(value.to_le_bytes());
-        }
-        hash.update(serde_json::to_vec(&entries).map_err(|_| ErrorCode::ResourceExhausted)?);
-        check()?;
-        Ok(DirectorySnapshot {
-            entries,
-            revision: format!("{:x}", hash.finalize()),
-        })
+        let snapshot = self
+            .engine
+            .list(relative, || check().map_err(to_native_error))
+            .map_err(to_protocol_error)?;
+        Ok(DirectorySnapshot::from(snapshot))
     }
+
     pub fn open(path: &Path) -> Result<Self, ErrorCode> {
-        let directory = open_absolute_directory(path)?;
         Ok(Self {
-            path: path.to_path_buf(),
-            directory,
+            engine: NativeProjectDirectory::open(path).map_err(to_protocol_error)?,
         })
     }
+
     pub fn check(&self) -> Result<(), ErrorCode> {
-        let current = open_absolute_directory(&self.path)?
-            .metadata()
-            .map_err(|_| ErrorCode::StorageUnavailable)?;
-        let approved = self
-            .directory
-            .metadata()
-            .map_err(|_| ErrorCode::StorageUnavailable)?;
-        if (current.dev(), current.ino()) != (approved.dev(), approved.ino()) {
-            return Err(ErrorCode::RevisionConflict);
-        }
-        Ok(())
+        self.engine.check().map_err(to_protocol_error)
     }
+
     pub fn open_file(&self, relative: &str, max_bytes: u64) -> Result<ProjectFile, ErrorCode> {
-        validate_relative(relative)?;
-        self.check()?;
-        let mut directory = self
-            .directory
-            .try_clone()
-            .map_err(|_| ErrorCode::StorageUnavailable)?;
-        let components: Vec<_> = Path::new(relative).components().collect();
-        for (index, component) in components.iter().enumerate() {
-            let Component::Normal(name) = component else {
-                return Err(ErrorCode::ScopeDenied);
-            };
-            let last = index + 1 == components.len();
-            let file = open_at(&directory, name, !last)?;
-            if last {
-                let metadata = file.metadata().map_err(|_| ErrorCode::StorageUnavailable)?;
-                if !metadata.is_file() || metadata.nlink() != 1 {
-                    return Err(ErrorCode::ScopeDenied);
-                }
-                if metadata.len() > max_bytes {
-                    return Err(ErrorCode::ArtifactTooLarge);
-                }
-                return Ok(ProjectFile {
-                    file,
-                    stamp: FileStamp::read(&metadata),
-                });
-            }
-            directory = file;
-        }
-        Err(ErrorCode::ScopeDenied)
+        let selected = self
+            .engine
+            .open_file(relative, max_bytes)
+            .map_err(to_protocol_error)?;
+        let file = selected.try_clone_file().map_err(to_protocol_error)?;
+        Ok(ProjectFile { file, selected })
     }
 }
+
+impl From<NativeProjectDirectorySnapshot> for DirectorySnapshot {
+    fn from(snapshot: NativeProjectDirectorySnapshot) -> Self {
+        Self {
+            revision: snapshot.revision,
+            entries: snapshot
+                .entries
+                .into_iter()
+                .map(|entry| FileEntry {
+                    name: entry.name,
+                    relative_path: entry.relative_path,
+                    kind: match entry.kind {
+                        NativeProjectEntryKind::Directory => {
+                            lomi_control_protocol::files::FileEntryKind::Directory
+                        }
+                        NativeProjectEntryKind::File => {
+                            lomi_control_protocol::files::FileEntryKind::File
+                        }
+                    },
+                    byte_length: entry.byte_length,
+                })
+                .collect(),
+        }
+    }
+}
+
 impl ProjectFile {
-    /// Read the selected descriptor with bounded allocation and cooperative
-    /// revocation. A changed file never produces a successful snapshot.
     pub fn read_bytes(
-        mut self,
+        self,
         limit: u64,
         check: impl Fn() -> Result<(), ErrorCode>,
     ) -> Result<Vec<u8>, ErrorCode> {
-        check()?;
-        if self.len() > limit || limit > 4 * 1024 * 1024 {
-            return Err(ErrorCode::ResourceExhausted);
-        }
-        let mut bytes = Vec::with_capacity(self.len() as usize);
-        let mut chunk = [0_u8; 65536];
-        loop {
-            check()?;
-            let count = self
-                .file
-                .read(&mut chunk)
-                .map_err(|_| ErrorCode::StorageUnavailable)?;
-            if count == 0 {
-                break;
-            }
-            if bytes.len() as u64 + count as u64 > limit {
-                return Err(ErrorCode::ResourceExhausted);
-            }
-            bytes.extend_from_slice(&chunk[..count]);
-        }
-        self.check_unchanged()?;
-        check()?;
-        if bytes.len() as u64 != self.len() {
-            return Err(ErrorCode::RevisionConflict);
-        }
-        Ok(bytes)
+        self.selected
+            .read_bytes(limit, || check().map_err(to_native_error))
+            .map_err(to_protocol_error)
     }
+
     pub fn len(&self) -> u64 {
-        self.stamp.bytes
+        self.selected.len()
     }
+
     pub fn is_empty(&self) -> bool {
-        self.stamp.bytes == 0
+        self.selected.is_empty()
     }
+
     pub fn check_unchanged(&self) -> Result<(), ErrorCode> {
-        let metadata = self
-            .file
-            .metadata()
-            .map_err(|_| ErrorCode::StorageUnavailable)?;
-        if !metadata.is_file() || FileStamp::read(&metadata) != self.stamp {
-            return Err(ErrorCode::RevisionConflict);
-        }
-        Ok(())
+        self.selected.check_unchanged().map_err(to_protocol_error)
     }
+}
+
+pub(crate) fn open_absolute_directory(path: &Path) -> Result<File, ErrorCode> {
+    lomi_native_project_files::open_absolute_directory(path).map_err(to_protocol_error)
+}
+
+pub fn validate_relative(path: &str) -> Result<(), ErrorCode> {
+    lomi_native_project_files::validate_relative(path).map_err(to_protocol_error)
 }
 
 #[cfg(test)]
