@@ -2,7 +2,7 @@
   "version": 2,
   "name": "Lomi",
   "author": "Lomi",
-  "description": "Geist, charcoal surfaces and softly rounded tabs. Electric Lime for clear actions in both appearances.",
+  "description": "The v0.6.1 Lomi color palette: Electric Lime and graphite surfaces in light and dark.",
   "appearance": "adaptive",
   "common": {
     "tokens": {
@@ -33,14 +33,14 @@
       "--tab-height": "32px",
       "--tab-min-width": "148px",
       "--tab-max-width": "220px",
-      "--titlebar-background": "var(--color-surface-variant)",
-      "--sidebar-background": "var(--color-surface-variant)",
-      "--statusbar-background": "var(--color-surface-variant)",
-      "--settings-background": "var(--color-surface)",
-      "--menu-background": "var(--color-surface)",
+      "--titlebar-background": "var(--color-surface)",
+      "--sidebar-background": "var(--color-surface)",
+      "--statusbar-background": "var(--color-surface)",
+      "--settings-background": "var(--color-background)",
+      "--menu-background": "var(--lomi-raised)",
       "--modal-background": "var(--color-surface)",
-      "--input-background": "color-mix(in srgb, var(--color-surface-container-high) 70%, var(--color-surface-container))",
-      "--button-background": "var(--color-surface)",
+      "--input-background": "var(--color-surface)",
+      "--button-background": "var(--color-surface-variant)",
       "--tab-background-active": "var(--color-surface-container-high)",
       "--sidebar-min-width": "180px",
       "--settings-nav-width": "clamp(180px, 16vw, 216px)",
@@ -153,8 +153,8 @@
       "--editor-font-family": "\"JetBrains Mono\", var(--font-family-mono)",
       "--editor-font-size": "var(--font-size-14)",
       "--editor-line-height": "1.6",
-      "--editor-background": "var(--color-surface)",
-      "--editor-foreground": "var(--color-surface-text)",
+      "--editor-background": "var(--color-background)",
+      "--editor-foreground": "var(--color-background-text)",
       "--editor-gutter-background": "var(--editor-background)",
       "--editor-gutter-foreground": "var(--color-surface-variant-text)",
       "--editor-active-line": "var(--color-surface-container)",
@@ -204,10 +204,8 @@
       "--editor-overflow": "hidden",
       "--input-padding": "var(--space-6) var(--space-10)",
       "--sidebar-max-width": "520px",
-      "--lomi-primary-hover": "var(--color-primary)",
-      "--lomi-primary-pressed": "var(--color-primary)",
-      "--input-border-color": "color-mix(in srgb, var(--color-muted-text) 50%, var(--color-outline))",
-      "--input-border-color-hover": "var(--color-muted-text)"
+      "--input-border-color": "var(--lomi-control-border)",
+      "--input-border-color-hover": "var(--color-surface-variant-text)"
     },
     "styles": {
       "button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, [tabindex]:focus-visible, .welcome-action:focus-visible, .theme-appearance-options label:has(:focus-visible)": {
@@ -238,7 +236,7 @@
       ".theme-appearance-options label:has(:checked)": {
         "background": "var(--lomi-selection)",
         "color": "var(--lomi-selection-text)",
-        "border-color": "var(--color-outline)"
+        "border-color": "var(--color-accent-text)"
       },
       ".commit-form, .commit-form textarea": {
         "background": "var(--color-surface)"
@@ -305,6 +303,93 @@
       },
       ":root .chat-composer-surface": {
         "border-color": "var(--input-border-color)"
+      },
+      ".button:not(.button-primary), input:not([type=\"checkbox\"]):not([type=\"radio\"]), textarea, select, .select-trigger": {
+        "border-color": "var(--lomi-control-border)"
+      },
+      ".button-primary:hover:not(:disabled)": {
+        "background": "var(--lomi-primary-hover)"
+      },
+      ".button-primary:active:not(:disabled)": {
+        "background": "var(--lomi-primary-pressed)"
+      },
+      ".commit-form .commit-button:hover:not(:disabled)": {
+        "background": "var(--lomi-primary-hover)"
+      },
+      ".commit-form .commit-button:active:not(:disabled)": {
+        "background": "var(--lomi-primary-pressed)"
+      },
+      ".source-repository[aria-current=\"page\"], .source-all-repository-heading:hover": {
+        "color": "var(--color-accent-text)"
+      },
+      ".modal-surface > header > .icon-button": {
+        "color": "var(--color-muted-text)"
+      },
+      ".modal-symbol": {
+        "color": "var(--color-warning)",
+        "background": "var(--lomi-warning-background)"
+      },
+      ".modal[data-tone=\"danger\"] .modal-symbol": {
+        "color": "var(--color-error)",
+        "background": "var(--lomi-danger-background)"
+      },
+      ".modal .dialog-form p": {
+        "color": "var(--color-surface-variant-text)"
+      },
+      ".modal .dialog-form p strong": {
+        "color": "var(--color-surface-text)"
+      },
+      ".modal .dialog-form input:not([type=\"checkbox\"]):not([type=\"radio\"]), .modal .dialog-form .select-trigger": {
+        "background": "var(--color-background)"
+      },
+      ".modal .button-primary": {
+        "border-color": "transparent"
+      },
+      ".modal .dialog-form p.text-error, .modal .dialog-form p[role=\"alert\"]": {
+        "color": "var(--color-error)",
+        "background": "var(--lomi-danger-background)"
+      },
+      ".editor-unsaved-files": {
+        "background": "var(--color-background)",
+        "border-color": "var(--color-outline)"
+      },
+      ".editor-close-actions": {
+        "background": "transparent"
+      },
+      ".modal .editor-close-cancel": {
+        "background": "transparent",
+        "border-color": "transparent",
+        "color": "var(--color-surface-variant-text)"
+      },
+      ".modal .button-danger, .modal .button.text-error, .modal .button.danger": {
+        "background": "var(--lomi-danger-background)",
+        "color": "var(--color-error)",
+        "border-color": "color-mix(in srgb, var(--color-error) 28%, transparent)"
+      },
+      ".modal .button-danger:hover:not(:disabled), .modal .button.text-error:hover:not(:disabled), .modal .button.danger:hover:not(:disabled)": {
+        "background": "color-mix(in srgb, var(--color-error) 18%, var(--lomi-danger-background))",
+        "border-color": "var(--color-error)"
+      },
+      ".modal .button-danger:active:not(:disabled), .modal .button.text-error:active:not(:disabled), .modal .button.danger:active:not(:disabled)": {
+        "background": "color-mix(in srgb, var(--color-error) 24%, var(--lomi-danger-background))"
+      },
+      ".modal-surface > p, .modal-surface > .dialog-body p": {
+        "color": "var(--color-surface-variant-text)"
+      },
+      ".modal-surface > p": {
+        "color": "var(--color-surface-variant-text)"
+      },
+      ".modal-surface > .editor-confirm-path": {
+        "background": "var(--color-background)"
+      },
+      ".modal .button:not(.button-primary):not(.button-danger):not(.text-error):not(.danger)": {
+        "background": "var(--color-surface-variant)",
+        "border-color": "var(--color-outline)",
+        "color": "var(--color-surface-text)"
+      },
+      ".modal .button:not(.button-primary):not(.button-danger):not(.text-error):not(.danger):hover:not(:disabled)": {
+        "background": "var(--color-surface-container-high)",
+        "border-color": "var(--color-muted-text)"
       }
     },
     "editor": {
@@ -323,17 +408,17 @@
           "color": "var(--lomi-success)"
         },
         "number": {
-          "color": "var(--lomi-syntax-type)"
+          "color": "var(--color-info)"
         },
         "comment": {
-          "color": "var(--color-muted-text)",
+          "color": "var(--color-surface-variant-text)",
           "fontStyle": "normal"
         },
         "variable": {
           "color": "var(--editor-foreground)"
         },
         "property": {
-          "color": "var(--editor-foreground)"
+          "color": "var(--color-background-text)"
         },
         "operator": {
           "color": "var(--color-surface-variant-text)"
@@ -346,7 +431,7 @@
           "fontWeight": 600
         },
         "link": {
-          "color": "var(--color-info)",
+          "color": "var(--color-accent-text)",
           "textDecoration": "underline"
         },
         "invalid": {
@@ -363,78 +448,76 @@
   },
   "light": {
     "tokens": {
-      "--input-border-color": "color-mix(in srgb, var(--color-muted-text) 75%, var(--color-outline))",
-      "--color-background": "#f7f8f3",
-      "--color-background-text": "#0b0d0c",
-      "--color-surface": "#ffffff",
-      "--color-surface-text": "#0b0d0c",
-      "--color-surface-variant": "#eff2e9",
-      "--color-surface-variant-text": "#535c56",
-      "--color-outline": "#d5dccf",
-      "--color-surface-container": "#f1f4ec",
-      "--color-surface-container-high": "#e7ecdf",
-      "--color-surface-container-highest": "#d5dccf",
-      "--color-primary-container": "#e7eedb",
-      "--color-secondary": "#535c56",
-      "--color-error": "#a12a1d",
+      "--color-background": "#F7F8F3",
+      "--color-background-text": "#0B0D0C",
+      "--color-surface": "#FFFFFF",
+      "--color-surface-text": "#0B0D0C",
+      "--color-surface-variant": "#EDF0E8",
+      "--color-surface-variant-text": "#535C56",
+      "--color-outline": "#D5DAD2",
+      "--color-surface-container": "#EDF0E8",
+      "--color-surface-container-high": "#E4E8DF",
+      "--color-surface-container-highest": "#D5DAD2",
+      "--color-primary-container": "#EAF5CC",
+      "--color-secondary": "#626D60",
+      "--color-error": "#A12A1D",
       "--color-warning": "#754600",
-      "--color-info": "#2445ae",
+      "--color-info": "#2445AE",
       "--color-accent-text": "#345600",
-      "--color-muted-text": "#535c56",
-      "--shadow-menu": "0 8px 24px -4px #0b0d0c24",
-      "--shadow-modal": "0 24px 64px -16px #0b0d0c33, 0 8px 24px -8px #0b0d0c1a",
-      "--color-backdrop": "#0b0d0c47",
-      "--terminal-black": "#0b0d0c",
-      "--lomi-control-border": "#7a8576",
-      "--lomi-focus": "var(--color-accent-text)",
-      "--lomi-selection": "var(--color-primary-container)",
-      "--lomi-selection-text": "var(--color-surface-text)",
-      "--lomi-success": "#20683b",
-      "--lomi-success-background": "#e7f5e9",
-      "--lomi-syntax-type": "#65409a",
-      "--lomi-raised": "#ffffff",
-      "--lomi-danger-background": "#fdeae7",
-      "--lomi-warning-background": "#fff1cc",
-      "--input-background": "color-mix(in srgb, var(--color-surface-container-high) 70%, var(--color-surface-container))"
+      "--color-muted-text": "#626D60",
+      "--shadow-menu": "0px 8px 24px -4px rgb(11 13 12 / 0.14)",
+      "--shadow-modal": "0 24px 80px -16px #0B0D0C33, 0 8px 24px -8px #0B0D0C1A",
+      "--color-backdrop": "#0B0D0C47",
+      "--terminal-black": "#0B0D0C",
+      "--lomi-control-border": "#798478",
+      "--lomi-focus": "#345600",
+      "--lomi-selection": "#EAF5CC",
+      "--lomi-selection-text": "#0B0D0C",
+      "--lomi-success": "#20683B",
+      "--lomi-success-background": "#E7F5E9",
+      "--lomi-syntax-type": "#5740B8",
+      "--lomi-raised": "#FFFFFF",
+      "--lomi-danger-background": "#FDEAE7",
+      "--lomi-warning-background": "#FFF1CC",
+      "--lomi-primary-hover": "#B6EF2B",
+      "--lomi-primary-pressed": "#A5D822"
     }
   },
   "dark": {
     "tokens": {
-      "--color-background": "#151618",
-      "--color-background-text": "#ededf0",
-      "--color-surface": "#191a1d",
-      "--color-surface-text": "#ededf0",
-      "--color-surface-variant": "#1b1c1f",
-      "--color-surface-variant-text": "#c1c3ca",
-      "--color-outline": "#3b3d43",
-      "--color-surface-container": "#232427",
-      "--color-surface-container-high": "#2a2b2f",
-      "--color-surface-container-highest": "#35373c",
-      "--color-primary-container": "#303237",
-      "--color-secondary": "#b7bac2",
-      "--color-error": "#f4a89b",
-      "--color-warning": "#e8c37d",
-      "--color-info": "#a8c7fa",
-      "--color-accent-text": "#c8ff3d",
-      "--color-muted-text": "#adb0b8",
-      "--shadow-menu": "0 8px 24px -4px #00000066",
-      "--shadow-modal": "0 24px 64px -16px #00000099, 0 8px 24px -8px #00000066",
-      "--color-backdrop": "#0c0d0fb3",
-      "--terminal-black": "#151618",
-      "--lomi-control-border": "#777a83",
-      "--lomi-focus": "var(--color-accent-text)",
-      "--lomi-selection": "var(--color-primary-container)",
-      "--lomi-selection-text": "var(--color-surface-text)",
-      "--lomi-success": "#a2d6ae",
-      "--lomi-success-background": "#1b3021",
-      "--lomi-syntax-type": "#c9b4eb",
-      "--lomi-raised": "#25262a",
-      "--lomi-danger-background": "#3a211d",
-      "--lomi-warning-background": "#342b1b",
-      "--menu-background": "var(--lomi-raised)",
-      "--modal-background": "var(--lomi-raised)",
-      "--input-background": "color-mix(in srgb, var(--color-surface-container-high) 70%, var(--color-surface-container))",
-      "--button-background": "#2a2b2f"
+      "--color-background": "#101114",
+      "--color-background-text": "#F3F4F6",
+      "--color-surface": "#181A1F",
+      "--color-surface-text": "#F3F4F6",
+      "--color-surface-variant": "#202329",
+      "--color-surface-variant-text": "#BEC3CC",
+      "--color-outline": "#343943",
+      "--color-surface-container": "#202329",
+      "--color-surface-container-high": "#282C34",
+      "--color-surface-container-highest": "#343943",
+      "--color-primary-container": "#29351C",
+      "--color-secondary": "#989FAC",
+      "--color-error": "#F1ABA8",
+      "--color-warning": "#F1D28A",
+      "--color-info": "#AECDF5",
+      "--color-accent-text": "#D3F59B",
+      "--color-muted-text": "#989FAC",
+      "--shadow-menu": "0px 8px 24px -4px rgb(0 0 0 / 0.38)",
+      "--shadow-modal": "0 24px 80px -16px #00000099, 0 8px 24px -8px #00000066",
+      "--color-backdrop": "#0B0D0C99",
+      "--terminal-black": "#101114",
+      "--lomi-control-border": "#7D8694",
+      "--lomi-focus": "#D8FF93",
+      "--lomi-selection": "#29351C",
+      "--lomi-selection-text": "#E0F2C0",
+      "--lomi-success": "#A8D8B9",
+      "--lomi-success-background": "#1C3026",
+      "--lomi-syntax-type": "#D6C9FF",
+      "--lomi-raised": "#282C34",
+      "--lomi-danger-background": "#3A2328",
+      "--lomi-warning-background": "#352D1D",
+      "--lomi-primary-hover": "#DAFF7A",
+      "--lomi-primary-pressed": "#B5E535"
     }
   }
 }

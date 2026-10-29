@@ -13,11 +13,11 @@ A local folder contains `theme.jsonc`, optional ordered CSS files and local asse
 also checks CSS values, contribution paths, duplicates and resource availability.
 Create theme writes `theme.jsonc` and its local schema. The new adaptive theme
 inherits Lomi until overrides are added; it contains no demonstration assets.
-[`lomi.json`](lomi.json) is the default built-in theme. Its warm light palette
-uses Chalk canvas, white content and pale neutral chrome. Dark mode uses a
-subtly cool charcoal surfaces and distinct navigation and raised surfaces.
-Electric Lime marks primary actions and keyboard focus in dark mode; cool gray
-selection fills keep navigation quiet. Semantic status and
+[`lomi.json`](lomi.json) is the default built-in theme. Its colors match the
+`v0.6.1` Lomi palette. Light uses Chalk canvas, white surfaces and pale neutral
+controls; dark uses graphite surfaces, green-tinted selections and raised menus.
+Electric Lime marks primary actions; a softer green marks keyboard focus in
+dark mode. Muted selection fills keep navigation quiet. Semantic status and
 syntax colors remain readable in both appearances.
 
 Bundled Geist Variable provides the 13 px interface with regular, medium and

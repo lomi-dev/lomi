@@ -528,9 +528,10 @@ or acronym.
 ## Appearance
 
 - Lomi is the default built-in theme, defined in `themes/lomi.json` and the
-  matching startup tokens in `src/theme/baseline.css`. It follows the Lomi
-  Brandbook and Design System v2.0.0: Electric Lime, Ink/Chalk/Paper and charcoal
-  dark surfaces, semantic status colors, and bundled Geist Variable. Keep code
+  matching startup tokens in `src/theme/baseline.css`. Its colors and semantic
+  surface assignments follow the `v0.6.1` Lomi palette: Electric Lime,
+  Ink/Chalk/Paper and graphite dark surfaces. Preserve the current layout,
+  semantic status colors and bundled Geist Variable. Keep code
   and terminals monospace. See `docs/desktop-theme.md` for design references and
   the workbench hierarchy.
 - Preserve the established File Explorer, terminal desktop, Workspaces list

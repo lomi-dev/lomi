@@ -57,24 +57,16 @@
   --tab-height: 32px;
   --tab-min-width: 148px;
   --tab-max-width: 220px;
-  --titlebar-background: var(--color-surface-variant);
-  --sidebar-background: var(--color-surface-variant);
-  --statusbar-background: var(--color-surface-variant);
-  --settings-background: var(--color-surface);
+  --titlebar-background: var(--color-surface);
+  --sidebar-background: var(--color-surface);
+  --statusbar-background: var(--color-surface);
+  --settings-background: var(--color-background);
   --menu-background: var(--lomi-raised);
-  --modal-background: var(--lomi-raised);
-  --input-background: color-mix(
-    in srgb,
-    var(--color-surface-container-high) 70%,
-    var(--color-surface-container)
-  );
-  --input-border-color: color-mix(
-    in srgb,
-    var(--color-muted-text) 50%,
-    var(--color-outline)
-  );
-  --input-border-color-hover: var(--color-muted-text);
-  --button-background: #2a2b2f;
+  --modal-background: var(--color-surface);
+  --input-background: var(--color-surface);
+  --input-border-color: var(--lomi-control-border);
+  --input-border-color-hover: var(--color-surface-variant-text);
+  --button-background: var(--color-surface-variant);
   --tab-background-active: var(--color-surface-container-high);
   --sidebar-min-width: 180px;
   --settings-nav-width: clamp(180px, 16vw, 216px);
@@ -187,8 +179,8 @@
   --editor-font-family: "JetBrains Mono", var(--font-family-mono);
   --editor-font-size: var(--font-size-14);
   --editor-line-height: 1.6;
-  --editor-background: var(--color-surface);
-  --editor-foreground: var(--color-surface-text);
+  --editor-background: var(--color-background);
+  --editor-foreground: var(--color-background-text);
   --editor-gutter-background: var(--editor-background);
   --editor-gutter-foreground: var(--color-surface-variant-text);
   --editor-active-line: var(--color-surface-container);
@@ -238,39 +230,39 @@
   --editor-overflow: hidden;
   --input-padding: var(--space-6) var(--space-10);
   --sidebar-max-width: 520px;
-  --lomi-primary-hover: var(--color-primary);
-  --lomi-primary-pressed: var(--color-primary);
-  --color-background: #151618;
-  --color-background-text: #ededf0;
-  --color-surface: #191a1d;
-  --color-surface-text: #ededf0;
-  --color-surface-variant: #1b1c1f;
-  --color-surface-variant-text: #c1c3ca;
-  --color-outline: #3b3d43;
-  --color-surface-container: #232427;
-  --color-surface-container-high: #2a2b2f;
-  --color-surface-container-highest: #35373c;
-  --color-primary-container: #303237;
-  --color-secondary: #b7bac2;
-  --color-error: #f4a89b;
-  --color-warning: #e8c37d;
-  --color-info: #a8c7fa;
-  --color-accent-text: #c8ff3d;
-  --color-muted-text: #adb0b8;
-  --shadow-menu: 0 8px 24px -4px #00000066;
-  --shadow-modal: 0 24px 64px -16px #00000099, 0 8px 24px -8px #00000066;
-  --color-backdrop: #0c0d0fb3;
-  --terminal-black: #151618;
-  --lomi-control-border: #777a83;
-  --lomi-focus: var(--color-accent-text);
-  --lomi-selection: var(--color-primary-container);
-  --lomi-selection-text: var(--color-surface-text);
-  --lomi-success: #a2d6ae;
-  --lomi-success-background: #1b3021;
-  --lomi-syntax-type: #c9b4eb;
-  --lomi-raised: #25262a;
-  --lomi-danger-background: #3a211d;
-  --lomi-warning-background: #342b1b;
+  --lomi-primary-hover: #daff7a;
+  --lomi-primary-pressed: #b5e535;
+  --color-background: #101114;
+  --color-background-text: #f3f4f6;
+  --color-surface: #181a1f;
+  --color-surface-text: #f3f4f6;
+  --color-surface-variant: #202329;
+  --color-surface-variant-text: #bec3cc;
+  --color-outline: #343943;
+  --color-surface-container: #202329;
+  --color-surface-container-high: #282c34;
+  --color-surface-container-highest: #343943;
+  --color-primary-container: #29351c;
+  --color-secondary: #989fac;
+  --color-error: #f1aba8;
+  --color-warning: #f1d28a;
+  --color-info: #aecdf5;
+  --color-accent-text: #d3f59b;
+  --color-muted-text: #989fac;
+  --shadow-menu: 0px 8px 24px -4px rgb(0 0 0 / 0.38);
+  --shadow-modal: 0 24px 80px -16px #00000099, 0 8px 24px -8px #00000066;
+  --color-backdrop: #0b0d0c99;
+  --terminal-black: #101114;
+  --lomi-control-border: #7d8694;
+  --lomi-focus: #d8ff93;
+  --lomi-selection: #29351c;
+  --lomi-selection-text: #e0f2c0;
+  --lomi-success: #a8d8b9;
+  --lomi-success-background: #1c3026;
+  --lomi-syntax-type: #d6c9ff;
+  --lomi-raised: #282c34;
+  --lomi-danger-background: #3a2328;
+  --lomi-warning-background: #352d1d;
   font-family: var(--font-family);
   color: var(--color-background-text);
   background: transparent;
@@ -282,46 +274,38 @@
 }
 
 :root:where([data-appearance="light"]) {
-  --input-border-color: color-mix(
-    in srgb,
-    var(--color-muted-text) 75%,
-    var(--color-outline)
-  );
-  --menu-background: var(--color-surface);
-  --modal-background: var(--color-surface);
-  --input-background: color-mix(
-    in srgb,
-    var(--color-surface-container-high) 70%,
-    var(--color-surface-container)
-  );
-  --button-background: var(--color-surface);
   --color-background: #f7f8f3;
   --color-background-text: #0b0d0c;
   --color-surface: #ffffff;
   --color-surface-text: #0b0d0c;
-  --color-surface-variant: #eff2e9;
+  --color-surface-variant: #edf0e8;
   --color-surface-variant-text: #535c56;
-  --color-outline: #d5dccf;
-  --color-surface-container: #f1f4ec;
-  --color-surface-container-high: #e7ecdf;
-  --color-surface-container-highest: #d5dccf;
-  --color-primary-container: #e7eedb;
-  --color-secondary: #535c56;
+  --color-outline: #d5dad2;
+  --color-surface-container: #edf0e8;
+  --color-surface-container-high: #e4e8df;
+  --color-surface-container-highest: #d5dad2;
+  --color-primary-container: #eaf5cc;
+  --color-secondary: #626d60;
   --color-error: #a12a1d;
   --color-warning: #754600;
   --color-info: #2445ae;
   --color-accent-text: #345600;
-  --color-muted-text: #535c56;
-  --shadow-menu: 0 8px 24px -4px #0b0d0c24;
-  --shadow-modal: 0 24px 64px -16px #0b0d0c33, 0 8px 24px -8px #0b0d0c1a;
+  --color-muted-text: #626d60;
+  --shadow-menu: 0px 8px 24px -4px rgb(11 13 12 / 0.14);
+  --shadow-modal: 0 24px 80px -16px #0b0d0c33, 0 8px 24px -8px #0b0d0c1a;
   --color-backdrop: #0b0d0c47;
   --terminal-black: #0b0d0c;
-  --lomi-control-border: #7a8576;
+  --lomi-control-border: #798478;
   --lomi-success: #20683b;
   --lomi-success-background: #e7f5e9;
-  --lomi-syntax-type: #65409a;
+  --lomi-syntax-type: #5740b8;
   --lomi-raised: #ffffff;
   --lomi-danger-background: #fdeae7;
   --lomi-warning-background: #fff1cc;
+  --lomi-focus: #345600;
+  --lomi-selection: #eaf5cc;
+  --lomi-selection-text: #0b0d0c;
+  --lomi-primary-hover: #b6ef2b;
+  --lomi-primary-pressed: #a5d822;
   color-scheme: light;
 }

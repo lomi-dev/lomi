@@ -1,15 +1,16 @@
 # Lomi desktop theme
 
-The built-in Lomi theme is rebuilt around the current website identity and the
-v2 brandbook/design system. It follows system appearance by default. Light and
-dark remain explicit user overrides, independent from the selected theme.
+The built-in Lomi theme uses the color palette from the `v0.6.1` release.
+Current typography, workspace geometry and controls remain in place. It follows
+system appearance by default. Light and dark remain explicit user overrides,
+independent from the selected theme.
 
 ## Visual direction
 
 The workbench keeps its existing workspace structure. Rounded active tabs share
 one vertical centerline with the project picker, close buttons and strip controls. Geist Variable carries interface text; code and terminals
 retain their existing monospace fonts. Light uses Chalk, Paper and Ink. Dark
-uses subtly cool charcoal surfaces, with bright, readable foregrounds.
+uses the original graphite surfaces and bright foregrounds.
 Navigation, content and raised menus/dialogs use distinct surface levels. Electric
 Lime identifies primary actions and keyboard focus where appropriate. It is
 not a general-purpose success color or a border around every active region.
@@ -49,8 +50,9 @@ appeared twice in the supplied list and represents one reference.
 
 ## Theme implementation
 
-- `themes/lomi.json` is the sole built-in definition. Its shared tokens and
-  appearance variants replace the previous Manrope/graphite identity.
+- `themes/lomi.json` is the sole built-in definition. Its color tokens, surface
+  assignments and syntax colors match `v0.6.1`; other tokens retain the current
+  typography and layout. New input-border roles use the original control colors.
 - `src/theme/baseline.css` supplies the same startup values before the runtime
   theme commits and remains a fallback for partial custom themes.
 - Geist and its OFL license ship locally in `public/fonts/geist/`. The application
@@ -67,10 +69,10 @@ built-in theme left for users to select.
 ## Reference-led appearance
 
 The supplied desktop screenshot adds a concrete visual direction: restrained
-charcoal surfaces, softly rounded tab pills, bordered tool/account cards and a
+graphite surfaces, softly rounded tab pills, bordered tool/account cards and a
 raised composer with the draft above its controls. Geist and Electric Lime
-retain Lomi's identity. The dark neutrals have a subtle cool undertone. Light
-appearance retains the source palette.
+retain Lomi's identity. Both appearances use the `v0.6.1` color values, including
+selection, focus, control borders, semantic states and primary hover/pressed states.
 
 The Explorer, terminal desktop, Workspaces list and Source Control use their
 pre-reference component styles and workspace geometry. Their tree rows remain
@@ -78,20 +80,20 @@ pre-reference component styles and workspace geometry. Their tree rows remain
 extra spacing, border and radius. The tab strip is centered and uses 10 px
 corners with 148-220 px widths. The outer native shell remains square and opaque.
 
-The desktop palette adapts the identity and the supplied reference. The website's
-scoped green dark surface remains documented separately in the brandbook.
+The table below records the restored dark palette. The website's scoped green
+dark surface remains documented separately in the brandbook.
 
 | Role                           | Value     |
 | ------------------------------ | --------- |
-| Canvas                         | `#151618` |
-| Content                        | `#191a1d` |
-| Primary text                   | `#ededf0` |
-| Navigation                     | `#1b1c1f` |
-| Muted text                     | `#adb0b8` |
-| Raised menus and dialogs       | `#25262a` |
-| Selection                      | `#303237` |
-| Structural borders             | `#3b3d43` |
-| Control borders                | `#777a83` |
+| Canvas and editor              | `#101114` |
+| Terminal and navigation        | `#181a1f` |
+| Primary text                   | `#f3f4f6` |
+| Variant surfaces               | `#202329` |
+| Muted text                     | `#989fac` |
+| Raised menus                   | `#282c34` |
+| Selection                      | `#29351c` |
+| Structural borders             | `#343943` |
+| Control borders                | `#7d8694` |
 | Primary action / Electric Lime | `#c8ff3d` |
 
 ## Runtime constraints
