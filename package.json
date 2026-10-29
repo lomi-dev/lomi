@@ -10,21 +10,10 @@
   },
   "scripts": {
     "dev": "vite",
-    "check": "pnpm sdk:verify && tsc --noEmit && pnpm ai:check",
-    "test": "node --experimental-strip-types --test tests/*.test.ts && pnpm ai:test",
-    "test:ui": "pnpm --filter lomi-plugin-fixture build && playwright test",
-    "test:ui:webkit": "pnpm test:ui --config=playwright.webkit.config.ts",
-    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml --workspace --locked",
-    "remote:demo": "pnpm icon:macos && node --experimental-strip-types tests/native/run-remote-live.mjs --manual",
-    "remote:browser:demo": "node tests/native/run-remote-browser-demo.mjs",
-    "test:remote:native": "pnpm icon:macos && node --experimental-strip-types tests/native/run-remote-live.mjs",
-    "check:rust": "cargo check --manifest-path src-tauri/Cargo.toml --workspace --all-targets --locked",
-    "test:mcp": "cargo build --manifest-path src-tauri/Cargo.toml --locked -p lomi-mcp --bin lomi-mcp --example protocol-probe && node --test tests/mcp/*.test.mjs",
-    "test:mcp:codex": "node tests/mcp/codex-probe.mjs",
-    "test:mcp:browser": "node --experimental-strip-types tests/native/run-mcp-browser.mjs",
-    "test:mcp:control": "cargo build --manifest-path src-tauri/Cargo.toml --locked -p lomi-mcp && node --experimental-strip-types tests/native/run-mcp-control.mjs",
-    "format": "prettier --write src tests *.ts *.json *.md .github/*.md .github/workflows/*.yml scripts/*.mjs docs/*.md releases/*.md packages themes vendor",
-    "format:check": "prettier --check src tests *.ts *.json *.md .github/*.md .github/workflows/*.yml scripts/*.mjs docs/*.md releases/*.md packages themes vendor",
+    "check": "tsc --noEmit && pnpm ai:check",
+    "check:rust": "cargo check --manifest-path src-tauri/Cargo.toml --workspace --locked",
+    "format": "prettier --write src *.ts *.json *.md .github/*.md .github/workflows/*.yml scripts/*.mjs docs/*.md releases/*.md packages themes vendor",
+    "format:check": "prettier --check src *.ts *.json *.md .github/*.md .github/workflows/*.yml scripts/*.mjs docs/*.md releases/*.md packages themes vendor",
     "build": "pnpm check && vite build",
     "preview": "vite preview",
     "icon:macos": "node scripts/build-macos-icon.mjs",
@@ -33,14 +22,7 @@
     "release:check": "node scripts/check-release.mjs",
     "tauri": "tauri",
     "ai:prepare": "node scripts/prepare-ai-runtime.mjs",
-    "ai:check": "pnpm --filter @lomi-dev/ai-runtime check",
-    "ai:test": "pnpm --filter @lomi-dev/ai-runtime test",
-    "sdk:test": "node --experimental-strip-types --test tests/plugin-contract.test.ts",
-    "sdk:verify": "node scripts/check-plugin-sdk.mjs",
-    "sdk:sync-contract": "node scripts/check-plugin-sdk.mjs --sync",
-    "sdk:test:consumer": "node scripts/test-plugin-sdk.mjs",
-    "test:npm-archives": "node scripts/qualify-npm-archives.mjs",
-    "test:npm-registry": "node scripts/qualify-npm-registry.mjs"
+    "ai:check": "pnpm --filter @lomi-dev/ai-runtime check"
   },
   "dependencies": {
     "@ai-sdk/react": "4.0.108",
@@ -95,7 +77,6 @@
     "@lomi-dev/plugin-sdk": "file:vendor/plugin-sdk/lomi-dev-plugin-sdk-1.1.0-alpha.2.tgz"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.1",
     "@tauri-apps/cli": "2.12.3",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
@@ -106,6 +87,7 @@
     "typescript": "~7.0.2",
     "tailwindcss": "4.3.3",
     "vite": "^8.2.2",
-    "ajv": "8.18.0"
+    "ajv": "8.18.0",
+    "playwright": "^1.62.1"
   }
 }

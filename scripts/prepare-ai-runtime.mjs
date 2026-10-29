@@ -86,7 +86,7 @@ try {
 }
 execFileSync(
   process.execPath,
-  [path.join(root, "packages/ai-runtime/build.mjs"), ...process.argv.slice(2)],
+  [path.join(root, "packages/ai-runtime/build.mjs")],
   { cwd: root, stdio: "inherit" },
 );
 console.log(`AI runtime staged: Node ${manifest.version}, ${target}`);

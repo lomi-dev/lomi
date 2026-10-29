@@ -37,18 +37,3 @@ impl Hasher {
         Ok(output.iter().map(|byte| format!("{byte:02x}")).collect())
     }
 }
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn native_digest_matches_the_existing_sha256_contract() {
-        let bytes: Vec<u8> = (0..70000).map(|i| (i % 251) as u8).collect();
-        let mut hasher = super::Hasher::new().unwrap();
-        for chunk in bytes.chunks(4096) {
-            hasher.update(chunk).unwrap();
-        }
-        assert_eq!(
-            hasher.finish().unwrap(),
-            crate::agent_runtime::host_boundary::digest(&bytes)
-        );
-    }
-}

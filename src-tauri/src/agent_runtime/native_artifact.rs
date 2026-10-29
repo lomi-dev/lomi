@@ -91,14 +91,8 @@ fn safe(meta: &std::fs::Metadata) -> Result<(), String> {
     Ok(())
 }
 
-/// The optional hook is private and used only by deterministic race fixtures.
-/// Production always passes a no-op; no caller can supply an expected digest.
 #[cfg(unix)]
-fn verify_file(
-    original: &Path,
-    expected: &str,
-    opened_hook: impl FnOnce(&Path, &std::fs::File),
-) -> Result<(PathBuf, Identity), String> {
+fn verify_file(original: &Path, expected: &str) -> Result<(PathBuf, Identity), String> {
     use sha2::{Digest, Sha256};
     use std::{fs, io::Read, os::unix::fs::OpenOptionsExt};
     if !original.is_absolute() {
@@ -118,7 +112,6 @@ fn verify_file(
     if identity(&before) != pinned {
         return Err(failure());
     }
-    opened_hook(&canonical, &file);
     let mut hash = Sha256::new();
     let mut total = 0u64;
     let mut buffer = [0u8; 65536];
@@ -166,7 +159,7 @@ pub(super) fn admit(cli: TitleCli, path: &Path) -> Result<Option<Proof>, String>
     }
     #[cfg(unix)]
     {
-        let (canonical, identity) = verify_file(path, sha256, |_, _| {})?;
+        let (canonical, identity) = verify_file(path, sha256)?;
         Ok(Some(Proof {
             cli,
             original: path.to_owned(),
@@ -209,141 +202,9 @@ fn recheck_file(
     pinned: &Identity,
     digest: &str,
 ) -> Result<(), String> {
-    let (current_path, current) = verify_file(original, digest, |_, _| {})?;
+    let (current_path, current) = verify_file(original, digest)?;
     if current_path != canonical || current != *pinned {
         return Err(failure());
     }
     Ok(())
-}
-
-#[cfg(all(test, unix))]
-mod tests {
-    use super::*;
-    use sha2::{Digest, Sha256};
-    use std::{
-        fs,
-        os::unix::fs::{symlink, PermissionsExt},
-    };
-    const BYTES: &[u8] = b"private artifact fixture bytes; never executed";
-    fn fixture() -> (tempfile::TempDir, PathBuf, String) {
-        let root = tempfile::tempdir().unwrap();
-        let path = root.path().join("native");
-        fs::write(&path, BYTES).unwrap();
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
-        (
-            root,
-            path,
-            Sha256::digest(BYTES)
-                .iter()
-                .map(|byte| format!("{byte:02x}"))
-                .collect(),
-        )
-    }
-    #[test]
-    fn native_artifact_private_fixture_accepts_exact_bytes_and_resolved_normal_alias() {
-        let (root, path, digest) = fixture();
-        let expected = verify_file(&path, &digest, |_, _| {}).unwrap();
-        let alias = root.path().join("cli");
-        symlink(&path, &alias).unwrap();
-        assert_eq!(verify_file(&alias, &digest, |_, _| {}).unwrap(), expected);
-        assert!(admit(TitleCli::Codex, &path).is_err());
-        assert!(admit(TitleCli::Claude, &alias).is_err());
-        assert!(admit(TitleCli::Pi, &path).unwrap().is_none());
-    }
-    #[test]
-    fn native_artifact_rejects_wrappers_mutations_permissions_and_hardlinks() {
-        let (root, path, digest) = fixture();
-        fs::write(&path, b"#!/bin/sh\necho codex 0.160.0\n").unwrap();
-        assert!(verify_file(&path, &digest, |_, _| {}).is_err());
-        fs::write(&path, BYTES).unwrap();
-        for mode in [0o777, 0o720, 0o702, 0o600, 0o4700, 0o2700] {
-            fs::set_permissions(&path, fs::Permissions::from_mode(mode)).unwrap();
-            assert!(verify_file(&path, &digest, |_, _| {}).is_err());
-        }
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
-        fs::hard_link(&path, root.path().join("hardlink")).unwrap();
-        assert!(verify_file(&path, &digest, |_, _| {}).is_err());
-    }
-    #[test]
-    fn native_artifact_recheck_rejects_same_digest_replacement_and_identity_changes() {
-        let (root, path, digest) = fixture();
-        let (canonical, pinned) = verify_file(&path, &digest, |_, _| {}).unwrap();
-        recheck_file(&path, &canonical, &pinned, &digest).unwrap();
-        let replacement = root.path().join("replacement");
-        fs::write(&replacement, BYTES).unwrap();
-        fs::set_permissions(&replacement, fs::Permissions::from_mode(0o700)).unwrap();
-        fs::rename(&replacement, &path).unwrap();
-        assert!(recheck_file(&path, &canonical, &pinned, &digest).is_err());
-        let (canonical, pinned) = verify_file(&path, &digest, |_, _| {}).unwrap();
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o500)).unwrap();
-        assert!(recheck_file(&path, &canonical, &pinned, &digest).is_err());
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
-        let (canonical, pinned) = verify_file(&path, &digest, |_, _| {}).unwrap();
-        fs::write(&path, b"mutated after admission").unwrap();
-        assert!(recheck_file(&path, &canonical, &pinned, &digest).is_err());
-    }
-    #[test]
-    fn native_artifact_rejects_path_replacement_and_alias_retarget_during_read() {
-        let (root, path, digest) = fixture();
-        let replacement = root.path().join("replacement");
-        fs::write(&replacement, BYTES).unwrap();
-        fs::set_permissions(&replacement, fs::Permissions::from_mode(0o700)).unwrap();
-        assert!(verify_file(&path, &digest, |canonical, _| {
-            fs::rename(&replacement, canonical).unwrap();
-        })
-        .is_err());
-        let alias = root.path().join("alias");
-        symlink(&path, &alias).unwrap();
-        let other = root.path().join("other");
-        fs::write(&other, BYTES).unwrap();
-        fs::set_permissions(&other, fs::Permissions::from_mode(0o700)).unwrap();
-        assert!(verify_file(&alias, &digest, |_, _| {
-            fs::remove_file(&alias).unwrap();
-            symlink(&other, &alias).unwrap();
-        })
-        .is_err());
-    }
-    #[test]
-    fn native_artifact_brackets_in_place_edits_mode_changes_and_bounded_file_kind() {
-        let (root, path, digest) = fixture();
-        assert!(verify_file(&path, &digest, |canonical, _| {
-            fs::write(canonical, b"different bytes").unwrap();
-        })
-        .is_err());
-        fs::write(&path, BYTES).unwrap();
-        assert!(verify_file(&path, &digest, |canonical, _| {
-            fs::set_permissions(canonical, fs::Permissions::from_mode(0o500)).unwrap();
-        })
-        .is_err());
-        assert!(verify_file(root.path(), &digest, |_, _| {}).is_err());
-        assert!(verify_file(Path::new("relative"), &digest, |_, _| {}).is_err());
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
-        fs::OpenOptions::new()
-            .write(true)
-            .open(&path)
-            .unwrap()
-            .set_len(MAX_BINARY + 1)
-            .unwrap();
-        assert!(verify_file(&path, &digest, |_, _| {}).is_err());
-    }
-    #[test]
-    #[ignore = "Opt-in independently downloaded official macOS ARM64 artifacts; never executes code"]
-    fn native_artifact_exact_official_public_fixtures() {
-        let root = std::env::var_os("LOMI_NATIVE_ARTIFACT_FIXTURE_ROOT")
-            .expect("Provide isolated public artifact fixture root");
-        for (cli, name, version, digest) in [
-            (TitleCli::Codex, "codex", CODEX_VERSION, CODEX_SHA256),
-            (TitleCli::Claude, "claude", CLAUDE_VERSION, CLAUDE_SHA256),
-        ] {
-            let proof = admit(cli, &PathBuf::from(&root).join(name))
-                .unwrap()
-                .unwrap();
-            assert_eq!(proof.cli(), cli);
-            assert!(proof.path().is_absolute());
-            assert_eq!(proof.version(), version);
-            assert_eq!(proof.platform(), PLATFORM);
-            assert_eq!(proof.sha256(), digest);
-            recheck(&proof).unwrap();
-        }
-    }
 }

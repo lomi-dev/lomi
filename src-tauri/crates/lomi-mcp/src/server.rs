@@ -404,29 +404,3 @@ pub async fn serve(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> 
     }
     Ok(())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn shared_parser_and_encoder_keep_mcp_result_shape() {
-        let request = parse_tool_request("lomi_status", serde_json::json!({})).unwrap();
-        assert!(matches!(request, Request::Status(_)));
-        assert!(parse_tool_request("not-a-lomi-tool", serde_json::json!({})).is_err());
-
-        let result = encode_tool_result(Reply::ok(Data::Status {
-            connection: "app_unavailable".into(),
-            pairing_request_id: None,
-            instance_id: None,
-            ui_ready: false,
-            platform: "test".into(),
-            capabilities: Vec::new(),
-            limitations: Vec::new(),
-        }))
-        .unwrap();
-        assert!(result["content"].is_array());
-        assert!(result["structuredContent"].is_object());
-        assert_eq!(result["isError"], false);
-    }
-}

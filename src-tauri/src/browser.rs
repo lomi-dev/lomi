@@ -15,12 +15,7 @@ mod agent_navigation;
 pub(crate) mod agent_permissions;
 #[cfg(target_os = "macos")]
 pub(crate) mod native_input;
-#[cfg(all(
-    feature = "remote-visual-probe",
-    target_os = "macos",
-    target_arch = "aarch64"
-))]
-pub(crate) mod remote_probe;
+
 pub mod servers;
 
 // The engine may outlive a view callback. A missing Finished event keeps its
@@ -54,15 +49,6 @@ pub struct Page {
     control: Option<std::sync::Arc<lomi_control_core::browser::BrowserControl>>,
     #[serde(skip)]
     bounds: Option<Bounds>,
-    #[cfg(feature = "remote-visual-probe")]
-    #[serde(skip)]
-    incarnation: String,
-    #[cfg(feature = "remote-visual-probe")]
-    #[serde(skip)]
-    content_epoch: u64,
-    #[cfg(feature = "remote-visual-probe")]
-    #[serde(skip)]
-    geometry_epoch: u64,
 }
 
 #[derive(Clone, Copy, Deserialize, PartialEq)]
@@ -328,12 +314,6 @@ async fn create(window: &Window, slot: &Slot) -> Result<Webview, String> {
         #[cfg(unix)]
         control: control.clone(),
         bounds: None,
-        #[cfg(feature = "remote-visual-probe")]
-        incarnation: next_page_revision(),
-        #[cfg(feature = "remote-visual-probe")]
-        content_epoch: 0,
-        #[cfg(feature = "remote-visual-probe")]
-        geometry_epoch: 0,
     };
     app.state::<Browsers>()
         .pages
@@ -390,10 +370,6 @@ async fn create(window: &Window, slot: &Slot) -> Result<Webview, String> {
                 });
             }
             update(&navigation_app, &navigation_id, |page| {
-                #[cfg(feature = "remote-visual-probe")]
-                {
-                    page.content_epoch = page.content_epoch.saturating_add(1);
-                }
                 page.url = url.to_string();
                 page.error.clear();
             });
@@ -431,10 +407,6 @@ async fn create(window: &Window, slot: &Slot) -> Result<Webview, String> {
             update(webview.app_handle(), &load_id, |page| {
                 if address(payload.url().as_str()).is_ok() {
                     page.url = payload.url().to_string();
-                }
-                #[cfg(feature = "remote-visual-probe")]
-                {
-                    page.content_epoch = page.content_epoch.saturating_add(1);
                 }
                 page.loading = matches!(payload.event(), PageLoadEvent::Started);
                 // The accepted navigation policy already clears automation errors.
@@ -663,14 +635,7 @@ pub async fn sync_browsers(
                 .lock()
                 .map_err(|e| e.to_string())?
                 .get_mut(&id)
-                .and_then(|page| {
-                    let previous = page.bounds.take();
-                    #[cfg(feature = "remote-visual-probe")]
-                    if previous.is_some() {
-                        page.geometry_epoch = page.geometry_epoch.saturating_add(1);
-                    }
-                    previous
-                })
+                .and_then(|page| page.bounds.take())
                 .is_some();
             if visible {
                 view(app, &id)?.hide().map_err(|e| e.to_string())?;
@@ -707,10 +672,6 @@ pub async fn sync_browsers(
                     .get_mut(&slot.id)
                 {
                     page.bounds = None;
-                    #[cfg(feature = "remote-visual-probe")]
-                    {
-                        page.geometry_epoch = page.geometry_epoch.saturating_add(1);
-                    }
                 }
             }
         } else if previous != Some(slot.bounds) {
@@ -723,10 +684,6 @@ pub async fn sync_browsers(
                 .get_mut(&slot.id)
             {
                 page.bounds = Some(slot.bounds);
-                #[cfg(feature = "remote-visual-probe")]
-                {
-                    page.geometry_epoch = page.geometry_epoch.saturating_add(1);
-                }
             }
         }
     }
@@ -946,10 +903,6 @@ pub async fn signal(webview: Webview, signal: Signal) -> Result<(), String> {
                         control.document_changed(url.as_str());
                         page.navigation_id = Some(control.navigation_id());
                     }
-                    #[cfg(feature = "remote-visual-probe")]
-                    {
-                        page.content_epoch = page.content_epoch.saturating_add(1);
-                    }
                     page.url = url.to_string();
                 });
             }
@@ -1099,75 +1052,6 @@ fn linux_attach(webview: &Webview) -> Result<(), String> {
             });
         })
         .map_err(|e| e.to_string())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn pages_cannot_cross_the_application_boundary() {
-        let capability: serde_json::Value =
-            serde_json::from_str(include_str!("../capabilities/browser.json")).unwrap();
-        let patterns: Vec<tauri::utils::acl::RemoteUrlPattern> = capability["remote"]["urls"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|value| value.as_str().unwrap().parse().unwrap())
-            .collect();
-        for url in [
-            "http://localhost:3000",
-            "http://127.0.0.1:18765/path",
-            "https://example.com",
-            "https://example.com:8443/path",
-        ] {
-            assert!(
-                patterns
-                    .iter()
-                    .any(|pattern| pattern.test(&url.parse().unwrap())),
-                "{url}"
-            );
-        }
-        assert!(!patterns
-            .iter()
-            .any(|pattern| pattern.test(&"file:///etc/passwd".parse().unwrap())));
-        for url in [
-            "file:///etc/passwd",
-            "javascript:alert(1)",
-            "data:text/html,hello",
-            "tauri://localhost",
-            "http://tauri.localhost",
-            "http://ipc.localhost",
-            "http://theme.localhost",
-            "https://plugin.localhost",
-            "https://PLUGIN.LOCALHOST./asset.js",
-            "http://child.plugin.localhost",
-            "https://user:password@example.com",
-        ] {
-            assert!(address(url).is_err(), "{url}");
-        }
-        for url in [
-            "about:blank",
-            "https://example.com",
-            "http://localhost:3000",
-            "http://127.0.0.1:1420",
-        ] {
-            assert!(address(url).is_ok(), "{url}");
-        }
-        assert!(trusted_app_view("main", "main"));
-        assert!(!trusted_app_view("settings", "settings"));
-        assert!(!trusted_app_view("browser-main", "main"));
-        assert!(!trusted_app_view("settings", "main"));
-        assert!(!trusted_app_view("main", "settings"));
-        assert!(label("../main").is_err());
-    }
-}
-
-#[cfg(any(feature = "native-smoke", feature = "mcp-probe"))]
-pub fn smoke_pages(app: &tauri::AppHandle) -> serde_json::Value {
-    let state = app.state::<Browsers>();
-    let pages = state.pages.lock().unwrap();
-    serde_json::json!(pages.iter().map(|(id,page)|(id.clone(),serde_json::json!({"url":page.url,"title":page.title,"error":page.error,"visible":page.bounds.is_some(),"bounds":page.bounds.map(|b|[b.x,b.y,b.width,b.height])}))).collect::<std::collections::BTreeMap<_,_>>())
 }
 
 #[tauri::command]

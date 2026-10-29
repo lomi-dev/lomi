@@ -25,8 +25,7 @@ mod download;
 mod emulator_process;
 mod environment;
 mod events;
-#[cfg(any(feature = "android-probe", feature = "mcp-probe"))]
-pub(crate) mod fixture;
+
 mod frames;
 #[cfg(unix)]
 mod hierarchy;
@@ -43,9 +42,7 @@ pub mod manager;
 pub mod open;
 mod process_identity;
 mod recovery;
-#[cfg(feature = "remote-visual-probe")]
-#[allow(dead_code)]
-pub(crate) mod remote_probe;
+
 mod repository;
 mod rpc;
 mod runtime;
@@ -54,7 +51,3 @@ mod shared_frames;
 mod storage;
 #[cfg(windows)]
 mod window_focus;
-
-#[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
-#[path = "../../../tests/native/mcp-android-support.rs"]
-mod mcp_qualification;

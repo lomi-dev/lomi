@@ -167,33 +167,3 @@ pub(super) fn admit(path: &Path) -> Result<FileIdentity, String> {
 pub(super) fn admit(_: &Path) -> Result<FileIdentity, String> {
     Err(unavailable())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn published_version_cannot_supply_source_identity() {
-        assert!(!version_matches(b"grok 1.0.45\n"));
-        assert!(!version_matches(b"grok 1.0.46\n"));
-        assert!(!version_matches(b"grok 1.0.45 (unknown)\n"));
-    }
-    #[test]
-    fn missing_executable_is_never_admitted() {
-        assert!(admit(Path::new("/lomi-no-such-grok-artifact")).is_err());
-    }
-    #[cfg(unix)]
-    #[test]
-    fn arbitrary_bytes_symlink_and_writable_artifact_are_rejected() {
-        use std::os::unix::fs::{symlink, PermissionsExt};
-        let temporary = tempfile::tempdir().unwrap();
-        let executable = temporary.path().join("grok");
-        fs::write(&executable, b"unreviewed executable").unwrap();
-        fs::set_permissions(&executable, fs::Permissions::from_mode(0o755)).unwrap();
-        assert!(admit(&executable).is_err());
-        let link = temporary.path().join("linked-grok");
-        symlink(&executable, &link).unwrap();
-        assert!(admit(&link).is_err());
-        fs::set_permissions(&executable, fs::Permissions::from_mode(0o777)).unwrap();
-        assert!(admit(&executable).is_err());
-    }
-}

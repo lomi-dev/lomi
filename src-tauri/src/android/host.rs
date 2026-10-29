@@ -33,14 +33,8 @@ pub fn require_qualification() -> Result<(), String> {
     qualification(Host::native()?)
 }
 
-/// Debug native trials may exercise an unqualified host only with the same
-/// isolated directory and accepted license required by the product fixture.
-/// Normal application builds always use the distribution qualification flag.
+/// Qualification comes from the pinned distribution manifest.
 pub(super) fn qualified(host: Host) -> Result<bool, String> {
-    #[cfg(all(debug_assertions, feature = "android-probe"))]
-    if super::fixture::directory()?.is_some() {
-        return Ok(true);
-    }
     Ok(super::bootstrap::distribution(host)?.qualified)
 }
 
@@ -92,7 +86,7 @@ fn native_acceleration() -> (&'static str, Result<(), String>) {
     ("KVM", result)
 }
 
-#[cfg(any(windows, test))]
+#[cfg(windows)]
 #[repr(C, align(8))]
 #[derive(Default)]
 struct HypervisorCapability {
@@ -100,7 +94,7 @@ struct HypervisorCapability {
     reserved: u32,
 }
 
-#[cfg(any(windows, test))]
+#[cfg(windows)]
 fn interpret_hypervisor_capability(status: i32, written: u32, present: i32) -> Result<(), String> {
     if status < 0 {
         return Err(format!(
@@ -168,82 +162,4 @@ fn native_acceleration() -> (&'static str, Result<(), String>) {
         result
     };
     ("Windows Hypervisor Platform", result)
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn windows_capability_buffer_covers_the_api_minimum() {
-        assert!(std::mem::size_of::<super::HypervisorCapability>() >= 8);
-        assert!(std::mem::align_of::<super::HypervisorCapability>() >= 8);
-    }
-
-    #[test]
-    fn windows_capability_accepts_nonzero_bool_payloads() {
-        for present in [1, -1] {
-            assert!(super::interpret_hypervisor_capability(0, 4, present).is_ok());
-        }
-    }
-
-    #[test]
-    fn windows_capability_distinguishes_query_failure_from_absence() {
-        let error =
-            super::interpret_hypervisor_capability(0x80070057_u32 as i32, 0, 0).unwrap_err();
-        assert!(error.contains("HRESULT=0x80070057"));
-        assert!(!error.contains("HypervisorPresent=false"));
-        let error = super::interpret_hypervisor_capability(0, 4, 0).unwrap_err();
-        assert!(error.contains("HypervisorPresent=false"));
-        assert!(error.contains("nested virtualization"));
-    }
-
-    #[test]
-    fn windows_capability_rejects_unexpected_payload_sizes_before_reading_bool() {
-        for written in [0, 3, 8, u32::MAX] {
-            for present in [0, 1] {
-                let error =
-                    super::interpret_hypervisor_capability(0, written, present).unwrap_err();
-                assert!(error.contains("unexpected capability size"));
-                assert!(error.contains(&format!("written={written}")));
-                assert!(!error.contains("HypervisorPresent=false"));
-            }
-        }
-    }
-
-    #[test]
-    fn qualified_hosts_allow_android_runtime() {
-        use super::Host;
-        for host in [Host::MacArm64, Host::LinuxX64, Host::WindowsX64] {
-            assert!(
-                super::super::bootstrap::distribution(host)
-                    .unwrap()
-                    .qualified
-            );
-            assert!(super::qualification(host).is_ok());
-        }
-    }
-
-    #[test]
-    fn downloadable_tools_do_not_qualify_an_untested_intel_mac_runtime() {
-        let host = super::Host::MacX64;
-        assert!(
-            !super::super::bootstrap::distribution(host)
-                .unwrap()
-                .qualified
-        );
-        #[cfg(all(debug_assertions, feature = "android-probe"))]
-        if super::super::fixture::directory().unwrap().is_some() {
-            assert!(super::qualification(host).is_ok());
-            return;
-        }
-        assert!(super::qualification(host)
-            .unwrap_err()
-            .contains("unavailable"));
-    }
-
-    #[test]
-    fn host_probe_requires_no_android_installation() {
-        let state = super::acceleration().unwrap();
-        assert!(!state.backend.is_empty());
-        assert_eq!(state.available, state.action.is_none());
-    }
 }

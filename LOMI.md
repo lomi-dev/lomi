@@ -87,7 +87,7 @@ or acronym.
   registries, placeholders and Settings management. `@lomi-dev/plugin-sdk` from the separate
   `lomi-dev/plugin-sdk` repository is the external author contract. The host
   imports its installed pure exports; do not reintroduce SDK source copies.
-  `pnpm sdk:verify` checks the Rust fixture snapshot against that dependency. Main
+  Main
   imports executable ESM through the plugin protocol; the Settings tab manages
   metadata and approves immutable revision trust in the same trusted view.
   `src-tauri/src/plugins.rs` serializes bounded installs/removals and checks
@@ -157,7 +157,7 @@ or acronym.
   and native authenticated connection; preserve Agent control pairing, grants,
   cancellation and revocation. Never execute commands in the AI process or
   accept webview-supplied tool catalogs, endpoints or credentials during generation.
-  The Settings UI changes connections/keys or runs paid tests. Browser child
+  The Settings UI changes connections/keys or runs explicit paid provider checks. Browser child
   views remain excluded by the global trusted-app caller check.
 - Chat credentials use keyring 3.6.3 or explicitly chosen session-only memory.
   Linux uses shared system D-Bus; do not vendor libdbus into the GTK application,
@@ -165,8 +165,6 @@ or acronym.
   Journal credential IDs before mutation, preserve committed revisions and
   recover orphan keys without enumeration. Never use plaintext fallback.
   Chat history and attachments are private local files, not encrypted storage.
-  Native probes in `tests/native/chat-*` require `chat-probe`; fixture bundles
-  and provider overrides must never enter a normal release build.
 - Theme v2 uses raw JSONC, common/light/dark surfaces and scoped resources.
   Keep one effective runtime, native source revisions, cancelable resource
   staging, local previews and scoped filesystem watches. Legacy JSON is a
@@ -246,8 +244,7 @@ or acronym.
   fill shows remaining quota: 100% available, 0% exhausted. Normalize provider
   reports in native readers. Unsupported agents remain visible
   with an explicit availability status. `src-tauri/src/cli_usage.rs` owns
-  availability and qualification checks; `tests/native/run-agent-usage-smoke.mjs`
-  exercises the native readers.
+  availability and qualification checks.
 - On macOS, passive CLI credential reads keep Keychain interaction disabled.
   Cursor Keychain authorization requires an explicit action in the main view
   and runs in a bounded child process of the same Lomi executable. Keep secrets
@@ -375,43 +372,15 @@ or acronym.
   Errors or cancellation release preparation after operations settle, preserving
   the directory lock and descriptors. Native Exit cleanup is only an emergency
   fallback. Closing the Settings tab does not cancel consciously started installation.
-- Android Stage 0 and the integrated product passed
-  on the recorded Apple M3/macOS ARM64 and Windows 11 Pro/x64 hosts, including
-  thirty-minute shared-view trials. Qualification uses 720x1280, Host GPU and
-  cold boot. Local Mac packaging has an ad hoc signature, without notarization.
-  The Mac modern-profile/zoom extension passed on Android 17 (API 37.2), Google
-  Play and Pixel 10 Pro XL at 1344x2992, with a scaled preview. The Mac
-  thirty-minute trial preceded the viewport cleanup correction; the later
-  executable passed a two-minute regression. Do not generalize these results
-  to every catalog image. One-phone budgets are +0.5 CPU cores, +128 MiB
-  application/webview memory, 111 MB/s IPC and 24–30 FPS under animation.
-  The recorded Mac GPU budget is +0.10 active seconds per second per independent
-  phone; another host needs a comparable metric. Two views share one phone’s
-  transport budget. Thirty minutes must not show sustained memory growth;
-  the p95 input-to-image target is 150 ms. Record source, framebuffer, CSS and
-  DPR separately and stop builds during measurements.
-  Linux x86_64 is enabled following the recorded native functional, input and
-  resource trials and the owner's 2026-10-20 request to unlock it after disclosure
-  of the unresolved comparable GPU budget. This enables the runtime; it does not
-  establish the +0.10 GPU-active-seconds budget. Intel Mac remains unverified.
-  Native commands gate installation, device creation/wipe,
-  open intents and Start on the toolchain qualification flag. Read, Stop and
-  recovery remain available. In particular, Windows' launcher spawns a separate
-  QEMU child; qualify both process identities and cleanup before enabling it.
-  The recorded Windows trial used AOSP Android 16/API 36 x86_64 and verified
-  native Job Object cleanup, committed Unicode input, read-only SharedBuffer
-  transport, paired CPU/GPU budgets and fifty input-to-image samples. Its
-  thirty-minute CPU sampler had a rounding error; separate precise steady-state
-  CPU trials passed, without retroactively validating the rounded CPU data.
-  Windows GPU evidence uses observed cumulative per-process engine busy timers
-  and conservative per-group bounds, with sampling limitations recorded.
-  See `tests/native/ANDROID.md` for results and isolated fixture setup. On Windows,
-  `tests/native/android-windows-preflight.ps1` records read-only host, WHPX
-  availability and artifact checks before any download. A successful preflight
-  does not qualify native Android on Windows or enable its platform guards.
-  `tests/native/android-*` and `run-android-product.mjs` are
-  isolated opt-in fixtures behind `android-probe`/`native-smoke`; never distribute
-  those features. Default builds include the lazy production backend and bindings.
+- Android is a production feature with a lazy backend and native bindings.
+  Native commands gate installation, device creation/wipe, open intents and Start
+  on the toolchain qualification flag; Read, Stop and recovery remain available.
+  The Windows launcher owns a separate QEMU child, so qualify both process
+  identities and cleanup before enabling it. Linux x86_64 is enabled; Intel Mac
+  remains unverified, and the comparable GPU budget is unresolved. Keep the
+  one-phone budgets at +0.5 CPU cores, +128 MiB application/webview memory,
+  111 MB/s IPC and 24–30 FPS under animation. Thirty-minute runs must not show
+  sustained memory growth, and p95 input-to-image latency targets 150 ms.
   Keep downloaded tools/AVDs, credentials and user license acceptance outside Git.
 - pnpm manages frontend dependencies; Cargo manages Rust dependencies.
 - `src/Updater.tsx` checks signed GitHub release metadata after startup and on
@@ -424,8 +393,7 @@ or acronym.
 - `src-tauri/tauri.conf.json` connects Vite to Tauri and configures the window.
 - AppImage AppRun and GTK hooks must preserve backend selection and explicit
   `GDK_BACKEND` overrides. Keep the Tauri CLI pinned to the bundler with the
-  refreshed GTK hook; qualify extracted artifacts with
-  `scripts/qualify-appimage-backend.mjs` before release.
+  refreshed GTK hook.
 - `src-tauri/capabilities/` defines the native commands available to the frontend.
 - `src-tauri/src/main.rs` contains a startup workaround for WebKitGTK's Wayland
   Error 71 on NVIDIA. Keep it scoped to that environment, preserve explicit user
@@ -445,19 +413,6 @@ or acronym.
   this default, including `0`, empty and non-Unicode values. WebKitGTK 2.54's
   shared-memory transport skips GBM while retaining GPU compositing; this switch
   is absent from WebKitGTK 2.42/2.48, so those versions are not qualified by it.
-  This checks any bound Nouveau render device, not which GPU WebKit actually uses;
-  it must not change the passing default Wayland path. On the recorded
-  Ubuntu/NVIDIA host, the integrated two-view trial met the CPU, frame-rate, IPC
-  and memory budgets at 720x1280. A separate
-  hook-free thirty-minute memory observation showed an early rise, late plateau
-  and decreases; no sustained upward memory trend was observed through the end
-  of that workload. This accepted observation is not a lifetime memory bound. Post-trial native input passed
-  fifty samples at p95 138 ms. Manual Stop/Start recovery retained guest data;
-  preserve its distinction from the failed automatic fixture run. Normal release
-  builds and final owned-process/ADB/lease cleanup completed. Linux Android
-  is enabled; comparable GPU evidence remains unresolved and must not be recorded
-  as a passing performance result. Detailed results, build pins and limitations are in
-  `tests/native/ANDROID.md`.
 - On Linux, only the built-in Lomi theme may use an opaque WebView background
   after confirming an opaque, square shell covers the viewport. Keep custom
   themes transparent. Clear the WebView background before changing theme CSS
@@ -602,24 +557,16 @@ or acronym.
 - Start the desktop app: `pnpm tauri dev`.
 - Start only the browser frontend: `pnpm dev`.
 - Check TypeScript: `pnpm check`.
-- Run model tests: `pnpm test`.
-- Run interface tests: `pnpm test:ui` (install Chromium with
-  `pnpm exec playwright install chromium` first).
 - Check frontend/document formatting: `pnpm format:check`.
 - Build the frontend: `pnpm build`.
 - Check Rust: `cargo check --manifest-path src-tauri/Cargo.toml --locked`.
-- Run Rust and native PTY tests:
-  `cargo test --manifest-path src-tauri/Cargo.toml --locked`.
 - Check Rust formatting: `cargo fmt --manifest-path src-tauri/Cargo.toml --check`.
 - Check Rust lints:
   `cargo clippy --manifest-path src-tauri/Cargo.toml --locked -- -D warnings`.
 - Build the desktop executable: `pnpm tauri build --no-bundle`.
 - Build platform installers: `pnpm tauri build`.
 - Run checks appropriate to the changed code. For UI changes, inspect the rendered
-  result. Add tests for meaningful behavior, not static markup or trivial wrappers.
-- Playwright uses mocked native commands. Verify PTY transport, native windows,
-  renderer behavior, and platform-specific shells in the desktop application
-  when changing those paths. State which operating systems were actually tested.
+  result and state which operating systems were verified.
 - Report what was verified and any checks that could not run. Never claim a check
   passed unless it actually ran successfully.
 

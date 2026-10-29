@@ -14,7 +14,7 @@ pub(crate) fn shell_profile<'a>(shells: &'a Shells, id: &str) -> Result<&'a Shel
     Ok(profile)
 }
 
-#[cfg(any(test, not(target_os = "macos")))]
+#[cfg(not(target_os = "macos"))]
 pub(super) fn resolve(
     shells: &Shells,
     shell: &ShellProfile,
@@ -82,7 +82,7 @@ impl Drop for OwnedChild {
     }
 }
 
-#[cfg(any(test, not(target_os = "macos")))]
+#[cfg(not(target_os = "macos"))]
 pub(super) fn exit_pending(child: &Child) -> Result<bool, String> {
     #[cfg(unix)]
     {

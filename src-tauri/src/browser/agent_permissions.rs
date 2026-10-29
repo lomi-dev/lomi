@@ -10,12 +10,6 @@ use objc2_web_kit::{
     WKUIDelegate, WKWebView,
 };
 use std::cell::RefCell;
-#[cfg(feature = "mcp-probe")]
-static MEDIA_DENIALS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-#[cfg(feature = "mcp-probe")]
-pub fn media_denials() -> usize {
-    MEDIA_DENIALS.load(std::sync::atomic::Ordering::SeqCst)
-}
 
 define_class!(
     #[unsafe(super(NSObject))]
@@ -43,8 +37,6 @@ define_class!(
             _kind: WKMediaCaptureType,
             completion: &block2::Block<dyn Fn(WKPermissionDecision)>,
         ) {
-            #[cfg(feature = "mcp-probe")]
-            MEDIA_DENIALS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             completion.call((WKPermissionDecision::Deny,));
         }
         #[unsafe(method(webView:requestDeviceOrientationAndMotionPermissionForOrigin:initiatedByFrame:decisionHandler:))]

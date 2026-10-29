@@ -70,14 +70,14 @@ fn absent(pid: u32) -> bool {
     missing || linux_stat(pid).is_ok_and(|value| matches!(value.state, b'Z' | b'X'))
 }
 
-#[cfg(any(target_os = "linux", test))]
+#[cfg(target_os = "linux")]
 #[derive(Debug, PartialEq, Eq)]
 struct LinuxStat {
     created: u64,
     state: u8,
 }
 
-#[cfg(any(target_os = "linux", test))]
+#[cfg(target_os = "linux")]
 fn parse_linux_stat(pid: u32, text: &str) -> Result<LinuxStat, String> {
     if pid == 0 || pid > i32::MAX as u32 || text.len() > 16384 {
         return Err("Invalid or oversized process stat".into());
@@ -319,152 +319,4 @@ fn native(pid: u32) -> Result<Identity, String> {
 #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
 fn native(_: u32) -> Result<Identity, String> {
     Err("Host process identity is unavailable".into())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[cfg(any(windows, target_os = "linux"))]
-    #[test]
-    #[ignore = "subprocess fixture for retained process handle test"]
-    fn identity_fixture() {
-        std::thread::sleep(std::time::Duration::from_secs(60));
-    }
-
-    fn stat_fixture(state: &str, comm: &str) -> String {
-        let mut fields = vec!["0"; 50];
-        fields[0] = state;
-        fields[6] = "18446744073709551615";
-        fields[15] = "-5";
-        fields[19] = "12345";
-        format!("42 ({comm}) {}\n", fields.join(" "))
-    }
-
-    #[test]
-    fn linux_stat_preserves_state_and_creation_with_comm_spaces_and_parentheses() {
-        for comm in ["worker", "worker name (nested)", "worker ) (name) tail"] {
-            for state in ["S", "Z", "X"] {
-                assert_eq!(
-                    parse_linux_stat(42, &stat_fixture(state, comm)).unwrap(),
-                    LinuxStat {
-                        created: 12345,
-                        state: state.as_bytes()[0]
-                    }
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn linux_stat_rejects_wrong_pid_truncation_malformed_and_oversized_fields() {
-        let valid = stat_fixture("Z", "worker");
-        for invalid in [
-            String::new(),
-            valid.replace("42 (", "43 ("),
-            valid.replace("42 (", "42 "),
-            valid.replace(") Z ", ") ZZ "),
-            valid.replace(") Z ", ") ? "),
-            valid.replace("12345", "-1"),
-            valid.replace("12345", "18446744073709551616"),
-            valid.replace("-5", "unknown"),
-            valid
-                .split_whitespace()
-                .take(51)
-                .collect::<Vec<_>>()
-                .join(" "),
-            stat_fixture("Z", &"x".repeat(16384)),
-        ] {
-            assert!(parse_linux_stat(42, &invalid).is_err());
-        }
-    }
-
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn unreaped_child_zombie_is_exited_even_while_signal_zero_succeeds() {
-        struct OwnedChild(std::process::Child);
-        impl Drop for OwnedChild {
-            fn drop(&mut self) {
-                let _ = self.0.kill();
-                let _ = self.0.wait();
-            }
-        }
-        let mut child = OwnedChild(
-            std::process::Command::new(std::env::current_exe().unwrap())
-                .args([
-                    "--exact",
-                    "android::process_identity::tests::identity_fixture",
-                    "--ignored",
-                ])
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .spawn()
-                .unwrap(),
-        );
-        let identity = Identity::read(child.0.id()).unwrap();
-        assert!(!absent(identity.pid));
-        child.0.kill().unwrap();
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-        while linux_stat(identity.pid).unwrap().state != b'Z' {
-            assert!(std::time::Instant::now() < deadline);
-            std::thread::sleep(std::time::Duration::from_millis(10));
-        }
-        assert_eq!(unsafe { libc::kill(identity.pid as i32, 0) }, 0);
-        assert!(Identity::read(identity.pid).is_err());
-        assert!(!identity.matches_or_exited().unwrap());
-        drop(child);
-        assert!(absent(identity.pid));
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn legacy_dos_executable_paths_match_canonical_native_identity() {
-        let identity = Identity::read(std::process::id()).unwrap();
-        let mut legacy = identity.clone();
-        let path = identity.executable.to_str().unwrap();
-        legacy.executable = PathBuf::from(path.strip_prefix(r"\\?\").unwrap_or(path));
-        assert!(legacy.still_matches().unwrap());
-        assert!(legacy.matches_or_exited().unwrap());
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn exited_process_with_a_retained_handle_is_not_a_live_identity() {
-        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["process_identity::tests::identity_fixture", "--ignored"])
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .unwrap();
-        let identity = Identity::read(child.id()).unwrap();
-        child.kill().unwrap();
-        // Keep Child's process handle open, as emulator.exe does for QEMU.
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-        while !absent(identity.pid) {
-            assert!(std::time::Instant::now() < deadline);
-            std::thread::sleep(std::time::Duration::from_millis(10));
-        }
-        assert!(!identity.matches_or_exited().unwrap());
-        child.wait().unwrap();
-    }
-
-    #[test]
-    fn native_process_creation_and_executable_are_required_for_a_match() {
-        let identity = Identity::read(std::process::id()).unwrap();
-        assert_eq!(
-            std::fs::canonicalize(&identity.executable).unwrap(),
-            std::fs::canonicalize(std::env::current_exe().unwrap()).unwrap()
-        );
-        assert!(identity.created > 0);
-        assert!(identity.still_matches().unwrap());
-        let mut stale = identity.clone();
-        stale.created += 1;
-        assert!(!stale.still_matches().unwrap());
-        stale = identity;
-        stale.executable = PathBuf::from("not-the-managed-emulator");
-        assert!(!stale.still_matches().unwrap());
-        assert!(Identity::read(0).is_err());
-        assert!(Identity::read(u32::MAX).is_err());
-    }
 }

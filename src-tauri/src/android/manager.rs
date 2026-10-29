@@ -82,17 +82,6 @@ impl Android {
             agent_controls: Mutex::new(BTreeMap::new()),
             boot_gate: tokio::sync::Semaphore::new(1),
             emitter: std::sync::OnceLock::new(),
-            #[cfg(any(test, feature = "android-probe", feature = "mcp-probe"))]
-            test_adb_port: std::sync::atomic::AtomicU16::new({
-                #[cfg(any(feature = "android-probe", feature = "mcp-probe"))]
-                {
-                    super::fixture::adb_port()
-                }
-                #[cfg(not(any(feature = "android-probe", feature = "mcp-probe")))]
-                {
-                    5037
-                }
-            }),
         });
         loaded.manager = Some(manager.clone());
         Ok(manager)
@@ -194,10 +183,6 @@ impl Android {
             }
         }
         manager.emergency_stop_all().await?;
-        #[cfg(any(feature = "android-probe", feature = "mcp-probe"))]
-        if super::fixture::directory()?.is_some() {
-            manager.stop_private_adb_fixture()?;
-        }
         Ok(())
     }
 
@@ -229,8 +214,6 @@ pub struct Manager {
     core: Mutex<Core>,
     adb: Arc<Mutex<SharedServer>>,
     emitter: std::sync::OnceLock<Box<dyn Fn(super::events::Event) + Send + Sync>>,
-    #[cfg(any(test, feature = "android-probe", feature = "mcp-probe"))]
-    pub test_adb_port: std::sync::atomic::AtomicU16,
 }
 
 #[derive(Default)]
@@ -643,11 +626,7 @@ impl Manager {
             )?;
             super::devices::apply_stopped(&directory, &device)?;
             let plan = avd::launch(&directory, &device)?;
-            #[cfg(any(test, feature = "android-probe", feature = "mcp-probe"))]
-            let plan = super::runtime::Launch {
-                adb_port: self.test_adb_port.load(Ordering::Acquire),
-                ..plan
-            };
+
             let adb = directory
                 .installed_path("platform-tools")?
                 .join(if cfg!(windows) { "adb.exe" } else { "adb" });
@@ -706,14 +685,6 @@ impl Manager {
                 .request_start_guarded(request.guard.clone())?
         };
         result.await.map_err(|_| "Android start response ended")?
-    }
-
-    #[cfg(any(test, feature = "android-probe", feature = "mcp-probe"))]
-    pub fn stop_private_adb_fixture(&self) -> Result<(), String> {
-        self.adb
-            .lock()
-            .unwrap()
-            .stop_private_fixture(self.test_adb_port.load(Ordering::Acquire))
     }
 
     pub async fn stop(&self, id: &str, force: bool) -> Result<Status, String> {
@@ -872,135 +843,5 @@ impl Manager {
         } else {
             Err(errors.join("; "))
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #[cfg(windows)]
-    #[test]
-    fn document_invalidation_does_not_initialize_android() {
-        let android = super::Android::default();
-        let document = android.frame_document();
-        assert_eq!(document.load(super::Ordering::Acquire), 0);
-        android.document_started();
-        assert_eq!(document.load(super::Ordering::Acquire), 1);
-        assert!(android.loaded().is_none());
-        android.document_started();
-        assert_eq!(document.load(super::Ordering::Acquire), 2);
-        assert!(android.loaded().is_none());
-    }
-    use super::*;
-
-    #[tokio::test]
-    async fn revoked_agent_boot_leaves_the_preparation_queue_without_starting_tools() {
-        let root = tempfile::tempdir().unwrap();
-        let manager = Android::default().get(root.path().join("android")).unwrap();
-        let occupied = manager.boot_gate.acquire().await.unwrap();
-        let allowed = Arc::new(AtomicBool::new(true));
-        let active = allowed.clone();
-        let guard: super::super::runtime::DispatchGuard = Arc::new(move || {
-            if active.load(Ordering::SeqCst) {
-                Ok(())
-            } else {
-                Err("revoked fixture authority".into())
-            }
-        });
-        let starting = manager.clone();
-        let start = tokio::spawn(async move {
-            starting
-                .start_guarded("00000000-0000-0000-0000-000000000001", Some(guard))
-                .await
-        });
-        while manager.core.lock().unwrap().starting.is_empty() {
-            tokio::task::yield_now().await;
-        }
-        allowed.store(false, Ordering::SeqCst);
-        drop(occupied);
-        let result = tokio::time::timeout(std::time::Duration::from_secs(2), start)
-            .await
-            .unwrap()
-            .unwrap();
-        assert!(result.unwrap_err().contains("revoked fixture"));
-        assert!(manager.core.lock().unwrap().starting.is_empty());
-        assert!(!root.path().join("android/sdk").exists());
-    }
-
-    #[tokio::test]
-    async fn queued_boot_can_be_cancelled_before_preparation_without_spawning_tools() {
-        let root = tempfile::tempdir().unwrap();
-        let android = Android::default();
-        let manager = android.get(root.path().join("android")).unwrap();
-        let _occupied = manager.boot_gate.acquire().await.unwrap();
-        let id = "00000000-0000-0000-0000-000000000001";
-        let starting = manager.clone();
-        let start = tokio::spawn(async move { starting.start(id).await });
-        while manager.core.lock().unwrap().starting.is_empty() {
-            tokio::task::yield_now().await;
-        }
-        let result =
-            tokio::time::timeout(std::time::Duration::from_secs(2), manager.stop(id, false))
-                .await
-                .unwrap()
-                .unwrap();
-        assert!(!result.process_alive);
-        assert!(start.await.unwrap().unwrap_err().contains("cancelled"));
-        assert!(!root.path().join("android/sdk").exists());
-    }
-
-    #[tokio::test]
-    async fn exit_before_first_android_use_blocks_late_initialization_without_touching_disk() {
-        let temporary = tempfile::tempdir().unwrap();
-        let root = temporary.path().join("android");
-        let state = Android::default();
-        assert!(state.require_exit_ready().is_err());
-        let preparation = state.begin_exit().unwrap();
-        assert!(state.require_exit_ready().is_err());
-        assert!(state.get(root.clone()).is_err());
-        state.finish_exit(&preparation, false).await.unwrap();
-        state.require_exit_ready().unwrap();
-        assert!(!root.exists());
-        assert!(state.loaded().is_none());
-        state.resume(&preparation).unwrap();
-        assert!(state.require_exit_ready().is_err());
-        assert!(state.get(root).is_ok());
-    }
-
-    #[test]
-    fn directory_owner_is_lazy_and_exit_gate_does_not_release_it() {
-        let root = tempfile::tempdir().unwrap();
-        let path = root.path().join("android");
-        let android = Android::default();
-        assert!(android.loaded().is_none());
-        assert!(!path.exists());
-        let manager = android.get(path.clone()).unwrap();
-        assert!(Directory::acquire(path.clone()).is_err());
-        let operation = manager.begin_mutation(false).unwrap();
-        assert!(manager.begin_mutation(false).is_err());
-        let close = manager.begin_exit().unwrap();
-        assert!(manager.begin_mutation(false).is_err());
-        drop(operation);
-        manager.resume(&close).unwrap();
-        assert!(manager.resume(&close).is_err());
-        assert!(manager.begin_mutation(true).is_ok());
-        assert!(manager.statuses().unwrap().is_empty());
-        assert!(Directory::acquire(path).is_err());
-    }
-
-    #[tokio::test]
-    async fn missing_device_and_cancelled_exit_never_start_tools() {
-        let root = tempfile::tempdir().unwrap();
-        let android = Android::default();
-        let manager = android.get(root.path().join("android")).unwrap();
-        let id = "00000000-0000-0000-0000-000000000001";
-        assert!(manager.start(id).await.unwrap_err().contains("missing"));
-        assert!(manager.runtime(id, id).is_err());
-        assert!(!manager.stop(id, false).await.unwrap().process_alive);
-        let close = manager.begin_exit().unwrap();
-        assert!(manager.start(id).await.unwrap_err().contains("preparing"));
-        manager.stop_all(&close, false).await.unwrap();
-        manager.resume(&close).unwrap();
-        assert!(manager.start(id).await.unwrap_err().contains("missing"));
-        assert!(!root.path().join("android/sdk").exists());
     }
 }

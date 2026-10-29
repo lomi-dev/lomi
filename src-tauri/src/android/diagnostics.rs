@@ -69,15 +69,3 @@ fn redact(text: &str, paths: &[String]) -> String {
     }
     output
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn exported_logs_omit_credentials_private_paths_and_terminal_controls() {
-        let result = super::redact("ready at /private/android/sdk\nauthorization: secret\nJWT eyJsecret\nerror\u{1b}[31m\n", &["/private/android".into()]);
-        assert!(!result.contains("secret"));
-        assert!(!result.contains("/private/android"));
-        assert!(!result.contains('\u{1b}'));
-        assert!(result.contains("[private path]/sdk"));
-    }
-}

@@ -2607,16 +2607,6 @@ pub(super) fn account_control_reserved(
     Ok(leases.contains(account) || store.unresolved_accounts()?.iter().any(|id| id == account))
 }
 
-#[cfg(test)]
-pub(super) fn begin_helper(
-    inner: &mut Inner,
-    closing: bool,
-    account: &AccountInstance,
-    cwd: &str,
-    purpose: &str,
-) -> Result<(), String> {
-    begin_helper_impl(inner, closing, account, cwd, purpose, false).map(|_| ())
-}
 struct AdmittedHelper {
     #[cfg(not(target_os = "macos"))]
     operation: String,

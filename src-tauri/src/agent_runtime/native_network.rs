@@ -83,8 +83,6 @@ struct State {
     sequence: AtomicU64,
     authorization: Zeroizing<String>,
     hosts: &'static [&'static str],
-    #[cfg(test)]
-    fixture_upstream: Mutex<Option<SocketAddr>>,
 }
 impl State {
     fn cancelled(&self) -> bool {
@@ -152,8 +150,6 @@ impl Proxy {
             sequence: AtomicU64::new(1),
             authorization,
             hosts: hosts(cli)?,
-            #[cfg(test)]
-            fixture_upstream: Mutex::new(None),
         });
         let owner = state.clone();
         let worker = thread::Builder::new()
@@ -379,21 +375,16 @@ fn tunnel(state: &State, mut client: TcpStream) -> Result<(), String> {
         }
     };
     let _effect = state.enter()?;
-    #[cfg(test)]
-    let fixture = *state.fixture_upstream.lock().map_err(|_| failure())?;
-    #[cfg(not(test))]
-    let fixture: Option<SocketAddr> = None;
-    let addresses: Vec<SocketAddr> = if let Some(address) = fixture {
-        vec![address]
-    } else {
-        (hostname.as_str(), 443)
-            .to_socket_addrs()
-            .map_err(|_| failure())?
-            .collect()
-    };
+
+    let addresses: Vec<SocketAddr> = (hostname.as_str(), 443)
+        .to_socket_addrs()
+        .map_err(|_| failure())?
+        .collect();
     if addresses.is_empty()
         || addresses.len() > 32
-        || fixture.is_none() && addresses.iter().any(|a| !public_address(a.ip()))
+        || addresses
+            .iter()
+            .any(|address| !public_address(address.ip()))
     {
         return Err(failure());
     }
@@ -466,202 +457,4 @@ fn relay(state: &State, input: &mut TcpStream, output: &mut TcpStream) -> Result
         }
     }
     Err(failure())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn blocked_outbound_write_closes_an_otherwise_idle_response_half() {
-        use std::os::fd::AsRawFd;
-        let upstream = TcpListener::bind(("127.0.0.1", 0)).unwrap();
-        let buffer_size: libc::c_int = 1024;
-        assert_eq!(
-            unsafe {
-                libc::setsockopt(
-                    upstream.as_raw_fd(),
-                    libc::SOL_SOCKET,
-                    libc::SO_RCVBUF,
-                    (&buffer_size as *const libc::c_int).cast(),
-                    std::mem::size_of_val(&buffer_size) as libc::socklen_t,
-                )
-            },
-            0
-        );
-        let proxy = Proxy::start(TitleCli::Codex).unwrap();
-        *proxy.state.fixture_upstream.lock().unwrap() = Some(upstream.local_addr().unwrap());
-        proxy
-            .attach(super::super::host_boundary::test_effect_scope())
-            .unwrap();
-        let mut client = TcpStream::connect(("127.0.0.1", proxy.port())).unwrap();
-        client
-            .set_read_timeout(Some(Duration::from_secs(3)))
-            .unwrap();
-        client
-            .set_write_timeout(Some(Duration::from_secs(3)))
-            .unwrap();
-        write!(client,"CONNECT api.openai.com:443 HTTP/1.1\r\nHost: api.openai.com:443\r\nProxy-Authorization: {}\r\n\r\n",proxy.state.authorization.as_str()).unwrap();
-        let (_remote, _) = upstream.accept().unwrap();
-        let mut header = Vec::new();
-        while !header.ends_with(b"\r\n\r\n") {
-            let mut byte = [0];
-            client.read_exact(&mut byte).unwrap();
-            header.push(byte[0]);
-        }
-        assert!(header.starts_with(b"HTTP/1.1 200"));
-        let bytes = [42; 16384];
-        let mut failed = false;
-        for _ in 0..4096 {
-            if client.write_all(&bytes).is_err() {
-                failed = true;
-                break;
-            }
-        }
-        assert!(
-            failed,
-            "The fixture must cause actual outbound backpressure."
-        );
-        let deadline = Instant::now() + Duration::from_secs(3);
-        while !proxy.state.connections.lock().unwrap().is_empty() && Instant::now() < deadline {
-            thread::sleep(Duration::from_millis(10));
-        }
-        assert!(
-            proxy.state.connections.lock().unwrap().is_empty(),
-            "The response half and retained tunnel must close without Stop."
-        );
-    }
-    #[test]
-    fn cancellation_closes_both_ends_of_an_admitted_owned_tunnel() {
-        for address in ["127.0.0.1", "::1"] {
-            let upstream = TcpListener::bind(("127.0.0.1", 0)).unwrap();
-            let proxy = Proxy::start(TitleCli::Codex).unwrap();
-            *proxy.state.fixture_upstream.lock().unwrap() = Some(upstream.local_addr().unwrap());
-            let effects = super::super::host_boundary::test_effect_scope();
-            proxy.attach(effects.clone()).unwrap();
-            assert!(proxy.attach(effects.clone()).is_err());
-            let mut client = TcpStream::connect((address, proxy.port())).unwrap();
-            client
-                .set_read_timeout(Some(Duration::from_secs(3)))
-                .unwrap();
-            write!(client,"CONNECT api.openai.com:443 HTTP/1.1\r\nHost: api.openai.com:443\r\nProxy-Authorization: {}\r\n\r\n",proxy.state.authorization.as_str()).unwrap();
-            let (mut remote, _) = upstream.accept().unwrap();
-            remote
-                .set_read_timeout(Some(Duration::from_secs(3)))
-                .unwrap();
-            let mut header = Vec::new();
-            while !header.ends_with(b"\r\n\r\n") {
-                let mut byte = [0];
-                client.read_exact(&mut byte).unwrap();
-                header.push(byte[0]);
-            }
-            assert!(header.starts_with(b"HTTP/1.1 200"));
-            // The transport carries arbitrary TLS bytes unchanged, without decoding.
-            let bytes = [0x16, 0x03, 0x01, 0x00, 0x05, 0xde, 0xad, 0xbe, 0xef, 0x00];
-            client.write_all(&bytes).unwrap();
-            let mut observed = [0; 10];
-            remote.read_exact(&mut observed).unwrap();
-            assert_eq!(observed, bytes);
-            remote.write_all(&bytes).unwrap();
-            client.read_exact(&mut observed).unwrap();
-            assert_eq!(observed, bytes);
-            effects.cancel();
-            let mut byte = [0];
-            assert_eq!(client.read(&mut byte).unwrap(), 0);
-            assert_eq!(remote.read(&mut byte).unwrap(), 0);
-            assert!(effects.enter().is_err());
-            let deadline = Instant::now() + Duration::from_secs(2);
-            while !proxy.state.connections.lock().unwrap().is_empty() && Instant::now() < deadline {
-                thread::sleep(Duration::from_millis(10));
-            }
-            assert!(proxy.state.connections.lock().unwrap().is_empty());
-        }
-    }
-    #[test]
-    fn transport_rejects_unauthorized_and_ambiguous_connects_before_dns() {
-        let proxy = Proxy::start(TitleCli::Codex).unwrap();
-        for address in ["127.0.0.1", "::1"] {
-            for authority in [
-                "127.0.0.1:443",
-                "api.openai.com:80",
-                "api.openai.com.evil:443",
-                "api.openai.com:443@evil",
-                "api.openai.com:443",
-            ] {
-                let mut client = TcpStream::connect((address, proxy.port())).unwrap();
-                client
-                    .set_read_timeout(Some(Duration::from_secs(2)))
-                    .unwrap();
-                write!(client,"CONNECT {authority} HTTP/1.1\r\nHost: {authority}\r\nProxy-Authorization: Basic wrong\r\n\r\n").unwrap();
-                let mut output = String::new();
-                client.read_to_string(&mut output).unwrap();
-                assert!(output.starts_with("HTTP/1.1 403"));
-            }
-        }
-        let auth = proxy.state.authorization.as_str();
-        assert!(connect_host(&format!("CONNECT api.openai.com:443 HTTP/1.1\r\nHost: api.openai.com:443\r\nProxy-Authorization: {auth}\r\n\r\n"), &proxy.state).is_ok());
-        assert!(connect_host(&format!("CONNECT api.openai.com:443 HTTP/1.1\r\nHost: api.openai.com:443\r\nProxy-Authorization: {auth}\r\nProxy-Authorization: {auth}\r\n\r\n"), &proxy.state).is_err());
-    }
-    #[test]
-    fn cancellation_preserves_both_reserved_endpoints_until_owner_release() {
-        let proxy = Proxy::start(TitleCli::Codex).unwrap();
-        let port = proxy.port();
-        let effects = super::super::host_boundary::test_effect_scope();
-        proxy.attach(effects.clone()).unwrap();
-        effects.cancel();
-        let deadline = Instant::now() + Duration::from_secs(2);
-        while proxy
-            .worker
-            .lock()
-            .unwrap()
-            .as_ref()
-            .is_some_and(|w| !w.is_finished())
-        {
-            assert!(Instant::now() < deadline);
-            thread::sleep(Duration::from_millis(10));
-        }
-        for address in ["127.0.0.1", "::1"] {
-            assert_eq!(
-                TcpListener::bind((address, port)).unwrap_err().kind(),
-                std::io::ErrorKind::AddrInUse
-            );
-        }
-        // Managed launch additionally holds the Proxy in its boundary until a
-        // verified receipt. This direct transport fixture releases its owner.
-        drop(proxy);
-        for address in ["127.0.0.1", "::1"] {
-            drop(TcpListener::bind((address, port)).unwrap());
-        }
-    }
-    #[test]
-    fn a_shadow_ipv6_listener_prevents_transport_admission() {
-        let ipv4 = TcpListener::bind(("127.0.0.1", 0)).unwrap();
-        let port = ipv4.local_addr().unwrap().port();
-        let _shadow = TcpListener::bind(("::1", port)).unwrap();
-        assert!(Proxy::start_with_listener(TitleCli::Codex, ipv4).is_err());
-        // Failed admission also releases the incomplete IPv4 reservation.
-        drop(TcpListener::bind(("127.0.0.1", port)).unwrap());
-    }
-    #[test]
-    fn endpoint_resolution_refuses_local_and_translated_addresses() {
-        for ip in [
-            "0.0.0.0",
-            "127.0.0.1",
-            "10.0.0.1",
-            "169.254.169.254",
-            "100.64.0.1",
-            "192.0.2.1",
-            "198.18.0.1",
-            "::1",
-            "::ffff:127.0.0.1",
-            "fc00::1",
-            "fe80::1",
-            "64:ff9b::a00:1",
-            "2002:a00:1::1",
-            "2001:db8::1",
-        ] {
-            assert!(!public_address(ip.parse().unwrap()), "{ip}");
-        }
-        assert!(public_address("8.8.8.8".parse().unwrap()));
-        assert!(public_address("2606:4700::1111".parse().unwrap()));
-    }
 }

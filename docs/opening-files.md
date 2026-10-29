@@ -35,15 +35,3 @@ UTF-16 and at most 16 MiB. Supported images use the existing image preview and
 its size limits. The system cannot determine whether arbitrary file contents
 are editable, so unsupported binary content can still appear in the chooser;
 Lomi displays the editor's normal unsupported-file error when opened.
-
-Regression coverage includes native path and queue tests, routing tests,
-`tests/ui/external-files.spec.ts`, installer metadata checks, and the macOS
-Launch Services smoke runner:
-
-```sh
-node --experimental-strip-types tests/native/run-external-files-smoke.mjs --build
-```
-
-The native runner builds an isolated debug app with `native-smoke`, uses a
-unique application identifier and session, and exercises cold and warm system
-opens. Test probes are excluded from release builds.

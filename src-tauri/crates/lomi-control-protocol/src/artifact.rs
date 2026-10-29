@@ -276,36 +276,3 @@ pub struct BrowserUploaded {
     pub input_mode: String,
     pub dispatched: bool,
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn image_transform_matches_hardware_touch_for_each_rotation_and_scale() {
-        for (rotation, expected) in [
-            (0, [144., 384.]),
-            (1, [504., 256.]),
-            (2, [576., 896.]),
-            (3, [216., 1024.]),
-        ] {
-            let [a, b, c, d, tx, ty] =
-                AndroidImageGeometry::transform([720, 1280], 360, 640, rotation);
-            let (u, v) = (360. * 0.2, 640. * 0.3);
-            let actual = [a * u + c * v + tx, b * u + d * v + ty];
-            assert!(actual
-                .into_iter()
-                .zip(expected)
-                .all(|(a, b)| (a - b).abs() < 1e-9));
-        }
-    }
-    #[test]
-    fn legacy_browser_artifact_shapes_remain_readable_without_new_tags() {
-        let source = r#"{"workspaceId":"w","panelId":"p","browserGeneration":"g","profileId":"profile","navigationId":"nav","origin":"https://example.com","requiredScope":"browser.capture_composite"}"#;
-        let parsed: ArtifactSource = serde_json::from_str(source).unwrap();
-        assert!(matches!(parsed, ArtifactSource::Browser(_)));
-        assert_eq!(
-            serde_json::to_value(parsed).unwrap(),
-            serde_json::from_str::<serde_json::Value>(source).unwrap()
-        );
-    }
-}

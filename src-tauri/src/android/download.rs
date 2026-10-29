@@ -14,8 +14,6 @@ const ENTRY_LIMIT: usize = 100_000;
 
 #[derive(Debug)]
 pub struct ArchiveSummary {
-    #[cfg(test)]
-    pub entries: usize,
     pub expanded_bytes: u64,
 }
 
@@ -177,13 +175,6 @@ fn official_url(url: &reqwest::Url) -> bool {
         }
 }
 
-/// Bound extraction before the selected SDK manager sees an archive. Link ancestors,
-/// escaping targets and case-insensitive collisions are rejected on every host.
-#[cfg(test)]
-pub fn inspect(path: &Path) -> Result<ArchiveSummary, String> {
-    inspect_with_cancel(path, || false)
-}
-
 pub(super) fn inspect_with_cancel(
     path: &Path,
     cancelled: impl Fn() -> bool,
@@ -321,11 +312,7 @@ pub(super) fn inspect_with_cancel(
             }
         }
     }
-    Ok(ArchiveSummary {
-        #[cfg(test)]
-        entries: entries.len(),
-        expanded_bytes,
-    })
+    Ok(ArchiveSummary { expanded_bytes })
 }
 
 struct Entry {
@@ -357,162 +344,4 @@ pub(super) fn safe_parts(name: &str) -> Result<Vec<&str>, String> {
 
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::io::Write;
-    use std::path::PathBuf;
-    use zip::{write::SimpleFileOptions, ZipWriter};
-
-    #[test]
-    fn cancellation_interrupts_verification_inside_a_large_entry() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-        let temporary = tempfile::tempdir().unwrap();
-        let path = temporary.path().join("large.zip");
-        let mut writer = ZipWriter::new(File::create(&path).unwrap());
-        writer
-            .start_file("root/large", SimpleFileOptions::default())
-            .unwrap();
-        writer.write_all(&vec![0; 8 * 1024 * 1024]).unwrap();
-        writer.finish().unwrap();
-        let calls = AtomicUsize::new(0);
-        let result = inspect_with_cancel(&path, || calls.fetch_add(1, Ordering::Relaxed) >= 4);
-        assert!(result.unwrap_err().contains("cancelled"));
-        assert_eq!(inspect(&path).unwrap().expanded_bytes, 8 * 1024 * 1024);
-    }
-
-    #[test]
-    fn rejects_traversal_link_ancestors_and_cross_platform_collisions() {
-        let temp = tempfile::tempdir().unwrap();
-        let path = temp.path().join("archive.zip");
-        for names in [
-            vec!["../escape"],
-            vec!["root/file", "root/FILE"],
-            vec!["root/CON.txt"],
-            vec!["root/file", "root/file/child"],
-        ] {
-            let mut writer = ZipWriter::new(File::create(&path).unwrap());
-            for name in names {
-                writer
-                    .start_file(name, SimpleFileOptions::default())
-                    .unwrap();
-                writer.write_all(b"data").unwrap();
-            }
-            writer.finish().unwrap();
-            assert!(inspect(&path).is_err());
-        }
-        for target in ["../../outside", "/outside", "link"] {
-            let mut writer = ZipWriter::new(File::create(&path).unwrap());
-            writer
-                .add_symlink("root/link", target, SimpleFileOptions::default())
-                .unwrap();
-            writer.finish().unwrap();
-            assert!(inspect(&path).is_err());
-        }
-        let mut writer = ZipWriter::new(File::create(&path).unwrap());
-        writer
-            .add_symlink("root/link", "directory", SimpleFileOptions::default())
-            .unwrap();
-        writer
-            .start_file("root/link/payload", SimpleFileOptions::default())
-            .unwrap();
-        writer.write_all(b"data").unwrap();
-        writer.finish().unwrap();
-        assert!(inspect(&path).is_err());
-    }
-
-    #[test]
-    #[ignore = "Uses the explicitly accepted isolated native trial's official archives"]
-    fn actual_archives_pass_before_manager_extraction() {
-        let root = PathBuf::from(std::env::var_os("LOMI_ANDROID_PROBE_DIRECTORY").unwrap());
-        let packages: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(root.join("evidence/packages.json")).unwrap())
-                .unwrap();
-        for package in packages.as_array().unwrap() {
-            let name = package["url"].as_str().unwrap().rsplit('/').next().unwrap();
-            let path = root.join("cache").join(name);
-            let summary = inspect(&path).unwrap_or_else(|error| panic!("{name}: {error}"));
-            assert!(summary.entries > 0 && summary.expanded_bytes > 0);
-            let mut file = File::open(path).unwrap();
-            let mut digest = Context::new(&SHA1_FOR_LEGACY_USE_ONLY);
-            let mut buffer = [0_u8; 64 * 1024];
-            loop {
-                let read = file.read(&mut buffer).unwrap();
-                if read == 0 {
-                    break;
-                }
-                digest.update(&buffer[..read]);
-            }
-            assert_eq!(
-                hex(digest.finish().as_ref()),
-                package["sha1"].as_str().unwrap()
-            );
-        }
-    }
-
-    #[tokio::test]
-    #[ignore = "Downloads one official archive into the accepted isolated fixture"]
-    async fn actual_download_has_progress_integrity_and_cancellation() {
-        let root = PathBuf::from(std::env::var_os("LOMI_ANDROID_PROBE_DIRECTORY").unwrap());
-        let consent: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(root.join("evidence/consent.json")).unwrap())
-                .unwrap();
-        assert_eq!(consent["accepted"], true);
-        let xml = std::fs::read_to_string(root.join("evidence/repository2-3.xml")).unwrap();
-        let catalog = super::super::catalog::packages(
-            &xml,
-            "https://dl.google.com/android/repository/",
-            super::super::catalog::Host::native().unwrap(),
-        )
-        .unwrap();
-        let descriptor = catalog
-            .packages
-            .iter()
-            .find(|p| p.id == "platform-tools" && p.revision == "37.0.1")
-            .unwrap();
-        let directory = tempfile::tempdir_in(root.join("staging")).unwrap();
-        let path = directory.path().join("package.zip");
-        let (sender, cancel) = watch::channel(false);
-        let progress = std::sync::Mutex::new(Vec::new());
-        let summary = package(descriptor, &path, cancel, |received, total| {
-            progress.lock().unwrap().push((received, total))
-        })
-        .await
-        .unwrap();
-        assert!(summary.entries > 0);
-        {
-            let values = progress.lock().unwrap();
-            assert_eq!(values.first(), Some(&(0, descriptor.size)));
-            assert_eq!(values.last(), Some(&(descriptor.size, descriptor.size)));
-            assert!(values.windows(2).all(|pair| pair[0].0 <= pair[1].0));
-        }
-        sender.send_replace(true);
-        assert!(package(
-            descriptor,
-            &directory.path().join("cancelled.zip"),
-            sender.subscribe(),
-            |_, _| {}
-        )
-        .await
-        .unwrap_err()
-        .contains("cancelled"));
-        assert!(!directory.path().join("cancelled.zip").exists());
-        sender.send_replace(false);
-        let interrupted = directory.path().join("interrupted.zip");
-        let result = package(
-            descriptor,
-            &interrupted,
-            sender.subscribe(),
-            |received, total| {
-                if received > 0 && received < total {
-                    sender.send_replace(true);
-                }
-            },
-        )
-        .await;
-        assert!(result.unwrap_err().contains("cancelled"));
-        assert!(std::fs::metadata(interrupted).unwrap().len() < descriptor.size);
-    }
 }

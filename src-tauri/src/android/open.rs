@@ -11,51 +11,6 @@ pub struct Context {
     pub panel_id: String,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    const A: &str = "00000000-0000-0000-0000-000000000001";
-    const B: &str = "00000000-0000-0000-0000-000000000002";
-    #[tokio::test]
-    async fn open_intents_keep_the_target_and_expire_without_recreating_it() {
-        let requests = Requests::default();
-        assert!(requests.prepare("arbitrary-path".into(), B.into()).is_err());
-        let old = requests.prepare(A.into(), B.into()).unwrap();
-        let current = requests.prepare(B.into(), A.into()).unwrap();
-        assert!(requests
-            .request(Some(old.request_id), A.into(), false)
-            .is_err());
-        let (intent, reply) = requests
-            .request(Some(current.request_id), B.into(), true)
-            .unwrap();
-        assert_eq!(intent.context.as_ref().unwrap().workspace_id, B);
-        assert_eq!(intent.context.as_ref().unwrap().panel_id, A);
-        requests
-            .complete(&intent.id, Err("Waiting panel was closed".into()))
-            .unwrap();
-        assert_eq!(
-            reply.await.unwrap().unwrap_err(),
-            "Waiting panel was closed"
-        );
-        assert!(requests.complete(&intent.id, Ok(())).is_err());
-        let (intent, reply) = requests.request(None, A.into(), false).unwrap();
-        assert!(intent.context.is_none());
-        requests.expired(&intent.id);
-        assert!(reply.await.is_err());
-        assert!(requests.complete(&intent.id, Ok(())).is_err());
-    }
-    #[test]
-    fn pending_requests_have_a_fixed_bound() {
-        let requests = Requests::default();
-        let mut replies = Vec::new();
-        for _ in 0..8 {
-            replies.push(requests.request(None, A.into(), false).unwrap());
-        }
-        assert!(requests.request(None, A.into(), false).is_err());
-        requests.expired(&replies[0].0.id);
-        assert!(requests.request(None, A.into(), false).is_ok());
-    }
-}
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Intent {

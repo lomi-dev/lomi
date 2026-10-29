@@ -1,15 +1,3 @@
-#[cfg(all(
-    any(
-        feature = "native-smoke",
-        feature = "chat-probe",
-        feature = "android-probe",
-        feature = "remote-probe",
-        feature = "remote-visual-probe",
-        feature = "mcp-probe"
-    ),
-    not(debug_assertions)
-))]
-compile_error!("Qualification probes must not enter release builds");
 mod agent_control;
 mod agent_notifications;
 mod agent_runtime;
@@ -116,19 +104,12 @@ pub fn agent_runtime_host_worker_entry() -> Option<i32> {
     agent_runtime::host_worker_entry()
 }
 mod android;
-#[cfg(feature = "android-probe")]
-#[path = "../../tests/native/android-support.rs"]
-mod android_probe;
-#[cfg(feature = "android-probe")]
-#[path = "../../tests/native/android-product-support.rs"]
-mod android_product;
+
 mod android_protocol;
 mod auth;
 mod browser;
 mod chat;
-#[cfg(feature = "chat-probe")]
-#[path = "../../tests/native/chat-support.rs"]
-mod chat_probe;
+
 mod cli_catalog;
 mod cli_config;
 mod cli_integrations;
@@ -142,26 +123,10 @@ mod credential_store;
 pub fn cursor_usage_keychain_authorization_entry() -> Option<i32> {
     credential_store::cursor_authorization_entry()
 }
-#[cfg(all(feature = "mcp-probe", target_os = "macos"))]
-#[path = "../../tests/native/mcp-browser-support.rs"]
-mod mcp_browser_probe;
-#[cfg(all(feature = "mcp-probe", target_os = "macos"))]
-#[path = "../../tests/native/mcp-control-support.rs"]
-mod mcp_control_probe;
+
 mod notifications;
 mod push;
-#[cfg(feature = "remote-probe")]
-mod remote;
-#[cfg(all(
-    feature = "remote-visual-probe",
-    target_os = "macos",
-    target_arch = "aarch64"
-))]
-#[path = "../../tests/native/remote-browser-capture-support.rs"]
-mod remote_browser_capture_probe;
-#[cfg(feature = "remote-probe")]
-#[path = "../../tests/native/remote-support.rs"]
-mod remote_probe;
+
 pub use cli_titles::print_agy_title;
 
 pub fn canonical_host_entry() -> Option<i32> {
@@ -182,9 +147,7 @@ mod linux_instance;
 mod macos;
 mod native_file_effects;
 mod native_git_effects;
-#[cfg(feature = "native-smoke")]
-#[path = "../../tests/native/support.rs"]
-mod native_smoke;
+
 mod plugins;
 mod project_write_guard;
 mod remote_v2;
@@ -307,18 +270,12 @@ pub fn run() {
         None => return,
     };
     let builder = tauri::Builder::default().manage(external_files::Requests::default());
-    #[cfg(feature = "remote-probe")]
-    let builder = builder.manage(remote::Remote::default());
+
     #[cfg(target_os = "linux")]
     let builder = builder
         .manage(linux_instance::Reopen::default())
         .plugin(linux_instance::plugin());
-    #[cfg(feature = "native-smoke")]
-    let builder = if let Some(plugin) = native_smoke::terminal_regression_startup_plugin() {
-        builder.plugin(plugin)
-    } else {
-        builder
-    };
+
     #[cfg(windows)]
     let builder = builder.manage(instance);
     // Install the guarded Quit action before Tauri can create its default macOS menu.
@@ -376,10 +333,6 @@ pub fn run() {
             agent_control::page_load(_view, _payload);
             #[cfg(windows)]
             android::commands::page_load(_view, _payload);
-            #[cfg(feature = "native-smoke")]
-            native_smoke::page(_view, _payload);
-            #[cfg(feature = "chat-probe")]
-            chat_probe::page(_view, _payload);
         })
         .register_asynchronous_uri_scheme_protocol("theme", themes::protocol)
         .register_asynchronous_uri_scheme_protocol("plugin", plugins::protocol)
@@ -407,26 +360,7 @@ pub fn run() {
                 profiles: shell::discover(),
                 integration,
             });
-            #[cfg(feature = "chat-probe")]
-            app.manage(chat_probe::Probe::default());
-            #[cfg(all(
-                feature = "remote-visual-probe",
-                target_os = "macos",
-                target_arch = "aarch64"
-            ))]
-            remote_browser_capture_probe::start(app.handle().clone());
-            #[cfg(all(feature = "mcp-probe", target_os = "macos"))]
-            mcp_browser_probe::start(app.handle().clone());
-            #[cfg(all(feature = "mcp-probe", target_os = "macos"))]
-            mcp_control_probe::start(app.handle().clone());
-            #[cfg(feature = "android-probe")]
-            app.manage(android_probe::Probe::default());
-            #[cfg(feature = "android-probe")]
-            android_probe::watch_native_control(app.handle().clone());
-            #[cfg(feature = "android-probe")]
-            android_product::watch(app.handle().clone());
-            #[cfg(feature = "remote-probe")]
-            remote_probe::start(app.handle().clone());
+
             #[cfg(not(target_os = "macos"))]
             window_lifecycle::install_tray(app)?;
             agent_control::initialize_startup(app.handle().clone());
@@ -442,50 +376,6 @@ pub fn run() {
                     .resolver
                     .reject("Web pages cannot call application commands.");
                 return true;
-            }
-            #[cfg(feature = "native-smoke")]
-            if matches!(
-                invoke.message.command(),
-                "terminal_latency_input"
-                    | "terminal_latency_snapshot"
-                    | "terminal_latency_hold_session"
-            ) {
-                let smoke: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
-                    native_smoke::terminal_latency::terminal_latency_input,
-                    native_smoke::terminal_latency::terminal_latency_snapshot,
-                    native_smoke::terminal_latency::terminal_latency_hold_session
-                ];
-                return smoke(invoke);
-            }
-            #[cfg(feature = "native-smoke")]
-            if invoke.message.command() == "plugin_smoke_result" {
-                let smoke: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool =
-                    tauri::generate_handler![native_smoke::plugin_smoke_result];
-                return smoke(invoke);
-            }
-            #[cfg(feature = "chat-probe")]
-            if invoke.message.command().starts_with("chat_probe_") {
-                let probe: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
-                    chat_probe::chat_probe_start,
-                    chat_probe::chat_probe_backend,
-                    chat_probe::chat_probe_cancel,
-                    chat_probe::chat_probe_result
-                ];
-                return probe(invoke);
-            }
-            #[cfg(feature = "android-probe")]
-            if invoke.message.command().starts_with("android_probe_") {
-                let probe: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
-                    android_probe::android_probe_control,
-                    android_probe::android_probe_subscribe,
-                    android_probe::android_probe_ack,
-                    android_probe::android_probe_input,
-                    android_probe::android_probe_native_text,
-                    android_probe::android_probe_native_pointer,
-                    android_product::android_probe_product_guest,
-                    android_probe::android_probe_report
-                ];
-                return probe(invoke);
             }
             let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
                 external_files::external_files_pending,
@@ -814,8 +704,7 @@ pub fn run() {
             if let Err(error) = app.state::<agent_runtime::AgentRuntime>().drain_all(app) {
                 eprintln!("Agent runtime exit cleanup could not confirm completion: {error}");
             }
-            #[cfg(feature = "remote-probe")]
-            app.state::<remote::Remote>().shutdown();
+
             tauri::async_runtime::block_on(agent_control::shutdown(app));
             app.state::<auth::AuthController>().shutdown();
             if let Err(error) = tauri::async_runtime::block_on(
@@ -823,8 +712,7 @@ pub fn run() {
             ) {
                 eprintln!("Android exit cleanup could not confirm completion: {error}");
             }
-            #[cfg(feature = "android-probe")]
-            app.state::<android_probe::Probe>().cleanup();
+
             app.state::<chat::commands::Chats>().stop();
             app.state::<terminal::Terminals>().stop_all();
             #[cfg(windows)]

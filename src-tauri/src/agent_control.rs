@@ -1267,14 +1267,7 @@ pub async fn agent_control_ui_ack(
     #[cfg(unix)]
     {
         let broker = state.required()?;
-        tauri::async_runtime::spawn_blocking(move || {
-            #[cfg(all(feature = "mcp-probe", target_os = "macos"))]
-            let trace = matches!(ack.result, lomi_control_protocol::control::OperationResult::WorkspaceClosure(_) | lomi_control_protocol::control::OperationResult::ProjectClosure(_) | lomi_control_protocol::control::OperationResult::Failure { .. }).then(|| serde_json::json!({"stage":"ack","operation":ack.operation_id,"result":ack.result}));
-            let result = broker.acknowledge_ui(ack);
-            #[cfg(all(feature = "mcp-probe", target_os = "macos"))]
-            if let Some(mut trace) = trace { trace["accepted"] = serde_json::json!(result.is_ok()); crate::mcp_control_probe::record_close(trace); }
-            result
-        })
+        tauri::async_runtime::spawn_blocking(move || broker.acknowledge_ui(ack))
             .await
             .map_err(|_| unavailable())?
             .map_err(|_| unavailable())
@@ -1358,8 +1351,7 @@ pub async fn agent_control_ui_commit_close(
         let broker = state.required().map_err(|_| ErrorCode::ControlRevoked)?;
         tauri::async_runtime::spawn_blocking(move || {
             let result = broker.commit_panel_close(&operation_id, &nonce, &ui_epoch);
-            #[cfg(all(feature = "mcp-probe", target_os = "macos"))]
-            crate::mcp_control_probe::record_close(serde_json::json!({"stage":"native-close","operation":operation_id,"error":result.as_ref().err()}));
+
             result
         })
         .await

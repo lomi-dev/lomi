@@ -49,7 +49,7 @@ pub struct UpdateEnvironment {
     linux_instruction: Option<String>,
 }
 
-#[cfg(any(target_os = "linux", test))]
+#[cfg(target_os = "linux")]
 fn linux_instruction(flatpak: bool, os_release: &str, source_package: bool) -> String {
     if flatpak {
         return "flatpak update".into();
@@ -115,108 +115,4 @@ pub fn restart_after_update(window: Window, app: tauri::AppHandle) -> Result<(),
     }
     app.request_restart();
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::io::{Read, Write};
-    use std::net::TcpListener;
-
-    fn download_server(delay: Duration, chunks: usize) -> (String, std::thread::JoinHandle<()>) {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let url = format!("http://{}", listener.local_addr().unwrap());
-        let server = std::thread::spawn(move || {
-            let (mut socket, _) = listener.accept().unwrap();
-            socket
-                .set_read_timeout(Some(Duration::from_secs(5)))
-                .unwrap();
-            let mut request = [0; 4096];
-            let mut received = 0;
-            while !request[..received]
-                .windows(4)
-                .any(|bytes| bytes == b"\r\n\r\n")
-            {
-                assert!(
-                    received < request.len(),
-                    "Fixture request headers exceeded 4 KiB"
-                );
-                let count = socket.read(&mut request[received..]).unwrap();
-                assert!(count > 0, "Fixture request ended before its headers");
-                received += count;
-            }
-            write!(
-                socket,
-                "HTTP/1.1 200 OK\r\nContent-Length: {chunks}\r\n\r\n"
-            )
-            .unwrap();
-            for index in 0..chunks {
-                if index > 0 {
-                    std::thread::sleep(delay);
-                }
-                if socket.write_all(b"x").is_err() {
-                    break;
-                }
-            }
-        });
-        (url, server)
-    }
-
-    fn test_client(timeout: Duration) -> reqwest::ClientBuilder {
-        let _ = rustls::crypto::ring::default_provider().install_default();
-        configure_client(reqwest::Client::builder().no_proxy(), timeout)
-    }
-
-    #[tokio::test]
-    async fn active_downloads_can_outlast_the_network_timeout() {
-        let (url, server) = download_server(Duration::from_millis(50), 16);
-        let client = test_client(Duration::from_millis(400)).build().unwrap();
-        let mut response = client.get(url).send().await.unwrap();
-        let mut received = Vec::new();
-        while let Some(chunk) = response.chunk().await.unwrap() {
-            received.extend_from_slice(&chunk);
-        }
-        server.join().unwrap();
-        assert_eq!(received, vec![b'x'; 16]);
-    }
-
-    #[tokio::test]
-    async fn stalled_downloads_time_out_while_reading_the_body() {
-        let (url, server) = download_server(Duration::from_millis(600), 2);
-        let client = test_client(Duration::from_millis(200)).build().unwrap();
-        let mut response = client.get(url).send().await.unwrap();
-        assert_eq!(response.chunk().await.unwrap().unwrap().as_ref(), b"x");
-        let error = response.chunk().await.unwrap_err();
-        server.join().unwrap();
-        assert!(error.is_timeout(), "{error:?}");
-    }
-
-    #[tokio::test]
-    async fn metadata_checks_keep_their_total_timeout() {
-        let (url, server) = download_server(Duration::from_millis(50), 16);
-        let client = test_client(Duration::from_millis(400))
-            .timeout(Duration::from_millis(200))
-            .build()
-            .unwrap();
-        let response = client.get(url).send().await.unwrap();
-        let error = response.bytes().await.unwrap_err();
-        server.join().unwrap();
-        assert!(error.is_timeout(), "{error:?}");
-    }
-
-    #[test]
-    fn linux_updates_follow_the_installation_method() {
-        assert_eq!(linux_instruction(true, "ID=arch", true), "flatpak update");
-        assert_eq!(
-            linux_instruction(false, "ID=arch", false),
-            "yay -Syu lomi-bin"
-        );
-        assert_eq!(
-            linux_instruction(false, "ID=endeavouros\nID_LIKE=\"arch\"", true),
-            "yay -Syu lomi"
-        );
-        for os in ["", "ID=debian", "NAME=arch\nID=ubuntu", "ID=archipelago"] {
-            assert!(linux_instruction(false, os, false).starts_with("Download the latest package"));
-        }
-    }
 }

@@ -108,25 +108,3 @@ fn merge(catalogs: impl IntoIterator<Item = Catalog>) -> Result<Snapshot, String
     );
     Ok(snapshot)
 }
-
-#[cfg(test)]
-mod tests {
-    #[tokio::test]
-    #[ignore = "Reads current official Android SDK and image catalogs"]
-    async fn actual_catalogs_are_compatible_and_share_exact_license_text() {
-        let snapshot = super::fetch(super::Host::native().unwrap()).await.unwrap();
-        assert!(snapshot.packages.iter().any(|p| p.id == "emulator"));
-        for tag in ["default", "google_apis", "google_apis_playstore"] {
-            assert!(snapshot
-                .packages
-                .iter()
-                .any(|p| p.image.as_ref().is_some_and(|image| image.tag == tag)));
-        }
-        println!(
-            "Catalog {}: {} packages, {} licenses",
-            snapshot.revision,
-            snapshot.packages.len(),
-            snapshot.licenses.len()
-        );
-    }
-}

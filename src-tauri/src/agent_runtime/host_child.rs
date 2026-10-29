@@ -10,11 +10,6 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-#[cfg(test)]
-use super::host_boundary::EffectScope;
-#[cfg(test)]
-use std::sync::Arc;
-
 #[derive(Clone, Debug)]
 pub(crate) struct Context {
     pub parent_operation_id: String,
@@ -28,20 +23,6 @@ pub(crate) struct Context {
     pub storage_root: PathBuf,
 }
 impl Context {
-    #[cfg(test)]
-    pub(crate) fn spawn(&self, purpose: Purpose, spec: NativeSpec) -> Result<HostChild, String> {
-        self.spawn_checked(purpose, spec, &AtomicBool::new(false), || Ok(()))
-    }
-    #[cfg(test)]
-    pub(crate) fn spawn_checked(
-        &self,
-        purpose: Purpose,
-        spec: NativeSpec,
-        cancel: &AtomicBool,
-        before_release: impl FnOnce() -> Result<(), String>,
-    ) -> Result<HostChild, String> {
-        self.spawn_with_boundary(purpose, spec, cancel, |_| before_release())
-    }
     pub(crate) fn spawn_with_boundary(
         &self,
         purpose: Purpose,
@@ -106,15 +87,10 @@ impl Context {
                 }
                 #[cfg(target_os = "macos")]
                 if purpose == Purpose::Attempt {
-                    #[cfg(not(test))]
                     native_intent
                         .as_ref()
                         .ok_or("The Attempt has no registered canonical host intent.")?
                         .bind_job(&self.storage_root, &self.parent_operation_id)?;
-                    #[cfg(test)]
-                    if let Some(intent) = &native_intent {
-                        intent.bind_job(&self.storage_root, &self.parent_operation_id)?;
-                    }
                 } else if let Some(intent) = &native_intent {
                     intent.before_helper_release(&purpose)?;
                 }
@@ -155,10 +131,7 @@ impl HostChild {
     pub(crate) fn id(&self) -> u32 {
         self.identity.pid
     }
-    #[cfg(test)]
-    pub(crate) fn effect_scope(&self) -> Arc<EffectScope> {
-        self.boundary.effects()
-    }
+
     pub(crate) fn try_wait(&mut self) -> Result<Option<ExitStatus>, String> {
         if self.status.is_none() {
             self.status = self.boundary.try_wait()?;

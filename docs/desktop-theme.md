@@ -113,18 +113,3 @@ page headers. Keybinds, Terminal and Account also omit header actions and status
 labels such as Saved, Reset all and Check connection. Individual resets remain
 beside their fields. Recovery actions appear only alongside the relevant error
 or connection notice. Task-specific actions stay with their existing controls.
-
-## Validation
-
-Use the existing mocked desktop suites to inspect both appearances at 1440 x 900
-and the native minimum 800 x 420. Include workbench/editor content, long names,
-settings, command search and dialogs. Check contrast, focus, system changes,
-custom-theme switching and retained terminal/editor state.
-
-Browser fixtures do not qualify native PTY transport or native materials on
-other operating systems. Record actual commands, screenshots and platform
-limits in the final validation report rather than presenting this design
-reference as a completed test result.
-
-See [the validation report and screenshots](desktop-theme-validation.md) for the
-completed checks and representative views.

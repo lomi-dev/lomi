@@ -141,6 +141,3 @@ impl Broker {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod tests;

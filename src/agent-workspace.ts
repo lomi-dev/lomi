@@ -8,24 +8,14 @@ import {
   type Workspace,
 } from "./model.ts";
 
-let conflictObserver: ((left: unknown, right: unknown) => void) | undefined;
-// Native development fixtures install a bounded observer; production builds
-// cannot register it and never disclose model snapshots through this hook.
-export function observeAgentDomainConflicts(
-  observer: (left: unknown, right: unknown) => void,
-) {
-  if (import.meta.env?.DEV) conflictObserver = observer;
-}
-
 export function sameAgentSession(
   left: Session | undefined,
   right: Session | undefined,
 ): boolean {
-  const equal =
+  return (
     left === right ||
-    agentSessionSignature(left) === agentSessionSignature(right);
-  if (!equal) conflictObserver?.(left, right);
-  return equal;
+    agentSessionSignature(left) === agentSessionSignature(right)
+  );
 }
 
 function panelIdentity(panel: Tab | LayoutPane, closing: boolean): unknown {

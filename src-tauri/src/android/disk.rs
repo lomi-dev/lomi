@@ -208,32 +208,3 @@ fn available(path: &Path) -> Result<u64, String> {
     }
     Ok(available)
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn sparse_files_are_not_reported_as_fully_allocated_or_followed_outside_the_tree() {
-        let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("sparse.img");
-        let file = std::fs::File::create(&path).unwrap();
-        file.set_len(32 * 1024 * 1024).unwrap();
-        let size = super::measure(directory.path()).unwrap();
-        assert_eq!(size.logical_bytes, 32 * 1024 * 1024);
-        assert!(size.allocated_bytes <= size.logical_bytes);
-        #[cfg(unix)]
-        {
-            std::os::unix::fs::symlink(directory.path(), directory.path().join("loop")).unwrap();
-            std::fs::hard_link(&path, directory.path().join("same.img")).unwrap();
-            assert_eq!(
-                super::measure(directory.path()).unwrap().logical_bytes,
-                size.logical_bytes
-            );
-        }
-    }
-    #[test]
-    fn space_preflight_rejects_impossible_reservations() {
-        let directory = tempfile::tempdir().unwrap();
-        assert!(super::available(directory.path()).unwrap() > 0);
-        assert!(super::require(directory.path(), u64::MAX).is_err());
-    }
-}

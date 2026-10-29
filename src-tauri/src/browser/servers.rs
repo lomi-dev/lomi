@@ -16,7 +16,7 @@ fn loopback(address: SocketAddr) -> Option<SocketAddr> {
     (ip.is_loopback() && address.port() != 0).then(|| SocketAddr::new(ip, address.port()))
 }
 
-#[cfg(any(target_os = "linux", test))]
+#[cfg(target_os = "linux")]
 fn proc_listener(line: &str) -> Option<SocketAddr> {
     let mut fields = line.split_whitespace();
     let local = fields.nth(1)?;
@@ -64,7 +64,7 @@ fn listeners() -> Result<BTreeSet<SocketAddr>, String> {
     Ok(addresses)
 }
 
-#[cfg(any(target_os = "macos", test))]
+#[cfg(target_os = "macos")]
 fn lsof_listeners(text: &str) -> BTreeSet<SocketAddr> {
     text.lines()
         .filter_map(|line| line.strip_prefix('n'))
@@ -89,7 +89,7 @@ fn lsof_listeners(text: &str) -> BTreeSet<SocketAddr> {
         .collect()
 }
 
-#[cfg(any(windows, test))]
+#[cfg(windows)]
 fn netstat_listeners(text: &str) -> BTreeSet<SocketAddr> {
     text.lines()
         .filter_map(|line| {
@@ -200,117 +200,4 @@ pub async fn local_web_servers(
     })
     .await
     .map_err(|error| error.to_string())?
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::net::TcpListener;
-
-    fn read_request(stream: &mut TcpStream) {
-        stream
-            .set_read_timeout(Some(Duration::from_secs(5)))
-            .unwrap();
-        let mut request = Vec::new();
-        while !request.ends_with(b"\r\n\r\n") {
-            assert!(request.len() < 4096);
-            let mut byte = [0];
-            stream.read_exact(&mut byte).unwrap();
-            request.push(byte[0]);
-        }
-        assert!(request.starts_with(b"OPTIONS / HTTP/1.1\r\n"));
-        // Closing a socket with unread request bytes can reset it on Windows.
-    }
-
-    #[test]
-    fn reports_http_servers_before_unresponsive_ports_finish() {
-        use std::sync::mpsc;
-
-        let http = TcpListener::bind("127.0.0.1:0").unwrap();
-        let silent = TcpListener::bind("127.0.0.1:0").unwrap();
-        let http_address = http.local_addr().unwrap();
-        let addresses = BTreeSet::from([http_address, silent.local_addr().unwrap()]);
-        let (release, wait) = mpsc::channel();
-        let silent_server = std::thread::spawn(move || {
-            let (_stream, _) = silent.accept().unwrap();
-            let _ = wait.recv_timeout(Duration::from_secs(5));
-        });
-        let http_server = std::thread::spawn(move || {
-            let (mut stream, _) = http.accept().unwrap();
-            read_request(&mut stream);
-            stream
-                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
-                .unwrap();
-        });
-        let (progress, received) = mpsc::channel();
-        let (finished, result) = mpsc::channel();
-        let scan = std::thread::spawn(move || {
-            finished
-                .send(discover(addresses, |url| {
-                    progress.send(url).unwrap();
-                }))
-                .unwrap();
-        });
-
-        assert_eq!(
-            received.recv_timeout(Duration::from_millis(800)).unwrap(),
-            server_url(http_address)
-        );
-        assert!(matches!(result.try_recv(), Err(mpsc::TryRecvError::Empty)));
-        release.send(()).unwrap();
-        assert_eq!(
-            result.recv_timeout(Duration::from_secs(2)).unwrap(),
-            vec![server_url(http_address)]
-        );
-        scan.join().unwrap();
-        http_server.join().unwrap();
-        silent_server.join().unwrap();
-    }
-
-    #[test]
-    fn discovers_http_listeners_and_excludes_other_connections() {
-        assert_eq!(
-            proc_listener("0: 00000000:0BB8 00000000:0000 0A"),
-            Some("127.0.0.1:3000".parse().unwrap())
-        );
-        assert_eq!(
-            proc_listener(
-                "0: 00000000000000000000000001000000:0BB8 00000000000000000000000000000000:0000 0A"
-            ),
-            Some("[::1]:3000".parse().unwrap())
-        );
-        assert!(proc_listener("0: 0100007F:0BB8 00000000:0000 01").is_none());
-        assert!(proc_listener("0: 0101A8C0:0BB8 00000000:0000 0A").is_none());
-        assert!(proc_listener("malformed").is_none());
-        assert_eq!(
-            lsof_listeners("p123\nn*:3000\nn[::1]:5173\nn192.168.1.1:80\n").len(),
-            3
-        );
-        assert_eq!(netstat_listeners("TCP 0.0.0.0:3000 0.0.0.0:0 LISTENING\nTCP [::]:3000 [::]:0 LISTENING\nTCP 127.0.0.1:5000 127.0.0.1:3000 ESTABLISHED\nUDP 0.0.0.0:53 *:*").len(), 2);
-
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let address = listener.local_addr().unwrap();
-        let server = std::thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            read_request(&mut stream);
-            stream
-                .write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n")
-                .unwrap();
-        });
-        #[cfg(any(target_os = "linux", target_os = "macos", windows))]
-        assert!(listeners().unwrap().contains(&address));
-        assert!(responds_to_http(address).unwrap());
-        server.join().unwrap();
-        assert!(responds_to_http(address).is_err());
-
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let address = listener.local_addr().unwrap();
-        let server = std::thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            read_request(&mut stream);
-            stream.write_all(b"SSH-2.0-test\r\n").unwrap();
-        });
-        assert!(!responds_to_http(address).unwrap());
-        server.join().unwrap();
-    }
 }

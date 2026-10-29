@@ -17,12 +17,6 @@ pub(crate) struct Store {
     db: Connection,
     pub notification_capture: crate::push::ledger::Admission,
     _owner: crate::chat::storage::Owner,
-    #[cfg(test)]
-    pub(super) fail_next_update: bool,
-    #[cfg(test)]
-    pub(super) fail_next_read: std::cell::Cell<bool>,
-    #[cfg(test)]
-    pub(super) fail_next_context: std::cell::Cell<bool>,
 }
 
 struct PreparedIntent {
@@ -164,12 +158,6 @@ impl Store {
             db,
             notification_capture: Default::default(),
             _owner: owner,
-            #[cfg(test)]
-            fail_next_update: false,
-            #[cfg(test)]
-            fail_next_read: std::cell::Cell::new(false),
-            #[cfg(test)]
-            fail_next_context: std::cell::Cell::new(false),
         };
 
         result.validate_records()?;
@@ -280,10 +268,6 @@ impl Store {
     }
 
     pub fn task(&self, id: &str) -> Result<Task, String> {
-        #[cfg(test)]
-        if self.fail_next_read.replace(false) {
-            return Err("Injected final-record read failure.".into());
-        }
         self.db
             .query_row("SELECT record FROM tasks WHERE id=?1", [id], |r| r.get(0))
             .map_err(|_| "The task record is missing or unavailable.".into())
@@ -472,10 +456,6 @@ impl Store {
         checkpoint: Option<&HistoryCheckpoint>,
         outbox_state: Option<(&str, &str)>,
     ) -> Result<(), String> {
-        #[cfg(test)]
-        if std::mem::take(&mut self.fail_next_update) {
-            return Err("Injected durable finalization failure.".into());
-        }
         let tx = self.db.transaction().map_err(error)?;
 
         tx.execute(
@@ -1245,17 +1225,12 @@ fn preflight_named(root: &Path, name: &str) -> Result<(), String> {
 }
 
 impl Store {
-    #[cfg(any(test, not(target_os = "macos")))]
+    #[cfg(not(target_os = "macos"))]
     pub fn process_intent(&mut self, t: &Task, a: &Attempt) -> Result<String, String> {
         self.process_intent_impl(t, a, false)
             .map(|intent| intent.key)
     }
-    #[cfg(target_os = "macos")]
-    #[cfg(any(test, feature = "native-smoke"))]
-    pub(crate) fn owned_process_intent(&mut self, t: &Task, a: &Attempt) -> Result<String, String> {
-        self.process_intent_impl(t, a, true)
-            .map(|intent| intent.key)
-    }
+
     #[cfg(target_os = "macos")]
     pub(crate) fn owned_process_intent_context(
         &mut self,
@@ -1426,16 +1401,6 @@ impl Store {
             tools.remove(tool);
             self.db.execute("UPDATE process_ownership SET unknown_tools=?2,state=CASE WHEN ?3 THEN 'spawned' ELSE state END WHERE attempt_id=?1",params![attempt,encode(&tools)?,tools.is_empty()]).map_err(error)?;
         }
-        Ok(())
-    }
-    #[cfg(test)]
-    pub(super) fn test_previous_boot(&mut self, attempt: &str) -> Result<(), String> {
-        self.db
-            .execute(
-                "UPDATE process_ownership SET boot='previous-test-boot' WHERE attempt_id=?1",
-                [attempt],
-            )
-            .map_err(error)?;
         Ok(())
     }
 
@@ -2225,18 +2190,7 @@ impl Store {
         self.helper_intent_impl(purpose, account, cwd, attempt, false)
             .map(|intent| intent.key)
     }
-    #[cfg(target_os = "macos")]
-    #[cfg(any(test, feature = "native-smoke"))]
-    pub(crate) fn owned_helper_intent(
-        &mut self,
-        purpose: &str,
-        account: &AccountInstance,
-        cwd: &str,
-        attempt: Option<(&str, &Attempt)>,
-    ) -> Result<String, String> {
-        self.helper_intent_impl(purpose, account, cwd, attempt, true)
-            .map(|intent| intent.key)
-    }
+
     #[cfg(target_os = "macos")]
     pub(crate) fn owned_helper_intent_context(
         &mut self,

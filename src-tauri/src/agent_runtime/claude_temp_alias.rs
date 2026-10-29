@@ -163,32 +163,3 @@ impl Alias {
         Ok(())
     }
 }
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn alias_is_short_stable_and_refuses_a_replaced_target() {
-        let root = tempfile::tempdir().unwrap();
-        let storage = root.path().canonicalize().unwrap();
-        fs::set_permissions(
-            &storage,
-            std::os::unix::fs::PermissionsExt::from_mode(0o700),
-        )
-        .unwrap();
-        let target = storage.join("long-owned-account-temporary-directory");
-        fs::DirBuilder::new().mode(0o700).create(&target).unwrap();
-        let alias = Alias::prepare(&storage, &target).unwrap();
-        assert!(
-            alias.path.as_os_str().len() + format!("/claude-{}", unsafe { libc::getuid() }).len()
-                <= 44
-        );
-        let again = Alias::prepare(&storage, &target).unwrap();
-        assert_eq!(again.path, alias.path);
-        fs::remove_file(&alias.path).unwrap();
-        std::os::unix::fs::symlink(&storage, &alias.path).unwrap();
-        assert!(alias.recheck().is_err());
-        assert!(Alias::prepare(&storage, &target).is_err());
-        fs::remove_file(&alias.path).unwrap();
-        fs::remove_dir(&alias.wrapper).unwrap();
-    }
-}

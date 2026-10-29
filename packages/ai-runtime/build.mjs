@@ -9,10 +9,7 @@ const output = new URL(
   import.meta.url,
 );
 await mkdir(output, { recursive: true });
-for (const name of [
-  "index",
-  ...(process.argv.includes("--fixture") ? ["fixture"] : []),
-]) {
+for (const name of ["index"]) {
   const outfile = fileURLToPath(new URL(`${name}.cjs`, output));
   const result = await build({
     metafile: true,
@@ -68,18 +65,4 @@ for (const name of [
       .update(await readFile(outfile))
       .digest("hex") + "\n",
   );
-}
-
-if (process.argv.includes("--fixture")) {
-  await build({
-    absWorkingDir: directory,
-    entryPoints: ["../../tests/native/chat-ui.ts"],
-    outfile: fileURLToPath(
-      new URL("../../dist/chat-native-probe.js", import.meta.url),
-    ),
-    bundle: true,
-    platform: "browser",
-    format: "esm",
-    target: "es2022",
-  });
 }

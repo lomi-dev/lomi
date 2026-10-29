@@ -162,8 +162,8 @@ editing. Uninstalling their owner requires selecting a fallback first.
 Rust parses raw JSONC with jsonc-parser and independently checks callers, syntax,
 structure, paths, resource limits and revision/atomic persistence. The frontend
 owns CSS/color/syntax semantic validation and engine resource readiness. Rust
-storage acceptance alone is not permission to activate a theme. Shared grammar
-fixtures exercise the overlap; the two validators do not claim identical roles.
+storage acceptance alone is not permission to activate a theme. Both sides
+validate syntax and structure while retaining their separate responsibilities.
 
 The `xterm-theme` 1.1.0 npm manifest lists ISC, while its upstream license is MIT
 and the npm tarball omits that license file. The upstream MIT notice is retained

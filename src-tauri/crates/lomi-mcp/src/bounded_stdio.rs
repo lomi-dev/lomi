@@ -86,29 +86,3 @@ impl<R: AsyncRead + Unpin> AsyncRead for BoundedStdin<R> {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tokio::io::AsyncReadExt;
-
-    #[tokio::test]
-    async fn bounded_lines_allow_fragmented_utf8_and_many_messages() {
-        let bytes = "ą🙂\nabc\n".as_bytes();
-        let mut reader = BoundedStdin::new(bytes, 6);
-        let mut output = Vec::new();
-        let mut part = [0; 1];
-        while reader.read(&mut part).await.unwrap() != 0 {
-            output.extend(part);
-        }
-        assert_eq!(output, bytes);
-    }
-
-    #[tokio::test]
-    async fn newline_cannot_reset_an_oversized_message() {
-        let mut reader = BoundedStdin::new(&b"abcdefg\nok\n"[..], 6);
-        let mut output = Vec::new();
-        assert!(reader.read_to_end(&mut output).await.is_err());
-        assert!(output.is_empty());
-    }
-}

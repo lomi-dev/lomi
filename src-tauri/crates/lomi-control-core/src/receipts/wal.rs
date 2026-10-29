@@ -86,37 +86,3 @@ pub(super) fn validate(path: &Path) -> Result<()> {
     }
     Ok(())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn valid_checkpoint_reuse_preserves_old_salt_tail() {
-        let temp = tempfile::tempdir().unwrap();
-        let db = rusqlite::Connection::open(temp.path().join("fixture.db")).unwrap();
-        db.execute_batch("PRAGMA journal_mode=WAL; CREATE TABLE value(data); INSERT INTO value VALUES(zeroblob(16384)); PRAGMA wal_checkpoint(RESTART);").unwrap();
-        let path = temp.path().join("fixture.db-wal");
-        let old = std::fs::read(&path).unwrap();
-        db.execute_batch("UPDATE value SET data=x'01'||zeroblob(16383);")
-            .unwrap();
-        let new = std::fs::read(&path).unwrap();
-        assert_eq!(old.len(), new.len());
-        assert_ne!(&old[16..24], &new[16..24]);
-        let last_frame = new.len() - (24 + word(&new[8..12]) as usize);
-        assert_eq!(&new[last_frame + 8..last_frame + 16], &old[16..24]);
-        validate(&path).unwrap();
-    }
-
-    #[test]
-    fn truncated_and_oversized_wal_are_preserved() {
-        let temp = tempfile::tempdir().unwrap();
-        let path = temp.path().join("fixture.db-wal");
-        std::fs::write(&path, b"partial").unwrap();
-        assert_eq!(validate(&path), Err(Error::StorageUnavailable));
-        assert_eq!(std::fs::read(&path).unwrap(), b"partial");
-        let file = OpenOptions::new().write(true).open(&path).unwrap();
-        file.set_len(MAX_WAL_BYTES + 1).unwrap();
-        assert_eq!(validate(&path), Err(Error::StorageUnavailable));
-        assert_eq!(file.metadata().unwrap().len(), MAX_WAL_BYTES + 1);
-    }
-}

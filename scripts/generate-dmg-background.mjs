@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { chromium } from "@playwright/test";
+import { chromium } from "playwright";
 
 const projectRoot = fileURLToPath(new URL("../", import.meta.url));
 const source = path.join(projectRoot, "src-tauri", "dmg", "background.html");

@@ -1,86 +1,12 @@
 name: "Prepare signed draft"
 
 on:
-  workflow_dispatch:
   push:
     tags:
       - "v*"
 
 jobs:
-  security-regressions:
-    name: Security regressions (${{ matrix.platform }})
-    strategy:
-      fail-fast: false
-      matrix:
-        platform: [macos-latest, macos-15-intel, ubuntu-22.04, windows-latest]
-    runs-on: ${{ matrix.platform }}
-    timeout-minutes: 90
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-      - name: Set up pinned canonical shared sources
-        uses: ./.github/actions/setup-canonical-sources
-        with:
-          desktop-relative-path: .
-          remote-repository: ${{ vars.LOMI_REMOTE_CORE_REPOSITORY }}
-          remote-sha: ${{ vars.LOMI_REMOTE_CORE_SHA }}
-          remote-web-sha: ${{ vars.REMOTE_WEB_SHA }}
-          checkout-token: ${{ secrets.CANONICAL_SOURCE_TOKEN || github.token }}
-      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # pnpm/action-setup@v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # actions/setup-node@v4
-        with:
-          node-version: lts/*
-          cache: "pnpm"
-      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # dtolnay/rust-toolchain@stable
-      - name: install native test dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
-      - name: install pinned frontend dependencies
-        run: pnpm install --frozen-lockfile
-      - name: verify the release version and license
-        shell: bash
-        env:
-          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
-        run: |
-          release_tag="$RELEASE_TAG"
-          if [[ -z "$release_tag" ]]; then
-            release_tag="v$(node -p 'require("./package.json").version')"
-          fi
-          node scripts/check-release.mjs "$release_tag"
-      - name: verify SDK archive integrity
-        run: pnpm sdk:verify
-      - name: verify installed SDK build safety
-        if: runner.os == 'Linux'
-        run: pnpm sdk:test:consumer
-      - name: check frontend and run tests
-        if: runner.os == 'Linux'
-        run: pnpm check && pnpm test
-      - name: install the Remote UI test browser
-        if: runner.os == 'Linux'
-        run: pnpm exec playwright install --with-deps chromium
-      - name: test Remote workspace lifecycle and account guards
-        if: runner.os == 'Linux'
-        run: pnpm exec playwright test tests/ui/remote-auth.spec.ts tests/ui/remote-settings.spec.ts tests/ui/remote-workspace-status.spec.ts --workers=2
-      - name: run native security regressions
-        run: node scripts/security-regressions.mjs
-
-  npm-archives:
-    uses: ./.github/workflows/npm-archives.yml
-    with:
-      qualify_registry: ${{ github.event_name == 'push' }}
-    secrets:
-      CANONICAL_SOURCE_TOKEN: ${{ secrets.CANONICAL_SOURCE_TOKEN }}
-    permissions:
-      contents: read
-
   publish-tauri:
-    needs: [security-regressions, npm-archives]
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: write

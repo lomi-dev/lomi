@@ -1427,7 +1427,10 @@ pub(super) fn retry_finishes(inner: &mut super::service::Inner) -> Result<(), St
 pub(super) fn finalize_recovered_terminal_attempts(
     inner: &mut super::service::Inner,
 ) -> Result<(), String> {
-    let store = inner.store.as_ref().ok_or("Runtime storage is unavailable.")?;
+    let store = inner
+        .store
+        .as_ref()
+        .ok_or("Runtime storage is unavailable.")?;
     let mut candidates = Vec::new();
     for task in store.tasks()? {
         let Some(attempt_id) = task.active_attempt_id.as_deref() else {
@@ -1665,12 +1668,4 @@ pub(super) fn retry_observations(inner: &mut super::service::Inner) -> Result<()
         inner.pending_event_batches.remove(&id);
     }
     Ok(())
-}
-
-#[cfg(test)]
-pub(super) fn native_boundary_qualified(_kind: NativeKind) -> bool {
-    // No admitted native artifact/configuration yet proves all lifecycle and
-    // dynamic configuration helpers, including standard Pi's auth/models and
-    // package manager callbacks. Tool-name classification cannot clear this.
-    false
 }

@@ -13,15 +13,12 @@ extraction. The extracted protocol's SHA-256 is
 The upstream Apache-2.0 copyright and license notice remains in the file.
 The repository's root `LICENSE` contains the license text.
 
-The application and opt-in native fixture use this client. Generation uses
-vendored protoc at build time without downloading protocol definitions. Native
-qualification currently covers only the recorded Apple M3/macOS ARM64 host.
-Other platforms remain unverified; see [native verification](../../tests/native/ANDROID.md)
-for isolated fixture setup and qualification limits.
+The Android integration uses this client. Generation uses vendored protoc at
+build time without downloading protocol definitions.
 
-The RTC availability probe sends an empty request to
+The app's RTC availability request sends an empty request to
 `/android.emulation.control.Rtc/requestRtcStream`, the first RPC in the
 [upstream experimental RTC contract](https://android.googlesource.com/platform/prebuilts/android-emulator/+/master/linux-x86_64/lib/rtc_service.proto).
-This service is absent from the tested binary (`UNIMPLEMENTED`); no RTC protocol
+This service is absent from the inspected emulator binary (`UNIMPLEMENTED`); no RTC protocol
 is vendored, no frontend bridge is treated as an encoder, and no RTC dependency
 is added.

@@ -37,8 +37,7 @@ pub(super) fn backend(window: &Window, state: &Android) -> Result<Arc<AndroidMan
         .app_local_data_dir()
         .map_err(|e| e.to_string())?
         .join("android");
-    #[cfg(any(feature = "android-probe", feature = "mcp-probe"))]
-    let root = super::fixture::directory()?.unwrap_or(root);
+
     let manager = state.get(root)?;
     let app = window.app_handle().clone();
     manager.set_emitter(move |event| {
@@ -600,8 +599,7 @@ pub async fn android_install_apk(
                 .set_parent(&window)
                 .set_title("Install APK on Android")
                 .add_filter("Android application", &["apk"]);
-            #[cfg(feature = "android-probe")]
-            let dialog = super::fixture::preset_dialog(dialog, false)?;
+
             let Some(path) = dialog.blocking_pick_file() else {
                 return Ok(None);
             };
@@ -642,8 +640,7 @@ pub async fn android_save_screenshot(
             .set_title("Save Android screenshot")
             .set_file_name("android-screenshot.png")
             .add_filter("PNG image", &["png"]);
-        #[cfg(feature = "android-probe")]
-        let dialog = super::fixture::preset_dialog(dialog, true)?;
+
         Ok(dialog.blocking_save_file())
     })
     .await
@@ -951,11 +948,7 @@ pub async fn agent_android_input(
                             visibility,
                         )
                         .await
-                        .map_err(|_error| {
-                            #[cfg(feature = "mcp-probe")]
-                            eprintln!("Android native input claim qualification: {_error}");
-                            ErrorCode::OutcomeUnknown
-                        })?;
+                        .map_err(|_error| ErrorCode::OutcomeUnknown)?;
                         OperationResult::AndroidControl(AndroidControlResult {
                             workspace_id: request.workspace,
                             device_id: request.control.device.clone(),

@@ -14,8 +14,7 @@ mod host_boundary;
 mod host_child;
 #[cfg(target_os = "macos")]
 pub(crate) use host_boundary::Purpose as NativeHostPurpose;
-#[cfg(all(feature = "native-smoke", target_os = "macos"))]
-pub(crate) mod host_smoke;
+
 #[cfg(unix)]
 mod managed_config;
 #[cfg(target_os = "macos")]
@@ -50,8 +49,7 @@ mod pi_artifact;
 mod process_identity;
 #[cfg(unix)]
 mod process_owner;
-#[cfg(all(test, unix))]
-mod process_owner_tests;
+
 #[cfg(unix)]
 mod process_supervision;
 mod service;
@@ -99,6 +97,3 @@ pub(crate) fn valid_operation(value: &str) -> Result<(), String> {
         Ok(())
     }
 }
-
-#[cfg(all(test, unix))]
-mod tests;

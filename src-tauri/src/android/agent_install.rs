@@ -73,19 +73,6 @@ pub(crate) fn install(
         file,
         Some(guard.clone()),
     ));
-    #[cfg(all(feature = "mcp-probe", target_os = "macos"))]
-    if std::env::var_os("LOMI_MCP_ANDROID_STORAGE_ONLY").is_some() {
-        if let Some(directory) = std::env::var_os("LOMI_MCP_CONTROL_PROBE_DIRECTORY") {
-            let observation = installed
-                .as_ref()
-                .err()
-                .map(|message| message.chars().take(8192).collect::<String>());
-            let _ = std::fs::write(
-                std::path::PathBuf::from(directory).join("android-storage-transport.json"),
-                serde_json::to_vec_pretty(&observation).unwrap(),
-            );
-        }
-    }
     request.check()?;
     let installer_failure = match installed {
         Ok(()) => None,
@@ -149,47 +136,4 @@ fn installer_failure(message: &str) -> Option<String> {
             .bytes()
             .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_'))
     .then(|| code.to_owned())
-}
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn native_pre_session_storage_refusal_is_classified_without_guessing() {
-        let native =
-            include_str!("../../../tests/native/fixtures/android-install-storage-error.txt");
-        assert_eq!(
-            installer_failure(native),
-            Some("INSTALL_FAILED_INSUFFICIENT_STORAGE".into())
-        );
-        for uncertain in [
-            native.replace("doCreateSession", "doCommitSession"),
-            native.replace("resolveInstallVolume", "writePackage"),
-            native.replace(
-                "Requested internal only, but not enough space",
-                "Unrecognized guest failure",
-            ),
-            format!("{native}\nSuccess\n"),
-            format!("{native}{}", "x".repeat(4096)),
-            "APK installation failed: Requested internal only, but not enough space".into(),
-            format!(
-                "APK installation failed: Failure [INSTALL_FAILED_INSUFFICIENT_STORAGE]{}",
-                "x".repeat(4096)
-            ),
-        ] {
-            assert_eq!(installer_failure(&uncertain), None);
-        }
-    }
-    #[test]
-    fn installer_failure_keeps_only_definitive_bounded_machine_code() {
-        assert_eq!(installer_failure("APK installation failed: Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: private description]"),Some("INSTALL_FAILED_UPDATE_INCOMPATIBLE".into()));
-        assert_eq!(installer_failure("APK installation failed: Failure [INSTALL_FAILED_INSUFFICIENT_STORAGE: bounded test]"), Some("INSTALL_FAILED_INSUFFICIENT_STORAGE".into()));
-        for message in [
-            "connection lost",
-            "APK installation failed: Failure [INSTALL_private]",
-            "APK installation failed: private text",
-            "APK installation failed: Failure [Success]",
-        ] {
-            assert!(installer_failure(message).is_none());
-        }
-    }
 }

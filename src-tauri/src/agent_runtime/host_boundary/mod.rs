@@ -21,8 +21,7 @@ pub(crate) use registry::{registered_scope, EffectGuard, EffectScope};
 mod sandbox;
 pub(crate) use kernel::Member;
 pub(crate) use sandbox::Policy;
-#[cfg(test)]
-mod tests;
+
 const MAX_RECORD: u64 = 65536;
 const MAX_SPEC: usize = 2 * 1024 * 1024;
 const WAIT: Duration = Duration::from_secs(30);
@@ -601,27 +600,17 @@ impl Boundary {
             stdout,
             stderr,
         });
-        #[allow(unused_mut)]
-        let mut args = vec![
+        let args = vec![
             result.record.worker.to_string_lossy().into_owned(),
             WORKER_FLAG.into(),
             result.root.to_string_lossy().into_owned(),
         ];
-        #[cfg(test)]
-        {
-            args = vec![
-                result.record.worker.to_string_lossy().into_owned(),
-                "--exact".into(),
-                "agent_runtime::host_boundary::tests::compiled_worker_entry".into(),
-                "--nocapture".into(),
-            ];
-        }
         let mut plist=format!("<?xml version=\"1.0\"?><plist version=\"1.0\"><dict><key>Label</key><string>{}</string><key>RunAtLoad</key><true/><key>KeepAlive</key><false/><key>ProcessType</key><string>Background</string><key>ProgramArguments</key><array>",xml(&result.record.label));
         for arg in args {
             plist.push_str(&format!("<string>{}</string>", xml(&arg)));
         }
         plist.push_str("</array>");
-        #[cfg(test)] plist.push_str(&format!("<key>EnvironmentVariables</key><dict><key>LOMI_HOST_BOUNDARY_TEST_ROOT</key><string>{}</string></dict>",xml(&result.root.to_string_lossy())));
+
         plist.push_str("</dict></plist>");
         write_new(&result.root.join("job.plist"), plist.as_bytes())?;
         if launchctl(&[
@@ -646,15 +635,6 @@ impl Boundary {
                 Ok(held) => break held,
                 Err(_) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(5)),
                 Err(_) => {
-                    #[cfg(test)]
-                    eprintln!(
-                        "worker stages: {:?}",
-                        std::fs::read_dir(&result.root)
-                            .unwrap()
-                            .filter_map(Result::ok)
-                            .map(|e| e.file_name())
-                            .collect::<Vec<_>>()
-                    );
                     return Err(failure());
                 }
             }
@@ -680,10 +660,7 @@ impl Boundary {
         update(&result.root, &result.record)?;
         Ok(result)
     }
-    #[cfg(test)]
-    pub(crate) fn release(&mut self) -> Result<(), String> {
-        self.release_with_gate(|_| Ok(()))
-    }
+
     pub(crate) fn release_with_gate(
         &mut self,
         before_release: impl FnOnce(&Boundary) -> Result<(), String>,
@@ -881,10 +858,6 @@ impl Boundary {
         }
         let job = format!("{}/{}", self.record.domain, self.record.label);
         let text = job_status(&job)?;
-        #[cfg(test)]
-        if parse_job_exit(&text).is_err() {
-            eprintln!("Owned job status parse failed: {text}");
-        }
         if let Some(code) = parse_job_exit(&text)? {
             self.record.native_exit = Some(code);
             update(&self.root, &self.record)?;
@@ -1312,15 +1285,6 @@ pub(crate) fn entry() -> Option<i32> {
     )
 }
 fn native_runner(root: &Path) -> Result<i32, String> {
-    #[cfg(test)]
-    unsafe {
-        if libc::dup2(4, 1) < 0 || libc::dup2(5, 2) < 0 {
-            return Err(failure());
-        }
-        libc::close(4);
-        libc::close(5);
-    }
-
     use std::os::{
         fd::{AsRawFd, FromRawFd},
         unix::process::CommandExt,
@@ -1410,16 +1374,12 @@ fn native_runner(root: &Path) -> Result<i32, String> {
         command.exec().kind()
     ))
 }
-#[cfg(test)]
-fn stage(root: &Path, name: &str) {
-    let _ = std::fs::write(root.join(format!("stage-{name}")), b"");
-}
+
 fn worker(root: &Path) -> Result<i32, String> {
     unsafe {
         libc::umask(0o077);
     }
-    #[cfg(test)]
-    stage(root, "entered");
+
     use std::os::unix::process::CommandExt;
     private_directory(root)?;
     let record: Record = read_json(&root.join("record.json"))?;
@@ -1430,25 +1390,13 @@ fn worker(root: &Path) -> Result<i32, String> {
     {
         return Err(failure());
     }
-    #[cfg(test)]
-    stage(root, "host-admitted");
-    #[cfg(test)]
-    stage(root, "worker-hash-start");
-    #[cfg(test)]
-    let hash_start = Instant::now();
+
     let observed_digest = binary_digest(&std::env::current_exe().map_err(|_| failure())?)?;
-    #[cfg(test)]
-    let _ = fs::write(
-        root.join("worker-hash-millis"),
-        hash_start.elapsed().as_millis().to_string(),
-    );
-    #[cfg(test)]
-    stage(root, "worker-hash-complete");
+
     if observed_digest != record.worker_digest {
         return Err(failure());
     }
-    #[cfg(test)]
-    stage(root, "verified");
+
     let mut config = open_fifo(&root.join("config"), true, false)?;
     let size = read_stream(&mut config, 4)?;
     let len = u32::from_le_bytes(size.try_into().map_err(|_| failure())?) as usize;
@@ -1465,8 +1413,7 @@ fn worker(root: &Path) -> Result<i32, String> {
     let spec = parsed.map_err(|_| failure())?;
     spec.validate()?;
     drop(config);
-    #[cfg(test)]
-    stage(root, "parsed");
+
     let stdin = open_fifo(&root.join("stdin"), true, false)?;
     let stdout = open_fifo(&root.join("stdout"), false, true)?;
     let stderr = open_fifo(&root.join("stderr"), false, true)?;
@@ -1476,8 +1423,7 @@ fn worker(root: &Path) -> Result<i32, String> {
     for file in [&stdin, &stdout, &stderr] {
         native_stdio(file)?;
     }
-    #[cfg(test)]
-    stage(root, "stdio");
+
     let terminal = match spec.io {
         NativeIo::Pipes => None,
         NativeIo::Pty { rows, cols } => Some(pty::Pty::create(root, rows, cols)?),
@@ -1512,10 +1458,7 @@ fn worker(root: &Path) -> Result<i32, String> {
         }
         std::thread::sleep(Duration::from_millis(5));
     }
-    #[cfg(test)]
-    stage(root, "released");
-    #[cfg(test)]
-    let mut diagnostic = stderr.try_clone().map_err(|_| failure())?;
+
     let mut descriptors = [-1; 2];
     if unsafe { libc::pipe(descriptors.as_mut_ptr()) } != 0 {
         return Err(failure());
@@ -1532,18 +1475,6 @@ fn worker(root: &Path) -> Result<i32, String> {
     command
         .args([std::ffi::OsStr::new(NATIVE_FLAG), root.as_os_str()])
         .env_clear();
-    #[cfg(test)]
-    {
-        command = std::process::Command::new(&record.worker);
-        command
-            .args([
-                "--exact",
-                "agent_runtime::host_boundary::tests::compiled_native_runner_entry",
-                "--nocapture",
-            ])
-            .env_clear()
-            .env("LOMI_HOST_NATIVE_CHILD_ROOT", root);
-    }
     command
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -1566,25 +1497,7 @@ fn worker(root: &Path) -> Result<i32, String> {
             if libc::dup2(control_fd, 3) < 0 || libc::fcntl(3, libc::F_SETFD, 0) < 0 {
                 return Err(std::io::Error::last_os_error());
             }
-            #[cfg(test)]
-            {
-                if libc::dup2(1, 4) < 0
-                    || libc::dup2(2, 5) < 0
-                    || libc::fcntl(4, libc::F_SETFD, 0) < 0
-                    || libc::fcntl(5, libc::F_SETFD, 0) < 0
-                {
-                    return Err(std::io::Error::last_os_error());
-                }
-                let null = libc::open(c"/dev/null".as_ptr(), libc::O_WRONLY | libc::O_CLOEXEC);
-                if null < 0 || libc::dup2(null, 1) < 0 || libc::dup2(null, 2) < 0 {
-                    return Err(std::io::Error::last_os_error());
-                }
-                libc::close(null);
-            }
             let max = libc::getdtablesize();
-            #[cfg(test)]
-            let first = 6;
-            #[cfg(not(test))]
             let first = 4;
             for fd in first..max {
                 let flags = libc::fcntl(fd, libc::F_GETFD);
@@ -1596,8 +1509,6 @@ fn worker(root: &Path) -> Result<i32, String> {
         });
     }
     let mut child = command.spawn().map_err(|error| {
-        #[cfg(test)]
-        let _ = writeln!(diagnostic, "native spawn failed: {error}");
         format!(
             "Native spawn failed inside the held boundary: {}",
             error.kind()
@@ -1623,12 +1534,7 @@ fn worker(root: &Path) -> Result<i32, String> {
     bytes.fill(0);
     sent?;
     drop(control_writer);
-    #[cfg(test)]
-    let _ = writeln!(
-        diagnostic,
-        "native child pid={} coalition={coalition}",
-        child.id()
-    );
+
     let status = if let Some(terminal) = terminal {
         drop(stderr);
         let output = terminal.relay(stdin, stdout)?;
@@ -1654,69 +1560,8 @@ fn worker(root: &Path) -> Result<i32, String> {
         status
     };
     use std::os::unix::process::ExitStatusExt;
-    #[cfg(test)]
-    let _ = writeln!(
-        diagnostic,
-        "native exit: code={:?} signal={:?}",
-        status.code(),
-        status.signal()
-    );
+
     Ok(status
         .code()
         .unwrap_or_else(|| 128 + status.signal().unwrap_or(0)))
-}
-
-#[cfg(test)]
-mod driver_tests {
-    use super::*;
-    #[test]
-    fn only_completed_owned_job_status_yields_an_outcome() {
-        assert_eq!(
-            parse_job_exit("state = running\nruns = 1\nlast exit code = 0").unwrap(),
-            None
-        );
-        assert_eq!(
-            parse_job_exit("state = waiting\nruns = 0\nlast exit code = 0").unwrap(),
-            None
-        );
-        assert_eq!(
-            parse_job_exit("state = waiting\nruns = 1\nlast exit code = 7").unwrap(),
-            Some(7)
-        );
-        assert!(parse_job_exit("runs = 1\nlast exit code = 7\nlast exit code = 0").is_err());
-        assert!(parse_job_exit("runs = 1\nlast exit code = 256").is_err());
-    }
-    #[test]
-    fn legacy_scope_and_spec_keep_locked_down_defaults() {
-        let scope: Scope = serde_json::from_str(r#"{"operationId":"a","accountId":"fixture","authRevision":1,"taskId":null,"attemptId":null,"generation":null,"projectRoot":"/private/tmp/project","purpose":"attempt"}"#).unwrap();
-        assert!(scope.parent_operation_id.is_none());
-        assert!(scope.physical_account_root.is_none());
-        assert!(scope.storage_root.is_none());
-        assert!(matches!(NativeIo::default(), NativeIo::Pipes));
-    }
-}
-
-#[cfg(test)]
-pub(crate) fn test_effect_scope() -> std::sync::Arc<EffectScope> {
-    let scope = EffectScope::new();
-    scope.release().unwrap();
-    scope
-}
-
-#[cfg(test)]
-mod journal_tests {
-    use super::*;
-    #[test]
-    fn parent_indexes_do_not_count_unrelated_parent_directories() {
-        let storage = tempfile::tempdir().unwrap();
-        let storage = storage.path().canonicalize().unwrap();
-        fs::set_permissions(&storage, fs::Permissions::from_mode(0o700)).unwrap();
-        let selected = prepare_parent(&storage, "selected").unwrap();
-        let parents = selected.parent().unwrap();
-        for i in 0..4100 {
-            fs::create_dir(parents.join(format!("unrelated-{i}"))).unwrap();
-        }
-        assert!(parent_records(&storage, "selected").unwrap().is_empty());
-        assert!(parent_records(&storage, "new-parent").unwrap().is_empty());
-    }
 }

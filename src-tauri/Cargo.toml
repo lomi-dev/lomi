@@ -9,10 +9,10 @@ edition = "2021"
 publish = false
 
 [workspace]
-members = [".", "crates/lomi-control-protocol", "crates/lomi-control-core", "crates/lomi-mcp", "crates/lomi-remote-crypto"]
+members = [".", "crates/lomi-control-protocol", "crates/lomi-control-core", "crates/lomi-mcp"]
 default-members = ["."]
 resolver = "2"
-exclude = ["crates/lomi-remote-crypto/vendor/snow", "vendor/glib", "vendor/tao"]
+exclude = ["vendor/glib", "vendor/tao"]
 
 [patch.crates-io]
 # GTK 0.18 requires glib 0.18; retain the compatible upstream security backport.
@@ -33,21 +33,7 @@ debug = "line-tables-only"
 incremental = false
 
 [features]
-native-smoke = []
-remote-probe = ["native-smoke", "dep:lomi-remote-crypto"]
-chat-probe = ["native-smoke"]
-android-probe = ["native-smoke", "dep:turbojpeg", "objc2/exception"]
-remote-visual-probe = []
-mcp-probe = ["objc2-app-kit/NSGraphicsContext"]
 experimental-macos-coalition-cleanup = ["lomi-terminal/experimental-macos-coalition-cleanup"]
-
-[[example]]
-name = "macos-traffic-lights"
-path = "../tests/native/macos-traffic-lights.rs"
-
-[[example]]
-name = "macos-keyboard-exception"
-path = "../tests/native/macos-keyboard-exception.rs"
 
 [build-dependencies]
 protoc-bin-vendored = { version = "3.2.0" }
@@ -56,7 +42,6 @@ tonic-prost-build = { version = "0.14.6" }
 lomi-remote-protocol = { path = "../../lomi-remote/crates/lomi-remote-protocol" }
 
 [dependencies]
-lomi-remote-crypto = { package = "lomi-remote-crypto-desktop", path = "crates/lomi-remote-crypto", optional = true }
 lomi-remote-crypto-canonical = { package = "lomi-remote-crypto", path = "../../lomi-remote/crates/lomi-remote-crypto" }
 zeroize = { version = "=1.8.2", features = ["serde"] }
 tokio-tungstenite = { version = "=0.28.0", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
@@ -106,7 +91,6 @@ prost = { version = "0.14.4" }
 tokio = { version = "1", features = ["time", "sync", "macros", "process", "io-util", "fs", "net"] }
 reqwest = { version = "0.13.4", default-features = false, features = ["rustls-no-provider"] }
 rustls = { version = "=0.23.46", default-features = false, features = ["ring"] }
-turbojpeg = { version = "1.5.1", default-features = false, features = ["cmake", "require-simd"], optional = true }
 ring = { version = "0.17.14" }
 base64 = { version = "0.22.1" }
 
@@ -138,8 +122,3 @@ objc2-app-kit = { version = "0.3", default-features = false, features = ["std", 
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSDictionary", "NSURL", "NSError", "NSValue", "NSProcessInfo", "NSUUID", "NSURLRequest"] }
 objc2-web-kit = { version = "=0.3.2", default-features = false, features = ["std", "WKWebView", "WKSnapshotConfiguration", "WKNavigation", "WKContentWorld", "WKUserScript", "WKUserContentController", "WKFrameInfo", "WKUIDelegate", "WKOpenPanelParameters", "WKSecurityOrigin", "WKWebViewConfiguration", "WKWebsiteDataStore", "block2", "objc2-app-kit"] }
 block2 = { version = "=0.6.2" }
-
-[target.'cfg(target_os = "macos")'.dev-dependencies]
-objc2 = { version = "0.6", features = ["exception"] }
-objc2-app-kit = { version = "0.3", default-features = false, features = ["NSBitmapImageRep", "NSImageRep", "NSGraphics", "NSGraphicsContext"] }
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSData", "NSDictionary", "NSString", "NSException", "NSObjCRuntime"] }

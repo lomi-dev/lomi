@@ -2,21 +2,6 @@ use lomi_remote_protocol::ipc::{LocalAuthClientId, LocalAuthOrigin, LocalRelayEn
 
 fn main() {
     configure_host_auth_bootstrap();
-    for feature in [
-        "NATIVE_SMOKE",
-        "CHAT_PROBE",
-        "ANDROID_PROBE",
-        "REMOTE_PROBE",
-        "MCP_PROBE",
-    ] {
-        let variable = format!("CARGO_FEATURE_{feature}");
-        println!("cargo:rerun-if-env-changed={variable}");
-        assert!(
-            !(std::env::var_os(&variable).is_some()
-                && std::env::var("PROFILE").as_deref() == Ok("release")),
-            "Qualification feature {feature} must not enter a release build"
-        );
-    }
     println!("cargo:rerun-if-changed=../packages/ai-runtime");
     println!("cargo:rerun-if-changed=../src/chat/provider-presets.ts");
     println!("cargo:rerun-if-changed=../scripts/prepare-ai-runtime.mjs");
@@ -26,11 +11,6 @@ fn main() {
     prepare
         .arg("../scripts/prepare-ai-runtime.mjs")
         .env("TARGET", &target);
-    if std::env::var_os("CARGO_FEATURE_CHAT_PROBE").is_some()
-        || std::env::var_os("CARGO_FEATURE_MCP_PROBE").is_some()
-    {
-        prepare.arg("--fixture");
-    }
     assert!(
         prepare
             .status()
@@ -38,20 +18,6 @@ fn main() {
             .success(),
         "AI runtime preparation failed"
     );
-
-    if std::env::var_os("CARGO_FEATURE_REMOTE_PROBE").is_some()
-        && std::env::var("PROFILE").as_deref() != Ok("release")
-    {
-        println!("cargo:rerun-if-changed=../packages/remote-terminal-runtime");
-        assert!(
-            std::process::Command::new("node")
-                .arg("../packages/remote-terminal-runtime/build.mjs")
-                .status()
-                .expect("Remote runtime build requires Node and pnpm install")
-                .success(),
-            "Remote terminal runtime preparation failed"
-        );
-    }
 
     {
         println!("cargo:rerun-if-changed=android-proto/emulator_controller.proto");

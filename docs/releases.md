@@ -10,10 +10,9 @@ did not exist when this workflow was prepared on 2026-09-11.
 
 ### Canonical source and host configuration
 
-Desktop release builds, npm archive qualification, and source-based installer
-qualification require the canonical host and Remote UI repositories as siblings
-of each desktop checkout. Configure these repository variables before using
-the release or building installer qualification packages:
+Desktop release builds require the canonical host and Remote UI repositories as
+siblings of each desktop checkout. Configure these repository variables before
+using the release workflow:
 
 - `LOMI_REMOTE_CORE_REPOSITORY`: the canonical host repository as
   `owner/repository`. Set this to the established repository location; the
@@ -31,53 +30,12 @@ create or publish the canonical source repository.
 
 The checkout action rejects missing or unpinned refs, verifies each checked-out
 commit, and places the sources beside the desktop checkout without replacing an
-existing sibling. The npm archive job checks out its desktop candidates below
-the workspace root, so one checked-out source pair at that root serves each
-candidate. The desktop repository's `GITHUB_TOKEN` is used by default.
+existing sibling. The desktop repository's `GITHUB_TOKEN` is used by default.
 If the source repositories are private and that token cannot read them, set the
 existing `CANONICAL_SOURCE_TOKEN` repository secret to a token with read access
 to those repositories. The four host bootstrap values are public application
 configuration, not signing credentials. `LOMI_HOST_CLIENT_ID` identifies host
 enrollment; the desktop OAuth consumer client remains separate.
-
-### Installer qualification without publishing
-
-`.github/workflows/installers.yml` builds production-feature packages on Linux
-x64, Windows x64, macOS ARM64 and macOS Intel. Its temporary configuration
-disables updater artifacts and uses ad-hoc macOS signing. It does not read
-release signing secrets or publish releases. Test installers and reports are
-retained as Actions artifacts for seven days.
-After a qualification-script correction, manual dispatch can reuse those exact
-packages via `packages_run_id`, preserving the package commit in the new reports.
-
-The qualification installs and removes DEB, NSIS and MSI packages, and copies
-the app from a verified DMG. Each installed app must show a native window.
-RPM is additionally installed, verified, started through its native helper and
-removed in Fedora 44. Its extracted runtime is checked on Ubuntu; libarchive
-reads the payload after RPM digest verification because Ubuntu 22.04's rpm2cpio
-requires a size tag omitted by Tauri's RPM writer. AppImage runs its native
-helper through the extract-and-run launcher and its extracted runtime is checked.
-This does not test the AppImage FUSE launcher or the Fedora GUI. Every payload must
-include the verified AI runtime bundle, notices and pinned Node. The archived
-Remote terminal helper is built only for non-release `remote-probe` builds and
-is excluded from the default application bundle.
-AppImage's Node has a packaging-added ELF RUNPATH. Qualification checks its
-unchanged code/data sections against the checksum-verified Node from the RPM,
-and checks the added path, string table and unchanged library dependencies;
-relocated symbol/linking metadata is excluded from byte comparison.
-The packaged Node runs without system PATH and streams all three Custom API
-formats through a loopback fixture, with and without a test key. No paid API is
-used. The scripts never enable native probe features in production builds.
-
-These checks do not qualify Developer ID, notarization, Gatekeeper,
-Authenticode, updater replacement or installation over an existing user profile.
-Run the separate signed-release qualification before publishing.
-
-The 2026-10-05 [qualification run](https://github.com/Szqub/lomi/actions/runs/37247364014)
-passed on all four native runners, including Fedora 44 RPM installation in a
-container. It rechecked the seven package payloads built from `592d3fe` using
-qualification scripts at `006678b`, with 42 successful Custom API streams in
-total. The scope and signing limitations above apply to these test artifacts.
 
 ### Publishing
 
@@ -284,17 +242,9 @@ does not update them. Before tagging a release that changes Remote behavior:
   heartbeats with `expectedLastSeen` before updating the desktop. A delayed
   heartbeat must return `409 PUBLICATION_CHANGED` after a newer publication,
   preserving the currently shared workspace and its grants.
-- Build and test the canonical sibling `remote-web` repository. Run
-  `bun test tests`, `bun run build`, `bun run test:terminal-focus` and
-  `bun run test:browser` with
-  `LOMI_CRYPTO_CRATE` pointing to this release's `lomi-remote-crypto` crate.
-  The browser test covers reload and concurrent tabs against real native crypto.
-  Deploy this tested client separately, then verify the deployed assets.
-- Run `pnpm test:remote:native` on macOS Apple Silicon with the isolated
-  `auth-app/test/integration/remote-live-services.ts` fixture. Give the disposable
-  API and exchange roles the same permissions as production. This exercises
-  local PTYs, observe/control, recovery, renewal, pause/resume and stopping an
-  unavailable Remote terminal without affecting the user's app data.
+- Build the canonical sibling `remote-web` repository and deploy its reviewed
+  static output separately. Keep browser assets and backend/API releases
+  coordinated so each client matches the deployed Remote contract.
 - Check an authenticated production connection after deployment: workspace
   discovery, refresh, control, renewal and Stop. Public health endpoints alone
   do not prove these flows.
@@ -367,17 +317,15 @@ AUR source builds need network access during preparation; binary packages
 include the runtime from the application bundle.
 
 Ship the Node executable, `ai-runtime/index.cjs`, `node.json`, bundle checksum,
-`NODE-LICENSE` and `THIRD-PARTY-NOTICES`. Update the artifact manifest and run
-native probes when changing Node or SDK versions. Supported packaging targets
+`NODE-LICENSE` and `THIRD-PARTY-NOTICES`. Update the artifact manifest when
+changing Node or SDK versions. Supported packaging targets
 are macOS ARM64/x64, Windows x64 and Linux x64; generation requires macOS 13.5
 or later. Older macOS can still open locally stored history.
 
 macOS signs the nested Node executable with the hardened runtime and the
 `com.apple.security.cs.allow-jit` entitlement. Do not add unsigned executable
 memory or disable library validation. Developer ID signing, notarization,
-Gatekeeper and updater replacement must be tested on real release artifacts;
-an ad-hoc signature is only a local packaging test. Never ship `chat-probe` or
-`fixture.cjs` in a release.
+Gatekeeper and updater replacement require the configured release identity.
 
 Linux system-key storage requires an unlocked Secret Service implementation,
 such as GNOME Keyring or KWallet's Secret Service support. Session-only storage

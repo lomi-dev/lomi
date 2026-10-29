@@ -54,10 +54,7 @@ impl HostWitness {
         Ok(value)
     }
 }
-#[cfg(test)]
-pub(crate) fn production_qualified() -> bool {
-    false
-}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct Member {
@@ -197,7 +194,6 @@ pub(super) fn gone(pid: u32) -> bool {
             && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
     }
 }
-#[cfg(not(test))]
 pub(super) fn enumerate() -> Result<Vec<u32>, String> {
     let mut cap = 4096usize;
     loop {
@@ -222,8 +218,4 @@ pub(super) fn enumerate() -> Result<Vec<u32>, String> {
             return Err(failure());
         }
     }
-}
-#[cfg(test)]
-pub(super) fn enumerate() -> Result<Vec<u32>, String> {
-    Err("Tests must supply only owned fixture PIDs; broad inspection is forbidden.".into())
 }

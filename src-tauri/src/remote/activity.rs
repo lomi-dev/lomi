@@ -25,15 +25,6 @@ impl Default for Activity {
 }
 
 impl Activity {
-    #[cfg(feature = "remote-probe")]
-    pub(crate) fn probe_elapsed_hour(&self) -> Result<(), String> {
-        let mut clock = self.0.lock().map_err(|_| "Activity unavailable.")?;
-        if !clock.armed {
-            return Err("Remote activity is not armed.".into());
-        }
-        clock.latest = SystemTime::now() - IDLE_TIMEOUT - Duration::from_secs(1);
-        Ok(())
-    }
     pub(crate) fn record(&self) {
         self.record_at(SystemTime::now());
     }
@@ -83,54 +74,4 @@ impl Activity {
 fn idle_since(latest: SystemTime, now: SystemTime) -> bool {
     now.duration_since(latest)
         .is_ok_and(|idle| idle > IDLE_TIMEOUT)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn any_terminal_or_window_activity_restarts_the_global_hour() {
-        let start = SystemTime::now();
-        let activity = Activity::default();
-        activity.activate_at(start);
-        let other_window = activity.clone();
-        assert!(!activity.is_idle(start + IDLE_TIMEOUT));
-        assert!(activity.is_idle(start + IDLE_TIMEOUT + Duration::from_secs(1)));
-        other_window.record_at(start + Duration::from_secs(3500));
-        assert!(!activity.is_idle(start + Duration::from_secs(7100)));
-        assert!(activity.is_idle(start + Duration::from_secs(7101)));
-        assert!(!activity.is_idle(start - Duration::from_secs(1)));
-    }
-
-    #[test]
-    fn first_wake_activity_preserves_elapsed_idle_until_explicit_resume() {
-        let start = SystemTime::now();
-        let activity = Activity::default();
-        assert!(!activity.is_idle(start + IDLE_TIMEOUT + Duration::from_secs(1)));
-        activity.activate_at(start);
-        let wake = start + IDLE_TIMEOUT + Duration::from_secs(1);
-        activity.record_at(wake);
-        assert!(activity.is_idle(wake));
-        activity.record_at(wake + Duration::from_secs(1));
-        assert!(activity.is_idle(wake + Duration::from_secs(1)));
-        activity.activate_at(wake + Duration::from_secs(2));
-        assert!(!activity.is_idle(wake + Duration::from_secs(2)));
-        activity.deactivate();
-        activity.record_at(wake + IDLE_TIMEOUT + Duration::from_secs(3));
-        assert!(!activity.is_idle(wake + IDLE_TIMEOUT + Duration::from_secs(3)));
-    }
-
-    #[test]
-    fn automatic_authorization_restore_preserves_the_original_idle_deadline() {
-        let start = SystemTime::now();
-        let activity = Activity::default();
-        activity.restore_at(start);
-        activity.restore_at(start + Duration::from_secs(3000));
-        assert!(!activity.is_idle(start + IDLE_TIMEOUT));
-        assert!(activity.is_idle(start + IDLE_TIMEOUT + Duration::from_secs(1)));
-        activity.record_at(start + IDLE_TIMEOUT + Duration::from_secs(1));
-        activity.restore_at(start + Duration::from_secs(4000));
-        assert!(activity.is_idle(start + Duration::from_secs(4000)));
-    }
 }

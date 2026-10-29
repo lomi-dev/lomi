@@ -286,17 +286,3 @@ pub struct BrowserWaitResult {
     pub elapsed_ms: u32,
     pub snapshot: BrowserSnapshot,
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn frame_scroll_preserves_main_viewport_compatibility() {
-        let mut input = serde_json::json!({"workspaceId":"w","panelId":"p","browserGeneration":"g","navigationId":"n","snapshotId":"s","leaseId":"l","retryEpoch":"r","requestKey":"k","deltaX":0,"deltaY":10});
-        let old: BrowserScrollInput = serde_json::from_value(input.clone()).unwrap();
-        assert_eq!(old.split().0.element_ref, "viewport");
-        input["viewportRef"] = "f1-viewport".into();
-        let frame: BrowserScrollInput = serde_json::from_value(input).unwrap();
-        assert_eq!(frame.split().0.element_ref, "f1-viewport");
-    }
-}

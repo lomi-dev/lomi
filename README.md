@@ -21,7 +21,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/images/workbench-light.png" />
-  <img src="docs/images/workbench.png" alt="Lomi with the Explorer, src/model.ts open in the editor, and a native terminal below it showing passing tests." />
+  <img src="docs/images/workbench.png" alt="Lomi with the Explorer, src/model.ts open in the editor, and a native terminal showing shell output." />
 </picture>
 
 ## What is Lomi?

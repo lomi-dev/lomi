@@ -14,12 +14,6 @@ thread_local! {
     static MONITORS: RefCell<HashMap<String, Retained<AnyObject>>> = RefCell::new(HashMap::new());
 }
 
-#[cfg(feature = "mcp-probe")]
-pub fn probe_count() -> usize {
-    assert!(MainThreadMarker::new().is_some());
-    MONITORS.with(|monitors| monitors.borrow().len())
-}
-
 fn forget_on_main(label: &str) {
     if let Some(monitor) = MONITORS.with(|monitors| monitors.borrow_mut().remove(label)) {
         // The token is produced only by addLocalMonitorForEventsMatchingMask.
