@@ -530,6 +530,28 @@ impl AuthController {
         path: &str,
         body: Option<&serde_json::Value>,
     ) -> Result<(RemoteBinding, serde_json::Value), RemoteHttpError> {
+        self.remote_v2_request_for_expected_session(None, method, path, body)
+            .await
+    }
+
+    pub(crate) async fn remote_v2_request_for_session(
+        &self,
+        expected_session_id: &str,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&serde_json::Value>,
+    ) -> Result<(RemoteBinding, serde_json::Value), RemoteHttpError> {
+        self.remote_v2_request_for_expected_session(Some(expected_session_id), method, path, body)
+            .await
+    }
+
+    async fn remote_v2_request_for_expected_session(
+        &self,
+        expected_session_id: Option<&str>,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&serde_json::Value>,
+    ) -> Result<(RemoteBinding, serde_json::Value), RemoteHttpError> {
         if !crate::desktop_runtime::shared_host_enabled() {
             return Err(RemoteHttpError::local_code("REMOTE_DISABLED"));
         }
@@ -549,6 +571,9 @@ impl AuthController {
                 .map_err(|_| RemoteHttpError::local_code("ACCOUNT_UNAVAILABLE"))?;
             let binding = remote_binding(&core)
                 .map_err(|_| RemoteHttpError::local_code("AUTHORIZATION_REQUIRED"))?;
+            if expected_session_id.is_some_and(|expected| expected != binding.session_id) {
+                return Err(RemoteHttpError::local_code("SESSION_CHANGED"));
+            }
             let token = core
                 .token
                 .clone()
@@ -1539,6 +1564,15 @@ impl AuthController {
                 STATE_CHANGED_EVENT,
                 &snapshot.0,
             );
+            for label in app.webview_windows().keys() {
+                if crate::remote_v2::is_remote_view_window_label(label) {
+                    let _ = app.emit_to(
+                        EventTarget::webview(label.clone()),
+                        STATE_CHANGED_EVENT,
+                        &snapshot.0,
+                    );
+                }
+            }
         }
         snapshot.0
     }

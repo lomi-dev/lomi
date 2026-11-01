@@ -6,7 +6,7 @@ mod storage;
 
 pub use controller::AuthController;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, State, Window};
+use tauri::{AppHandle, State, Webview, Window};
 
 pub const STATE_CHANGED_EVENT: &str = "auth-state-changed";
 
@@ -90,6 +90,15 @@ fn trusted_account_window(window: &Window) -> Result<(), String> {
     }
 }
 
+fn auth_state_window(window: &Window, webview: &Webview) -> Result<(), String> {
+    crate::shared_host::trusted_full_window(window, webview)?;
+    if window.label() == "main" || crate::remote_v2::is_remote_view_window_label(window.label()) {
+        Ok(())
+    } else {
+        Err("Account state is available only to first-party desktop windows.".into())
+    }
+}
+
 fn settings_window(window: &Window) -> Result<(), String> {
     if window.label() == "main" {
         Ok(())
@@ -101,9 +110,10 @@ fn settings_window(window: &Window) -> Result<(), String> {
 #[tauri::command(rename_all = "camelCase")]
 pub fn auth_get_state(
     window: Window,
+    webview: Webview,
     controller: State<'_, AuthController>,
 ) -> Result<AuthState, String> {
-    trusted_account_window(&window)?;
+    auth_state_window(&window, &webview)?;
     Ok(controller.snapshot())
 }
 

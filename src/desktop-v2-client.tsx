@@ -1,10 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RemoteV2ConnectionRequest } from "../../remote-web/src/RemoteV2PairingPanel";
 import { RemoteV2PairingPanel } from "../../remote-web/src/RemoteV2PairingPanel";
 import { RemoteV2Workspace } from "../../remote-web/src/RemoteV2Workspace";
 import type { RemoteV2ViewReference } from "../../remote-web/src/remote-v2-view-reference";
 import { clearViewRestorationIntent } from "../../remote-web/src/remote-v2-view-restoration";
+import { canShareRemotely } from "./auth/model";
+import { useAuthState } from "./auth/useAuthState";
+import {
+  remoteAccountLookupIsCurrent,
+  remoteAuthSessionKey,
+} from "./desktop-remote-account";
 import { native } from "./api";
 import {
   createDesktopRemoteV2PlatformAdapter,
@@ -14,12 +19,12 @@ import {
 import { SettingsNotice } from "./settings-ui";
 import "../../remote-web/src/remote-v2-embed.css";
 
-interface AuthStateEvent {
-  status?: unknown;
-  user?: { id?: unknown } | null;
-}
-
-const ACCOUNT_ID = /^[0-9a-f]{32}$/;
+type AccountLookupState =
+  | "checking"
+  | "authorization-required"
+  | "ready"
+  | "lookup-error"
+  | "authorization-error";
 
 type DesktopRemoteV2ClientProps = { available: boolean } & (
   | { entry: "selector"; initialTarget?: never }
@@ -32,64 +37,126 @@ export function DesktopRemoteV2Client({
   initialTarget,
 }: DesktopRemoteV2ClientProps) {
   const [accountId, setAccountId] = useState<string>();
-  const [authReady, setAuthReady] = useState(false);
+  const [accountSessionKey, setAccountSessionKey] = useState<string>();
+  const [accountState, setAccountState] =
+    useState<AccountLookupState>("checking");
+  const [accountMessage, setAccountMessage] = useState("");
+  const [authorizationBusy, setAuthorizationBusy] = useState(false);
+  const [lookupRequest, setLookupRequest] = useState(0);
   const [connection, setConnection] =
     useState<RemoteV2ConnectionRequest | null>(null);
   const [reconnectRequest, setReconnectRequest] = useState(0);
   const [windowError, setWindowError] = useState("");
-  const platform = useMemo(() => createDesktopRemoteV2PlatformAdapter(), []);
+  const { state: authState, current: currentAuthState } = useAuthState();
+  const authSessionKey = remoteAuthSessionKey(authState);
+  const platform = useMemo(
+    () => createDesktopRemoteV2PlatformAdapter(() => authState?.session?.id),
+    [authSessionKey],
+  );
+  const lookupGeneration = useRef(0);
 
   useEffect(() => {
-    if (!native || !available) {
-      setAccountId(undefined);
-      setAuthReady(false);
-      setConnection(null);
-      return;
-    }
+    if (!native || !available) return;
+    const generation = ++lookupGeneration.current;
     let active = true;
-    let receivedAuthEvent = false;
-    let eventRevision = 0;
-    let unlisten: (() => void) | undefined;
-    void (async () => {
-      unlisten = await listen<AuthStateEvent>(
-        "auth-state-changed",
-        ({ payload }) => {
-          receivedAuthEvent = true;
-          eventRevision += 1;
-          const signedIn =
-            payload.status === "signed-in" || payload.status === "signedin";
-          const next =
-            signedIn &&
-            typeof payload.user?.id === "string" &&
-            ACCOUNT_ID.test(payload.user.id)
-              ? payload.user.id
-              : undefined;
-          setAccountId(next);
-          setAuthReady(true);
-        },
+    setAccountSessionKey(authSessionKey);
+    setAccountId(undefined);
+    setConnection(null);
+    setAccountMessage("");
+    setAuthorizationBusy(false);
+
+    if (!authState) {
+      setAccountState("checking");
+      return () => {
+        active = false;
+        if (lookupGeneration.current === generation)
+          lookupGeneration.current += 1;
+      };
+    }
+    if (authState.status === "signed-out") {
+      setAccountState("checking");
+      return () => {
+        active = false;
+        if (lookupGeneration.current === generation)
+          lookupGeneration.current += 1;
+      };
+    }
+    if (!canShareRemotely(authState) || !authSessionKey) {
+      setAccountState("checking");
+      return () => {
+        active = false;
+        if (lookupGeneration.current === generation)
+          lookupGeneration.current += 1;
+      };
+    }
+
+    const lookupRevision = authState.revision;
+    const current = () =>
+      active &&
+      lookupGeneration.current === generation &&
+      remoteAccountLookupIsCurrent(
+        lookupRevision,
+        authSessionKey,
+        currentAuthState.current,
       );
-      if (!active) {
-        unlisten();
-        return;
-      }
-      const revisionBeforeSnapshot = eventRevision;
-      const initialAccountId = await desktopRemoteV2AccountId();
-      if (
-        active &&
-        !receivedAuthEvent &&
-        eventRevision === revisionBeforeSnapshot
-      ) {
-        setAccountId(initialAccountId);
-      }
-      if (active) setAuthReady(true);
-    })().catch(() => {
-      if (active) setAuthReady(true);
-    });
+    setAccountState("checking");
+    void desktopRemoteV2AccountId()
+      .then((nextAccountId) => {
+        if (!current()) return;
+        setAccountId(nextAccountId);
+        setAccountState(nextAccountId ? "ready" : "authorization-required");
+      })
+      .catch(() => {
+        if (!current()) return;
+        setAccountState("lookup-error");
+        setAccountMessage("The Remote account could not be checked.");
+      });
+
     return () => {
       active = false;
-      unlisten?.();
+      if (lookupGeneration.current === generation)
+        lookupGeneration.current += 1;
     };
-  }, [available]);
+  }, [available, authSessionKey, currentAuthState, lookupRequest]);
+
+  const enableWorkspaceAccess = useCallback(async () => {
+    const current = authState;
+    if (!current || !canShareRemotely(current)) return;
+    const sessionKey = remoteAuthSessionKey(current);
+    if (!sessionKey) return;
+    const revision = current.revision;
+    const generation = ++lookupGeneration.current;
+    const isCurrent = () =>
+      lookupGeneration.current === generation &&
+      remoteAccountLookupIsCurrent(
+        revision,
+        sessionKey,
+        currentAuthState.current,
+      );
+    setAuthorizationBusy(true);
+    setAccountState("checking");
+    setAccountMessage("");
+    try {
+      await platform.authorizeConsumerAccess();
+      if (!isCurrent()) return;
+      const nextAccountId = await desktopRemoteV2AccountId();
+      if (!isCurrent()) return;
+      if (!nextAccountId) {
+        setAccountState("authorization-error");
+        setAccountMessage("Workspace access could not be confirmed.");
+        return;
+      }
+      setAccountId(nextAccountId);
+      setAccountSessionKey(sessionKey);
+      setAccountState("ready");
+    } catch {
+      if (!isCurrent()) return;
+      setAccountState("authorization-error");
+      setAccountMessage("Workspace access could not be enabled. Try again.");
+    } finally {
+      if (isCurrent()) setAuthorizationBusy(false);
+    }
+  }, [authState, currentAuthState, platform]);
 
   const stopWorkspace = useCallback((windowIdentityId: string) => {
     setConnection((current) =>
@@ -133,17 +200,86 @@ export function DesktopRemoteV2Client({
       </SettingsNotice>
     );
   }
-  if (!authReady) {
+  if (!authState) {
     return (
       <SettingsNotice>Checking the signed-in Lomi account…</SettingsNotice>
     );
   }
-  if (!accountId) {
+  if (authState.status === "signed-out") {
     return (
       <SettingsNotice>
         Sign in to your Lomi account on this device to view workspaces shared by
         another Lomi host.
       </SettingsNotice>
+    );
+  }
+  if (!canShareRemotely(authState)) {
+    const message =
+      authState.status === "offline"
+        ? "An online Lomi account session is required to view shared workspaces."
+        : authState.status === "error" ||
+            authState.status === "storage-locked" ||
+            authState.status === "unavailable"
+          ? (authState.message ?? "The Lomi account session is unavailable.")
+          : "Checking the signed-in Lomi account…";
+    return (
+      <SettingsNotice tone={authState.status === "error" ? "error" : "info"}>
+        {message}
+      </SettingsNotice>
+    );
+  }
+  if (accountSessionKey !== authSessionKey || accountState === "checking") {
+    return (
+      <SettingsNotice>Checking the signed-in Lomi account…</SettingsNotice>
+    );
+  }
+  if (
+    accountState === "authorization-required" ||
+    accountState === "authorization-error"
+  ) {
+    return (
+      <SettingsNotice
+        tone={accountState === "authorization-error" ? "error" : "info"}
+        role={accountState === "authorization-error" ? "alert" : "note"}
+        action={
+          <button
+            type="button"
+            className="button button-primary"
+            disabled={authorizationBusy}
+            onClick={() => void enableWorkspaceAccess()}
+          >
+            {authorizationBusy ? "Enabling…" : "Enable workspace access"}
+          </button>
+        }
+      >
+        {accountState === "authorization-error"
+          ? accountMessage || "Workspace access could not be enabled."
+          : "Enable this device to view workspaces shared by another Lomi host."}
+      </SettingsNotice>
+    );
+  }
+  if (accountState === "lookup-error") {
+    return (
+      <SettingsNotice
+        tone="error"
+        role="alert"
+        action={
+          <button
+            type="button"
+            className="button"
+            onClick={() => setLookupRequest((request) => request + 1)}
+          >
+            Retry
+          </button>
+        }
+      >
+        {accountMessage || "The Remote account could not be checked."}
+      </SettingsNotice>
+    );
+  }
+  if (!accountId || accountState !== "ready") {
+    return (
+      <SettingsNotice>The Remote account could not be checked.</SettingsNotice>
     );
   }
 

@@ -1,9 +1,6 @@
 import { lazy, StrictMode, Suspense, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import {
-  isRemoteV2ViewEntry,
-  readRemoteV2ViewReference,
-} from "../../remote-web/src/remote-v2-view-reference";
+import { readRemoteV2ViewReference } from "../../remote-web/src/remote-v2-view-reference";
 import { initializeAppearance } from "./theme/runtime";
 import { api, macOS, native } from "./api";
 import { trackRemoteActivity } from "./remote-activity";
@@ -19,7 +16,9 @@ const DesktopRemoteV2Client = lazy(() =>
     default: DesktopRemoteV2Client,
   })),
 );
-const remoteV2View = isRemoteV2ViewEntry(location.search);
+const remoteViewParams = new URLSearchParams(location.search);
+const remoteV2View =
+  remoteViewParams.has("host") || remoteViewParams.has("workspace");
 
 window.addEventListener("contextmenu", (event) => event.preventDefault(), {
   capture: true,

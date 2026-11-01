@@ -47,10 +47,17 @@ type NativeChannelCommand = {
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const ACCOUNT_ID = /^[0-9a-f]{32}$/;
+const ACCOUNT_ID = UUID;
 
 export async function desktopRemoteV2AccountId(): Promise<string | undefined> {
-  const accountId = await invoke<string | null>("remote_v2_account_id");
+  let accountId: string | null;
+  try {
+    accountId = await invoke<string | null>("remote_v2_account_id");
+  } catch (error) {
+    const mapped = remoteInvokeError(error);
+    if (mapped instanceof ApiError && mapped.status === 401) return undefined;
+    throw mapped;
+  }
   if (accountId === null) return undefined;
   if (typeof accountId !== "string" || !ACCOUNT_ID.test(accountId)) {
     throw new Error("INVALID_NATIVE_ACCOUNT_ID");
@@ -299,7 +306,9 @@ function makeChannel(
   };
 }
 
-export function createDesktopRemoteV2PlatformAdapter(): RemoteV2PlatformAdapter {
+export function createDesktopRemoteV2PlatformAdapter(
+  currentAccountSessionId: () => string | undefined,
+): RemoteV2PlatformAdapter {
   const registrations = new Set<ConsumerWindowRegistration>();
   return {
     request: async <T>(
@@ -328,8 +337,12 @@ export function createDesktopRemoteV2PlatformAdapter(): RemoteV2PlatformAdapter 
     },
     authorizeConsumerAccess: async (signal) => {
       if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      const expectedAccountSessionId = currentAccountSessionId();
+      if (!expectedAccountSessionId) throw new Error("AUTHORIZATION_REQUIRED");
       try {
-        await invoke("remote_v2_authorize_consumer");
+        await invoke("remote_v2_authorize_consumer", {
+          expectedAccountSessionId,
+        });
       } catch (error) {
         throw remoteInvokeError(error);
       }

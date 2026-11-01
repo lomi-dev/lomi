@@ -279,6 +279,15 @@ fn validate_window_label(value: &str) -> Result<(), String> {
     }
 }
 
+pub(crate) fn is_remote_view_window_label(value: &str) -> bool {
+    value.strip_prefix("remoteview").is_some_and(|identity| {
+        identity.len() == 32
+            && identity
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    })
+}
+
 fn persist_records(path: &Path, records: &ConsumerWindowRecords) -> Result<(), String> {
     validate_records(records)?;
     crate::files::write_json(path, records, RECORDS_LIMIT as usize)
@@ -341,7 +350,7 @@ fn session_tuple(context: &ConsumerAuthorizationContext) -> RemoteConsumerSessio
 
 fn request_route(method: &reqwest::Method, path: &str) -> Result<HttpRoute, String> {
     let route = crate::auth::http::remote_v2_route(method, path)
-        .ok_or("This Remote v2 route is unavailable.")?;
+        .ok_or("This Remote route is unavailable.")?;
     if route.route != HttpRoute::ConsumerAuthorizationIssue
         && !matches!(
             route.surface,
@@ -351,7 +360,7 @@ fn request_route(method: &reqwest::Method, path: &str) -> Result<HttpRoute, Stri
                 | lomi_remote_protocol::HttpSurface::EitherOwnPeer
         )
     {
-        return Err("This Remote v2 route is not available to desktop consumers.".into());
+        return Err("This Remote route is not available to desktop consumers.".into());
     }
     Ok(route.route)
 }
@@ -402,7 +411,7 @@ fn validate_request_body(route: HttpRoute, body: Option<&Value>) -> Result<(), S
         return if body.is_none() {
             Ok(())
         } else {
-            Err("This Remote v2 route does not accept a request body.".into())
+            Err("This Remote route does not accept a request body.".into())
         };
     }
     if matches!(
@@ -412,14 +421,14 @@ fn validate_request_body(route: HttpRoute, body: Option<&Value>) -> Result<(), S
         return if body.is_none() {
             Ok(())
         } else {
-            Err("This Remote v2 route does not accept a request body.".into())
+            Err("This Remote route does not accept a request body.".into())
         };
     }
-    let kind = request_kind(route).ok_or("This Remote v2 route is unavailable.")?;
-    let body = body.ok_or("This Remote v2 route requires its canonical request body.")?;
-    let json = serde_json::to_string(body).map_err(|_| "Invalid Remote v2 request body.")?;
+    let kind = request_kind(route).ok_or("This Remote route is unavailable.")?;
+    let body = body.ok_or("This Remote route requires its canonical request body.")?;
+    let json = serde_json::to_string(body).map_err(|_| "Invalid Remote request body.")?;
     lomi_remote_protocol::http::validate_http_wire(kind, &json)
-        .map_err(|_| "Invalid Remote v2 request body.".to_owned())
+        .map_err(|_| "Invalid Remote request body.".to_owned())
 }
 
 async fn remote_request(
@@ -439,13 +448,39 @@ async fn remote_request_structured(
     path: &str,
     body: Option<&Value>,
 ) -> Result<Value, crate::auth::controller::RemoteV2HttpError> {
+    remote_request_structured_inner(auth, None, method, path, body).await
+}
+
+async fn remote_request_structured_for_session(
+    auth: &crate::auth::AuthController,
+    expected_session_id: &str,
+    method: reqwest::Method,
+    path: &str,
+    body: Option<&Value>,
+) -> Result<Value, crate::auth::controller::RemoteV2HttpError> {
+    remote_request_structured_inner(auth, Some(expected_session_id), method, path, body).await
+}
+
+async fn remote_request_structured_inner(
+    auth: &crate::auth::AuthController,
+    expected_session_id: Option<&str>,
+    method: reqwest::Method,
+    path: &str,
+    body: Option<&Value>,
+) -> Result<Value, crate::auth::controller::RemoteV2HttpError> {
     let route = request_route(&method, path)?;
     validate_request_body(route, body)?;
-    let (_, value) = auth.remote_v2_request(method, path, body).await?;
-    let kind = response_kind(route).ok_or("This Remote v2 response is unavailable.")?;
-    let json = serde_json::to_string(&value).map_err(|_| "Invalid Remote v2 response.")?;
+    let (_, value) = match expected_session_id {
+        Some(expected) => {
+            auth.remote_v2_request_for_session(expected, method, path, body)
+                .await?
+        }
+        None => auth.remote_v2_request(method, path, body).await?,
+    };
+    let kind = response_kind(route).ok_or("This Remote response is unavailable.")?;
+    let json = serde_json::to_string(&value).map_err(|_| "Invalid Remote response.")?;
     lomi_remote_protocol::http::validate_http_wire(kind, &json)
-        .map_err(|_| "Invalid Remote v2 response.")?;
+        .map_err(|_| "Invalid Remote response.")?;
     Ok(value)
 }
 
@@ -462,19 +497,66 @@ pub async fn remote_v2_request(
     let method = match method.as_str() {
         "GET" => reqwest::Method::GET,
         "POST" => reqwest::Method::POST,
-        _ => return Err("This Remote v2 method is unavailable.".into()),
+        _ => return Err("This Remote method is unavailable.".into()),
     };
     remote_request_structured(&auth, method, &path, body.as_ref()).await
 }
 
 #[tauri::command]
-pub fn remote_v2_account_id(
+pub async fn remote_v2_account_id(
     window: Window,
     webview: Webview,
     auth: State<'_, crate::auth::AuthController>,
-) -> Result<Option<String>, String> {
+) -> Result<Option<String>, crate::auth::controller::RemoteV2HttpError> {
     crate::shared_host::trusted_full_window(&window, &webview)?;
-    Ok(auth.remote_binding().ok().map(|binding| binding.user_id))
+    let binding = match auth.remote_binding() {
+        Ok(binding) => binding,
+        Err(_) => return Ok(None),
+    };
+    let inventory = current_inventory_structured(&auth).await?;
+    let tuple = inventory_tuple(&inventory).ok_or("Remote authorization is unavailable.")?;
+    if !tuple_matches_binding(&tuple, &binding) {
+        return Err(crate::auth::controller::RemoteV2HttpError::local_code(
+            "SESSION_CHANGED",
+        ));
+    }
+    Ok(Some(canonical_account_id(&inventory.authorization)))
+}
+
+#[derive(Clone)]
+struct FirstPartyWebviewOrigin {
+    scheme: String,
+    host: String,
+    port: Option<u16>,
+}
+
+impl FirstPartyWebviewOrigin {
+    fn from_url(url: &tauri::Url) -> Option<Self> {
+        if !is_first_party_entry_path(url) || !url.username().is_empty() || url.password().is_some()
+        {
+            return None;
+        }
+        Some(Self {
+            scheme: url.scheme().to_owned(),
+            host: url.host_str()?.to_ascii_lowercase(),
+            port: url.port(),
+        })
+    }
+
+    fn allows(&self, url: &tauri::Url) -> bool {
+        is_first_party_entry_path(url)
+            && url.username().is_empty()
+            && url.password().is_none()
+            && url.scheme() == self.scheme
+            && url
+                .host_str()
+                .is_some_and(|host| host.eq_ignore_ascii_case(&self.host))
+            && url.port() == self.port
+    }
+}
+
+fn is_first_party_entry_path(url: &tauri::Url) -> bool {
+    matches!(url.path(), "/" | "/index.html")
 }
 
 #[tauri::command]
@@ -489,6 +571,11 @@ pub fn remote_v2_open_view(
     if !valid_uuid(&host_id) || !valid_uuid(&workspace_id) {
         return Err("Invalid remote workspace reference.".into());
     }
+    let source_url = webview
+        .url()
+        .map_err(|_| "The desktop application URL is unavailable.")?;
+    let app_origin = FirstPartyWebviewOrigin::from_url(&source_url)
+        .ok_or("Remote workspace windows require the first-party application page.")?;
 
     let mut config = app
         .config()
@@ -504,7 +591,7 @@ pub fn remote_v2_open_view(
     config.label = label;
     config.title = "Remote workspace".into();
     config.url = tauri::WebviewUrl::App(
-        format!("index.html?view=remote-v2&host={host_id}&workspace={workspace_id}").into(),
+        format!("index.html?host={host_id}&workspace={workspace_id}").into(),
     );
     config.decorations = true;
     config.transparent = false;
@@ -512,20 +599,25 @@ pub fn remote_v2_open_view(
 
     tauri::WebviewWindowBuilder::from_config(&app, &config)
         .map_err(|_| "The remote workspace window could not be prepared.")?
+        .on_navigation(move |url| app_origin.allows(url))
         .build()
         .map_err(|_| "The remote workspace window could not be opened.")?;
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn remote_v2_authorize_consumer(
     window: Window,
     webview: Webview,
     auth: State<'_, crate::auth::AuthController>,
+    expected_account_session_id: String,
 ) -> Result<RemoteConsumerSessionTuple, crate::auth::controller::RemoteV2HttpError> {
     crate::shared_host::trusted_full_window(&window, &webview)?;
-    let value = remote_request_structured(
+    AccountSessionId::try_from(expected_account_session_id.clone())
+        .map_err(|_| crate::auth::controller::RemoteV2HttpError::local_code("INVALID_ARGUMENT"))?;
+    let value = remote_request_structured_for_session(
         &auth,
+        &expected_account_session_id,
         reqwest::Method::POST,
         "/v2/remote/consumer-authorizations",
         Some(&serde_json::json!({})),
@@ -536,7 +628,7 @@ pub async fn remote_v2_authorize_consumer(
     let binding = auth.remote_binding()?;
     let tuple = session_tuple(&context);
     validate_session_tuple(&tuple)?;
-    if !same_account_id(&binding.user_id, &tuple.account_id)
+    if binding.session_id != expected_account_session_id
         || binding.session_id != tuple.account_session_id
     {
         return Err("The account session changed during remote authorization.".into());
@@ -563,8 +655,13 @@ fn tuple_matches_binding(
     tuple: &RemoteConsumerSessionTuple,
     binding: &crate::auth::controller::RemoteBinding,
 ) -> bool {
-    same_account_id(&tuple.account_id, &binding.user_id)
-        && tuple.account_session_id == binding.session_id
+    // Remote API replies are token-bound; the account UUID is a separate
+    // identity and stays tied to this exact local Auth session.
+    tuple.account_session_id == binding.session_id
+}
+
+fn canonical_account_id(context: &ConsumerAuthorizationContext) -> String {
+    context.account_id.clone().into()
 }
 
 async fn validate_registration_tuple(
@@ -1793,7 +1890,7 @@ fn logical_message_kind(kind: u8) -> Result<MessageKind, String> {
         3 => Ok(MessageKind::WorkspaceFrame),
         4 => Ok(MessageKind::TerminalFrame),
         5 => Ok(MessageKind::FileWatchFrame),
-        _ => Err("Invalid Remote v2 message kind.".into()),
+        _ => Err("Invalid Remote message kind.".into()),
     }
 }
 
@@ -1930,7 +2027,7 @@ async fn remote_channel_task(
                         let result = async {
                             let message_kind = logical_message_kind(kind)?;
                             if message_kind == MessageKind::RpcRequest {
-                                let mut request = lomi_remote_protocol::decode_request(&bytes).map_err(|_| "Invalid Remote v2 request.")?;
+                                let mut request = lomi_remote_protocol::decode_request(&bytes).map_err(|_| "Invalid Remote request.")?;
                                 if matches!(&request.call, RpcCall::TerminalClaim(_) | RpcCall::TerminalRenew(_) | RpcCall::TerminalRelease(_) | RpcCall::TerminalInput(_) | RpcCall::TerminalResize(_)) {
                                     zeroize_rpc_request(&mut request);
                                     return Err("Terminal control is available only through the native control session.".into());
@@ -2794,4 +2891,103 @@ pub async fn remote_v2_terminal_focus(
         .await
         .map_err(|_| "Remote terminal control is closed.")?;
     await_control_result(receiver).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        canonical_account_id, is_remote_view_window_label, tuple_matches_binding,
+        FirstPartyWebviewOrigin, RemoteConsumerSessionTuple,
+    };
+    use crate::auth::controller::RemoteBinding;
+    use lomi_remote_protocol::http::ConsumerAuthorizationContext;
+
+    #[test]
+    fn account_id_comes_from_typed_consumer_context_not_auth_user_id() {
+        let context: ConsumerAuthorizationContext = serde_json::from_value(serde_json::json!({
+            "accountId": "4f43c8f0-322b-4eb9-a5f8-6d8d3a2a1990",
+            "consumerAuthorizationId": "6bbbc7d5-4945-4e5f-9e70-fb84e239c95b",
+            "accountSessionId": "auth-session-1",
+            "class": "desktop",
+            "expiresAt": "1790000000",
+            "canManageAccount": true
+        }))
+        .expect("the service account context is valid");
+
+        assert_eq!(
+            canonical_account_id(&context),
+            "4f43c8f0-322b-4eb9-a5f8-6d8d3a2a1990"
+        );
+        assert_ne!(
+            canonical_account_id(&context),
+            "6e9acb3aaf9ed261a842a3a749c2c72a"
+        );
+    }
+
+    #[test]
+    fn remote_tuple_stays_bound_to_the_exact_auth_session() {
+        let binding = RemoteBinding {
+            user_id: "6e9acb3aaf9ed261a842a3a749c2c72a".into(),
+            session_id: "auth-session-1".into(),
+            expires_at: 1,
+            generation: 1,
+        };
+        let tuple = RemoteConsumerSessionTuple {
+            account_id: "4f43c8f0-322b-4eb9-a5f8-6d8d3a2a1990".into(),
+            consumer_authorization_id: "6bbbc7d5-4945-4e5f-9e70-fb84e239c95b".into(),
+            account_session_id: "auth-session-1".into(),
+        };
+
+        assert!(tuple_matches_binding(&tuple, &binding));
+        let mut stale = tuple;
+        stale.account_session_id = "another-auth-session".into();
+        assert!(!tuple_matches_binding(&stale, &binding));
+    }
+
+    #[test]
+    fn remote_view_event_targets_match_only_generated_window_labels() {
+        assert!(is_remote_view_window_label(
+            "remoteview0123456789abcdef0123456789abcdef"
+        ));
+        assert!(!is_remote_view_window_label(
+            "remoteview0123456789ABCDEF0123456789ABCDEF"
+        ));
+        assert!(!is_remote_view_window_label(
+            "remoteview0123456789abcdef0123456789abcde"
+        ));
+        assert!(!is_remote_view_window_label(
+            "browser-remoteview0123456789abcdef0123456789abcdef"
+        ));
+    }
+
+    #[test]
+    fn remote_view_navigation_stays_on_its_first_party_entry_origin() {
+        let source = tauri::Url::parse("http://127.0.0.1:1420/index.html").unwrap();
+        let origin = FirstPartyWebviewOrigin::from_url(&source).unwrap();
+
+        assert!(origin.allows(
+            &tauri::Url::parse("http://127.0.0.1:1420/index.html?host=host&workspace=workspace")
+                .unwrap()
+        ));
+        assert!(origin.allows(&tauri::Url::parse("http://127.0.0.1:1420/").unwrap()));
+        assert!(!origin.allows(&tauri::Url::parse("http://127.0.0.1:1421/index.html").unwrap()));
+        assert!(!origin.allows(&tauri::Url::parse("http://localhost:1420/index.html").unwrap()));
+        assert!(
+            !origin.allows(&tauri::Url::parse("http://user@127.0.0.1:1420/index.html").unwrap())
+        );
+        assert!(!origin.allows(&tauri::Url::parse("http://127.0.0.1:1420/plugin/content").unwrap()));
+    }
+
+    #[test]
+    fn remote_view_navigation_accepts_platform_application_urls() {
+        for source in [
+            "tauri://localhost/index.html",
+            "http://tauri.localhost/index.html",
+        ] {
+            let source = tauri::Url::parse(source).unwrap();
+            let origin = FirstPartyWebviewOrigin::from_url(&source).unwrap();
+
+            assert!(origin.allows(&source));
+        }
+    }
 }
