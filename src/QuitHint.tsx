@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useT } from "./i18n";
 
@@ -7,6 +7,13 @@ export function QuitHint() {
   const { t } = useT();
   // Incremented per press so the countdown bar restarts its animation.
   const [shown, setShown] = useState(0);
+  const hint = useRef<HTMLDivElement>(null);
+  // A modal <dialog> (Settings) sits in the top layer above any z-index; a popover shown
+  // after it joins the top layer above the dialog.
+  useLayoutEffect(() => {
+    const element = hint.current;
+    if (element && !element.matches(":popover-open")) element.showPopover?.();
+  }, [shown]);
   useEffect(() => {
     let timer: number | undefined;
     const unlisten = listen("lomi-quit-armed", () => {
@@ -20,7 +27,13 @@ export function QuitHint() {
     };
   }, []);
   return shown ? (
-    <div className="quit-hint" role="status" key={shown}>
+    <div
+      ref={hint}
+      className="quit-hint"
+      role="status"
+      popover="manual"
+      key={shown}
+    >
       <span>{t("Hold")}</span>
       <span className="keycaps" aria-label="Command Q">
         <kbd>⌘</kbd>
