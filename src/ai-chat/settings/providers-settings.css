@@ -1,0 +1,688 @@
+.settings-dialog .settings-page-content.prov-page {
+  max-width: 760px;
+}
+.settings-dialog .prov-card {
+  overflow: hidden;
+  border: var(--border-width) solid var(--sheet-line);
+  border-radius: 16px;
+  background: var(--sheet-card);
+}
+
+/* List */
+.settings-dialog .settings-section-actions .icon-button {
+  width: 32px;
+  height: 32px;
+}
+.settings-dialog .prov-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.settings-dialog .prov-list li {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  padding-right: var(--space-16);
+  transition: background-color 120ms ease;
+}
+.settings-dialog .prov-list li + li {
+  border-top: var(--border-width) solid var(--sheet-line);
+}
+.settings-dialog .prov-list li:hover {
+  background: color-mix(in srgb, var(--color-surface-text) 3%, transparent);
+}
+.settings-dialog .prov-row {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-14);
+  min-width: 0;
+  padding: var(--space-14) 0 var(--space-14) var(--space-20);
+  border: 0;
+  background: none;
+  color: var(--color-surface-text);
+  text-align: left;
+  cursor: pointer;
+}
+/* The whole row opens the detail view; the switch stays above it. */
+.settings-dialog .prov-row::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+.settings-dialog .prov-list .settings-switch {
+  position: relative;
+  z-index: 1;
+}
+.settings-dialog .prov-row:focus-visible {
+  outline: none;
+}
+.settings-dialog .prov-row:focus-visible::after {
+  outline: 2px solid var(--color-focus, var(--color-surface-text));
+  outline-offset: -2px;
+}
+.settings-dialog .prov-list li[data-disabled] .prov-row-text,
+.settings-dialog .prov-list li[data-disabled] .prov-tile-icon {
+  opacity: 0.5;
+}
+.settings-dialog .prov-chevron {
+  flex: none;
+  color: var(--color-muted-text);
+}
+.settings-dialog .prov-tile-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+}
+.settings-dialog .prov-tile-icon .cli-agent-icon,
+.settings-dialog .prov-tile-icon .cli-agent-icon > svg {
+  flex-basis: 22px;
+  width: 22px;
+  height: 22px;
+}
+.settings-dialog .prov-tile-icon-large .cli-agent-icon,
+.settings-dialog .prov-tile-icon-large .cli-agent-icon > svg {
+  flex-basis: 32px;
+  width: 32px;
+  height: 32px;
+}
+.settings-dialog .prov-row-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.settings-dialog .prov-row-title,
+.settings-dialog .prov-hero h2 {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-8);
+  min-width: 0;
+}
+.settings-dialog .prov-row-title {
+  font-size: var(--font-size-13);
+  font-weight: 500;
+}
+.settings-dialog .prov-row-title > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settings-dialog .prov-row-title > code,
+.settings-dialog .prov-hero h2 > code {
+  flex: none;
+  color: var(--color-muted-text);
+  font-family: "Geist Mono", var(--font-family-mono);
+  font-size: var(--font-size-11);
+  font-weight: 400;
+}
+.settings-dialog .prov-row-text > .prov-status {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Detail */
+.settings-dialog .prov-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-24);
+  min-width: 0;
+  animation: prov-enter 180ms ease-out;
+}
+@keyframes prov-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings-dialog .prov-detail {
+    animation: none;
+  }
+}
+.settings-dialog .prov-detail > .settings-section {
+  margin: 0;
+}
+.settings-dialog .prov-back {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: var(--space-4);
+  margin: 0 0 calc(-1 * var(--space-12)) calc(-1 * var(--space-6));
+  padding: var(--space-4) var(--space-8) var(--space-4) var(--space-4);
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--color-muted-text);
+  font-size: var(--font-size-13);
+  cursor: pointer;
+}
+.settings-dialog .prov-back:hover {
+  background: var(--sheet-field);
+  color: var(--color-surface-text);
+}
+.settings-dialog .prov-hero {
+  display: flex;
+  align-items: center;
+  gap: var(--space-14);
+}
+.settings-dialog .prov-hero-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.settings-dialog .prov-hero h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+.settings-dialog .prov-remove {
+  display: flex;
+  justify-content: flex-start;
+}
+.settings-dialog .prov-status {
+  color: var(--color-muted-text);
+  font-size: var(--font-size-12);
+}
+.settings-dialog .prov-status::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: var(--space-6);
+  border-radius: 50%;
+  background: var(--color-muted-text);
+  vertical-align: 1px;
+  opacity: 0.6;
+}
+.settings-dialog .prov-status[data-ok]::before {
+  background: var(--color-primary);
+  opacity: 1;
+}
+.settings-dialog .prov-value,
+.prov-mono,
+.prov-facts code {
+  font-family: "Geist Mono", var(--font-family-mono);
+  font-size: var(--font-size-12);
+}
+.settings-dialog .prov-value {
+  min-width: 0;
+  max-width: 100%;
+  color: var(--color-surface-variant-text);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.prov-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  width: 100%;
+  min-width: 0;
+}
+.prov-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-8);
+}
+.prov-inline > input {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+.prov-header-row {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr auto;
+  gap: var(--space-8);
+  align-items: center;
+}
+.prov-hint {
+  color: var(--color-muted-text);
+  font-size: var(--font-size-11);
+}
+.prov-savebar {
+  position: sticky;
+  bottom: calc(-1 * var(--space-24));
+  z-index: 1;
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-8);
+  padding: var(--space-12) var(--space-16);
+  border: var(--border-width) solid var(--sheet-line);
+  border-radius: 14px;
+  background: var(--sheet-card);
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.2);
+}
+.prov-error {
+  color: var(--color-error);
+  font-size: var(--font-size-11);
+}
+
+/* Add API provider */
+.modal.prov-add-dialog {
+  width: min(480px, calc(100vw - 32px));
+}
+.prov-add-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: var(--space-4) var(--space-24) var(--space-20);
+}
+.prov-add-body > label {
+  margin-top: var(--space-10);
+  color: var(--color-surface-text);
+  font-size: var(--font-size-12);
+  font-weight: 500;
+}
+.prov-add-body > input {
+  width: 100%;
+}
+.prov-add-body > .settings-help {
+  margin: var(--space-2) 0 0;
+  font-size: var(--font-size-12);
+}
+.prov-kinds {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px;
+  padding: 3px;
+  border: var(--border-width) solid var(--color-outline);
+  border-radius: 12px;
+  background: var(--color-surface-container);
+}
+.prov-kind {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-6);
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 var(--space-8);
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--color-muted-text);
+  font-size: var(--font-size-12);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+.prov-kind:hover {
+  color: var(--color-surface-text);
+}
+.prov-kind[aria-checked="true"] {
+  background: var(--color-surface-container-highest);
+  color: var(--color-surface-text);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+}
+.prov-kind .cli-agent-icon,
+.prov-kind .cli-agent-icon > svg {
+  flex: 0 0 15px;
+  width: 15px;
+  height: 15px;
+}
+.prov-add-dialog .dialog-actions {
+  align-items: center;
+  padding: var(--space-14) var(--space-24);
+}
+.prov-add-status {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-muted-text);
+  font-size: var(--font-size-12);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.prov-facts {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  margin: 0;
+  padding: var(--space-6) var(--space-20);
+  font-size: var(--font-size-13);
+}
+.prov-facts dt,
+.prov-facts dd {
+  min-width: 0;
+  padding: var(--space-8) 0;
+}
+.prov-facts dt {
+  color: var(--color-muted-text);
+}
+.prov-facts dd {
+  margin: 0;
+  overflow: hidden;
+  color: var(--color-surface-text);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.prov-facts dd .prov-value {
+  overflow-wrap: normal;
+}
+.settings-dialog .prov-detail .setting-row {
+  min-height: 56px;
+  padding-block: var(--space-12);
+}
+.settings-dialog .prov-detail .setting-row-stacked {
+  gap: var(--space-8);
+}
+.settings-dialog .prov-detail .setting-row-stacked > .setting-controls {
+  width: 100%;
+}
+.settings-dialog .prov-detail .setting-row-stacked .prov-value {
+  display: block;
+  text-align: left;
+}
+.settings-dialog .prov-detail .prov-stack,
+.settings-dialog .prov-detail .prov-inline {
+  width: 100%;
+}
+.settings-dialog .prov-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-8);
+  padding: 40px 24px;
+  text-align: center;
+}
+.settings-dialog .prov-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: var(--space-4);
+  border-radius: 12px;
+  background: var(--sheet-field);
+  color: var(--color-muted-text);
+}
+.settings-dialog .prov-empty h3 {
+  margin: 0;
+  color: var(--color-surface-text);
+  font-size: var(--font-size-15);
+  font-weight: 600;
+}
+.settings-dialog .prov-empty p {
+  margin: 0 0 var(--space-8);
+  color: var(--color-muted-text);
+  font-size: var(--font-size-13);
+}
+.settings-dialog .prov-detail .prov-header-row > input,
+.settings-dialog .prov-detail .prov-inline > input {
+  width: 100%;
+}
+.settings-dialog
+  .prov-detail
+  .setting-row:not(.setting-row-stacked)
+  .prov-inline {
+  width: auto;
+}
+
+/* Models */
+.settings-dialog .prov-models-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-14);
+  padding: var(--space-12) var(--space-16) var(--space-12) var(--space-12);
+  border-bottom: var(--border-width) solid var(--sheet-line);
+}
+.settings-dialog .prov-models-toolbar > input {
+  flex: 1;
+  min-width: 0;
+  max-width: 260px;
+}
+.settings-dialog .prov-models-count {
+  margin-left: auto;
+  color: var(--color-muted-text);
+  font-size: var(--font-size-12);
+  font-variant-numeric: tabular-nums;
+}
+.settings-dialog .prov-text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-6);
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--color-surface-variant-text);
+  font-size: var(--font-size-13);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.settings-dialog .prov-text-button:hover:not(:disabled) {
+  background: var(--sheet-field);
+  color: var(--color-surface-text);
+}
+.settings-dialog .prov-text-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.settings-dialog .prov-models-add {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-10) var(--space-16) var(--space-10) var(--space-12);
+  border-bottom: var(--border-width) solid var(--sheet-line);
+}
+.settings-dialog .prov-models-add > input {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+.settings-dialog .prov-models-list {
+  max-height: 420px;
+  margin: 0;
+  padding: var(--space-4) 0;
+  overflow: auto;
+  list-style: none;
+}
+.settings-dialog .prov-models-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  min-height: 44px;
+  padding: 0 var(--space-16) 0 var(--space-8);
+}
+.settings-dialog .prov-models-list li:hover {
+  background: color-mix(in srgb, var(--color-surface-text) 3%, transparent);
+}
+.settings-dialog .prov-models-list li[data-off] .prov-model-name {
+  opacity: 0.45;
+}
+.settings-dialog .prov-star {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--color-muted-text);
+  cursor: pointer;
+}
+.settings-dialog .prov-star:hover:not(:disabled) {
+  color: var(--color-surface-text);
+}
+.settings-dialog .prov-star[aria-pressed="true"] {
+  color: #f5b84a;
+}
+.settings-dialog .prov-star[aria-pressed="true"] svg {
+  fill: currentColor;
+}
+.settings-dialog .prov-model-name {
+  display: flex;
+  flex: 1;
+  align-items: baseline;
+  gap: var(--space-8);
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--font-size-13);
+  white-space: nowrap;
+}
+.settings-dialog .prov-model-name > span:first-child:not(.prov-model-tag) {
+  color: var(--color-surface-text);
+  font-weight: 500;
+}
+.settings-dialog .prov-model-name > code {
+  overflow: hidden;
+  color: var(--color-muted-text);
+  font-family: "Geist Mono", var(--font-family-mono);
+  font-size: var(--font-size-12);
+  text-overflow: ellipsis;
+}
+.settings-dialog .prov-model-name > code:first-child {
+  color: var(--color-surface-text);
+}
+.settings-dialog .prov-model-tag {
+  flex: none;
+  padding: 1px 6px;
+  border: var(--border-width) solid var(--sheet-line);
+  border-radius: 6px;
+  color: var(--color-muted-text);
+  font-size: var(--font-size-11);
+}
+.settings-dialog .prov-model-actions {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.settings-dialog .prov-models-list li:hover .prov-model-actions,
+.settings-dialog .prov-model-actions:focus-within {
+  opacity: 1;
+}
+.settings-dialog .prov-model-actions .icon-button {
+  width: 26px;
+  height: 26px;
+}
+.settings-dialog .prov-models-empty {
+  margin: 0;
+  padding: var(--space-24);
+  color: var(--color-muted-text);
+  font-size: var(--font-size-13);
+  text-align: center;
+}
+.settings-dialog [data-spinning] svg {
+  animation: prov-spin 900ms linear infinite;
+}
+@keyframes prov-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings-dialog [data-spinning] svg {
+    animation: none;
+  }
+}
+
+/* Defaults page */
+.settings-dialog .defaults-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+/* Icons sit inside the field, before the value. */
+.settings-dialog .defaults-select {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.settings-dialog .defaults-select-icon {
+  position: absolute;
+  left: 12px;
+  z-index: 1;
+  color: var(--color-muted-text);
+  pointer-events: none;
+}
+.settings-dialog .settings-page .defaults-select .select-trigger {
+  padding-left: 34px;
+}
+/* The model picker reads as a field like the selects beside it. */
+.settings-dialog .settings-page .defaults-controls .thread-picker-trigger {
+  min-height: 36px;
+  padding: 0 var(--space-12);
+  border: var(--border-width) solid var(--sheet-line);
+  border-radius: 10px;
+  background: var(--sheet-field);
+  font-size: var(--font-size-14);
+}
+.settings-dialog
+  .settings-page
+  .defaults-controls
+  .thread-picker-trigger:hover:not(:disabled),
+.settings-dialog
+  .settings-page
+  .defaults-controls
+  .thread-picker-trigger[aria-expanded="true"] {
+  border-color: var(--lomi-control-border);
+  background: var(--sheet-field);
+}
+.settings-dialog .defaults-controls {
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+}
+.settings-dialog .defaults-controls .thread-picker-menu {
+  top: calc(100% + 6px);
+  bottom: auto;
+  right: 0;
+  left: auto;
+}
+.settings-dialog .setting-controls .defaults-controls .select-trigger {
+  width: 150px;
+}
+.settings-dialog .defaults-controls {
+  flex-direction: row;
+  width: max-content;
+}
+/* The model menu overflows the card instead of being clipped by it. */
+.settings-dialog .defaults-section .settings-group {
+  overflow: visible;
+}
+.settings-dialog
+  .settings-page
+  .thread-picker-menu
+  input.thread-picker-search:not([type="checkbox"]):not([type="radio"]):not(
+    [type="range"]
+  ):not([type="color"]),
+.settings-dialog
+  .settings-page
+  .thread-picker-menu
+  input.thread-picker-search:not([type="checkbox"]):not([type="radio"]):not(
+    [type="range"]
+  ):not([type="color"]):hover,
+.settings-dialog
+  .settings-page
+  .thread-picker-menu
+  input.thread-picker-search:not([type="checkbox"]):not([type="radio"]):not(
+    [type="range"]
+  ):not([type="color"]):focus-visible {
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  border-bottom: 1px solid
+    var(--thread-line, var(--sheet-line, var(--color-outline)));
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+/* The thread composer caps the picker width; settings rows size it to content. */
+.settings-dialog .defaults-controls .thread-picker {
+  max-width: none;
+}
+.settings-dialog .defaults-controls .icon-button {
+  width: 36px;
+  height: 36px;
+}

@@ -75,11 +75,14 @@ export function useGitFileActions(props: {
   const ignore = (local: boolean) =>
     run(async () => {
       const action = async () => {
-        const result = await api<{ warning?: string | null }>("ignore_project_item", {
-          root: props.root,
-          relative: context!.file.path,
-          local,
-        });
+        const result = await api<{ warning?: string | null }>(
+          "ignore_project_item",
+          {
+            root: props.root,
+            relative: context!.file.path,
+            local,
+          },
+        );
         if (result.warning) props.onError(result.warning);
       };
       if (props.working) await props.working.onRun(action);
@@ -98,14 +101,14 @@ export function useGitFileActions(props: {
         ...(change && props.working
           ? [
               {
-                label: file.staged ? "Unstage File" : "Stage File",
+                label: file.staged ? "Unstage file" : "Stage file",
                 disabled,
                 run: () => props.working!.onStage(change, !file.staged),
               },
               ...(!file.staged
                 ? [
                     {
-                      label: "Discard Changes…",
+                      label: "Discard changes…",
                       danger: true,
                       disabled,
                       run: () => {
@@ -117,12 +120,12 @@ export function useGitFileActions(props: {
                 : []),
               null,
               {
-                label: "Unstaged Changes",
+                label: "Unstaged changes",
                 disabled: [" ", "!"].includes(change.worktree),
                 run: () => props.onDiff(file.path, false),
               },
               {
-                label: "Staged Changes",
+                label: "Staged changes",
                 disabled: [" ", "?", "!"].includes(change.index),
                 run: () => props.onDiff(file.path, true),
               },
@@ -130,14 +133,14 @@ export function useGitFileActions(props: {
             ]
           : []),
         {
-          label: "Copy Path",
+          label: "Copy path",
           run: () =>
             run(() =>
               writeText(`${props.root.replace(/[\\/]$/, "")}/${file.path}`),
             ),
         },
         {
-          label: "Copy Relative Path",
+          label: "Copy relative path",
           run: () => run(() => writeText(file.path)),
         },
         ...(change
@@ -157,16 +160,16 @@ export function useGitFileActions(props: {
           : []),
         null,
         {
-          label: "Open Diff",
+          label: "Open diff",
           run: () => props.onDiff(file.path, !!file.staged),
         },
         {
-          label: change ? "View File" : "View Working File",
+          label: change ? "View file" : "View working file",
           disabled: file.deleted || file.path.endsWith("/"),
           run: () => props.onOpenFile(file.path),
         },
         null,
-        { label: "View File History", run: () => setHistory(file.path) },
+        { label: "View file history", run: () => setHistory(file.path) },
       ]}
     />
   );
@@ -194,7 +197,7 @@ export function useGitFileActions(props: {
       {discard && (
         <Modal
           protectTheme
-          title="Discard Changes"
+          title="Discard changes"
           tone="danger"
           closeDisabled={busy}
           onClose={() => {
@@ -255,8 +258,8 @@ export function useGitFileActions(props: {
                 {busy
                   ? "Working…"
                   : discard.index === "?"
-                    ? "Move to Trash"
-                    : "Discard Changes"}
+                    ? "Move to trash"
+                    : "Discard changes"}
               </button>
             </div>
           </form>

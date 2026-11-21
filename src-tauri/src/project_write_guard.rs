@@ -303,26 +303,6 @@ impl NativeIntentHandle {
         }
     }
 
-    pub(crate) fn before_helper_release(
-        &self,
-        purpose: &crate::agent_runtime::NativeHostPurpose,
-    ) -> Result<(), String> {
-        let registered_read_only_helper = matches!(
-            purpose,
-            crate::agent_runtime::NativeHostPurpose::VersionProbe
-                | crate::agent_runtime::NativeHostPurpose::Resolver
-        );
-        {
-            let session = self.inner.lock().map_err(|_| UNAVAILABLE)?;
-            if matches!(&session.phase, NativeIntentPhase::Registered)
-                && registered_read_only_helper
-            {
-                return Ok(());
-            }
-        }
-        self.check_active(true)
-    }
-
     pub(crate) fn check_for_execution(&self) -> Result<(), String> {
         let session = self.inner.lock().map_err(|_| UNAVAILABLE)?;
         let active = matches!(&session.phase, NativeIntentPhase::Active { .. });

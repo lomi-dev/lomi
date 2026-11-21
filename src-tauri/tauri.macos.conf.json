@@ -8,8 +8,8 @@
         "target.'cfg(target_os = \"macos\")'.runner = [\"sh\", \"../scripts/run-macos-dev.sh\"]"
       ]
     },
-    "beforeDevCommand": "pnpm ai:prepare && pnpm icon:macos && pnpm dev",
-    "beforeBuildCommand": "pnpm icon:macos && pnpm ai:prepare && pnpm build",
+    "beforeDevCommand": "pnpm icon:macos && pnpm dev",
+    "beforeBuildCommand": "pnpm icon:macos && pnpm build",
     "beforeBundleCommand": "pnpm icon:macos"
   },
   "app": {
@@ -54,8 +54,7 @@
       },
       "files": {
         "Resources/Assets.car": "target/macos-icon/Assets.car"
-      },
-      "entitlements": "ai-runtime.entitlements.plist"
+      }
     }
   }
 }

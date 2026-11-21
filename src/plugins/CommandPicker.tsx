@@ -7,7 +7,7 @@ import { pluginHost } from "./runtime";
 import { commandAvailable } from "./host";
 import { errorMessage } from "../api";
 import { Search } from "../icons";
-import { formatShortcut } from "../keybindings";
+import Keycaps from "../Keycaps";
 export default function CommandPicker({
   onClose,
   onBuiltin,
@@ -41,8 +41,6 @@ export default function CommandPicker({
     if (id === "openSettings" || id === "toggleWorkspaces" || isZoomAction(id))
       return true;
     if (!context.workspaceName) return false;
-    if (["chatFocusInput", "chatStop", "chatHistory"].includes(id))
-      return context.viewType === "chat";
     if (id === "movePanel")
       return document.querySelectorAll(".dock-pane-host").length > 1;
     if (id === "dockTab")
@@ -148,11 +146,9 @@ export default function CommandPicker({
               >
                 <span>{command.label}</span>
                 <small>{command.group}</small>
-                {bindings[command.id] && (
-                  <kbd aria-hidden="true">
-                    {formatShortcut(bindings[command.id])}
-                  </kbd>
-                )}
+                <span aria-hidden="true">
+                  <Keycaps binding={bindings[command.id]} />
+                </span>
               </button>
             );
           })}

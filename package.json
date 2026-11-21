@@ -10,10 +10,10 @@
   },
   "scripts": {
     "dev": "vite",
-    "check": "tsc --noEmit && pnpm ai:check",
+    "check": "tsc --noEmit",
     "check:rust": "cargo check --manifest-path src-tauri/Cargo.toml --workspace --locked",
-    "format": "prettier --write src *.ts *.json *.md .github/*.md .github/workflows/*.yml scripts/*.mjs docs/*.md releases/*.md packages themes vendor",
-    "format:check": "prettier --check src *.ts *.json *.md .github/*.md .github/workflows/*.yml scripts/*.mjs docs/*.md releases/*.md packages themes vendor",
+    "format": "prettier --write src *.ts *.json *.md .github/*.md .github/workflows/*.yml scripts/*.mjs docs/*.md releases/*.md themes vendor",
+    "format:check": "prettier --check src *.ts *.json *.md .github/*.md .github/workflows/*.yml scripts/*.mjs docs/*.md releases/*.md themes vendor",
     "build": "pnpm check && vite build",
     "preview": "vite preview",
     "icon:macos": "node scripts/build-macos-icon.mjs",
@@ -21,11 +21,9 @@
     "dmg:background": "node scripts/generate-dmg-background.mjs",
     "release:check": "node scripts/check-release.mjs",
     "tauri": "tauri",
-    "ai:prepare": "node scripts/prepare-ai-runtime.mjs",
-    "ai:check": "pnpm --filter @lomi-dev/ai-runtime check"
+    "tauri:dev": "tauri dev --config src-tauri/tauri.dev.conf.json"
   },
   "dependencies": {
-    "@ai-sdk/react": "4.0.108",
     "@lomi/remote-contracts": "file:../lomi-remote/packages/remote-contracts",
     "@lomi/authority-crypto-wasm": "file:../remote-web/packages/authority-crypto-wasm",
     "@lomi/protocol-codec-wasm": "file:../remote-web/packages/protocol-codec-wasm",
@@ -63,7 +61,6 @@
     "@xterm/addon-web-links": "^0.12.0",
     "@xterm/addon-webgl": "^0.19.0",
     "@xterm/xterm": "^6.0.0",
-    "ai": "7.0.105",
     "dockview": "8.3.1",
     "jsonc-parser": "3.3.1",
     "lucide-react": "^1.41.0",

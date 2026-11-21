@@ -22,6 +22,7 @@ export default function ContextMenu({
   align = "start",
   trigger,
   className,
+  showDescriptions = false,
 }: {
   x: number;
   y: number;
@@ -31,6 +32,7 @@ export default function ContextMenu({
   align?: "start" | "end";
   trigger?: RefObject<HTMLButtonElement | null>;
   className?: string;
+  showDescriptions?: boolean;
 }) {
   const menu = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
@@ -120,7 +122,14 @@ export default function ContextMenu({
             }}
           >
             {action.icon}
-            <span>{action.label}</span>
+            {showDescriptions && action.description ? (
+              <span className="menu-item-copy">
+                <span>{action.label}</span>
+                <small>{action.description}</small>
+              </span>
+            ) : (
+              <span>{action.label}</span>
+            )}
             {action.badge && (
               <span className="menu-item-badge">{action.badge}</span>
             )}

@@ -10,6 +10,7 @@ import "./styles.css";
 import "./content-ui.css";
 import "./workflow-ui.css";
 import "./dialog-ui.css";
+import "./settings.css";
 
 const App = lazy(() => import("./App"));
 const DesktopRemoteV2Client = lazy(() =>

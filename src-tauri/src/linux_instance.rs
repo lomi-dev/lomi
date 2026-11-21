@@ -21,13 +21,9 @@ fn wait_for_owners(
     let mut on_contention = Some(on_contention);
     let deadline = Instant::now() + timeout;
     loop {
-        // Keep both probes alive together. A failed attempt drops any partial
-        // acquisition before sleeping, so it cannot obstruct the retiring owner.
-        let result: io::Result<_> = (|| {
-            let runtime = probe_owner(&data.join("agent-runtime"))?;
-            let chat = probe_owner(&data.join("chat-ai"))?;
-            Ok((runtime, chat))
-        })();
+        // A failed attempt drops any acquisition before sleeping, so it
+        // cannot obstruct the retiring owner.
+        let result: io::Result<_> = (|| probe_owner(&data.join("agent-runtime")))();
         match result {
             Ok(_owners) => return Ok(()),
             Err(error) if error.kind() == io::ErrorKind::WouldBlock => {

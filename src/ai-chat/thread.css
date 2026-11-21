@@ -1,0 +1,735 @@
+/* Fills its tab or split panel whichever flex direction the container uses. */
+.thread-pane {
+  flex: 1 1 auto;
+  width: 100%;
+  --thread-accent: var(--color-primary);
+  --thread-line: color-mix(in srgb, var(--color-outline) 55%, transparent);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  background: var(--color-surface);
+  color: var(--color-surface-text);
+  font-size: var(--font-size-13);
+  line-height: 1.6;
+}
+.thread-header {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: var(--space-4);
+  min-height: 40px;
+  padding: var(--space-4) var(--space-12);
+  border-bottom: 1px solid
+    var(--thread-line, var(--sheet-line, var(--color-outline)));
+}
+.thread-title,
+.thread-title-input {
+  flex: 1;
+  min-width: 0;
+  margin-right: var(--space-8);
+  font: inherit;
+  font-weight: 600;
+}
+.thread-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.thread-header .icon-button[aria-pressed="true"] {
+  background: var(--color-surface-container-highest);
+}
+.thread-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.thread-main {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.thread-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.thread-column,
+.thread-dock {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding-inline: var(--space-16);
+  box-sizing: border-box;
+}
+.thread-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-20);
+  padding-block: var(--space-24) var(--space-16);
+}
+.thread-dock {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: var(--space-8);
+  padding-bottom: var(--space-16);
+}
+.thread-empty {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  color: var(--color-muted-text);
+  text-align: center;
+}
+.thread-empty p {
+  margin: 0;
+}
+.thread-empty-title {
+  color: var(--color-surface-text);
+  font-size: 18px;
+  font-weight: 600;
+}
+.thread-note {
+  margin: 0;
+  color: var(--color-muted-text);
+  font-size: var(--font-size-12);
+}
+
+.thread-msg-user {
+  display: flex;
+  justify-content: flex-end;
+}
+.thread-bubble {
+  max-width: 85%;
+  padding: var(--space-8) var(--space-14);
+  border-radius: 14px;
+  background: var(--color-surface-container);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.thread-msg-assistant {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  min-width: 0;
+}
+.thread-prose {
+  overflow-wrap: anywhere;
+}
+.thread-prose > :first-child {
+  margin-top: 0;
+}
+.thread-prose > :last-child {
+  margin-bottom: 0;
+}
+.thread-prose p,
+.thread-prose ul,
+.thread-prose ol,
+.thread-prose table,
+.thread-prose blockquote {
+  margin: 0 0 var(--space-12);
+}
+.thread-prose h1,
+.thread-prose h2,
+.thread-prose h3 {
+  margin: var(--space-16) 0 var(--space-8);
+  font-size: 1.1em;
+  line-height: 1.3;
+}
+.thread-prose a {
+  color: var(--color-accent-text);
+  text-underline-offset: 2px;
+}
+.thread-prose blockquote {
+  padding-left: var(--space-12);
+  border-left: 2px solid
+    var(--thread-line, var(--sheet-line, var(--color-outline)));
+  color: var(--color-muted-text);
+}
+.thread-prose table {
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+}
+.thread-prose th,
+.thread-prose td {
+  padding: var(--space-4) var(--space-10);
+  border: 1px solid var(--thread-line, var(--sheet-line, var(--color-outline)));
+}
+.thread-prose :not(pre) > code {
+  padding: 1px 5px;
+  border-radius: 6px;
+  background: var(--color-surface-container);
+  font-family: var(--font-family-mono);
+  font-size: 0.9em;
+}
+.thread-msg-assistant[data-streaming] .thread-prose > :last-child::after,
+.thread-msg-assistant[data-streaming] .thread-prose:empty::after {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 1.05em;
+  margin-left: 2px;
+  border-radius: 2px;
+  background: var(--thread-accent);
+  vertical-align: text-bottom;
+  animation: thread-caret 1s steps(2, start) infinite;
+}
+@keyframes thread-caret {
+  to {
+    visibility: hidden;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .thread-msg-assistant[data-streaming] .thread-prose > :last-child::after,
+  .thread-msg-assistant[data-streaming] .thread-prose:empty::after {
+    animation: none;
+  }
+}
+
+.thread-code {
+  margin: 0 0 var(--space-12);
+  overflow: hidden;
+  border: 1px solid var(--thread-line, var(--sheet-line, var(--color-outline)));
+  border-radius: 10px;
+  background: var(--color-background);
+}
+.thread-code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-4) var(--space-4) var(--space-12);
+  color: var(--color-muted-text);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-11);
+}
+.thread-code pre {
+  margin: 0;
+  padding: 0 var(--space-12) var(--space-12);
+  overflow-x: auto;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-12);
+  line-height: 1.55;
+}
+.thread-code-copy,
+.thread-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 2px var(--space-8);
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-muted-text);
+  font: inherit;
+  font-size: var(--font-size-11);
+  cursor: pointer;
+}
+.thread-code-copy:hover,
+.thread-link:hover {
+  background: var(--color-surface-container-highest);
+  color: var(--color-surface-text);
+}
+.thread-link {
+  color: var(--color-accent-text);
+}
+
+.thread-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.thread-tool {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  color: var(--color-muted-text);
+  font-size: var(--font-size-12);
+}
+.thread-tool-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-family-mono);
+}
+.thread-tool-state {
+  opacity: 0.75;
+}
+.thread-tool[data-state="failed"] {
+  color: var(--color-error);
+}
+
+.thread-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-8) var(--space-12);
+  border-radius: 10px;
+  background: var(--color-surface-container);
+  color: var(--color-muted-text);
+  font-size: var(--font-size-12);
+}
+.thread-notice[role="alert"] {
+  background: color-mix(in srgb, var(--color-error) 12%, transparent);
+  color: var(--color-surface-text);
+}
+
+.thread-composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-10) var(--space-10) var(--space-8);
+  border: 1px solid var(--thread-line, var(--sheet-line, var(--color-outline)));
+  border-radius: 16px;
+  background: var(--color-surface-container);
+}
+.thread-composer:focus-within {
+  border-color: color-mix(
+    in srgb,
+    var(--thread-accent) 60%,
+    var(--thread-line, var(--sheet-line, var(--color-outline)))
+  );
+}
+.thread-composer textarea {
+  width: 100%;
+  min-height: calc(1lh + var(--space-4));
+  max-height: 220px;
+  padding: var(--space-4) var(--space-4) 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  resize: none;
+  box-sizing: border-box;
+}
+.thread-composer textarea:focus-visible {
+  outline: 0;
+}
+.thread-composer-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+.thread-composer-hint {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--color-muted-text);
+  font-size: var(--font-size-11);
+  text-align: right;
+}
+/* IconButton replaces its base class when given className, so this is self-contained. */
+.thread-send {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+  cursor: pointer;
+  transition:
+    opacity 140ms ease-out,
+    transform 140ms ease-out;
+}
+.thread-send > svg {
+  display: block;
+}
+.thread-send:hover:not(:disabled) {
+  opacity: 0.88;
+}
+.thread-send:active:not(:disabled) {
+  transform: scale(0.94);
+}
+.thread-send:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.thread-stop {
+  background: var(--color-surface-container-highest);
+  color: var(--color-surface-text);
+}
+
+.thread-picker {
+  position: relative;
+  flex-shrink: 0;
+  max-width: 60%;
+}
+.thread-picker-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+  padding: var(--space-4) var(--space-8);
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-surface-text);
+  font: inherit;
+  font-size: var(--font-size-12);
+  cursor: pointer;
+}
+.thread-picker-trigger:hover:not(:disabled),
+.thread-picker-trigger[aria-expanded="true"] {
+  background: var(--color-surface-container-highest);
+}
+.thread-picker-trigger .cli-agent-icon {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+}
+.thread-picker-label {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.thread-picker-menu {
+  position: absolute;
+  top: auto;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  width: 320px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--thread-line, var(--sheet-line, var(--color-outline)));
+  border-radius: 12px;
+  background: var(--color-surface-container-high);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.25);
+}
+.thread-picker-menu .thread-picker-search {
+  width: 100%;
+  min-height: 0;
+  padding: var(--space-10) var(--space-12);
+  border: 0;
+  border-bottom: 1px solid
+    var(--thread-line, var(--sheet-line, var(--color-outline)));
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-surface-text);
+  font: inherit;
+  font-size: var(--font-size-13);
+  box-shadow: none;
+  outline: none;
+}
+.thread-picker-groups {
+  max-height: 320px;
+  padding: var(--space-4) var(--space-6) var(--space-6);
+  overflow-y: auto;
+}
+.thread-picker-groups section + section {
+  margin-top: var(--space-4);
+}
+.thread-picker-groups h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  margin: 0;
+  padding: var(--space-8) var(--space-8) var(--space-4);
+  color: var(--color-muted-text);
+  font-size: var(--font-size-11);
+  font-weight: 500;
+}
+.thread-picker-groups h3 .cli-agent-icon,
+.thread-picker-groups h3 .cli-agent-icon > svg {
+  flex: 0 0 13px;
+  width: 13px;
+  height: 13px;
+}
+.thread-picker-groups ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.thread-picker-groups button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  width: 100%;
+  min-height: 32px;
+  padding: 0 var(--space-8);
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-surface-text);
+  font: inherit;
+  font-size: var(--font-size-13);
+  text-align: left;
+  cursor: pointer;
+}
+.thread-picker-groups button:hover,
+.thread-picker-groups button:focus-visible {
+  background: var(--color-surface-container-highest);
+  outline: none;
+}
+.thread-picker-groups .thread-picker-name {
+  flex: none;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.thread-picker-groups code {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-muted-text);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-11);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.thread-picker-groups button > svg {
+  flex: none;
+  margin-left: auto;
+  color: var(--color-surface-text);
+}
+.thread-picker-empty {
+  margin: 0;
+  padding: var(--space-16) var(--space-8);
+  color: var(--color-muted-text);
+  font-size: var(--font-size-13);
+  text-align: center;
+}
+
+.thread-history {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: var(--space-8);
+  width: 260px;
+  padding: var(--space-12) var(--space-8);
+  overflow-y: auto;
+  border-left: 1px solid
+    var(--thread-line, var(--sheet-line, var(--color-outline)));
+}
+.thread-history h2 {
+  margin: 0 var(--space-8);
+  color: var(--color-muted-text);
+  font-size: var(--font-size-11);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.thread-history ul {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.thread-history li {
+  display: flex;
+  align-items: center;
+  border-radius: 8px;
+}
+.thread-history li:hover,
+.thread-history li[data-active] {
+  background: var(--color-surface-container-highest);
+}
+.thread-history li .icon-button {
+  visibility: hidden;
+}
+.thread-history li:hover .icon-button,
+.thread-history li:focus-within .icon-button {
+  visibility: visible;
+}
+.thread-history-open {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  padding: var(--space-6) var(--space-8);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.thread-history-title,
+.thread-history-open small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.thread-history-open small {
+  color: var(--color-muted-text);
+  font-size: var(--font-size-11);
+}
+
+.thread-pane {
+  position: relative;
+}
+.thread-drop {
+  position: absolute;
+  inset: var(--space-8);
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--thread-line);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--color-surface) 88%, transparent);
+  color: var(--color-muted-text);
+  font-size: var(--font-size-13, 13px);
+  pointer-events: none;
+}
+
+.thread-attachments {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: 0 var(--space-4);
+}
+.thread-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6, 6px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.thread-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  max-width: 240px;
+  padding: 3px var(--space-6, 6px) 3px 3px;
+  border: 1px solid var(--thread-line);
+  border-radius: 10px;
+  background: var(--color-surface);
+  font-size: var(--font-size-12, 12px);
+}
+.thread-chip-thumb {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  overflow: hidden;
+  border-radius: 7px;
+  background: var(--color-surface-container);
+  color: var(--color-muted-text);
+}
+.thread-chip-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.thread-chip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.thread-chip-size {
+  flex: none;
+  color: var(--color-muted-text);
+  font-size: var(--font-size-11);
+}
+.thread-chip-busy {
+  color: var(--color-muted-text);
+}
+.thread-chip-busy .thread-chip-thumb {
+  animation: thread-pulse 1.2s ease-in-out infinite;
+}
+@keyframes thread-pulse {
+  50% {
+    opacity: 0.4;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .thread-chip-busy .thread-chip-thumb {
+    animation: none;
+  }
+}
+/* IconButton replaces its base class when given className. */
+.thread-chip-remove {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-muted-text);
+  cursor: pointer;
+}
+.thread-chip-remove:hover {
+  background: var(--color-surface-container);
+  color: inherit;
+}
+.thread-attachment-error {
+  margin: 0;
+  color: var(--color-error);
+  font-size: var(--font-size-11);
+}
+
+.thread-msg-user {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-6, 6px);
+}
+.thread-message-attachments {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-6, 6px);
+  max-width: 85%;
+}
+.thread-message-attachments .thread-chips {
+  justify-content: flex-end;
+}
+.thread-images {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-6, 6px);
+}
+.thread-image {
+  display: grid;
+  place-items: center;
+  width: 120px;
+  height: 120px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--thread-line);
+  border-radius: 12px;
+  background: var(--color-surface-container);
+  color: var(--color-muted-text);
+  cursor: zoom-in;
+}
+.thread-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.thread-lightbox img {
+  display: block;
+  max-width: 100%;
+  max-height: 75vh;
+  margin: 0 auto;
+  border-radius: 10px;
+}

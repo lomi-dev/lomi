@@ -4,9 +4,9 @@
   "version": "0.6.1",
   "identifier": "dev.lomi.desktop",
   "build": {
-    "beforeDevCommand": "pnpm ai:prepare && pnpm dev",
+    "beforeDevCommand": "pnpm dev",
     "devUrl": "http://127.0.0.1:1420",
-    "beforeBuildCommand": "pnpm ai:prepare && pnpm build",
+    "beforeBuildCommand": "pnpm build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -48,16 +48,6 @@
       "icons/icon.ico"
     ],
     "createUpdaterArtifacts": true,
-    "externalBin": ["binaries/lomi-node"],
-    "resources": {
-      "resources/native-runtime-capabilities.json": "native-runtime-capabilities.json",
-      "resources/grok/": "agent-grok/",
-      "resources/ai-runtime/index.cjs": "ai-runtime/index.cjs",
-      "resources/ai-runtime/NODE-LICENSE": "ai-runtime/NODE-LICENSE",
-      "resources/ai-runtime/node.json": "ai-runtime/node.json",
-      "resources/ai-runtime/THIRD-PARTY-NOTICES": "ai-runtime/THIRD-PARTY-NOTICES",
-      "resources/ai-runtime/index.cjs.sha256": "ai-runtime/index.cjs.sha256"
-    },
     "linux": {
       "deb": {
         "desktopTemplate": "desktop/lomi.desktop"

@@ -40,13 +40,7 @@ export interface Split {
   second: Layout;
 }
 export type LayoutPane =
-  | Pane
-  | FileTab
-  | BrowserTab
-  | AndroidTab
-  | ChatTab
-  | AgentTaskTab
-  | PluginPanel;
+  Pane | FileTab | BrowserTab | AndroidTab | ThreadTab | PluginPanel;
 export type Layout = LayoutPane | Split;
 export interface LayoutSize {
   width: number;
@@ -58,7 +52,13 @@ export interface LayoutBounds extends LayoutSize {
 }
 export const MIN_PANE_WIDTH = 240;
 export const MIN_PANE_HEIGHT = 120;
+export const MIN_THREAD_WIDTH = 360;
+export const MIN_THREAD_HEIGHT = 280;
 export const SPLIT_DIVIDER_SIZE = 3;
+export const paneMinimumSize = (pane: LayoutPane): LayoutSize =>
+  pane.type === "thread"
+    ? { width: MIN_THREAD_WIDTH, height: MIN_THREAD_HEIGHT }
+    : { width: MIN_PANE_WIDTH, height: MIN_PANE_HEIGHT };
 export interface TerminalTab {
   type: "terminal";
   id: string;
@@ -172,96 +172,44 @@ export function updateAndroid(
     })),
   };
 }
-export interface AgentTaskTab {
-  type: "agent-task";
+export interface ThreadTab {
+  type: "thread";
   id: string;
   title: string;
   customTitle?: string;
-  taskId: string;
+  threadId: string | null;
 }
-export const newAgentTaskTab = (
-  taskId: string,
-  title = "CLI Agent",
-): AgentTaskTab => ({
-  type: "agent-task",
+export const newThreadTab = (title = "New chat"): ThreadTab => ({
+  type: "thread",
   id: newId(),
   title,
-  taskId,
+  threadId: null,
 });
-export function agentTaskTabs(session?: Session): AgentTaskTab[] {
-  return (
-    session?.projects.flatMap((p) =>
-      p.workspaces.flatMap((w) =>
-        w.tabs.flatMap((t) =>
-          t.type === "terminal"
-            ? layoutPanes(t.layout).filter(
-                (p): p is AgentTaskTab => p.type === "agent-task",
-              )
-            : t.type === "agent-task"
-              ? [t]
-              : [],
-        ),
-      ),
-    ) ?? []
-  );
-}
-export interface ChatTab {
-  type: "chat";
-  id: string;
-  title: string;
-  customTitle?: string;
-  conversationId: string;
-}
-export const newChatTab = (
-  conversationId: string,
-  title = "Chat AI",
-): ChatTab => ({
-  type: "chat",
-  id: newId(),
-  title,
-  conversationId,
-});
-export function chatTabs(session?: Session): ChatTab[] {
-  return (
-    session?.projects.flatMap((p) =>
-      p.workspaces.flatMap((w) =>
-        w.tabs.flatMap((t) =>
-          t.type === "terminal"
-            ? layoutPanes(t.layout).filter(
-                (p): p is ChatTab => p.type === "chat",
-              )
-            : t.type === "chat"
-              ? [t]
-              : [],
-        ),
-      ),
-    ) ?? []
-  );
-}
-export function updateChat(
+export function updateThread(
   session: Session,
   id: string,
-  change: Partial<Pick<ChatTab, "conversationId" | "title">>,
+  change: Partial<Pick<ThreadTab, "threadId" | "title">>,
 ): Session {
+  const patch = (tab: ThreadTab): ThreadTab => ({ ...tab, ...change });
+  const apply = (layout: Layout): Layout =>
+    layout.type === "split"
+      ? { ...layout, first: apply(layout.first), second: apply(layout.second) }
+      : layout.type === "thread" && layout.id === id
+        ? patch(layout)
+        : layout;
   return {
     ...session,
-    projects: session.projects.map((p) => ({
-      ...p,
-      workspaces: p.workspaces.map((w) => ({
-        ...w,
-        tabs: w.tabs.map((t) => {
-          const apply = (p: Layout): Layout =>
-            p.type === "split"
-              ? { ...p, first: apply(p.first), second: apply(p.second) }
-              : p.type === "chat" && p.id === id
-                ? { ...p, ...change }
-                : p;
-          return t.type === "chat" && t.id === id
-            ? { ...t, ...change }
-            : t.type === "terminal"
-              ? { ...t, layout: apply(t.layout) }
-              : t;
-        }),
+    projects: session.projects.map((project) => ({
+      ...project,
+      workspaces: project.workspaces.map((workspace) => ({
+        ...workspace,
+        tabs: workspace.tabs.map((tab) =>
+          tab.type === "terminal"
+            ? { ...tab, layout: apply(tab.layout) }
+            : tab.type === "thread" && tab.id === id
+              ? patch(tab)
+              : tab,
+        ),
       })),
     })),
   };
@@ -279,8 +227,7 @@ export type Tab =
   | FileTab
   | BrowserTab
   | AndroidTab
-  | ChatTab
-  | AgentTaskTab
+  | ThreadTab
   | PluginPanel;
 export const tabTitle = (tab: Tab) => tab.customTitle ?? tab.title;
 export type TabDropSide = "left" | "right" | "top" | "bottom";
@@ -304,7 +251,7 @@ export type SidebarPanel =
   "files" | "git" | "workspaces" | `${string}.${string}`;
 export type SidebarSide = "left" | "right";
 export interface Session {
-  version: 5;
+  version: 6;
   activeProjectId: string | null;
   projects: Project[];
   sidebar: SidebarPanel | null;
@@ -402,12 +349,17 @@ export function newWorkspace(
   cwd: string,
   profileId: string,
   name = "Default",
+  chat = false,
 ): Workspace {
-  const tab = newTab(cwd, profileId);
+  const tab = chat ? newThreadTab() : newTab(cwd, profileId);
   return { id: newId(), name, tabs: [tab], activeTabId: tab.id };
 }
-export function newProject(path: string, profileId: string): Project {
-  const workspace = newWorkspace(path, profileId);
+export function newProject(
+  path: string,
+  profileId: string,
+  chat = false,
+): Project {
+  const workspace = newWorkspace(path, profileId, "Default", chat);
   return {
     id: newId(),
     path,
@@ -472,10 +424,11 @@ export function removeWorkspace(session: Session, id: string): Session {
 }
 export function newSession(): Session {
   return {
-    version: 5,
+    version: 6,
     projects: [],
     activeProjectId: null,
-    sidebar: "files",
+    // First launch shows where projects and workspaces will appear.
+    sidebar: "workspaces",
     sidebarWidth: 250,
     rightSidebar: null,
     rightSidebarWidth: 250,
@@ -536,8 +489,7 @@ export function activePanel(
     : tab;
 }
 export function minimumLayoutSize(layout: Layout): LayoutSize {
-  if (layout.type !== "split")
-    return { width: MIN_PANE_WIDTH, height: MIN_PANE_HEIGHT };
+  if (layout.type !== "split") return paneMinimumSize(layout);
   const first = minimumLayoutSize(layout.first);
   const second = minimumLayoutSize(layout.second);
   return layout.axis === "horizontal"
@@ -608,10 +560,13 @@ export function canSplitPane(
 ): boolean {
   if (!layoutFits(layout, size)) return false;
   const bounds = paneSize(layout, paneId, size);
-  if (!bounds) return false;
+  const pane = layoutPanes(layout).find((pane) => pane.id === paneId);
+  if (!bounds || !pane) return false;
+  // The added pane is always a terminal.
+  const existing = paneMinimumSize(pane);
   return axis === "horizontal"
-    ? bounds.width >= MIN_PANE_WIDTH * 2 + SPLIT_DIVIDER_SIZE
-    : bounds.height >= MIN_PANE_HEIGHT * 2 + SPLIT_DIVIDER_SIZE;
+    ? bounds.width >= existing.width + MIN_PANE_WIDTH + SPLIT_DIVIDER_SIZE
+    : bounds.height >= existing.height + MIN_PANE_HEIGHT + SPLIT_DIVIDER_SIZE;
 }
 export function mapLayout(
   layout: Layout,
@@ -976,10 +931,12 @@ export function canMergeTabs(
     source.id === target.id ||
     source.type === "commit" ||
     source.type === "diff" ||
-    target.type !== "terminal"
+    (target.type !== "terminal" && target.type !== "thread")
   )
     return false;
-  const first = minimumLayoutSize(target.layout);
+  const first = minimumLayoutSize(
+    target.type === "terminal" ? target.layout : target,
+  );
   const second = minimumLayoutSize(
     source.type !== "terminal" ? source : source.layout,
   );
@@ -996,17 +953,36 @@ export function mergeTabs(
   targetId: string,
   side: TabDropSide,
   size: LayoutSize,
+  defaultProfileId = "",
 ): Workspace {
   const source = workspace.tabs.find((tab) => tab.id === sourceId);
-  const target = workspace.tabs.find((tab) => tab.id === targetId);
+  const found = workspace.tabs.find((tab) => tab.id === targetId);
   if (
     !source ||
     source.type === "commit" ||
     source.type === "diff" ||
-    target?.type !== "terminal" ||
-    !canMergeTabs(source, target, side, size)
+    (found?.type !== "terminal" && found?.type !== "thread") ||
+    !canMergeTabs(source, found, side, size)
   )
     return workspace;
+  // A standalone thread becomes a layout container that keeps its pane id.
+  const target: TerminalTab =
+    found.type === "terminal"
+      ? found
+      : {
+          type: "terminal",
+          id: found.id,
+          title: found.title,
+          ...(found.customTitle !== undefined
+            ? { customTitle: found.customTitle }
+            : {}),
+          profileId:
+            (source.type === "terminal" ? source.profileId : undefined) ??
+            workspace.tabs.find((tab) => tab.type === "terminal")?.profileId ??
+            defaultProfileId,
+          activePaneId: found.id,
+          layout: found,
+        };
   // Moved panes retain their shells even after restoring or restarting them.
   const moved =
     source.type !== "terminal"
@@ -1347,7 +1323,7 @@ const string = (value: unknown, fallback: string) =>
 export function restoreSession(value: unknown, info: AppInfo): Session {
   const data = record(value);
   if (
-    ![1, 2, 3, 4, 5].includes(data.version as number) ||
+    ![1, 2, 3, 4, 5, 6].includes(data.version as number) ||
     !Array.isArray(data.projects)
   )
     if (value == null) return newSession();
@@ -1432,47 +1408,20 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
       ...(automation ? { automation } : {}),
     };
   };
-  const agentTask = (node: Record<string, unknown>): AgentTaskTab => {
+  const thread = (node: Record<string, unknown>): ThreadTab => {
     if (
-      typeof node.taskId !== "string" ||
-      !/^(?:legacy:)?[A-Za-z0-9_-]{1,100}$/.test(node.taskId)
+      node.threadId !== null &&
+      (typeof node.threadId !== "string" ||
+        !/^[a-f0-9]{32}$/.test(node.threadId))
     )
       throw new Error(
-        "Invalid saved CLI Agent descriptor. The session was preserved.",
+        "Invalid saved chat descriptor. The session was preserved.",
       );
     return {
-      type: "agent-task",
+      type: "thread",
       id: id(node.id),
-      title: string(node.title, "CLI Agent"),
-      taskId: node.taskId,
-      ...(typeof node.customTitle === "string"
-        ? { customTitle: node.customTitle }
-        : {}),
-    };
-  };
-  const legacyTask = (node: Record<string, unknown>): AgentTaskTab => {
-    if (
-      typeof node.runId !== "string" ||
-      !/^[A-Za-z0-9_-]{1,100}$/.test(node.runId)
-    )
-      throw new Error(
-        "Invalid saved CLI Agent descriptor. The session was preserved.",
-      );
-    return agentTask({ ...node, taskId: `legacy:${node.runId}` });
-  };
-  const chat = (node: Record<string, unknown>): ChatTab => {
-    if (
-      typeof node.conversationId !== "string" ||
-      !/^[A-Za-z0-9_-]{1,100}$/.test(node.conversationId)
-    )
-      throw new Error(
-        "Invalid saved conversation descriptor. The session was preserved.",
-      );
-    return {
-      type: "chat",
-      id: id(node.id),
-      title: string(node.title, "Chat AI"),
-      conversationId: node.conversationId,
+      title: string(node.title, "New chat"),
+      threadId: node.threadId,
       ...(typeof node.customTitle === "string"
         ? { customTitle: node.customTitle }
         : {}),
@@ -1530,28 +1479,38 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
       state: node.state,
     };
   };
-  const layout = (value: unknown, cwd: string, depth = 0): Layout => {
+  const layout = (value: unknown, cwd: string, depth = 0): Layout | null => {
     const node = record(value);
     if (node.type === "plugin") return plugin(node);
     if (node.type === "file") return file(node, cwd);
     if (node.type === "browser") return browser(node);
-    if (node.type === "cli-agent") return legacyTask(node);
-    if (node.type === "agent-task") return agentTask(node);
-    if (node.type === "chat") return chat(node);
+    // Retired panes are dropped; split parents collapse to the sibling.
+    if (
+      node.type === "chat" ||
+      node.type === "agent-task" ||
+      node.type === "cli-agent"
+    )
+      return null;
+    if (node.type === "thread") return thread(node);
     if (node.type === "android") return android(node);
     // Preserve every layout accepted by the native JSON parser's nesting limit.
-    if (node.type === "split" && depth < 128)
+    if (node.type === "split" && depth < 128) {
+      const splitId = id(node.id);
+      const first = layout(node.first, cwd, depth + 1);
+      const second = layout(node.second, cwd, depth + 1);
+      if (!first || !second) return first ?? second;
       return {
         type: "split",
-        id: id(node.id),
+        id: splitId,
         axis: node.axis === "vertical" ? "vertical" : "horizontal",
         ratio:
           typeof node.ratio === "number" && Number.isFinite(node.ratio)
             ? Math.max(0, Math.min(1, node.ratio))
             : 0.5,
-        first: layout(node.first, cwd, depth + 1),
-        second: layout(node.second, cwd, depth + 1),
+        first,
+        second,
       };
+    }
     if (node.type !== undefined && node.type !== "terminal")
       throw new Error("Unknown saved panel type. The session was preserved.");
     return {
@@ -1572,14 +1531,18 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
         Array.isArray(project.workspaces) ? project.workspaces : []
       ).map((value): Workspace => {
         const workspace = record(value);
-        const tabs = (Array.isArray(workspace.tabs) ? workspace.tabs : []).map(
-          (value): Tab => {
+        const tabs = (Array.isArray(workspace.tabs) ? workspace.tabs : [])
+          .map((value): Tab | null => {
             const tab = record(value);
             if (tab.type === "plugin") return plugin(tab);
             if (tab.type === "browser") return browser(tab);
-            if (tab.type === "cli-agent") return legacyTask(tab);
-            if (tab.type === "agent-task") return agentTask(tab);
-            if (tab.type === "chat") return chat(tab);
+            if (
+              tab.type === "chat" ||
+              tab.type === "agent-task" ||
+              tab.type === "cli-agent"
+            )
+              return null;
+            if (tab.type === "thread") return thread(tab);
             if (tab.type === "android") return android(tab);
             if (tab.type === "file") {
               return file(tab, path);
@@ -1616,6 +1579,7 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
                 "Unknown saved tab type. The session was preserved.",
               );
             const tree = layout(tab.layout, path);
+            if (!tree) return null;
             const leaves = layoutPanes(tree);
             return {
               type: "terminal",
@@ -1630,8 +1594,8 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
                 : leaves[0].id,
               layout: tree,
             };
-          },
-        );
+          })
+          .filter((tab): tab is Tab => tab !== null);
         if (!tabs.length) tabs.push(newTab(path, info.profiles[0]?.id ?? ""));
         const appearance = sanitizeWorkspaceAppearance(workspace.appearance);
         return {
@@ -1697,7 +1661,7 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
         : 180
       : 250;
   return {
-    version: 5,
+    version: 6,
     projects,
     activeProjectId:
       data.activeProjectId === null
@@ -1774,54 +1738,6 @@ export function updatePluginPanel(
               : tab,
         ),
       })),
-    })),
-  };
-}
-
-export function removeChatConversation(
-  session: Session,
-  conversationId: string,
-  profileId: string,
-): Session {
-  const prune = (layout: Layout): Layout | null => {
-    if (layout.type === "chat" && layout.conversationId === conversationId)
-      return null;
-    if (layout.type !== "split") return layout;
-    const first = prune(layout.first),
-      second = prune(layout.second);
-    return first && second ? { ...layout, first, second } : (first ?? second);
-  };
-  return {
-    ...session,
-    projects: session.projects.map((project) => ({
-      ...project,
-      workspaces: project.workspaces.map((workspace) => {
-        const tabs = workspace.tabs.flatMap((tab): Tab[] => {
-          if (tab.type === "chat" && tab.conversationId === conversationId)
-            return [];
-          if (tab.type !== "terminal") return [tab];
-          const layout = prune(tab.layout);
-          if (!layout) return [];
-          const panels = layoutPanes(layout);
-          return [
-            {
-              ...tab,
-              layout,
-              activePaneId: panels.some((p) => p.id === tab.activePaneId)
-                ? tab.activePaneId
-                : panels[0].id,
-            },
-          ];
-        });
-        if (!tabs.length) tabs.push(newTab(project.path, profileId));
-        return {
-          ...workspace,
-          tabs,
-          activeTabId: tabs.some((t) => t.id === workspace.activeTabId)
-            ? workspace.activeTabId
-            : tabs[0].id,
-        };
-      }),
     })),
   };
 }

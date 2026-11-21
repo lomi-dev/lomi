@@ -2,22 +2,8 @@ use lomi_remote_protocol::ipc::{LocalAuthClientId, LocalAuthOrigin, LocalRelayEn
 
 fn main() {
     configure_host_auth_bootstrap();
-    println!("cargo:rerun-if-changed=../packages/ai-runtime");
-    println!("cargo:rerun-if-changed=../src/chat/provider-presets.ts");
-    println!("cargo:rerun-if-changed=../scripts/prepare-ai-runtime.mjs");
     let target = std::env::var("TARGET").expect("missing Cargo target");
     println!("cargo:rustc-env=LOMI_AI_TARGET={target}");
-    let mut prepare = std::process::Command::new("node");
-    prepare
-        .arg("../scripts/prepare-ai-runtime.mjs")
-        .env("TARGET", &target);
-    assert!(
-        prepare
-            .status()
-            .expect("Install Node and run pnpm install before building")
-            .success(),
-        "AI runtime preparation failed"
-    );
 
     {
         println!("cargo:rerun-if-changed=android-proto/emulator_controller.proto");

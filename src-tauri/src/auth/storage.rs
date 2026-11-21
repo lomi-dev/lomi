@@ -124,12 +124,12 @@ impl Drop for CredentialStore {
 
 impl CredentialStore {
     pub fn open(root: &Path, environment: &str) -> Result<Self, String> {
-        crate::chat::storage::reject_link(root)?;
+        crate::storage_guard::reject_link(root)?;
         fs::create_dir_all(root).map_err(|_| "Cannot create account storage.")?;
-        crate::chat::storage::private(root, true)?;
+        crate::storage_guard::private(root, true)?;
         let root = fs::canonicalize(root).map_err(|_| "Cannot resolve account storage.")?;
         let owner_path = root.join("owner.lock");
-        crate::chat::storage::reject_link(&owner_path)?;
+        crate::storage_guard::reject_link(&owner_path)?;
         let owner = OpenOptions::new()
             .read(true)
             .write(true)
@@ -137,13 +137,13 @@ impl CredentialStore {
             .truncate(false)
             .open(&owner_path)
             .map_err(|_| "Cannot open account storage ownership lock.")?;
-        crate::chat::storage::private(&owner_path, false)?;
+        crate::storage_guard::private(&owner_path, false)?;
         owner
             .try_lock()
             .map_err(|_| "Another Lomi process owns account storage.")?;
 
         let metadata_path = root.join(METADATA_FILE);
-        crate::chat::storage::reject_link(&metadata_path)?;
+        crate::storage_guard::reject_link(&metadata_path)?;
         let metadata = read_metadata(&metadata_path)?;
         let service_environment = if environment.is_empty()
             || environment.len() > 128
@@ -261,7 +261,7 @@ impl CredentialStore {
         self.metadata.validate()?;
         let bytes = serde_json::to_vec(&self.metadata)
             .map_err(|_| "Cannot serialize account credential metadata.")?;
-        crate::chat::storage::atomic(&self.metadata_path, &bytes)
+        crate::storage_guard::atomic(&self.metadata_path, &bytes)
     }
 }
 

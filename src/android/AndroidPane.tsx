@@ -252,14 +252,14 @@ export default function AndroidPane({
             aria-label="Android navigation"
           >
             <IconButton
-              title="Android Back"
+              title="Android back"
               disabled={!running || overview}
               onClick={() => control({ type: "navigation", key: "GoBack" })}
             >
               <ArrowLeft size={14} />
             </IconButton>
             <IconButton
-              title="Android Home"
+              title="Android home"
               disabled={!running || overview}
               onClick={() => control({ type: "navigation", key: "GoHome" })}
             >
@@ -472,7 +472,7 @@ export default function AndroidPane({
                       }
                     >
                       {status?.processAlive
-                        ? "Retry Stop"
+                        ? "Retry stop"
                         : status?.phase === "failed"
                           ? "Retry start"
                           : "Start"}

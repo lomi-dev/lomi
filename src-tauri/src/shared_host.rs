@@ -515,8 +515,8 @@ fn native_git_app_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
         .app_data_dir()
         .map_err(|error| error.to_string())?;
     fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
-    crate::chat::storage::reject_link(&directory)?;
-    crate::chat::storage::private(&directory, true)?;
+    crate::storage_guard::reject_link(&directory)?;
+    crate::storage_guard::private(&directory, true)?;
     fs::canonicalize(&directory).map_err(|error| error.to_string())
 }
 
@@ -631,7 +631,7 @@ fn open_owner_private_lock_file(
             return Err(format!("The {label} lock is not a regular file."));
         }
     }
-    crate::chat::storage::private(path, false)
+    crate::storage_guard::private(path, false)
         .map_err(|_| format!("The {label} lock is not owner-private."))?;
     Ok(file)
 }

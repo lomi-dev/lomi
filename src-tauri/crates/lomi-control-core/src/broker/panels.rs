@@ -7,58 +7,12 @@ pub type TerminalCloseDispatch = Arc<
 pub type BrowserCloseDispatch =
     Arc<dyn Fn(Arc<crate::browser::BrowserControl>) -> Result<(), ErrorCode> + Send + Sync>;
 impl Broker {
-    pub(super) fn chat_panel_scope(
-        state: &State,
-        owner: &str,
-        panel: &str,
-        scope: &str,
-    ) -> Result<(), ErrorCode> {
-        let panel = state
-            .projection
-            .panels
-            .iter()
-            .find(|p| p.id == panel && p.kind == "chat")
-            .ok_or(ErrorCode::TargetNotFound)?;
-        Self::chat_access(state, owner, &panel.workspace_id)?;
-        let grant = &state.sessions[owner].grant;
-        if !grant.scopes.contains(scope)
-            || panel
-                .chat_conversation_id
-                .as_ref()
-                .is_none_or(|id| !grant.permits_chat_conversation(id))
-        {
-            return Err(ErrorCode::ScopeDenied);
-        }
-        Ok(())
-    }
     pub(super) fn validate_panel_action(
         state: &State,
         owner: &str,
         action: &UiAction,
     ) -> Result<(), ErrorCode> {
         match action {
-            UiAction::OpenChat(command) => {
-                if let Some(panel) = state.projection.panels.iter().find(|p| {
-                    p.workspace_id == command.workspace_id
-                        && p.kind == "chat"
-                        && p.chat_conversation_id.as_ref() == Some(&command.conversation_id)
-                }) {
-                    if panel.id != command.panel_id {
-                        return Err(ErrorCode::RevisionConflict);
-                    }
-                    Self::validate_panel_action(
-                        state,
-                        owner,
-                        &UiAction::FocusPanel {
-                            workspace_id: command.workspace_id.clone(),
-                            panel_id: panel.id.clone(),
-                            tab_id: panel.tab_id.clone(),
-                            terminal_session_id: None,
-                            browser_generation: None,
-                        },
-                    )?;
-                }
-            }
             UiAction::OpenProject(command) => Self::validate_project_open(state, owner, command)?,
             UiAction::CloseProject(command) => Self::validate_project_close(state, owner, command)?,
             UiAction::CloseWorkspace(command) => {
@@ -236,12 +190,6 @@ impl Broker {
                     Self::android_panel_access(state, owner, &p.id, focus)?;
                 } else if p.kind == "android" {
                     continue;
-                } else if p.kind == "chat" {
-                    if focus {
-                        Self::chat_panel_scope(state, owner, &p.id, "chat.open")?;
-                    } else if p.id == *panel_id {
-                        Self::closing_chats(state, owner, std::slice::from_ref(panel_id))?;
-                    }
                 } else if matches!(p.kind.as_str(), "diff" | "commit") {
                     if !state
                         .git_panels

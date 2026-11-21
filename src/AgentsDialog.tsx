@@ -24,14 +24,12 @@ export default function AgentsDialog({
   stage,
   onClose,
   onLaunch,
-  onTask,
 }: {
   profile: ShellProfile;
   cwd: string;
   stage: RefObject<HTMLElement | null>;
   onClose: () => void;
   onLaunch: (cli: CliAgent, count: number) => Promise<void>;
-  onTask?: () => void;
 }) {
   const id = useId();
   const refreshButton = useRef<HTMLButtonElement>(null);
@@ -291,16 +289,6 @@ export default function AgentsDialog({
           )}
         </div>
         <div className="dialog-actions">
-          {onTask && (
-            <button
-              type="button"
-              className="button"
-              disabled={busy}
-              onClick={onTask}
-            >
-              New CLI task
-            </button>
-          )}
           <button
             type="button"
             className="button"

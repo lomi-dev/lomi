@@ -9,8 +9,7 @@ export const builtinViews = {
   file: lazy(() => import("../FileEditor")),
   browser: BrowserPane,
   android: lazy(() => import("../android/AndroidPane")),
-  agentTask: lazy(() => import("../agent-runtime/TaskPane")),
-  chat: lazy(() => import("../chat/ChatPane")),
+  thread: lazy(() => import("../ai-chat/ThreadPane")),
   diff: FileDiff,
   commit: CommitDetails,
 };

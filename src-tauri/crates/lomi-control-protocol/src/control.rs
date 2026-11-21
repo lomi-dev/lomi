@@ -3,7 +3,6 @@ pub use crate::android_setup::*;
 pub use crate::artifact::*;
 pub use crate::browser_dom::*;
 pub use crate::browser_logs::*;
-pub use crate::chat::*;
 pub use crate::editor::*;
 pub use crate::files::*;
 pub use crate::git::*;
@@ -81,8 +80,6 @@ pub struct Panel {
     pub browser_generation: Option<String>,
     #[serde(default)]
     pub android_device_id: Option<String>,
-    #[serde(default)]
-    pub chat_conversation_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -235,10 +232,6 @@ pub enum WorkspaceSelectAction {
     deny_unknown_fields
 )]
 pub enum OperationResult {
-    ChatOpened(ChatOpened),
-    ChatDraftUpdated(Box<ChatDraftUpdated>),
-    ChatSent(Box<ChatSent>),
-    ChatStopped(Box<ChatStopped>),
     SettingsOpened(SettingsOpened),
     SettingsUpdated(SettingsUpdated),
     WorkspaceClosure(WorkspaceClosure),
@@ -572,9 +565,6 @@ pub struct UiCommand {
     deny_unknown_fields
 )]
 pub enum UiAction {
-    OpenChat(ChatOpenCommand),
-    DraftChat(ChatDraftCommand),
-    SendChat(ChatSendCommand),
     CloseProject(ProjectCloseCommand),
     OpenProject(ProjectOpenCommand),
     OpenSettings(SettingsOpenCommand),
@@ -676,20 +666,6 @@ pub struct UiAck {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "tool", content = "arguments", deny_unknown_fields)]
 pub enum Request {
-    #[serde(rename = "lomi_chat_export")]
-    ChatExport(ChatExportInput),
-    #[serde(rename = "lomi_chat_stop")]
-    ChatStop(ChatStopInput),
-    #[serde(rename = "lomi_chat_send")]
-    ChatSend(ChatSendInput),
-    #[serde(rename = "lomi_chat_draft")]
-    ChatDraft(ChatDraftInput),
-    #[serde(rename = "lomi_chat_open")]
-    ChatOpen(ChatOpenInput),
-    #[serde(rename = "lomi_chat_list")]
-    ChatList(ChatListInput),
-    #[serde(rename = "lomi_chat_read")]
-    ChatRead(ChatReadInput),
     #[serde(rename = "lomi_files_mutate")]
     FilesMutate(FilesMutateInput),
     #[serde(rename = "lomi_editor_save")]
@@ -871,9 +847,6 @@ pub struct TerminalOutput {
     deny_unknown_fields
 )]
 pub enum Data {
-    ChatList(Box<ChatList>),
-    ChatRead(Box<ChatRead>),
-    ChatExport(Box<ChatExport>),
     EditorText(Box<EditorText>),
     GitStatus(Box<GitStatusPage>),
     GitDiff(Box<GitDiffPage>),

@@ -111,9 +111,6 @@ impl Broker {
             match panel.kind.as_str() {
                 "file" => {}
                 "android" => Self::android_panel_access(state, owner, &panel.panel_id, false)?,
-                "chat" => {
-                    Self::chat_panel_scope(state, owner, &panel.panel_id, "chat.read")?;
-                }
                 "diff" | "commit" => {
                     if !state
                         .git_panels
@@ -165,15 +162,6 @@ impl Broker {
                 _ => return Err(ErrorCode::UnsupportedCapability),
             }
         }
-        Self::closing_chats(
-            state,
-            owner,
-            &command
-                .panels
-                .iter()
-                .map(|p| p.panel_id.clone())
-                .collect::<Vec<_>>(),
-        )?;
         Ok(())
     }
     pub(super) fn preflight_workspace_close(
@@ -449,21 +437,6 @@ impl Broker {
             .map(|p| p.panel_id.clone())
             .collect::<Vec<_>>();
         let mut steps: CloseSteps = Vec::new();
-        let conversations = Self::closing_chats(state, &work.pairing, &ids)?;
-        if !conversations.is_empty() {
-            let dispatch = self
-                .chat_close_dispatch
-                .lock()
-                .ok()
-                .and_then(|d| d.clone())
-                .ok_or(ErrorCode::HostUnqualified)?;
-            dispatch(&work.project, &conversations, None)?;
-            let project = work.project.clone();
-            let permit = work.native_permit.clone();
-            steps.push(Box::new(move || {
-                dispatch(&project, &conversations, Some(permit))
-            }));
-        }
         if let Some((targets, dispatch)) = self.android_close_plan(state, &work.pairing, &ids)? {
             let permit = work.native_permit.clone();
             steps.push(Box::new(move || dispatch(&targets, Some(permit))));

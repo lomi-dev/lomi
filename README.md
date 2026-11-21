@@ -27,8 +27,8 @@
 ## What is Lomi?
 
 Lomi is a local development workspace for macOS, Linux and Windows. Open a
-project folder and arrange real shells, editors, browser previews, Git views and
-AI chats side by side. Keep separate workspaces for separate tasks; their
+project folder and arrange real shells, editors, browser previews and Git views
+side by side. Keep separate workspaces for separate tasks; their
 terminals keep running in the background while you switch.
 
 Run Claude Code, Codex, Gemini CLI or any other CLI agent in a Lomi terminal,
@@ -63,8 +63,8 @@ your device.
   virtual Android phones. Android setup requires macOS with Apple Silicon.
 - **Coding agents:** CLI integrations on macOS and Linux, plus MCP workspace
   control with approved permissions on macOS with Apple Silicon.
-- **Chat AI:** use your own provider API keys, keep local conversation history
-  and export chats.
+- **Chat AI:** chat threads in tabs, backed by your CLI agent subscriptions
+  or your own API keys.
 - **Customization:** light and dark themes, VS Code theme imports, configurable
   shortcuts and trusted local plugins.
 
@@ -76,7 +76,7 @@ Download the package for your platform from the
 See the [installation guide](https://docs.lomi.dev/overview/installation/) for
 platform requirements, first launch and updates.
 
-On Linux, remembering account sessions and AI API keys requires an available
+On Linux, remembering account sessions requires an available
 Secret Service provider, such as GNOME Keyring or KDE Wallet, with an unlocked
 default collection in your desktop session. If the credential store cannot save
 an account session, Lomi can keep the sign-in in memory until you quit and shows
@@ -107,6 +107,12 @@ cd lomi
 pnpm install --frozen-lockfile
 pnpm tauri dev
 ```
+
+To run a development build next to an installed Lomi, use `pnpm tauri:dev`.
+It merges `src-tauri/tauri.dev.conf.json`, which names the app Lomi Dev and
+gives it the `dev.lomi.desktop.dev` identifier, so it keeps its own session,
+settings and locks. Plain `pnpm tauri dev` shares the installed app's data and
+refuses to start while that app is running.
 
 The default desktop runs local terminals, files, Git, and coding tools without
 installing or starting Lomi Remote Host. Remote connections and sharing are

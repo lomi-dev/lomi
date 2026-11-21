@@ -117,7 +117,7 @@ export function useTabDrag(props: Props) {
         !target ||
         source.type === "commit" ||
         source.type === "diff" ||
-        target.type !== "terminal" ||
+        (target.type !== "terminal" && target.type !== "thread") ||
         source.id === target.id ||
         x < area.left ||
         x > area.right ||
@@ -157,6 +157,7 @@ export function useTabDrag(props: Props) {
         ? (latest.current.canMerge?.(tab.id, target.id, side) ?? true)
         : false;
       const allowed = fits && permission === true;
+      const targetLayout = target.type === "terminal" ? target.layout : target;
       const sourceLayout = source.type !== "terminal" ? source : source.layout;
       destination = allowed
         ? { type: "merge", targetId: target.id, side }
@@ -176,8 +177,8 @@ export function useTabDrag(props: Props) {
           id: "preview",
           axis: columns ? "horizontal" : "vertical",
           ratio: 0.5,
-          first: before ? sourceLayout : target.layout,
-          second: before ? target.layout : sourceLayout,
+          first: before ? sourceLayout : targetLayout,
+          second: before ? targetLayout : sourceLayout,
         },
         { width: area.width, height: area.height },
       );

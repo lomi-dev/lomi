@@ -221,9 +221,8 @@ export function applyFileChange(
     if (
       item.type === "browser" ||
       item.type === "plugin" ||
-      item.type === "chat" ||
       item.type === "android" ||
-      item.type === "agent-task"
+      item.type === "thread"
     )
       return item;
     if (item.type === "terminal")
@@ -246,9 +245,8 @@ export function applyFileChange(
         if (
           tab.type === "browser" ||
           tab.type === "plugin" ||
-          tab.type === "chat" ||
           tab.type === "android" ||
-          tab.type === "agent-task"
+          tab.type === "thread"
         )
           return [tab];
         if (tab.type === "diff") {

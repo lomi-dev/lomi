@@ -1,17 +1,20 @@
 import { PluginsProvider } from "./plugins/PluginsProvider";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useState } from "react";
 import { KeybindingsProvider } from "./KeybindingsProvider";
 import { ThemeProvider } from "./ThemeProvider";
 import { EditorPreferencesProvider } from "./EditorPreferencesProvider";
 import ReadyWindow from "./ReadyWindow";
+import { onboardingDone } from "./onboarding-state";
 import { useWindowFullscreen } from "./useWindowFullscreen";
 
 import { TerminalPreferencesProvider } from "./TerminalPreferencesProvider";
 
 const Workbench = lazy(() => import("./Workbench"));
+const Onboarding = lazy(() => import("./Onboarding"));
 
 export default function App() {
   useWindowFullscreen();
+  const [onboarding, setOnboarding] = useState(() => !onboardingDone());
   return (
     <ThemeProvider>
       <PluginsProvider>
@@ -25,6 +28,11 @@ export default function App() {
               >
                 <Workbench />
                 <ReadyWindow />
+                {onboarding && (
+                  <Suspense fallback={null}>
+                    <Onboarding onDone={() => setOnboarding(false)} />
+                  </Suspense>
+                )}
               </Suspense>
             </TerminalPreferencesProvider>
           </EditorPreferencesProvider>

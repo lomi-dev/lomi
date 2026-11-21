@@ -3,10 +3,6 @@ use receipts::{Effect, State as OperationState};
 
 pub(super) struct Work {
     pub(super) android_layout: Vec<(String, Option<String>)>,
-    pub(super) chat_open: Option<ChatSummary>,
-    pub(super) chat_send: Option<super::chat_send::Approval>,
-    pub(super) chat_send_rejection: Option<ErrorCode>,
-    pub(super) chat_draft_rejection: Option<ErrorCode>,
     pub(super) project_open: Option<super::project_open::Approval>,
     pub(super) settings_update: Option<super::settings_update::SettingsPlan>,
     pub(super) browser_upload: Option<super::browser_upload::BrowserUploadApproval>,
@@ -102,16 +98,6 @@ pub(super) fn storage_error(error: receipts::Error) -> Reply {
 impl Broker {
     pub(super) fn action_scopes(action: &UiAction) -> &'static [&'static str] {
         match action {
-            UiAction::SendChat(_) => &["chat.read", "chat.send"],
-            UiAction::DraftChat(_) => &["chat.read", "chat.draft"],
-            UiAction::OpenChat(c) if c.create => &[
-                "chat.read",
-                "chat.open",
-                "chat.create",
-                "panel.create",
-                "panel.focus",
-            ],
-            UiAction::OpenChat(_) => &["chat.read", "chat.open", "panel.create", "panel.focus"],
             UiAction::OpenSettings(_) => &["settings.open"],
             UiAction::UpdateSettings(_) => &["settings.read", "settings.write"],
             UiAction::OpenProject(_) => &["project.open", "workspace.write", "panel.create"],
@@ -326,7 +312,6 @@ impl Broker {
                         | UiAction::OpenProject(_)
                         | UiAction::UpdateSettings(_)
                         | UiAction::UploadBrowser(_)
-                        | UiAction::SendChat(_)
                 ))
                 && !work.native_committed;
             let (next, effect) = if work.claimed && !no_trash_effect {
@@ -518,16 +503,6 @@ impl Broker {
         if let Err(e) = store.bind_workspace(id, &input.project, &op, &input.workspace) {
             return storage_error(e);
         }
-        if let UiAction::SendChat(command) = &input.action {
-            if let Err(e) = store.record_result(
-                id,
-                &input.project,
-                &op,
-                &OperationResult::ChatSent(Box::new(Self::chat_send_reserved(command))),
-            ) {
-                return storage_error(e);
-            }
-        }
         if let UiAction::OpenProject(command) = &input.action {
             if let Err(e) = store.record_result(
                 id,
@@ -556,13 +531,7 @@ impl Broker {
             Self::reserve_android_input(state, &input.action, &op).err()
         };
         if let Some(code) = failure_code {
-            if let UiAction::SendChat(command) = &input.action {
-                let mut result = Self::chat_send_reserved(command);
-                result.rejection = Some(code);
-                if let Err(e) = store.finish_chat_send(id, &input.project, &op, &result) {
-                    return storage_error(e);
-                }
-            } else if !matches!(input.action, UiAction::OpenProject(_)) {
+            if !matches!(input.action, UiAction::OpenProject(_)) {
                 if let Err(e) =
                     store.record_result(id, &input.project, &op, &OperationResult::Failure { code })
                 {
@@ -603,7 +572,6 @@ impl Broker {
                     | UiAction::OpenProject(_)
                     | UiAction::UpdateSettings(_)
                     | UiAction::UploadBrowser(_)
-                    | UiAction::SendChat(_)
             ) {
             Duration::from_secs(120)
         } else if matches!(
@@ -619,10 +587,6 @@ impl Broker {
             op.clone(),
             Work {
                 android_layout,
-                chat_open: None,
-                chat_send: None,
-                chat_send_rejection: None,
-                chat_draft_rejection: None,
                 project_open,
                 settings_update: None,
                 browser_upload: None,
@@ -718,10 +682,7 @@ impl Broker {
         Self::validate_panel_action(&state, &work.pairing, &work.command.action)
             .map_err(|_| failure())?;
         if !matches!(&work.command.action, UiAction::FilesMutate(c) if c.input.operation.is_trash())
-            && !matches!(
-                &work.command.action,
-                UiAction::GitMutate(_) | UiAction::SendChat(_)
-            )
+            && !matches!(&work.command.action, UiAction::GitMutate(_))
         {
             self.store
                 .lock()
@@ -826,82 +787,6 @@ impl Broker {
                     .get(&work.pairing, &work.project, &ack.operation_id)
                     .map_err(|_| failure())?;
                 if !matches!(receipt.result,Some(OperationResult::SettingsUpdated(ref saved)) if saved == result)
-                {
-                    return Err(failure());
-                }
-                (OperationState::Succeeded, Effect::Complete)
-            }
-            OperationResult::ChatSent(result) => {
-                let UiAction::SendChat(command) = &work.command.action else {
-                    return Err(failure());
-                };
-                if !work.claimed
-                    || !work.native_committed
-                    || result.draft_revision.is_none()
-                    || result.rejection.is_some()
-                    || result.request_id != command.request_id
-                {
-                    return Err(failure());
-                }
-                let saved = self
-                    .store
-                    .lock()
-                    .map_err(|_| failure())?
-                    .get(&work.pairing, &work.project, &ack.operation_id)
-                    .map_err(|_| failure())?;
-                if !matches!(saved.result, Some(OperationResult::ChatSent(ref exact)) if exact == result)
-                {
-                    return Err(failure());
-                }
-                (OperationState::Succeeded, Effect::Complete)
-            }
-            OperationResult::ChatDraftUpdated(result) => {
-                let UiAction::DraftChat(command) = &work.command.action else {
-                    return Err(failure());
-                };
-                if !work.claimed
-                    || !work.native_committed
-                    || result.workspace_id != command.workspace_id
-                    || result.panel_id != command.input.panel_id
-                    || result.conversation_id != command.input.conversation_id
-                {
-                    return Err(failure());
-                }
-                let receipt = self
-                    .store
-                    .lock()
-                    .map_err(|_| failure())?
-                    .get(&work.pairing, &work.project, &ack.operation_id)
-                    .map_err(|_| failure())?;
-                if !matches!(receipt.result, Some(OperationResult::ChatDraftUpdated(ref saved)) if saved == result)
-                {
-                    return Err(failure());
-                }
-                (OperationState::Succeeded, Effect::Complete)
-            }
-            OperationResult::ChatOpened(result) => {
-                let UiAction::OpenChat(command) = &work.command.action else {
-                    return Err(failure());
-                };
-                if !work.claimed
-                    || !work.native_committed
-                    || work
-                        .chat_open
-                        .as_ref()
-                        .is_none_or(|c| c.conversation_id != command.conversation_id)
-                    || result.workspace_id != command.workspace_id
-                    || result.conversation_id != command.conversation_id
-                    || result.panel_id != command.panel_id
-                    || result.created != command.create
-                    || !state.sessions[&work.pairing]
-                        .grant
-                        .permits_chat_conversation(&command.conversation_id)
-                    || !state.projection.panels.iter().any(|p| {
-                        p.id == result.panel_id
-                            && p.workspace_id == result.workspace_id
-                            && p.kind == "chat"
-                            && p.chat_conversation_id.as_ref() == Some(&result.conversation_id)
-                    })
                 {
                     return Err(failure());
                 }
@@ -1470,8 +1355,7 @@ impl Broker {
                 Self::validate_editor_edits(&state, &work.pairing, input).map_err(|_| failure())?;
                 (OperationState::Succeeded, Effect::Complete)
             }
-            OperationResult::ChatStopped(_)
-            | OperationResult::AndroidLaunch(_)
+            OperationResult::AndroidLaunch(_)
             | OperationResult::AndroidManagement(_)
             | OperationResult::AndroidInstall(_)
             | OperationResult::ArtifactImported { .. }
@@ -1491,10 +1375,6 @@ impl Broker {
                             .get(&command.browser_generation)
                             .and_then(|b| b.control.interaction_rejection(&ack.operation_id))
                             == Some(*code)
-                    } else if matches!(work.command.action, UiAction::SendChat(_)) {
-                        work.chat_send_rejection == Some(*code)
-                    } else if matches!(work.command.action, UiAction::DraftChat(_)) {
-                        work.chat_draft_rejection == Some(*code)
                     } else {
                         false
                     };
@@ -1597,34 +1477,9 @@ impl Broker {
                 )
                 .map_err(|_| failure())?;
         }
-        if let (UiAction::SendChat(_), OperationResult::Failure { code }) =
-            (&work.command.action, &ack.result)
-        {
-            if !work.native_committed || work.chat_send_rejection == Some(*code) {
-                if let Some(OperationResult::ChatSent(mut result)) = store
-                    .get(&work.pairing, &work.project, &ack.operation_id)
-                    .map_err(|_| failure())?
-                    .result
-                {
-                    if result.draft_revision.is_none() && result.rejection.is_none() {
-                        result.rejection = Some(*code);
-                        store
-                            .finish_chat_send(
-                                &work.pairing,
-                                &work.project,
-                                &ack.operation_id,
-                                &result,
-                            )
-                            .map_err(|_| failure())?;
-                    }
-                }
-            }
-        }
         let save_recorded = matches!(
             work.command.action,
             UiAction::EditorSave(_)
-                | UiAction::DraftChat(_)
-                | UiAction::SendChat(_)
                 | UiAction::FilesMutate(_)
                 | UiAction::ExportArtifact(_)
                 | UiAction::GitMutate(_)
@@ -1641,8 +1496,6 @@ impl Broker {
                     | OperationResult::ArtifactExported(_)
                     | OperationResult::GitMutated(_)
                     | OperationResult::SettingsOpened(_)
-                    | OperationResult::ChatSent(_)
-                    | OperationResult::ChatDraftUpdated(_)
                     | OperationResult::SettingsUpdated(_)
             )
         );

@@ -7,10 +7,7 @@ export interface PaneTabDropOptions {
   strip: RefObject<HTMLDivElement | null>;
   tabs: Tab[];
   sourceTabId: string;
-  canDrop: (
-    id: string,
-    destination: PaneTabDestination,
-  ) => boolean | string;
+  canDrop: (id: string, destination: PaneTabDestination) => boolean | string;
   onDrop: (id: string, destination: PaneTabDestination) => void;
   canMove?: (
     id: string,
@@ -75,16 +72,16 @@ export function usePaneDrag(props: Props) {
       ".terminal-title-box, [data-pane-drag-handle]",
     );
     const source = handle?.closest<HTMLElement>(
-      "[data-pane-id], [data-plugin-pane-id], [data-file-pane-id], [data-browser-pane-id], [data-chat-pane-id], [data-android-pane-id], [data-task-pane-id]",
+      "[data-pane-id], [data-plugin-pane-id], [data-file-pane-id], [data-browser-pane-id], [data-android-pane-id], [data-task-pane-id], [data-thread-tab-id]",
     );
     const id =
       source?.dataset.paneId ??
       source?.dataset.pluginPaneId ??
       source?.dataset.filePaneId ??
       source?.dataset.browserPaneId ??
-      source?.dataset.chatPaneId ??
       source?.dataset.androidPaneId ??
-      source?.dataset.taskPaneId;
+      source?.dataset.taskPaneId ??
+      source?.dataset.threadTabId;
     const container = root.current;
     if (
       !handle ||

@@ -8,34 +8,17 @@ import {
   terminalsWithProcesses,
 } from "./terminal-runtime";
 import { errorMessage } from "./api";
-import { closeChatViews, hasActiveChatRequests } from "./chat/chat-service";
-import {
-  closeAgentTaskViews,
-  hasActiveAgentTasks,
-  type TaskCloseLease,
-} from "./agent-runtime/task-runtime";
 import { Modal } from "./ui";
 
 export function useCloseGuard() {
   const editor = useEditorCloseGuard();
   const checking = useRef(false);
-  const cliCloses = useRef(new WeakMap<ReadonlySet<string>, TaskCloseLease>());
-  const release = useCallback(async (fileIds: ReadonlySet<string>) => {
-    const lease = cliCloses.current.get(fileIds);
-    if (!lease) return;
-    try {
-      await lease.release();
-      cliCloses.current.delete(fileIds);
-    } catch (error) {
-      setChatError(errorMessage(error));
-    }
-  }, []);
   const resolve = useRef<(close: boolean) => void>(undefined);
   const [request, setRequest] = useState<{
     message: string;
     application: boolean;
   }>();
-  const [chatError, setChatError] = useState("");
+  const [closeError, setCloseError] = useState("");
   const descriptionId = useId();
   const confirmButton = useRef<HTMLButtonElement>(null);
   const cancelButton = useRef<HTMLButtonElement>(null);
@@ -44,11 +27,9 @@ export function useCloseGuard() {
       fileIds?: ReadonlySet<string>,
       terminalIds?: readonly string[],
       decision?: EditorCloseDecision,
-      deferChats = false,
     ) => {
       if (checking.current) return false;
       checking.current = true;
-      let cliClose: TaskCloseLease | undefined;
       try {
         const application = fileIds === undefined && terminalIds === undefined;
         let message = "";
@@ -59,13 +40,9 @@ export function useCloseGuard() {
         } catch (error) {
           message = errorMessage(error);
         }
-        if (application && hasActiveChatRequests())
-          message += `${message ? " " : ""}Chat AI is still generating a response.`;
-        if (hasActiveAgentTasks(fileIds))
-          message += `${message ? " " : ""}CLI Agent work is still running.`;
         if (message) {
           message += application
-            ? " Quitting will stop active agents, terminal processes and AI responses. Are you sure you want to quit?"
+            ? " Quitting will stop active agents and terminal processes. Are you sure you want to quit?"
             : " Closing will stop work in the final views of these runs and end any terminal sessions. Close anyway?";
           const approved = await new Promise<boolean>((finish) => {
             resolve.current = finish;
@@ -74,20 +51,11 @@ export function useCloseGuard() {
           if (!approved) return false;
         }
         if (!(await editor.confirm(fileIds, decision))) return false;
-        if (!application && fileIds)
-          cliClose = await closeAgentTaskViews(fileIds);
         if (!application)
           await prepareOwnedTerminalClose(terminalIds ?? [...(fileIds ?? [])]);
-        if (!deferChats) await closeChatViews(fileIds);
-        if (fileIds && cliClose) cliCloses.current.set(fileIds, cliClose);
         return true;
       } catch (error) {
-        try {
-          await cliClose?.release();
-          setChatError(errorMessage(error));
-        } catch (releaseError) {
-          setChatError(errorMessage(releaseError));
-        }
+        setCloseError(errorMessage(error));
         return false;
       } finally {
         checking.current = false;
@@ -102,7 +70,6 @@ export function useCloseGuard() {
   };
   return {
     confirm,
-    release,
     dialog: (
       <>
         {request && (
@@ -141,22 +108,22 @@ export function useCloseGuard() {
             </div>
           </Modal>
         )}
-        {chatError && (
+        {closeError && (
           <Modal
             protectTheme
             tone="danger"
             title="Views could not be closed"
-            onClose={() => setChatError("")}
+            onClose={() => setCloseError("")}
           >
             <div className="dialog-form dialog-layout">
               <div className="dialog-content">
-                <p>{chatError}</p>
+                <p>{closeError}</p>
                 <p>
                   The views remain open. Resolve the error and retry closing.
                 </p>
               </div>
               <div className="dialog-actions">
-                <button className="button" onClick={() => setChatError("")}>
+                <button className="button" onClick={() => setCloseError("")}>
                   Keep open
                 </button>
               </div>

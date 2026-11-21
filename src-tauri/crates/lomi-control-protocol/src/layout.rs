@@ -63,9 +63,6 @@ pub struct PanelMoveIdentity {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PanelMoveCommand {
-    /// Broker-only conversation bindings; never disclosed in layout receipts.
-    #[serde(skip)]
-    pub chat_bindings: Vec<(String, String)>,
     pub tab_order: Vec<String>,
     pub focused_panel_id: Option<String>,
     pub workspace_id: String,

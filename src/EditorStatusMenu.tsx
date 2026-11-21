@@ -38,10 +38,10 @@ export default function EditorStatusMenu({
   let title: string;
   let items: Item[];
   if (step === "language") {
-    title = "Select Language Mode";
+    title = "Select language mode";
     items = [
       {
-        label: "Auto Detect",
+        label: "Auto detect",
         value: "auto",
         detail: editorLanguage(editor.location.relative)?.name ?? "Plain text",
       },
@@ -64,22 +64,22 @@ export default function EditorStatusMenu({
     title = "Indentation";
     items = [
       {
-        label: "Indent Using Spaces",
+        label: "Indent using spaces",
         selected: status.insertSpaces,
         run: () => setStep("spaces"),
       },
       {
-        label: "Indent Using Tabs",
+        label: "Indent using tabs",
         selected: !status.insertSpaces,
         run: () => setStep("tabs"),
       },
       {
-        label: "Change Tab Display Size",
+        label: "Change tab display size",
         detail: String(status.tabSize),
         run: () => setStep("display"),
       },
       {
-        label: "Use Default Indentation",
+        label: "Use default indentation",
         detail: status.customIndentation ? undefined : "Current",
         divider: true,
         run: () => finish(() => editor.setIndentation(null)),
@@ -88,10 +88,10 @@ export default function EditorStatusMenu({
   } else {
     title =
       step === "display"
-        ? "Select Tab Display Size"
+        ? "Select tab display size"
         : step === "spaces"
-          ? "Indent Using Spaces"
-          : "Indent Using Tabs";
+          ? "Indent using spaces"
+          : "Indent using tabs";
     const size = step === "spaces" ? status.indentSize : status.tabSize;
     items = Array.from({ length: 16 }, (_, index) => {
       const value = index + 1;

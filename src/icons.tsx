@@ -76,8 +76,11 @@ export const FileDiff = product("FileDiff", Lucide.FileDiff);
 export const FileJson = product("FileJson", Lucide.FileJson);
 export const FilePlus2 = product("FilePlus2", Lucide.FilePlus2);
 export const FileText = product("FileText", Lucide.FileText);
+export const Gauge = product("Gauge", Lucide.Gauge);
 export const Folder = product("Folder", Lucide.Folder);
+export const FolderGit2 = product("FolderGit2", Lucide.FolderGit2);
 export const FolderOpen = product("FolderOpen", Lucide.FolderOpen);
+export const FolderPlus = product("FolderPlus", Lucide.FolderPlus);
 export const GitBranch = product("GitBranch", Lucide.GitBranch);
 export const GitCommitHorizontal = product(
   "GitCommitHorizontal",
@@ -89,6 +92,8 @@ export const Import = product("Import", Lucide.Import);
 export const Info = product("Info", Lucide.Info);
 export const Keyboard = product("Keyboard", Lucide.Keyboard);
 export const Layers = product("Layers", Lucide.Layers);
+export const Link = product("Link", Lucide.Link);
+export const Lock = product("Lock", Lucide.Lock);
 export const LayoutGrid = product("LayoutGrid", Lucide.LayoutGrid);
 export const ListX = product("ListX", Lucide.ListX);
 export const Maximize2 = product("Maximize2", Lucide.Maximize2);
@@ -115,6 +120,7 @@ export const RotateCw = product("RotateCw", Lucide.RotateCw);
 export const Save = product("Save", Lucide.Save);
 export const Search = product("Search", Lucide.Search);
 export const Settings = product("Settings", Lucide.Settings);
+export const ShieldAlert = product("ShieldAlert", Lucide.ShieldAlert);
 export const ShieldCheck = product("ShieldCheck", Lucide.ShieldCheck);
 export const Smartphone = product("Smartphone", Lucide.Smartphone);
 export const Square = product("Square", Lucide.Square);
@@ -123,6 +129,8 @@ export const SquareArrowRight = product(
   Lucide.SquareArrowRight,
 );
 export const SquareDot = product("SquareDot", Lucide.SquareDot);
+export const Paperclip = product("Paperclip", Lucide.Paperclip);
+export const Star = product("Star", Lucide.Star);
 export const SquareMinus = product("SquareMinus", Lucide.SquareMinus);
 export const SquarePlus = product("SquarePlus", Lucide.SquarePlus);
 export const Sun = product("Sun", Lucide.Sun);
@@ -136,7 +144,6 @@ export const X = product("X", Lucide.X);
 
 export const Bell = Lucide.Bell;
 export const MessageSquare = Lucide.MessageSquare;
-export const Paperclip = Lucide.Paperclip;
 export const Send = Lucide.Send;
 export const Github = Lucide.createLucideIcon("Github", [
   [

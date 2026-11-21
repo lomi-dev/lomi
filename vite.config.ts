@@ -79,7 +79,7 @@ export default defineConfig({
       },
     ],
   },
-  optimizeDeps: { include: ["react-slot-fill", "dockview", "@ai-sdk/react"] },
+  optimizeDeps: { include: ["react-slot-fill", "dockview"] },
   // Keep Rust diagnostics visible when Vite reloads the frontend.
   clearScreen: false,
   server: {

@@ -82,15 +82,6 @@ impl Broker {
         for workspace in &command.workspaces {
             Self::validate_workspace_close(state, owner, workspace)?;
         }
-        Self::closing_chats(
-            state,
-            owner,
-            &command
-                .workspaces
-                .iter()
-                .flat_map(|w| w.panels.iter().map(|p| p.panel_id.clone()))
-                .collect::<Vec<_>>(),
-        )?;
         Ok(())
     }
     pub(super) fn close_project(self: &Arc<Self>, owner: &str, input: ProjectCloseInput) -> Reply {

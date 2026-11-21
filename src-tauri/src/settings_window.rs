@@ -80,17 +80,19 @@ fn validate_page(page: Option<&str>) -> Result<(), String> {
     if page.is_some_and(|page| {
         !matches!(
             page,
-            "keybinds"
+            "general"
+                | "keybinds"
                 | "notifications"
                 | "themes"
                 | "plugins"
                 | "terminal"
                 | "about"
-                | "chat-ai"
                 | "android"
                 | "account"
                 | "agent-control"
                 | "remote"
+                | "chat-providers"
+                | "chat-defaults"
         )
     }) {
         return Err("Unknown settings page.".into());

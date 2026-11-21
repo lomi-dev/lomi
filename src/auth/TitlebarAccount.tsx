@@ -99,7 +99,7 @@ export default function TitlebarAccount({
     ? `Open account menu for ${displayName || "your account"}`
     : hasAccount
       ? "Open account menu"
-      : "Sign In";
+      : "Sign in";
   const title = opening
     ? hasAccount
       ? "Updating account…"
@@ -303,12 +303,12 @@ export default function TitlebarAccount({
               type="button"
               className="titlebar-account titlebar-account-sign-in"
               title={title}
-              aria-label="Sign In"
+              aria-label="Sign in"
               aria-busy={opening || undefined}
               disabled={!native || opening}
               onClick={signIn}
             >
-              Sign In
+              Sign in
             </button>
             <button
               ref={trigger}

@@ -14,18 +14,6 @@ fn main() {
         std::process::exit(code);
     }
     if std::env::args_os().nth(1).as_deref()
-        == Some(std::ffi::OsStr::new("--internal-native-evidence"))
-    {
-        let mut args = std::env::args_os().skip(2);
-        let (Some(mode), None) = (args.next(), args.next()) else {
-            std::process::exit(2);
-        };
-        let Some(mode) = mode.to_str() else {
-            std::process::exit(2);
-        };
-        std::process::exit(lomi_lib::internal_native_evidence(mode));
-    }
-    if std::env::args_os().nth(1).as_deref()
         == Some(std::ffi::OsStr::new("--internal-pty-coalition-protocol"))
     {
         #[cfg(all(target_os = "macos", feature = "experimental-macos-coalition-cleanup"))]
@@ -114,10 +102,6 @@ fn main() {
         std::process::exit(code);
     }
     if let Some(code) = lomi_lib::cursor_usage_keychain_authorization_entry() {
-        std::process::exit(code);
-    }
-    #[cfg(target_os = "macos")]
-    if let Some(code) = lomi_lib::agent_runtime_host_worker_entry() {
         std::process::exit(code);
     }
     if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--mcp")) {

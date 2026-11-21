@@ -54,7 +54,7 @@ fn mutation_command_with_environment(
     command
 }
 
-fn safe_mutation_environment_name(name: &std::ffi::OsStr) -> bool {
+pub(crate) fn safe_mutation_environment_name(name: &std::ffi::OsStr) -> bool {
     #[cfg(windows)]
     let key = name.to_string_lossy().to_ascii_uppercase();
     #[cfg(not(windows))]

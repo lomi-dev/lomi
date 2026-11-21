@@ -12,11 +12,11 @@ export interface TabMenuAnchor {
 const actions: { action: TabCloseAction; label: string; divider?: boolean }[] =
   [
     { action: "close", label: "Close" },
-    { action: "others", label: "Close Others" },
-    { action: "left", label: "Close Left", divider: true },
-    { action: "right", label: "Close Right" },
-    { action: "clean", label: "Close Clean", divider: true },
-    { action: "all", label: "Close All" },
+    { action: "others", label: "Close others" },
+    { action: "left", label: "Close left", divider: true },
+    { action: "right", label: "Close right" },
+    { action: "clean", label: "Close clean", divider: true },
+    { action: "all", label: "Close all" },
   ];
 
 export default function TabContextMenu({

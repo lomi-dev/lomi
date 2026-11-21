@@ -42,11 +42,13 @@ or acronym.
   both ownership changes atomically without closing any moved runtime.
   Keep terminal operations scoped to
   terminal tabs and preserve compatibility with saved tabs without a type.
-- `src/useSettingsTab.ts` owns the single application-level Settings utility tab,
-  available with or without a project. It does not enter the persisted workspace
-  model or allocate a shell. `src/SettingsPanel.tsx` uses the main view's shared
-  preference providers; inactive views retain their drafts and runtimes. Closing
-  Settings returns to the workspace or Welcome. Native settings requests target
+- `src/useSettingsTab.ts` owns the single application-level Settings state,
+  available with or without a project. `src/SettingsDialog.tsx` shows it as a
+  modal sheet over the workbench (not a tab); the sheet stays mounted while
+  closed. It does not enter the persisted workspace model or allocate a shell.
+  `src/SettingsPanel.tsx` uses the main view's shared preference providers;
+  inactive views retain their drafts and runtimes. Escape, the close button, the
+  backdrop and the close shortcut return to the workspace or Welcome. Native settings requests target
   main with revisioned events and a subscribe-before-ready backlog handoff.
 - `src/Workbench.tsx` coordinates projects, workspaces, tabs, and persistence.
   Workspaces, Explorer, and Source Control have independently assigned sidebar sides; opposite
@@ -111,68 +113,61 @@ or acronym.
 - Session v2 adds plugin tabs/panes and per-workspace plugin sidebars. Preserve
   v1 compatibility and its atomic backup before upgrading the session file.
   Unknown plugin views retain valid state; never interpret them as shells.
-- Session v3 adds ChatTab to standalone tabs and mixed layouts; read v1/v2/v3
-  and atomically preserve the exact legacy session before upgrading. Chat tabs
-  never own PTYs. Missing conversation records remain chat placeholders.
-- Session v5 adds `agent-task` tabs/panes referencing stable task IDs. Read
-  v1–v5 and preserve exact legacy sessions before upgrading. Legacy `cli-agent`
-  run references become archived task descriptors; missing records remain
-  placeholders. Restoration never dispatches input or restores credentials.
-- `src/chat/` owns the lazy Chat AI interface, retained SDK Chat instances,
-  native transport, Settings and history. One instance per conversation lives
-  outside React; domain references govern close, never transient Dockview mounts.
-  Native terminal events govern completion; SDK UI-only EOF requires resubscribe
-  with epoch/watermark and active block IDs, without aborting or sending again.
-- `src/agent-runtime/` and `src-tauri/src/agent_runtime/` implement native CLI
-  accounts and durable tasks under one owner. Account credential bindings retain
-  private physical homes and immutable auth revisions per attempt. Send and
-  Continue explicitly choose an account; quota is advisory. A task retains
-  history/provenance across attempts and account changes. Native tools and
-  permissions remain CLI-owned. Task grants do not follow account membership.
-  Every mutation has an idempotent operation ID and durable receipt; dispatch
-  intent is committed before contacting a native process. Uncertain delivery or
-  effects require explicit recovery and never automatic replay. Cross-account
-  native resume requires exact artifact/version/model/platform qualification;
-  otherwise an eligible continuation opens a new native session with context.
-  Reviewed Pi transfer preserves its exact 1.0.1 format/digest restrictions.
-  Shared `project_write_guard.rs` protects editor, Explorer, Git, MCP, Chat,
-  downloads, Android and theme writes; native task protection uses the same
-  admission state. Domain references, rather than React mounts, govern final
-  view close; close fences survive the other guards. Legacy migration is a
-  bounded data reader with private archives, WAL-aware backups and explicit
-  publication/rollback. It never invokes legacy execution or credential cleanup.
-  `src-tauri/src/agent_runtime/service.rs` (`capabilities()`) and
-  `src-tauri/src/agent_runtime/native_accounts.rs` (`available()`) define
-  capabilities and CLI/platform qualification.
-  The old Text/Coding/Gateway execution modes are retired; independent Chat AI
-  API connections remain available.
-- `src-tauri/src/chat/` owns SQLite WAL/FULL history, branches, draft revisions,
-  attachment copies, credentials, a shared owner lock and the bounded AI process.
-  Send commits the exact draft and idempotent request before provider dispatch.
-  Retry retains the user message; Edit branches. Checkpoints and final saves run
-  independently of React. Existing editor/PTY guards run before chat cancellation;
-  failed saves retain RAM and block close, update and restart until resolved.
-- `packages/ai-runtime/` bundles pinned AI SDK 7 and explicit OpenAI, Anthropic,
-  Google and OpenAI-compatible adapters. xAI, OpenRouter, DeepSeek and NVIDIA
-  Build use fixed provider presets. Custom API supports Chat Completions,
-  Responses and Anthropic Messages at a Settings-saved HTTPS base URL
-  (HTTP is allowed on loopback). Generation resolves endpoints from native
-  preferences; changing a destination requires re-entering any saved key.
-  Build preparation stages verified Node 24 archives;
-  generation uses only the shipped binary and bundle, no shell or system Node.
-  Keys travel only from native storage to this private process. Disable SDK
-  retries and raw warnings/errors. Chat tools use the shared `lomi-mcp` catalog
-  and native authenticated connection; preserve Agent control pairing, grants,
-  cancellation and revocation. Never execute commands in the AI process or
-  accept webview-supplied tool catalogs, endpoints or credentials during generation.
-  The Settings UI changes connections/keys or runs explicit paid provider checks. Browser child
-  views remain excluded by the global trusted-app caller check.
-- Chat credentials use keyring 3.6.3 or explicitly chosen session-only memory.
-  Linux uses shared system D-Bus; do not vendor libdbus into the GTK application,
-  where its exported symbols can collide with GTK/AT-SPI's shared library.
-  Journal credential IDs before mutation, preserve committed revisions and
-  recover orphan keys without enumeration. Never use plaintext fallback.
-  Chat history and attachments are private local files, not encrypted storage.
+- Sessions v1–v6 are read; v6 is written. Atomically preserve the exact legacy session before
+  upgrading. Saved `type:"chat"` tabs and chat panes from older sessions are
+  dropped silently on load: a split collapses to its sibling, and a workspace
+  left empty gets a fresh terminal tab.
+- Saved `agent-task` tabs/panes (session v5) and legacy `cli-agent` tabs are
+  dropped silently on load like old chat tabs. Session v6 adds `thread`
+  tabs/panes `{threadId: null | 32 hex}`; a legacy `taskId` field is ignored.
+  Invalid thread ids reject the session without replacing it. Restoration
+  never dispatches. Older Lomi refuses v6 (backup kept).
+- `src/ai-chat/` owns Chat AI: settings pages, the thread pane
+  (`ThreadPane.tsx`, opened from "New chat", `Ctrl+Shift+N`) and the runtime
+  store. `src-tauri/src/ai_chat/` stores `app_data/ai-chat/settings.json` and
+  `threads.sqlite` under the `storage_guard` owner; API keys live in the
+  keyring service `<identifier>.providers`. The API streaming client requires
+  HTTPS (loopback excepted), never retries, redacts secrets, and commits the
+  dispatch intent before any network access. Threads left streaming across a
+  restart become `interrupted`; nothing is replayed.
+- CLI providers (Claude Code, Codex, Kimi, Antigravity) run the CLI installed
+  on the system with the user's own login, config and version. Lomi never
+  starts a login flow; it reads login state through each CLI's status command
+  (`ai_cli_status`). CLI threads share the API thread store and events: each
+  send spawns the CLI headless (own process group, explicit argv, no shell)
+  and resumes the CLI's own session id; Stop kills the process group.
+  Settings → Defaults sets the model, reasoning effort, fallback, permissions
+  (read-only by default, edit, full access after confirmation) and workspace
+  (project or a private empty folder) for new threads; each thread keeps the
+  values it was created with.
+- Chat history is scoped to the workspace: threads store `workspace_id` and
+  `ai_threads_list` returns that workspace's threads plus legacy threads
+  without one. "New chat" asks for confirmation when the current chat has
+  messages.
+- Chat attachments (images, PDF, UTF-8 text; ≤10 per message) are copied into
+  `app_data/ai-chat/attachments/<id>.<ext>` through the native picker, window
+  file drops or pasted images, and bound to the user message on send. API
+  requests embed them per provider format; CLIs get their paths plus
+  `--add-dir` (and `--image` for Codex). Unsent files are pruned after 24 h;
+  deleting a thread deletes its files.
+- `ai_providers_detect` auto-adds installed chat CLIs as providers (once per
+  launch, on the Providers page and on Rescan). It only resolves binaries
+  (`src-tauri/src/cli_bin.rs`, never spawns). Scans are serialized.
+  `autoDetected` in settings remembers added or dismissed CLIs so a removed
+  provider is not re-added.
+- The former agent runtime (CLI Accounts, durable agent tasks, isolated
+  credential homes, pinned native artifacts) was removed. Its data under
+  `app_data/agent-runtime/` is intentionally left untouched.
+- `src-tauri/src/storage_guard.rs` owns the shared owner lock (`owner.lock`),
+  private atomic writes and link rejection used by auth, push, notifications,
+  files and Chat AI storage.
+- MCP tools use the shared `lomi-mcp` catalog and native authenticated
+  connection; preserve Agent control pairing, grants, cancellation and
+  revocation. Browser child views remain excluded by the global trusted-app
+  caller check.
+- Old Chat AI data on users' disks is intentionally left untouched:
+  `app_data/chat-ai/`, `config/chat-ai-preferences.json` and keyring service
+  `dev.lomi.desktop.chat-ai`.
 - Theme v2 uses raw JSONC, common/light/dark surfaces and scoped resources.
   Keep one effective runtime, native source revisions, cancelable resource
   staging, local previews and scoped filesystem watches. Legacy JSON is a
@@ -180,8 +175,10 @@ or acronym.
   xterm instances from final computed tokens; never reset editor history or PTYs.
 - `src/keybindings.ts` defines shortcut actions, defaults, and validation;
   `src/KeybindingsProvider.tsx` shares them across the main view.
-  `src/SettingsPanel.tsx` edits them on the Keybinds page. Shortcut recording
-  bypasses workspace command capture; close/cycle commands include Settings.
+  `src/KeybindsSettingsPage.tsx` edits them on the Keybinds page, which lists
+  only assigned shortcuts and adds others through Add keybinding. Shortcut recording
+  bypasses workspace command capture; the close shortcut closes the Settings
+  sheet and tab cycling leaves it.
   The same preferences persist the optional focus-follows-pointer mode.
   `src/usePointerFocus.ts` focuses panels for typing, paste, and shortcuts;
   preserve dialogs, ordinary form fields, dragging, and input composition.
@@ -190,6 +187,8 @@ or acronym.
   windows. Settings → Terminal owns writes to `terminal-preferences.json` through
   `src-tauri/src/terminal_preferences.rs`. Apply changes to live and hidden xterm
   instances without restarting PTYs; unset appearance options inherit the theme.
+  Terminal colors come only from the active theme (`--terminal-*` tokens);
+  legacy `appearance.colors` overrides are kept in the file but not applied.
 - `src/BrowserPane.tsx` provides browser controls; `src/browser-runtime.ts` positions
   native child webviews and retains them across tab/workspace switches and docking.
   `src-tauri/src/browser.rs` uses the system Tauri engine, with a GTK overlay on Linux.
@@ -254,6 +253,9 @@ or acronym.
   with an explicit availability status. `src-tauri/src/cli_usage.rs` owns
   availability and qualification checks.
 - On macOS, passive CLI credential reads keep Keychain interaction disabled.
+  Claude Code rewrites its item through `/usr/bin/security`, which resets the
+  item's access list to that tool; when the silent native read is denied, read
+  it through `/usr/bin/security` with a short deadline and no interaction.
   Cursor Keychain authorization requires an explicit action in the main view
   and runs in a bounded child process of the same Lomi executable. Keep secrets
   out of helper arguments, output and IPC. After authorization, verify access
@@ -377,6 +379,17 @@ or acronym.
   provider licenses; Windows line-ending conversion must not change their hashes.
   Settings sends expiring, acknowledged open intents to the workbench; closed setup targets
   are not recreated or redirected into another workspace.
+- `src/GeneralSettingsPage.tsx` (Settings → General, the default page) switches
+  the CLI-first/Chat-first workflow and the default parent folder for new and
+  cloned projects. Both are stored in webview storage next to onboarding state.
+- `src/project-sources.tsx` lists project sources (New project, Local folder,
+  Git URL, GitHub repository) on Welcome, in the project menu and behind the
+  Workspaces "+" (where Local folder keeps the add-workspace flow), and creates
+  or clones into a chosen parent folder. `src-tauri/src/project_sources.rs`
+  runs `git init`, `git clone` (validated URL, no prompts) and the user's
+  installed `gh` CLI. GitHub is offered only when `gh api user` succeeds;
+  Lomi never starts `gh auth login`. One clone runs at a time in its own
+  process group; cancel or failure removes the new target folder.
 - `src/application-close.ts` is shared by window close, updater installation and
   plugin restart: block new Android starts/mutations, finish existing guards, save
   the current session, settle the installer and stop owned phones before exit.
@@ -440,8 +453,8 @@ or acronym.
   start. Relaunches coalesce until frontend readiness, then present the existing
   main window without recreating its webview or PTYs. Keep D-Bus ownership through
   final Exit cleanup. Before initializing services, the next Linux primary waits
-  up to five seconds for existing Chat AI and Agent runtime owner locks to retire;
-  probe both together without creating storage. `external_files.rs` retains OS
+  up to five seconds for an existing Agent runtime owner lock to retire; probe it
+  without creating storage. `external_files.rs` retains OS
   file-open requests until the restored frontend acknowledges them. Launchers
   resolve relative paths against their own working directory before forwarding;
   macOS receives document URLs through `RunEvent::Opened`. File requests select
@@ -528,15 +541,13 @@ or acronym.
 ## Appearance
 
 - Lomi is the default built-in theme, defined in `themes/lomi.json` and the
-  matching startup tokens in `src/theme/baseline.css`. Its colors and semantic
-  surface assignments follow the `v0.6.1` Lomi palette: Electric Lime,
-  Ink/Chalk/Paper and graphite dark surfaces. Preserve the current layout,
-  semantic status colors and bundled Geist Variable. Keep code
-  and terminals monospace. See `docs/desktop-theme.md` for design references and
-  the workbench hierarchy.
-- Preserve the established File Explorer, terminal desktop, Workspaces list
-  and Source Control layouts, spacing, pane framing and selection treatments
-  when refining other interface surfaces.
+  matching startup tokens in `src/theme/baseline.css`. It follows Lomi Brand
+  Guidelines 4.0: Terminal Night neutrals, Agent Violet and Signal Lime, with
+  bundled Mona Sans (interface) and Geist Mono (code, terminals, labels).
+  Signal marks primary actions and live states only; selection stays neutral.
+  Navigation chrome shares the window background and the central stage is a
+  raised rounded surface. See `docs/desktop-theme.md` for the workbench
+  hierarchy, Welcome and first-run onboarding.
 - Lomi is the only built-in theme, selected with `active: null`. It is read-only
   and duplicable into an editable local package.
 - Reuse semantic tokens instead of inventing additional colors. Built-in themes
@@ -566,7 +577,9 @@ or acronym.
 ## Development and validation
 
 - Install dependencies: `pnpm install --frozen-lockfile`.
-- Start the desktop app: `pnpm tauri dev`.
+- Start the desktop app: `pnpm tauri dev`. Use `pnpm tauri:dev` to run it as
+  Lomi Dev (`dev.lomi.desktop.dev`, from `src-tauri/tauri.dev.conf.json`) next
+  to an installed Lomi; it keeps separate application data, locks and session.
 - Start only the browser frontend: `pnpm dev`.
 - Check TypeScript: `pnpm check`.
 - Check frontend/document formatting: `pnpm format:check`.

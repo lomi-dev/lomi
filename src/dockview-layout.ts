@@ -2,8 +2,7 @@ import { Orientation, type SerializedDockview } from "dockview";
 import {
   layoutPanes,
   splitGeometry,
-  MIN_PANE_HEIGHT,
-  MIN_PANE_WIDTH,
+  paneMinimumSize,
   SPLIT_DIVIDER_SIZE,
   type Layout,
   type LayoutSize,
@@ -67,8 +66,8 @@ export function dockviewLayout(
         {
           id: pane.id,
           contentComponent: pane.type,
-          minimumWidth: MIN_PANE_WIDTH,
-          minimumHeight: MIN_PANE_HEIGHT,
+          minimumWidth: paneMinimumSize(pane).width,
+          minimumHeight: paneMinimumSize(pane).height,
           renderer: "onlyWhenVisible",
         },
       ]),

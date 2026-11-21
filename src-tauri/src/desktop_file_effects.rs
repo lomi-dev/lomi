@@ -210,8 +210,8 @@ fn app_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
         .app_data_dir()
         .map_err(|error| error.to_string())?;
     fs::create_dir_all(&path).map_err(|error| error.to_string())?;
-    crate::chat::storage::reject_link(&path)?;
-    crate::chat::storage::private(&path, true)?;
+    crate::storage_guard::reject_link(&path)?;
+    crate::storage_guard::private(&path, true)?;
     fs::canonicalize(&path).map_err(|error| error.to_string())
 }
 
@@ -1435,7 +1435,7 @@ fn outbox_lock<T>(path: &Path, action: impl FnOnce() -> Result<T, String>) -> Re
             return Err("The desktop file outbox lock is invalid.".into());
         }
     }
-    crate::chat::storage::private(&lock_path, false)
+    crate::storage_guard::private(&lock_path, false)
         .map_err(|_| "The desktop file outbox lock is not owner-private.")?;
     file.lock()
         .map_err(|_| "The desktop file outbox lock could not be acquired.")?;

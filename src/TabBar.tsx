@@ -1,11 +1,5 @@
 import ResourceIcon from "./ResourceIcon";
-import {
-  useCallback,
-  useLayoutEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import {
   ChevronLeft,
@@ -24,19 +18,14 @@ import {
   X,
 } from "./icons";
 import type { Tab, TabCloseAction, TabDropSide } from "./model";
-import { tabTitle, layoutPanes } from "./model";
+import { tabTitle } from "./model";
 import { useTabDrag } from "./tab-drag";
 import { IconButton } from "./ui";
 import TabContextMenu from "./TabContextMenu";
 import type { TabMenuAnchor } from "./TabContextMenu";
 import ContextMenu from "./ContextMenu";
+import { workMode } from "./onboarding-state";
 import { SETTINGS_TAB_ID } from "./useSettingsTab";
-
-import {
-  chatActivity,
-  chatActivityRevision,
-  subscribeChatActivity,
-} from "./chat/chat-service";
 
 interface Props {
   tabs: Tab[];
@@ -139,12 +128,6 @@ export default function TabBar({
     ...tabs.map((tab) => tab.id),
     ...(settings?.opened ? [SETTINGS_TAB_ID] : []),
   ];
-  useSyncExternalStore(subscribeChatActivity, chatActivityRevision);
-  const activity = (tab: Tab) =>
-    (tab.type === "terminal" ? layoutPanes(tab.layout) : [tab])
-      .filter((p) => p.type === "chat")
-      .map((p) => chatActivity(p.conversationId))
-      .find(Boolean);
   const localStrip = useRef<HTMLDivElement>(null);
   const strip = stripRef ?? localStrip;
   const newButton = useRef<HTMLButtonElement>(null);
@@ -221,6 +204,12 @@ export default function TabBar({
     if (element) element.scrollLeft += direction * element.clientWidth * 0.8;
   };
 
+  const chatFirst = workMode() === "chat";
+  const chatAction = {
+    label: "New chat",
+    icon: <MessageSquare size={14} aria-hidden="true" />,
+    run: onNewChat,
+  };
   return (
     <div
       className="tab-bar"
@@ -345,10 +334,8 @@ export default function TabBar({
                   <Globe size={14} />
                 ) : tab.type === "android" ? (
                   <Monitor size={14} aria-hidden="true" />
-                ) : tab.type === "agent-task" ? (
-                  <Terminal size={14} aria-hidden="true" />
-                ) : tab.type === "chat" ? (
-                  <MessageSquare size={14} />
+                ) : tab.type === "thread" ? (
+                  <MessageSquare size={14} aria-hidden="true" />
                 ) : tab.type === "file" ? (
                   <ResourceIcon
                     path={`${tab.root}/${tab.relative}`}
@@ -360,19 +347,6 @@ export default function TabBar({
                   <Terminal size={14} />
                 )}
                 <span>{tabTitle(tab)}</span>
-                {activity(tab) && (
-                  <span
-                    className="tab-modified"
-                    aria-hidden="true"
-                    title={activity(tab)}
-                  >
-                    {activity(tab) === "Generating"
-                      ? "◌"
-                      : activity(tab) === "Chat error"
-                        ? "!"
-                        : "●"}
-                  </span>
-                )}
                 {modified?.has(tab.id) && (
                   <span className="tab-modified" aria-label="Unsaved changes">
                     ●
@@ -446,6 +420,7 @@ export default function TabBar({
           {...newMenu}
           label="New tab"
           actions={[
+            ...(chatFirst ? [chatAction] : []),
             {
               label: "New terminal",
               icon: <Terminal size={14} aria-hidden="true" />,
@@ -455,11 +430,6 @@ export default function TabBar({
               label: "New file",
               icon: <FileCode size={14} aria-hidden="true" />,
               run: onNewFile,
-            },
-            {
-              label: "Chat AI",
-              icon: <MessageSquare size={14} aria-hidden="true" />,
-              run: onNewChat,
             },
             {
               label: "Agents",
@@ -476,6 +446,7 @@ export default function TabBar({
               icon: <Monitor size={14} aria-hidden="true" />,
               run: onNewAndroid,
             },
+            ...(chatFirst ? [] : [chatAction]),
           ]}
           onClose={() => {
             setNewMenu(null);

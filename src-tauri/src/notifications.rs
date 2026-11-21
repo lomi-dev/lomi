@@ -113,7 +113,7 @@ impl Snapshot {
 }
 
 fn read(path: &Path) -> Result<Snapshot, String> {
-    crate::chat::storage::reject_link(path)?;
+    crate::storage_guard::reject_link(path)?;
     match fs::symlink_metadata(path) {
         Ok(metadata) if !metadata.is_file() => {
             return Err("The notification inbox must be a regular file.".into())

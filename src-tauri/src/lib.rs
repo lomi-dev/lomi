@@ -1,115 +1,15 @@
 mod agent_control;
 mod agent_notifications;
-mod agent_runtime;
+mod ai_chat;
 
-/// Fixed, headless evidence helper. It performs no GUI initialization, task
-/// execution, account login, or configuration mutation.
-pub fn internal_native_evidence(mode: &str) -> i32 {
-    use std::io::{Read, Write};
-    const LIMIT: usize = 128 * 1024;
-    if !matches!(mode, "capture" | "verify") {
-        return 2;
-    }
-    #[cfg(target_os = "macos")]
-    if native_evidence_parent_lifetime().is_err() {
-        return 4;
-    }
-    let mut input = Vec::new();
-    if std::io::stdin()
-        .lock()
-        .take((LIMIT + 1) as u64)
-        .read_to_end(&mut input)
-        .is_err()
-        || input.len() > LIMIT
-    {
-        return 2;
-    }
-    let Ok(output) = agent_runtime::native_evidence_helper_reply(mode, &input) else {
-        return 2;
-    };
-    if std::io::stdout().lock().write_all(&output).is_err() {
-        return 4;
-    }
-    0
-}
-
-/// ABI 1 reserves FD 3 for a private Unix socket whose other end belongs to
-/// the host holding the profile OwnerLock. The helper only reads evidence, so
-/// immediate exit on host death cannot leave an outstanding mutation behind.
-#[cfg(target_os = "macos")]
-fn native_evidence_parent_lifetime() -> Result<(), ()> {
-    const FD: libc::c_int = 3;
-    let mut metadata = std::mem::MaybeUninit::<libc::stat>::uninit();
-    if unsafe { libc::fstat(FD, metadata.as_mut_ptr()) } != 0 {
-        return Err(());
-    }
-    let metadata = unsafe { metadata.assume_init() };
-    if metadata.st_mode & libc::S_IFMT != libc::S_IFSOCK {
-        return Err(());
-    }
-    let mut kind: libc::c_int = 0;
-    let mut size = std::mem::size_of_val(&kind) as libc::socklen_t;
-    if unsafe {
-        libc::getsockopt(
-            FD,
-            libc::SOL_SOCKET,
-            libc::SO_TYPE,
-            (&mut kind as *mut libc::c_int).cast(),
-            &mut size,
-        )
-    } != 0
-        || kind != libc::SOCK_STREAM
-    {
-        return Err(());
-    }
-    let mut peer = std::mem::MaybeUninit::<libc::sockaddr_un>::zeroed();
-    let mut peer_size = std::mem::size_of::<libc::sockaddr_un>() as libc::socklen_t;
-    if unsafe { libc::getpeername(FD, peer.as_mut_ptr().cast(), &mut peer_size) } != 0
-        || unsafe { peer.assume_init() }.sun_family as libc::c_int != libc::AF_UNIX
-    {
-        return Err(());
-    }
-    let flags = unsafe { libc::fcntl(FD, libc::F_GETFD) };
-    if flags < 0 || unsafe { libc::fcntl(FD, libc::F_SETFD, flags | libc::FD_CLOEXEC) } < 0 {
-        return Err(());
-    }
-    std::thread::Builder::new()
-        .name("native-evidence-parent".into())
-        .spawn(|| {
-            let mut event = libc::pollfd {
-                fd: FD,
-                events: libc::POLLIN | libc::POLLHUP | libc::POLLERR,
-                revents: 0,
-            };
-            loop {
-                let ready = unsafe { libc::poll(&mut event, 1, -1) };
-                if ready < 0
-                    && std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted
-                {
-                    continue;
-                }
-                // This channel has no messages. Readability, EOF, an invalid
-                // descriptor, or any error means the lifetime is no longer valid.
-                if ready != 0 {
-                    unsafe { libc::_exit(4) };
-                }
-            }
-        })
-        .map(|_| ())
-        .map_err(|_| ())
-}
-
-#[cfg(target_os = "macos")]
-pub fn agent_runtime_host_worker_entry() -> Option<i32> {
-    agent_runtime::host_worker_entry()
-}
 mod android;
 
 mod android_protocol;
 mod auth;
 mod browser;
-mod chat;
+mod storage_guard;
 
+mod cli_bin;
 mod cli_catalog;
 mod cli_config;
 mod cli_integrations;
@@ -150,6 +50,7 @@ mod native_file_effects;
 mod native_git_effects;
 
 mod plugins;
+mod project_sources;
 mod project_write_guard;
 mod remote_v2;
 #[cfg(unix)]
@@ -298,7 +199,6 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .manage(chat::commands::Chats::default())
         .manage(auth::AuthController::default())
         .manage(push::Push::default())
         .manage(agent_control::Control::default())
@@ -308,7 +208,7 @@ pub fn run() {
         .manage(terminal::Terminals::default())
         .manage(cli_titles::CliTitleConfig::default())
         .manage(cli_usage::CliUsage::default())
-        .manage(agent_runtime::AgentRuntime::default())
+        .manage(ai_chat::AiChat::default())
         .manage(cli_integrations::CliIntegrations::default())
         .manage(notifications::Notifications::default())
         .manage(files::SessionFile::default())
@@ -349,8 +249,6 @@ pub fn run() {
             );
             #[cfg(target_os = "linux")]
             linux_instance::wait_for_previous_owner(app.handle())?;
-            app.state::<agent_runtime::AgentRuntime>()
-                .with(app.handle(), |_| Ok(()))?;
 
             let integration = app.path().app_data_dir()?.join("shell-integration");
             shell::prepare(&integration).map_err(std::io::Error::other)?;
@@ -430,37 +328,28 @@ pub fn run() {
                 cli_integrations::inspect_mcp_clients,
                 cli_integrations::install_mcp_client,
                 cli_launch::installed_agent_clis,
-                agent_runtime::agent_legacy_migration_rollback,
-                agent_runtime::agent_legacy_migration_export_open,
-                agent_runtime::agent_legacy_migration_preview,
-                agent_runtime::agent_legacy_migration_apply,
-                agent_runtime::agent_accounts_snapshot,
-                agent_runtime::agent_tasks_snapshot,
-                agent_runtime::agent_task_snapshot,
-                agent_runtime::agent_account_create,
-                agent_runtime::agent_account_update,
-                agent_runtime::agent_account_remove,
-                agent_runtime::agent_account_verify,
-                agent_runtime::agent_account_recover,
-                agent_runtime::agent_task_create,
-                agent_runtime::agent_task_send,
-                agent_runtime::agent_task_transfer_preview,
-                agent_runtime::agent_task_transfer_apply,
-                agent_runtime::agent_task_update_history_grant,
-                agent_runtime::agent_task_prepare_switch,
-                agent_runtime::agent_task_commit_switch,
-                agent_runtime::agent_task_stop,
-                agent_runtime::agent_task_recover,
-                agent_runtime::agent_task_prepare_close,
-                agent_runtime::agent_task_close_release,
-                agent_runtime::agent_runtime_prepare_close,
-                agent_runtime::agent_runtime_cancel_close,
-                agent_runtime::agent_tasks_drain,
-                agent_runtime::agent_runtime_shutdown,
-                agent_runtime::agent_permission_snapshot,
-                agent_runtime::agent_permission_reply,
-                agent_runtime::agent_permission_freeze,
-                agent_runtime::agent_permission_freeze_complete,
+                ai_chat::ai_chat_settings,
+                ai_chat::ai_provider_create,
+                ai_chat::ai_provider_update,
+                ai_chat::ai_provider_remove,
+                ai_chat::ai_provider_set_key,
+                ai_chat::ai_provider_probe,
+                ai_chat::ai_providers_detect,
+                ai_chat::ai_cli_status,
+                ai_chat::ai_cli_models,
+                ai_chat::ai_chat_preferences_update,
+                ai_chat::ai_threads_list,
+                ai_chat::ai_thread_snapshot,
+                ai_chat::ai_thread_create,
+                ai_chat::ai_thread_update,
+                ai_chat::ai_thread_delete,
+                ai_chat::ai_thread_send,
+                ai_chat::ai_thread_stop,
+                ai_chat::ai_attachment_pick,
+                ai_chat::ai_attachment_import_paths,
+                ai_chat::ai_attachment_import_bytes,
+                ai_chat::ai_attachment_discard,
+                ai_chat::ai_attachment_preview,
                 agent_control::agent_control_state,
                 agent_control::agent_control_startup_state,
                 agent_control::agent_control_startup_decide,
@@ -473,13 +362,6 @@ pub fn run() {
                 agent_control::agent_control_settings_read_reply,
                 agent_control::agent_control_enable,
                 agent_control::agent_control_approve,
-                agent_control::agent_control_chat_catalog,
-                agent_control::agent_control_chat_open,
-                agent_control::agent_control_chat_draft,
-                agent_control::agent_control_chat_send_prepare,
-                agent_control::agent_control_chat_send_pending,
-                agent_control::agent_control_chat_send_decide,
-                agent_control::agent_control_chat_send,
                 agent_control::agent_control_project_open_decide,
                 agent_control::agent_control_project_open_ready,
                 agent_control::agent_control_project_open_commit,
@@ -546,21 +428,6 @@ pub fn run() {
                 android::commands::android_input,
                 android::commands::android_install_apk,
                 android::commands::android_save_screenshot,
-                chat::commands::chat_connection_action,
-                chat::commands::chat_preview_models,
-                chat::commands::chat_main,
-                chat::commands::chat_preferences,
-                chat::commands::chat_preferences_save,
-                chat::commands::chat_generate,
-                chat::commands::chat_cancel,
-                chat::commands::chat_subscribe,
-                chat::commands::chat_ack,
-                chat::commands::chat_close,
-                chat::commands::chat_flush,
-                chat::commands::chat_retain,
-                chat::commands::chat_export,
-                chat::commands::chat_discard,
-                chat::commands::chat_recover,
                 window_lifecycle::hide_main_window,
                 window_lifecycle::request_quit,
                 window_lifecycle::reopen_main_window,
@@ -636,6 +503,11 @@ pub fn run() {
                 files::operations::open_project_item,
                 files::operations::ignore_project_item,
                 files::validate_directory,
+                project_sources::project_source_github_status,
+                project_sources::project_source_github_repos,
+                project_sources::project_source_create,
+                project_sources::project_source_clone,
+                project_sources::project_source_cancel,
                 files::preview_file,
                 files::markdown::read_markdown_image,
                 files::images::read_image_file,
@@ -744,10 +616,6 @@ pub fn run() {
             }
         }
         if matches!(event, tauri::RunEvent::Exit) {
-            if let Err(error) = app.state::<agent_runtime::AgentRuntime>().drain_all(app) {
-                eprintln!("Agent runtime exit cleanup could not confirm completion: {error}");
-            }
-
             tauri::async_runtime::block_on(agent_control::shutdown(app));
             app.state::<auth::AuthController>().shutdown();
             if let Err(error) = tauri::async_runtime::block_on(
@@ -756,8 +624,8 @@ pub fn run() {
                 eprintln!("Android exit cleanup could not confirm completion: {error}");
             }
 
-            app.state::<chat::commands::Chats>().stop();
             app.state::<terminal::Terminals>().stop_all();
+            app.state::<ai_chat::AiChat>().kill_cli_groups();
             #[cfg(windows)]
             app.state::<windows_instance::Instance>().release();
             #[cfg(target_os = "linux")]
@@ -770,9 +638,8 @@ pub fn run() {
         } = event
         {
             if label == "main" {
-                app.state::<agent_runtime::AgentRuntime>().stop_all();
-                app.state::<chat::commands::Chats>().stop();
                 app.state::<terminal::Terminals>().stop_all();
+                app.state::<ai_chat::AiChat>().kill_cli_groups();
                 app.exit(0);
             }
         }

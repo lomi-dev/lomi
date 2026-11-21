@@ -4,7 +4,6 @@ pub mod artifact;
 pub mod browser;
 pub mod browser_dom;
 pub mod browser_logs;
-pub mod chat;
 pub mod control;
 pub mod editor;
 pub mod files;

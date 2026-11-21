@@ -9,12 +9,12 @@ use std::{
     io::{Read, Write},
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+        atomic::{AtomicU64, AtomicUsize, Ordering},
         mpsc::{self, Receiver, SyncSender},
         Arc, Condvar, Mutex,
     },
     thread,
-    time::{Duration, Instant},
+    time::Duration,
 };
 use tauri::{
     ipc::{Channel, Response},
@@ -27,78 +27,6 @@ use lomi_control_core::{terminal::TerminalControl, terminal_io};
 use std::os::fd::BorrowedFd;
 
 const HIGH_WATER: usize = 128 * 1024;
-
-pub(crate) type FinalNativeAdmission = Box<dyn FnOnce() -> Result<(), String> + Send>;
-pub(crate) struct NativeTerminalLaunch {
-    pub command: (portable_pty::CommandBuilder, String),
-    pub admission: FinalNativeAdmission,
-    #[cfg(target_os = "macos")]
-    pub owned_boundary: Option<crate::agent_runtime::native_launch::PtyFactory>,
-}
-struct PreparedTerminal {
-    command: (portable_pty::CommandBuilder, String),
-    completion: Arc<AtomicBool>,
-    drain_healthy: Option<Arc<AtomicBool>>,
-    admission: Option<FinalNativeAdmission>,
-    #[cfg(target_os = "macos")]
-    owned_boundary: Option<crate::agent_runtime::native_launch::PtyFactory>,
-}
-
-#[cfg(target_os = "macos")]
-fn account_group_contains_only_zombies(group: u32) -> bool {
-    // Darwin killpg returns EPERM if a retained group has no signalable live
-    // member. Admit that case only with two complete, stable native snapshots
-    // and an exact zombie status for every member, never for an unknown PID.
-    // proc_pidinfo's arg=1 includes zombies (XNU proc_info.c).
-    fn members(group: u32) -> Option<Vec<i32>> {
-        let mut pids = [0i32; 1024];
-        let capacity = std::mem::size_of_val(&pids) as i32;
-        let count = unsafe {
-            libc::proc_listpids(
-                2, /* PROC_PGRP_ONLY */
-                group,
-                pids.as_mut_ptr().cast(),
-                capacity,
-            )
-        };
-        if count <= 0 || count >= capacity || count % 4 != 0 {
-            return None;
-        }
-        let mut result = pids[..count as usize / 4].to_vec();
-        if result.iter().any(|pid| *pid <= 0) {
-            return None;
-        }
-        result.sort_unstable();
-        Some(result)
-    }
-    let Some(pids) = members(group) else {
-        return false;
-    };
-    for pid in &pids {
-        let mut info = std::mem::MaybeUninit::<libc::proc_bsdshortinfo>::zeroed();
-        let size = std::mem::size_of::<libc::proc_bsdshortinfo>() as i32;
-        let read = unsafe {
-            libc::proc_pidinfo(
-                *pid,
-                libc::PROC_PIDT_SHORTBSDINFO,
-                1,
-                info.as_mut_ptr().cast(),
-                size,
-            )
-        };
-        if read != size {
-            return false;
-        }
-        let info = unsafe { info.assume_init() };
-        if info.pbsi_pid != *pid as u32
-            || info.pbsi_pgid != group
-            || info.pbsi_status != libc::SZOMB
-        {
-            return false;
-        }
-    }
-    members(group).is_some_and(|current| current == pids)
-}
 
 pub mod clipboard;
 
@@ -115,13 +43,6 @@ struct Flow {
 }
 
 struct Session {
-    owned_account: bool,
-    owned_boundary: bool,
-    completion: Option<Arc<AtomicBool>>,
-    transport_finished: AtomicBool,
-    account_reap_started: Mutex<bool>,
-    account_kill_sent: AtomicBool,
-    account_signal_failed: AtomicBool,
     master: Mutex<Box<dyn MasterPty + Send>>,
     writer: Mutex<Option<Box<dyn Write + Send>>>,
     killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
@@ -323,63 +244,7 @@ impl Session {
         Some(executable.file_name()?.to_string_lossy().into_owned())
     }
 
-    #[cfg(unix)]
-    fn kill_account_group(&self, reap_started: bool) {
-        if self.owned_boundary {
-            if self.account_kill_sent.load(Ordering::SeqCst) {
-                return;
-            }
-            match self
-                .killer
-                .lock()
-                .map_err(|_| ())
-                .and_then(|mut killer| killer.kill().map_err(|_| ()))
-            {
-                Ok(()) => {
-                    self.account_signal_failed.store(false, Ordering::SeqCst);
-                    self.account_kill_sent.store(true, Ordering::SeqCst);
-                }
-                Err(()) => self.account_signal_failed.store(true, Ordering::SeqCst),
-            }
-            return;
-        }
-        // Once a group-wide SIGKILL succeeds, its members cannot create new
-        // descendants. Do not signal again after reaping begins or after a
-        // successful kill: Darwin can retain an exiting child until the PTY
-        // descriptors close, and PID ownership ends when wait reaps it.
-        if reap_started || self.account_kill_sent.load(Ordering::SeqCst) {
-            return;
-        }
-        let Some(pid) = self.pid else {
-            self.account_signal_failed.store(true, Ordering::SeqCst);
-            return;
-        };
-        let killed = unsafe { libc::kill(-(pid as i32), libc::SIGKILL) };
-        let error = if killed != 0 {
-            std::io::Error::last_os_error().raw_os_error()
-        } else {
-            None
-        };
-        #[cfg(target_os = "macos")]
-        let only_zombies = error == Some(libc::EPERM) && account_group_contains_only_zombies(pid);
-        #[cfg(not(target_os = "macos"))]
-        let only_zombies = false;
-        if killed == 0 || error == Some(libc::ESRCH) || only_zombies {
-            self.account_kill_sent.store(true, Ordering::SeqCst);
-        } else {
-            self.account_signal_failed.store(true, Ordering::SeqCst);
-        }
-    }
-
     fn stop(&self) {
-        #[cfg(unix)]
-        if self.owned_account {
-            // portable-pty creates an owned session/process group. Fence its
-            // descendants before the leader can be reaped and its PID reused.
-            if let Ok(reap_started) = self.account_reap_started.lock() {
-                self.kill_account_group(*reap_started);
-            }
-        }
         #[cfg(unix)]
         if let Some(control) = self.control() {
             if let Ok(mut control) = control.lock() {
@@ -390,10 +255,8 @@ impl Session {
             flow.closed = true;
         }
         self.ready.notify_all();
-        if !self.owned_account {
-            if let Ok(mut killer) = self.killer.lock() {
-                let _ = killer.kill();
-            }
+        if let Ok(mut killer) = self.killer.lock() {
+            let _ = killer.kill();
         }
         if let Ok(mut writer) = self.writer.lock() {
             writer.take();
@@ -592,8 +455,6 @@ pub struct StartRequest {
     agent_ticket: Option<AgentTicket>,
     #[serde(default)]
     cli_launch: Option<crate::cli_catalog::TitleCli>,
-    #[serde(default)]
-    account_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -604,14 +465,6 @@ struct AgentTicket {
 }
 
 fn validate_start_request(request: &StartRequest) -> Result<(), String> {
-    if request.account_id.is_some()
-        && (request.agent_ticket.is_some() || request.cli_launch.is_some())
-    {
-        return Err(
-            "A native account terminal resolves its own CLI and cannot combine another launch."
-                .into(),
-        );
-    }
     if request.agent_ticket.is_some() && request.cli_launch.is_some() {
         return Err("Agent control terminals cannot launch a separate CLI.".into());
     }
@@ -623,10 +476,6 @@ fn validate_start_request(request: &StartRequest) -> Result<(), String> {
 pub struct Started {
     cwd: String,
     profile_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    account_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    account_label: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -913,7 +762,6 @@ impl Terminals {
             .lock()
             .map_err(|_| "Terminal unavailable.")?;
         if *closed
-            || session.transport_finished.load(Ordering::SeqCst)
             || session
                 .flow
                 .lock()
@@ -970,59 +818,6 @@ impl Terminals {
         }
     }
 
-    pub(crate) fn stop_owned_and_wait(&self) -> Result<(), String> {
-        let sessions: Vec<_> = self
-            .sessions
-            .lock()
-            .map_err(|_| "Owned terminal state is unavailable.")?
-            .values()
-            .filter(|session| session.owned_boundary)
-            .cloned()
-            .collect();
-        Self::stop_owned_sessions(&sessions)
-    }
-
-    fn stop_owned_sessions(sessions: &[Arc<Session>]) -> Result<(), String> {
-        // Keep the registered views until each owned killer proves retirement.
-        // Never hold the terminal registry or runtime owner lock across Stop.
-        for session in sessions {
-            #[cfg(unix)]
-            {
-                let reap_started = session
-                    .account_reap_started
-                    .lock()
-                    .map_err(|_| "Owned terminal retirement state is unavailable.")?;
-                session.kill_account_group(*reap_started);
-            }
-            if !session.account_kill_sent.load(Ordering::SeqCst)
-                || session.account_signal_failed.load(Ordering::SeqCst)
-            {
-                return Err("An owned login terminal has not proved retirement.".into());
-            }
-            session.stop();
-        }
-        let deadline = Instant::now() + Duration::from_secs(8);
-        while sessions
-            .iter()
-            .any(|session| !session.transport_finished.load(Ordering::SeqCst))
-        {
-            if Instant::now() >= deadline {
-                return Err("Owned login terminal transport has not finished draining.".into());
-            }
-            thread::sleep(Duration::from_millis(5));
-        }
-        for session in sessions {
-            session
-                .completion
-                .as_ref()
-                .ok_or("Owned login completion state is unavailable.")?
-                .store(true, Ordering::SeqCst);
-        }
-        // Keep owned views until durable helper finalization also succeeds.
-        // Explicit close or the successful application's Exit removes them.
-        Ok(())
-    }
-
     pub fn close(&self, id: &str) -> Result<(), String> {
         let session = self
             .sessions
@@ -1031,11 +826,7 @@ impl Terminals {
             .get(id)
             .cloned();
         if let Some(session) = session {
-            if session.owned_boundary {
-                Self::stop_owned_sessions(std::slice::from_ref(&session))?;
-            } else {
-                session.stop();
-            }
+            session.stop();
             let mut sessions = self
                 .sessions
                 .lock()
@@ -1089,72 +880,6 @@ impl Terminals {
         exited: Channel<Exit>,
         #[cfg(unix)] control: Option<Arc<Mutex<TerminalControl>>>,
     ) -> Result<Started, String> {
-        self.start_prepared(
-            shells,
-            request,
-            output,
-            exited,
-            #[cfg(unix)]
-            control,
-            None,
-        )
-    }
-
-    fn start_account(
-        &self,
-        shells: &Shells,
-        request: StartRequest,
-        output: Channel<Response>,
-        exited: Channel<Exit>,
-        launch: NativeTerminalLaunch,
-        completion: Arc<AtomicBool>,
-    ) -> Result<Started, String> {
-        self.start_prepared(
-            shells,
-            request,
-            output,
-            exited,
-            #[cfg(unix)]
-            None,
-            Some(PreparedTerminal {
-                command: launch.command,
-                completion,
-                drain_healthy: None,
-                admission: Some(launch.admission),
-                #[cfg(target_os = "macos")]
-                owned_boundary: launch.owned_boundary,
-            }),
-        )
-    }
-
-    fn start_prepared(
-        &self,
-        shells: &Shells,
-        request: StartRequest,
-        output: Channel<Response>,
-        exited: Channel<Exit>,
-        #[cfg(unix)] control: Option<Arc<Mutex<TerminalControl>>>,
-        prepared: Option<PreparedTerminal>,
-    ) -> Result<Started, String> {
-        #[cfg(target_os = "macos")]
-        let mut owned_boundary = None;
-        let (prepared, completion, drain_healthy, admission) = match prepared {
-            Some(PreparedTerminal {
-                command,
-                completion,
-                drain_healthy,
-                admission,
-                #[cfg(target_os = "macos")]
-                    owned_boundary: factory,
-            }) => {
-                #[cfg(target_os = "macos")]
-                {
-                    owned_boundary = factory;
-                }
-                (Some(command), Some(completion), drain_healthy, admission)
-            }
-            None => (None, None, None, None),
-        };
         validate_start_request(&request)?;
         if request.id.is_empty() || request.id.len() > 128 {
             return Err("Invalid terminal identifier.".into());
@@ -1165,9 +890,7 @@ impl Terminals {
             .find(|profile| profile.id == request.profile_id)
             .cloned()
             .ok_or("The selected shell is no longer installed. Choose another shell.")?;
-        let (command, cwd) = if let Some(prepared) = prepared {
-            prepared
-        } else if let Some(cli) = request.cli_launch {
+        let (command, cwd) = if let Some(cli) = request.cli_launch {
             let resolved =
                 crate::cli_launch::resolve_cli(&profile, &request.cwd, &shells.integration, cli)?;
             shell::build_with_cli(
@@ -1180,13 +903,6 @@ impl Terminals {
         } else {
             shell::build(&profile, &request.cwd, &shells.integration)?
         };
-        #[cfg(target_os = "macos")]
-        let is_owned_boundary = owned_boundary.is_some();
-        #[cfg(not(target_os = "macos"))]
-        let is_owned_boundary = false;
-        if let Some(admission) = admission {
-            admission()?;
-        }
         #[cfg(unix)]
         if let Some(control) = &control {
             if !control
@@ -1197,35 +913,16 @@ impl Terminals {
                 return Err("Control revoked before terminal start".into());
             }
         }
-        #[cfg(target_os = "macos")]
-        let owned = owned_boundary
-            .map(|factory| factory(size(request.cols, request.rows)?))
-            .transpose()?;
-        #[cfg(not(target_os = "macos"))]
-        let owned: Option<(
-            Box<dyn MasterPty + Send>,
-            Box<dyn portable_pty::Child + Send + Sync>,
-        )> = None;
-        #[cfg(target_os = "macos")]
-        let owned_read_fd = owned.as_ref().map(|owned| owned.read_fd);
-        #[cfg(not(target_os = "macos"))]
-        let owned_read_fd: Option<i32> = None;
-        #[cfg(target_os = "macos")]
-        let owned = owned.map(|owned| (owned.master, owned.child));
-        let (master, mut child) = if let Some(owned) = owned {
-            owned
-        } else {
-            let pair = native_pty_system()
-                .openpty(size(request.cols, request.rows)?)
-                .map_err(|error| error.to_string())?;
-            let child = pair
-                .slave
-                .spawn_command(command)
-                .map_err(|error| format!("Cannot start {}: {error}", profile.name))?;
-            (pair.master, child)
-        };
+        let pair = native_pty_system()
+            .openpty(size(request.cols, request.rows)?)
+            .map_err(|error| error.to_string())?;
+        let child = pair
+            .slave
+            .spawn_command(command)
+            .map_err(|error| format!("Cannot start {}: {error}", profile.name))?;
+        let (master, mut child) = (pair.master, child);
         #[cfg(unix)]
-        if control.is_some() || request.account_id.is_some() {
+        if control.is_some() {
             let fd = master.as_raw_fd().ok_or("This PTY cannot be controlled.")?;
             terminal_io::make_nonblocking(unsafe { BorrowedFd::borrow_raw(fd) })
                 .map_err(|e| e.to_string())?;
@@ -1235,13 +932,6 @@ impl Terminals {
             .map_err(|error| error.to_string())?;
         let writer = master.take_writer().map_err(|error| error.to_string())?;
         let session = Arc::new(Session {
-            owned_account: request.account_id.is_some(),
-            owned_boundary: is_owned_boundary,
-            completion: completion.clone(),
-            transport_finished: AtomicBool::new(false),
-            account_reap_started: Mutex::new(false),
-            account_kill_sent: AtomicBool::new(false),
-            account_signal_failed: AtomicBool::new(false),
             pid: child.process_id(),
             profile: profile.clone(),
             master: Mutex::new(master),
@@ -1249,7 +939,7 @@ impl Terminals {
             killer: Mutex::new(child.clone_killer()),
             flow: Mutex::new(Flow {
                 #[cfg(unix)]
-                nonblocking: control.is_some() || request.account_id.is_some(),
+                nonblocking: control.is_some(),
                 #[cfg(unix)]
                 control,
                 ..Flow::default()
@@ -1269,12 +959,6 @@ impl Terminals {
             if sessions.contains_key(&request.id) {
                 drop(sessions);
                 session.stop();
-                if session.owned_account {
-                    *session
-                        .account_reap_started
-                        .lock()
-                        .unwrap_or_else(|error| error.into_inner()) = true;
-                }
                 drop(reader);
                 drop(session);
                 let _ = child.wait();
@@ -1292,79 +976,22 @@ impl Terminals {
         }
         drop(remote_order);
         let sessions = Arc::downgrade(&self.sessions);
-        let session_retirement = Arc::downgrade(&session);
         thread::spawn(move || {
             let mut buffer = [0_u8; 16 * 1024];
-            let mut clean_drain = true;
 
-            #[cfg(unix)]
-            let mut account_tail: Option<(Instant, usize)> = None;
-            'read: loop {
-                #[cfg(unix)]
-                if session.owned_account && !session.owned_boundary {
-                    if let Some(pid) = session.pid {
-                        let mut info = std::mem::MaybeUninit::<libc::siginfo_t>::zeroed();
-                        let observed = unsafe {
-                            libc::waitid(
-                                libc::P_PID,
-                                pid,
-                                info.as_mut_ptr(),
-                                libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
-                            )
-                        };
-                        if observed != 0 {
-                            clean_drain = false;
-                        }
-                        if (observed != 0 || unsafe { info.assume_init().si_pid() } != 0)
-                            && account_tail.is_none()
-                        {
-                            let reap_started = session
-                                .account_reap_started
-                                .lock()
-                                .unwrap_or_else(|error| error.into_inner());
-                            session.kill_account_group(*reap_started);
-                            account_tail = Some((Instant::now() + Duration::from_secs(5), 0));
-                        }
-                    }
-                    if account_tail.is_some_and(|(deadline, bytes)| {
-                        Instant::now() >= deadline || bytes > 1024 * 1024
-                    }) {
-                        clean_drain = false;
-                        break;
-                    }
-                }
+            loop {
                 let mut flow = session
                     .flow
                     .lock()
                     .unwrap_or_else(|error| error.into_inner());
-                #[cfg(unix)]
-                let draining_tail = account_tail.is_some();
-                #[cfg(not(unix))]
-                let draining_tail = false;
-                while !flow.closed && flow.pending >= HIGH_WATER && !draining_tail {
-                    #[cfg(unix)]
-                    if session.owned_account {
-                        let (next, timeout) = session
-                            .ready
-                            .wait_timeout(flow, Duration::from_millis(50))
-                            .unwrap_or_else(|error| error.into_inner());
-                        flow = next;
-                        if timeout.timed_out() {
-                            continue 'read;
-                        }
-                        continue;
-                    }
+                while !flow.closed && flow.pending >= HIGH_WATER {
                     flow = session
                         .ready
                         .wait(flow)
                         .unwrap_or_else(|error| error.into_inner());
                 }
-                if flow.closed && !session.owned_account {
+                if flow.closed {
                     break;
-                }
-                #[cfg(unix)]
-                if flow.closed && session.owned_account && account_tail.is_none() {
-                    account_tail = Some((Instant::now() + Duration::from_secs(5), 0));
                 }
                 drop(flow);
                 let length = match reader.read(&mut buffer) {
@@ -1373,43 +1000,22 @@ impl Terminals {
                         if error.kind() == std::io::ErrorKind::WouldBlock
                             && session.nonblocking() =>
                     {
-                        if let Some(read_fd) = owned_read_fd {
-                            let fd = unsafe { BorrowedFd::borrow_raw(read_fd) };
-                            if terminal_io::wait_readable(fd).is_err() {
-                                clean_drain = false;
-                                break;
-                            }
-                            continue;
-                        }
                         let Ok(fd) = session.control_fd() else {
-                            clean_drain = false;
                             break;
                         };
                         if terminal_io::wait_readable(fd).is_err() {
-                            clean_drain = false;
                             break;
                         }
                         continue;
                     }
                     Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
                     Ok(0) => break,
-                    #[cfg(unix)]
-                    Err(error)
-                        if session.owned_account && error.raw_os_error() == Some(libc::EIO) =>
-                    {
-                        break
-                    }
                     Err(_) => {
-                        clean_drain = false;
                         break;
                     }
                     Ok(length) => length,
                 };
 
-                #[cfg(unix)]
-                if let Some((_, bytes)) = &mut account_tail {
-                    *bytes = bytes.saturating_add(length);
-                }
                 let remote_order = remote_events
                     .lock()
                     .unwrap_or_else(|error| error.into_inner());
@@ -1439,70 +1045,13 @@ impl Terminals {
                 let local_result = output.send(Response::new(buffer[..length].to_vec()));
                 if local_result.is_err() {
                     session.stop();
-                    clean_drain = false;
                     break;
                 }
             }
             drop(reader);
             #[cfg(unix)]
             let exit_control = session.control();
-            let owned_account = session.owned_account;
-            let owned_boundary = session.owned_boundary;
-            if owned_boundary {
-                let deadline = Instant::now() + Duration::from_millis(500);
-                while Instant::now() < deadline {
-                    match child.try_wait() {
-                        Ok(Some(_)) | Err(_) => break,
-                        Ok(None) => std::thread::sleep(Duration::from_millis(10)),
-                    }
-                }
-            }
-            let mut retired_owned_boundary = false;
-            let mut retained_session = Some(session);
-            if owned_account {
-                let session = retained_session.as_ref().unwrap();
-                {
-                    let mut reap_started = session
-                        .account_reap_started
-                        .lock()
-                        .unwrap_or_else(|error| error.into_inner());
-                    #[cfg(unix)]
-                    session.kill_account_group(*reap_started);
-                    // Disarm stale Session holders before wait can reuse PID.
-                    // Never hold this mutex across a blocking process wait.
-                    *reap_started = true;
-                }
-                clean_drain &= !session.account_signal_failed.load(Ordering::SeqCst);
-                retired_owned_boundary = owned_boundary
-                    && session.account_kill_sent.load(Ordering::SeqCst)
-                    && !session.account_signal_failed.load(Ordering::SeqCst);
-                session.stop();
-                if let Some(sessions) = sessions.upgrade().filter(|_| !owned_boundary) {
-                    if let Ok(mut sessions) = sessions.lock() {
-                        if sessions
-                            .get(&request.id)
-                            .is_some_and(|current| Arc::ptr_eq(current, session))
-                        {
-                            sessions.remove(&request.id);
-                        }
-                    }
-                }
-                // Closing our writer and master after the output tail is
-                // drained also lets Darwin finish an exiting PTY child.
-                drop(retained_session.take());
-            }
             let code = child.wait().ok().map(|status| status.exit_code());
-            if let Some(session) = session_retirement.upgrade() {
-                session.transport_finished.store(true, Ordering::SeqCst);
-            }
-            if let Some(healthy) = drain_healthy {
-                healthy.store(clean_drain && code.is_some(), Ordering::SeqCst);
-            }
-            if retired_owned_boundary || (!owned_boundary && code.is_some()) {
-                if let Some(completion) = completion {
-                    completion.store(true, Ordering::SeqCst);
-                }
-            }
             let mut remote_closed = remote_events
                 .lock()
                 .unwrap_or_else(|error| error.into_inner());
@@ -1520,15 +1069,13 @@ impl Terminals {
                     control.exit(code);
                 }
             }
-            if let Some(session) = retained_session {
-                if let Some(sessions) = sessions.upgrade() {
-                    if let Ok(mut sessions) = sessions.lock() {
-                        if sessions
-                            .get(&request.id)
-                            .is_some_and(|current| Arc::ptr_eq(current, &session))
-                        {
-                            sessions.remove(&request.id);
-                        }
+            if let Some(sessions) = sessions.upgrade() {
+                if let Ok(mut sessions) = sessions.lock() {
+                    if sessions
+                        .get(&request.id)
+                        .is_some_and(|current| Arc::ptr_eq(current, &session))
+                    {
+                        sessions.remove(&request.id);
                     }
                 }
             }
@@ -1539,8 +1086,6 @@ impl Terminals {
         Ok(Started {
             cwd,
             profile_id: profile.id,
-            account_id: None,
-            account_label: None,
         })
     }
 
@@ -1985,32 +1530,9 @@ pub async fn start_terminal(
     validate_start_request(&request)?;
     let state = state.inner().clone();
     let shells = shells.inner().clone();
-    let runtime = app
-        .state::<crate::agent_runtime::AgentRuntime>()
-        .inner()
-        .clone();
     #[cfg(unix)]
     let broker = app.state::<crate::agent_control::Control>().current()?;
     tauri::async_runtime::spawn_blocking(move || {
-        if let Some(account_id) = request.account_id.clone() {
-            let shell_id = request.profile_id.clone();
-            let cwd = request.cwd.clone();
-            return crate::agent_runtime::account_terminal(
-                &runtime,
-                &app,
-                &shells,
-                &shell_id,
-                &cwd,
-                &account_id,
-                |command, completion, (chosen_id, chosen_label)| {
-                    let mut started = state
-                        .start_account(&shells, request, output, exited, command, completion)?;
-                    started.account_id = Some(chosen_id);
-                    started.account_label = Some(chosen_label);
-                    Ok(started)
-                },
-            );
-        }
         #[cfg(unix)]
         {
             if let Some(ticket) = &request.agent_ticket {
@@ -2123,7 +1645,6 @@ pub async fn reset_terminals(window: Window, state: State<'_, Terminals>) -> Res
     main_window(&window)?;
     let state = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        state.stop_owned_and_wait()?;
         state.stop_all();
         Ok::<(), String>(())
     })
@@ -2281,6 +1802,7 @@ pub async fn terminal_contexts(
 #[cfg(all(test, unix))]
 mod local_runtime_tests {
     use super::*;
+    use std::time::Instant;
     use tauri::ipc::InvokeResponseBody;
 
     enum Event {
@@ -2316,11 +1838,6 @@ mod local_runtime_tests {
             profiles: vec![profile],
             integration: root.join("shell-integration"),
         };
-        let mut command = portable_pty::CommandBuilder::new("/bin/sh");
-        command.env_clear();
-        command.env("PATH", "/usr/bin:/bin");
-        command.env("TERM", "xterm-256color");
-        command.cwd(&root);
         let (sender, events) = mpsc::channel();
         let output_sender = sender.clone();
         let output = Channel::<Response>::new(move |body| {
@@ -2342,7 +1859,7 @@ mod local_runtime_tests {
         let terminals = Terminals::default();
         assert!(terminals.remote_sink.lock().unwrap().is_none());
         let started = terminals
-            .start_prepared(
+            .start_control(
                 &shells,
                 StartRequest {
                     id: "local-terminal".into(),
@@ -2352,19 +1869,10 @@ mod local_runtime_tests {
                     rows: 24,
                     agent_ticket: None,
                     cli_launch: None,
-                    account_id: None,
                 },
                 output,
                 exited,
                 None,
-                Some(PreparedTerminal {
-                    command: (command, cwd.clone()),
-                    completion: Arc::new(AtomicBool::new(false)),
-                    drain_healthy: None,
-                    admission: None,
-                    #[cfg(target_os = "macos")]
-                    owned_boundary: None,
-                }),
             )
             .unwrap();
         assert_eq!(started.cwd, cwd);

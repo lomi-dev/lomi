@@ -74,7 +74,6 @@ impl Broker {
         for panel in command.panels.iter().filter(|p| p.tab_id == *tab_id) {
             match panel.kind.as_str() {
                 "cli-agent" => return Err(ErrorCode::UnsupportedCapability),
-                "chat" => Self::chat_panel_scope(state, owner, &panel.panel_id, "chat.open")?,
                 "file" => {}
                 "android" => Self::android_panel_access(state, owner, &panel.panel_id, true)?,
                 "terminal" => {
@@ -171,17 +170,6 @@ impl Broker {
         command: &PanelMoveCommand,
         result: &PanelMoved,
     ) -> bool {
-        if super::panel_move::chat_bindings(
-            projection,
-            &command.workspace_id,
-            command
-                .destination
-                .as_ref()
-                .map(|d| d.workspace_id.as_str()),
-        ) != command.chat_bindings
-        {
-            return false;
-        }
         let Some(expected) = Self::transfer_result(command) else {
             return false;
         };

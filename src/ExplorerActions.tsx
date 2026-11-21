@@ -275,8 +275,8 @@ export function useExplorerActions(props: Props) {
       label={`${entry.name} actions`}
       onClose={dismiss}
       actions={[
-        { label: "New File", run: () => ask(entry, "newFile") },
-        { label: "New Folder", run: () => ask(entry, "newFolder") },
+        { label: "New file", run: () => ask(entry, "newFile") },
+        { label: "New folder", run: () => ask(entry, "newFolder") },
         null,
         ...(entry.isDirectory
           ? [
@@ -322,9 +322,9 @@ export function useExplorerActions(props: Props) {
           run: () => paste(entry),
         },
         null,
-        { label: "Copy Path", run: () => run(() => writeText(entry.path)) },
+        { label: "Copy path", run: () => run(() => writeText(entry.path)) },
         {
-          label: "Copy Relative Path",
+          label: "Copy relative path",
           run: () => run(() => writeText(entry.relativePath || ".")),
         },
         null,
@@ -339,7 +339,7 @@ export function useExplorerActions(props: Props) {
           run: () => ignore(entry, true),
         },
         {
-          label: "View History",
+          label: "View history",
           disabled: !entryRepository,
           run: () => setHistory(entry),
         },
@@ -353,12 +353,12 @@ export function useExplorerActions(props: Props) {
                 run: () => ask(entry, "rename"),
               },
               {
-                label: "Move to Trash…",
+                label: "Move to trash…",
                 shortcut: macOS ? "⌘⌫" : "Delete",
                 run: () => ask(entry, "trash"),
               },
               {
-                label: "Delete Permanently…",
+                label: "Delete permanently…",
                 shortcut: macOS ? "⌥⌘⌫" : "Ctrl+Delete",
                 danger: true,
                 run: () => ask(entry, "delete"),
@@ -373,12 +373,12 @@ export function useExplorerActions(props: Props) {
     prompt?.kind === "rename"
       ? "Rename"
       : prompt?.kind === "newFile"
-        ? "New File"
+        ? "New file"
         : prompt?.kind === "newFolder"
-          ? "New Folder"
+          ? "New folder"
           : prompt?.kind === "trash"
-            ? "Move to Trash"
-            : "Delete Permanently";
+            ? "Move to trash"
+            : "Delete permanently";
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (busy || !prompt) return;

@@ -247,7 +247,7 @@ fn prepare_session_save(
     recovery: bool,
 ) -> Result<(), String> {
     use std::io::{Read, Write};
-    if data["version"] != 5 || !data["projects"].is_array() {
+    if data["version"] != 6 || !data["projects"].is_array() {
         return Err("Unsupported session output.".into());
     }
     let file = match fs::File::open(path) {
@@ -266,7 +266,7 @@ fn prepare_session_save(
     let version = saved
         .as_ref()
         .and_then(|v| v["version"].as_u64())
-        .filter(|v| [1, 2, 3, 4, 5].contains(v));
+        .filter(|v| [1, 2, 3, 4, 5, 6].contains(v));
     let valid = version.is_some() && saved.as_ref().is_some_and(|v| v["projects"].is_array());
     if !valid && !recovery {
         return Err(
@@ -274,7 +274,7 @@ fn prepare_session_save(
                 .into(),
         );
     }
-    if version == Some(5) && valid && !recovery {
+    if version == Some(6) && valid && !recovery {
         return Ok(());
     }
     let name = if recovery {
@@ -326,7 +326,7 @@ pub fn write_json(path: &Path, data: &impl Serialize, limit: usize) -> Result<()
             .lock()
             .map_err(|_| "Cannot serialize application settings updates.")?
     };
-    use crate::chat::storage::{private, reject_link};
+    use crate::storage_guard::{private, reject_link};
     use std::io::Write;
     let parent = path.parent().ok_or("Invalid settings path.")?;
     reject_link(parent)?;

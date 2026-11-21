@@ -216,7 +216,7 @@ fn persist(core: &mut Core) -> Result<(), String> {
         .ok_or("Notification preferences are unavailable.")?;
     let data =
         serde_json::to_vec(&core.file).map_err(|_| "Cannot encode notification preferences.")?;
-    if let Err(error) = crate::chat::storage::atomic(path, &data) {
+    if let Err(error) = crate::storage_guard::atomic(path, &data) {
         core.error = Some("STORAGE_UNAVAILABLE".into());
         core.path = None;
         return Err(error);
@@ -253,10 +253,10 @@ impl Push {
                 .remote_environment()?;
             let namespace = format!("{:x}", Sha256::digest(environment.as_bytes()));
             let root = root.join("notifications");
-            crate::chat::storage::reject_link(&root)?;
+            crate::storage_guard::reject_link(&root)?;
             std::fs::create_dir_all(&root)
                 .map_err(|_| "Cannot create notification preferences.")?;
-            crate::chat::storage::private(&root, true)?;
+            crate::storage_guard::private(&root, true)?;
             let terminal = terminal::Store::open(
                 &root.join(format!("{namespace}-terminal-notifications.sqlite3")),
             )
@@ -266,7 +266,7 @@ impl Push {
                 .lock()
                 .map_err(|_| "Notification ledger unavailable.")? = terminal;
             let path = root.join(format!("{namespace}-desktop-notification-preferences.json"));
-            crate::chat::storage::reject_link(&path)?;
+            crate::storage_guard::reject_link(&path)?;
             let file = if path.exists() {
                 let meta = std::fs::metadata(&path)
                     .map_err(|_| "Cannot read notification preferences.")?;

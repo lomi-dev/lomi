@@ -29,7 +29,7 @@ pub(super) struct Store {
 }
 impl Store {
     pub(super) fn open(path: &Path) -> Result<Self, String> {
-        crate::chat::storage::reject_link(path)?;
+        crate::storage_guard::reject_link(path)?;
         let file = std::fs::OpenOptions::new()
             .read(true)
             .write(true)
@@ -37,7 +37,7 @@ impl Store {
             .truncate(false)
             .open(path)
             .map_err(|_| "Terminal notification ledger is unavailable.")?;
-        crate::chat::storage::private(path, false)?;
+        crate::storage_guard::private(path, false)?;
         drop(file);
         let mut connection = Connection::open(path).map_err(storage)?;
         connection

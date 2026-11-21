@@ -631,8 +631,8 @@ function RepositoryControl({
           label={
             remoteMenu.choice
               ? remoteMenu.choice.action === "fetch"
-                ? "Fetch From"
-                : "Push To"
+                ? "Fetch from"
+                : "Push to"
               : "Git remote actions"
           }
           onClose={closeRemoteMenu}
@@ -651,7 +651,7 @@ function RepositoryControl({
                     run: () => void fetch(),
                   },
                   {
-                    label: "Fetch From",
+                    label: "Fetch from",
                     run: () => void chooseRemote("fetch"),
                   },
                   {
@@ -668,11 +668,11 @@ function RepositoryControl({
                     run: () => void push(),
                   },
                   {
-                    label: "Push To",
+                    label: "Push to",
                     run: () => void chooseRemote("push"),
                   },
                   {
-                    label: "Force Push",
+                    label: "Force push",
                     danger: true,
                     run: () => setForcePush(true),
                   },
@@ -683,7 +683,7 @@ function RepositoryControl({
       {forcePush && (
         <Modal
           protectTheme
-          title="Force Push"
+          title="Force push"
           tone="warning"
           onClose={() => setForcePush(false)}
         >
@@ -763,7 +763,7 @@ function RepositoryControl({
                 )
               }
             >
-              {unstaged.length || !staged.length ? "Stage All" : "Unstage All"}
+              {unstaged.length || !staged.length ? "Stage all" : "Unstage all"}
             </button>
           </div>
           <div className="git-groups">
@@ -812,7 +812,7 @@ function RepositoryControl({
                 disabled={busy || !message.trim() || !staged.length}
               >
                 <Check size={13} />
-                {busy ? "Working…" : "Commit Staged"}
+                {busy ? "Working…" : "Commit staged"}
               </button>
             </div>
           </form>

@@ -14,9 +14,22 @@ import { fileURLToPath } from "node:url";
 
 const projectRoot = fileURLToPath(new URL("../", import.meta.url));
 const tauriDirectory = path.join(projectRoot, "src-tauri");
-const config = JSON.parse(
-  readFileSync(path.join(tauriDirectory, "tauri.conf.json"), "utf8"),
-);
+// The Tauri CLI passes `--config` overrides to the build through TAURI_CONFIG,
+// as inline JSON or a file path. Apply them so a side-by-side dev identity
+// (tauri.dev.conf.json) also names and identifies the dev bundle.
+const override = process.env.TAURI_CONFIG?.trim();
+const config = {
+  ...JSON.parse(
+    readFileSync(path.join(tauriDirectory, "tauri.conf.json"), "utf8"),
+  ),
+  ...(override
+    ? JSON.parse(
+        override.startsWith("{")
+          ? override
+          : readFileSync(path.resolve(tauriDirectory, override), "utf8"),
+      )
+    : {}),
+};
 const macConfig = JSON.parse(
   readFileSync(path.join(tauriDirectory, "tauri.macos.conf.json"), "utf8"),
 );

@@ -116,7 +116,6 @@ pub enum SettingsPage {
     Plugins,
     Terminal,
     About,
-    ChatAi,
     Android,
     AgentControl,
 }
@@ -128,7 +127,6 @@ impl SettingsPage {
             Self::Plugins => "plugins",
             Self::Terminal => "terminal",
             Self::About => "about",
-            Self::ChatAi => "chat-ai",
             Self::Android => "android",
             Self::AgentControl => "agent-control",
         }

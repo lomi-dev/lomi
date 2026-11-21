@@ -12,6 +12,8 @@ import {
   layoutFits,
   MIN_PANE_HEIGHT,
   MIN_PANE_WIDTH,
+  MIN_THREAD_HEIGHT,
+  MIN_THREAD_WIDTH,
   layoutPanes,
   layoutPositions,
   SPLIT_DIVIDER_SIZE,
@@ -22,6 +24,7 @@ import type {
   Layout,
   LayoutBounds,
   LayoutSize,
+  ThreadTab,
   FilePreviewView,
   ShellProfile,
   Split,
@@ -53,6 +56,12 @@ interface Props {
   onPreviewResize: (id: string, ratio: number) => void;
   onOpenFile: (root: string, relative: string) => void;
   onClosePane: (id: string) => void;
+  projectPath: string;
+  workspaceId: string;
+  onThreadChange: (
+    id: string,
+    change: Partial<Pick<ThreadTab, "threadId" | "title">>,
+  ) => void;
 }
 
 export default function SplitView({
@@ -144,7 +153,8 @@ export default function SplitView({
                       pane={layout}
                       sharedHost={props.sharedHost}
                       profile={
-                        layout.profileId !== undefined && layout.profileId !== ""
+                        layout.profileId !== undefined &&
+                        layout.profileId !== ""
                           ? props.profiles.find(
                               (profile) => profile.id === layout.profileId,
                             )
@@ -188,27 +198,18 @@ export default function SplitView({
                       />
                     </Suspense>
                   </div>
-                ) : layout.type === "agent-task" ? (
+                ) : layout.type === "thread" ? (
                   <div key={layout.id} className="split-child">
-                    <Suspense
-                      fallback={<div role="status">Loading CLI Agent…</div>}
-                    >
-                      <builtinViews.agentTask
+                    <Suspense fallback={<div role="status">Loading chat…</div>}>
+                      <builtinViews.thread
                         tab={layout}
+                        projectPath={props.projectPath}
+                        workspaceId={props.workspaceId}
                         onFocus={() => props.onFocus(layout.id)}
                         onClose={() => props.onClosePane(layout.id)}
-                      />
-                    </Suspense>
-                  </div>
-                ) : layout.type === "chat" ? (
-                  <div key={layout.id} className="split-child">
-                    <Suspense
-                      fallback={<div role="status">Loading conversation…</div>}
-                    >
-                      <builtinViews.chat
-                        tab={layout}
-                        onFocus={() => props.onFocus(layout.id)}
-                        onClose={() => props.onClosePane(layout.id)}
+                        onChange={(change) =>
+                          props.onThreadChange(layout.id, change)
+                        }
                       />
                     </Suspense>
                   </div>
@@ -276,8 +277,9 @@ export default function SplitView({
             <h2>This panel layout needs more space</h2>
             <p>
               This tab has {layoutPanes(props.layout).length} panels. Each panel
-              needs at least {MIN_PANE_WIDTH} × {MIN_PANE_HEIGHT} pixels.
-              Enlarge the window or hide the sidebar to show them.
+              needs at least {MIN_PANE_WIDTH} × {MIN_PANE_HEIGHT} pixels (chat
+              panels {MIN_THREAD_WIDTH} × {MIN_THREAD_HEIGHT}). Enlarge the
+              window or hide the sidebar to show them.
             </p>
             <p>
               Your layout is preserved. Existing shells keep running; saved

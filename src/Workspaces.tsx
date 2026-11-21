@@ -29,6 +29,7 @@ import type { WorkspaceAppearance } from "./workspace-appearance";
 import ContextMenu from "./ContextMenu";
 import { IconButton, Modal } from "./ui";
 import WorkspaceAvatar from "./WorkspaceAvatar";
+import { ProjectSourcesMenu, type SourceKind } from "./project-sources";
 import WorkspaceAppearanceDialog from "./WorkspaceAppearanceDialog";
 import {
   getTerminalAgents,
@@ -81,6 +82,7 @@ export default function Workspaces({
   onSelect,
   onReveal,
   onNew,
+  onSource,
   onRename,
   onAppearanceChange,
   onDelete,
@@ -120,6 +122,7 @@ export default function Workspaces({
     paneId: string,
   ) => void;
   onNew: () => void;
+  onSource: (kind: Exclude<SourceKind, "local">) => void;
   onRename: (workspace: Workspace) => void;
   onAppearanceChange: (
     workspace: Workspace,
@@ -205,6 +208,8 @@ export default function Workspaces({
     if (sharingId && (!sharingWorkspace || sharingActive))
       setSharingId(undefined);
   }, [sharingId, sharingWorkspace, sharingActive]);
+  const addButton = useRef<HTMLButtonElement | null>(null);
+  const [sources, setSources] = useState<{ x: number; y: number } | null>(null);
   const showMenu = (
     id: string,
     element: HTMLButtonElement,
@@ -219,9 +224,33 @@ export default function Workspaces({
     <div className="sidebar-panel workspace-panel">
       <div className="sidebar-heading">
         <span>Workspaces</span>
-        <IconButton title="New workspace" onClick={onNew}>
+        <IconButton
+          title="Add project"
+          aria-haspopup="menu"
+          aria-expanded={!!sources}
+          onClick={(event) => {
+            addButton.current = event.currentTarget;
+            const bounds = event.currentTarget.getBoundingClientRect();
+            setSources(
+              sources ? null : { x: bounds.right, y: bounds.bottom + 4 },
+            );
+          }}
+        >
           <Plus size={15} />
         </IconButton>
+        {sources && (
+          <ProjectSourcesMenu
+            {...sources}
+            align="end"
+            trigger={addButton}
+            onSource={(kind) =>
+              // Local folder keeps the workspace flow: a known folder gets
+              // another workspace instead of being reopened.
+              kind === "local" ? onNew() : onSource(kind)
+            }
+            onClose={() => setSources(null)}
+          />
+        )}
       </div>
       {remote?.error && (
         <p className="sidebar-empty" role="alert">
@@ -505,17 +534,7 @@ export default function Workspaces({
             );
           }),
         )}
-        {count === 0 && (
-          <div className="workspace-empty">
-            <WorkspaceAvatar />
-            <p>Your workspaces live here.</p>
-            <small>Choose a folder to get started.</small>
-            <button type="button" className="button" onClick={onNew}>
-              <Plus size={14} />
-              Add workspace
-            </button>
-          </div>
-        )}
+        {count === 0 && <p className="workspace-empty">No projects yet</p>}
       </nav>
       {menu && workspace && (
         <ContextMenu
@@ -656,7 +675,7 @@ function WorkspaceItemIcon({
         ? Globe
         : item.type === "android"
           ? Monitor
-          : item.type === "chat"
+          : item.type === "thread"
             ? MessageSquare
             : item.type === "plugin"
               ? Puzzle
@@ -785,9 +804,9 @@ function StartRemoteSharingDialog({
             rename or remove entries, inspect Git status, diffs and history,
             stage changes, commit, fetch, fast-forward pull, and push. They can
             also create, control, resize, and close shared terminals. Editor
-            buffers, chat, browser panes, plugins, and AI-controlled terminals
-            stay private. Sharing does not start a shell; choose Create terminal
-            to start one.
+            buffers, browser panes, plugins, and AI-controlled terminals stay
+            private. Sharing does not start a shell; choose Create terminal to
+            start one.
             {!signedIn && " Sign in to use remote sharing."}
           </p>
           {attempted && error && <p role="alert">{error}</p>}

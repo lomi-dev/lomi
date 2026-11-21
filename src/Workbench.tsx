@@ -1,12 +1,5 @@
-import { configureSessionPublication } from "./agent-runtime/migration-runtime";
-import PermissionReview from "./agent-runtime/PermissionReview";
-import {
-  getTaskView,
-  retainAgentTasks,
-  setTaskPublicationPaused,
-} from "./agent-runtime/task-runtime";
-import { newAgentTaskTab, agentTaskTabs, type AgentTaskTab } from "./model";
-import type { Task, AccountsSnapshot } from "./agent-runtime/types";
+import { newThreadTab, updateThread } from "./model";
+import { workMode } from "./onboarding-state";
 import { useRemoteWorkspaces } from "./remote-workspaces";
 import RemoteWorkspaceStatus from "./RemoteWorkspaceStatus";
 import {
@@ -34,20 +27,7 @@ import type {
 } from "./shared-host";
 import { useAgentControlBridge } from "./agent-control";
 import AgentControlStartup from "./AgentControlStartup";
-import { useAgentChatApproval } from "./AgentChatApproval";
 import { useAgentGitApproval } from "./AgentGitApproval";
-import {
-  configureChats,
-  retainChats,
-  createChat,
-  chatAction,
-} from "./chat/chat-service";
-import {
-  updateChat,
-  newChatTab,
-  chatTabs,
-  removeChatConversation,
-} from "./model";
 import { builtinViews } from "./plugins/builtins";
 import { listen } from "@tauri-apps/api/event";
 import PluginPanel from "./plugins/PluginPanel";
@@ -93,6 +73,7 @@ import {
   saveSession,
   waitForSessionSaves,
 } from "./api";
+import { detectCliProviders } from "./ai-chat/providers";
 import useGit from "./useGit";
 import { SourceControlState } from "./source-control-state";
 import {
@@ -176,6 +157,7 @@ import Sidebar from "./Sidebar";
 import SidebarToggle from "./SidebarToggle";
 import Workspaces from "./Workspaces";
 import Welcome from "./Welcome";
+import OpenProjectDialog, { type SourceKind } from "./project-sources";
 import { configureBrowsers, retainBrowsers } from "./browser-runtime";
 import SplitView from "./SplitView";
 import { usePaneMotion } from "./pane-motion";
@@ -184,8 +166,9 @@ import { usePanelReveal, type PanelRevealRequest } from "./usePanelReveal";
 import { useWindowZoom, changeWindowZoom } from "./useWindowZoom";
 import { openExternalFile, type ResolvedExternalFile } from "./external-files";
 import { useExternalFiles } from "./useExternalFiles";
-import TabBar, { SettingsTabButton } from "./TabBar";
-import { SETTINGS_TAB_ID, useSettingsTab } from "./useSettingsTab";
+import TabBar from "./TabBar";
+import SettingsDialog from "./SettingsDialog";
+import { useSettingsTab } from "./useSettingsTab";
 import FileEditorStatus from "./FileEditorStatus";
 import { useKeybindings } from "./KeybindingsProvider";
 import { useTerminalPreferences } from "./TerminalPreferencesProvider";
@@ -222,7 +205,6 @@ import { useCliIntegrations } from "./CliIntegrations";
 import { useAgentNotifications } from "./AgentNotifications";
 import AgentsDialog from "./AgentsDialog";
 
-const TaskCreateDialog = lazy(() => import("./agent-runtime/TaskCreateDialog"));
 import { measureAgentLayoutSize } from "./useAgentLayoutSize";
 import { loadInstalledAgentClis } from "./installed-agent-clis";
 import { cliNames } from "./cli-agents";
@@ -290,7 +272,6 @@ export default function Workbench() {
   const [sourceControlState] = useState(() => new SourceControlState());
   const closeGuard = useCloseGuard();
   const gitApproval = useAgentGitApproval();
-  const chatApproval = useAgentChatApproval();
   const theme = useThemes();
   useSyncExternalStore(subscribeEditors, editorRevision);
   const fileOpenRequest = useRef(0);
@@ -332,7 +313,6 @@ export default function Workbench() {
   const sharedHostDeferredState = useRef<
     { workspaceId: string; state: SharedHostWorkspaceState } | undefined
   >(undefined);
-  const sessionPublication = useRef(false);
   const workArea = useRef<HTMLDivElement>(null);
   const terminalLayout = useRef<HTMLDivElement>(null);
   const tabStrip = useRef<HTMLDivElement>(null);
@@ -387,21 +367,21 @@ export default function Workbench() {
       );
     }
   }, [agentProfile, agentCwd]);
+  useEffect(() => {
+    if (native) void detectCliProviders().catch((e) => console.warn(e));
+  }, []);
   const renderPaneLayout = usePaneMotion(workArea);
   const setSession = useCallback(
     (
       update: Session | ((state: Session | undefined) => Session | undefined),
       animate = false,
     ) => {
-      if (sessionPublication.current) return;
       const previous = currentSession.current;
       const next = typeof update === "function" ? update(previous) : update;
       // Queued shortcuts must see the updated layout before React renders it.
       currentSession.current = next;
       retainEditorTabs(next);
       retainBrowsers(next);
-      retainChats(next);
-      retainAgentTasks(next);
       retainAndroid(next);
       pluginHost.retainPanels(
         new Set(next ? pluginPanels(next).map((panel) => panel.id) : []),
@@ -872,8 +852,7 @@ export default function Workbench() {
     session,
     () => currentSession.current,
     setSession,
-    (id, terminal) =>
-      closeGuard.confirm(new Set([id]), terminal ? [id] : [], undefined, true),
+    (id, terminal) => closeGuard.confirm(new Set([id]), terminal ? [id] : []),
     async (operation, trash) => {
       if (fileOperationBusy.current || closing.current || updater.busy.current)
         throw new Error("TARGET_BUSY");
@@ -1010,11 +989,10 @@ export default function Workbench() {
     },
     (result, canonicalChange) => applyDiskFileChange(result, canonicalChange),
     gitApproval.confirm,
-    chatApproval.confirm,
     (ids, decision) => {
       if (fileOperationBusy.current || closing.current || updater.busy.current)
         throw new Error("TARGET_BUSY");
-      return closeGuard.confirm(ids, [], decision, true);
+      return closeGuard.confirm(ids, [], decision);
     },
     () => git.refresh(),
     () => {
@@ -1221,16 +1199,16 @@ export default function Workbench() {
   const folderPickerBusy = useRef(false);
   const [browsing, setBrowsing] = useState(false);
   const [dialog, setDialog] = useState<Dialog | null>(null);
+  const [projectSource, setProjectSource] = useState<Exclude<
+    SourceKind,
+    "local"
+  > | null>(null);
   const [agentsTarget, setAgentsTarget] = useState<{
     workspaceId: string;
     profile: ShellProfile;
     cwd: string;
   } | null>(null);
   const [terminalOverview, setTerminalOverview] = useState(false);
-  const [taskTarget, setTaskTarget] = useState<{
-    cwd: string;
-    shellProfileId: string;
-  } | null>(null);
   usePointerFocus(
     preferences.focusFollowsPointer && !terminalOverview && !settings.active,
     terminalLayout,
@@ -1239,48 +1217,6 @@ export default function Workbench() {
   const [autosavePaused, setAutosavePaused] = useState(false);
   const autosaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const closing = useRef(false);
-  useEffect(
-    () =>
-      configureSessionPublication(async () => {
-        if (
-          sessionPublication.current ||
-          closing.current ||
-          updater.busy.current ||
-          fileOperationBusy.current
-        )
-          throw new Error(
-            "Finish the current workspace operation before importing CLI history.",
-          );
-        sessionPublication.current = true;
-        clearTimeout(autosaveTimer.current);
-        setAutosavePaused(true);
-        setTaskPublicationPaused(true);
-        let nativePrepared = false;
-        const release = async () => {
-          if (nativePrepared) {
-            await api("agent_runtime_cancel_close");
-            nativePrepared = false;
-          }
-          sessionPublication.current = false;
-          setTaskPublicationPaused(false);
-          setAutosavePaused(false);
-        };
-        try {
-          await api("agent_runtime_prepare_close");
-          nativePrepared = true;
-          // Recovery can still be saving while normal autosaves are disabled.
-          if (!savingEnabled.current) await waitForSessionSaves();
-          if (currentSession.current && savingEnabled.current)
-            await saveSession(captureEditorPositions(currentSession.current));
-          return release;
-        } catch (cause) {
-          await release();
-          throw cause;
-        }
-      }),
-    [],
-  );
-
   const [stoppingForClose, setStoppingForClose] = useState<
     "stopping" | "cancelling" | null
   >(null);
@@ -1346,12 +1282,6 @@ export default function Workbench() {
     };
   }, []);
   const prepareClose = async (showProgress = true) => {
-    if (sessionPublication.current) {
-      setError(
-        "Finish or cancel the CLI history import before closing or updating Lomi.",
-      );
-      return null;
-    }
     try {
       const release = await prepareApplicationClose(
         closeGuard.confirm,
@@ -1402,10 +1332,7 @@ export default function Workbench() {
     enabled: native,
     ready: !!session && !!info,
     blocked: () =>
-      closing.current ||
-      updater.busy.current ||
-      sessionPublication.current ||
-      fileOperationBusy.current,
+      closing.current || updater.busy.current || fileOperationBusy.current,
     process: async (path, isCurrent) => {
       const state = currentSession.current;
       if (!state || !info) return false;
@@ -1414,12 +1341,7 @@ export default function Workbench() {
         { path, roots: state.projects.map((project) => project.path) },
       );
       if (!isCurrent()) return false;
-      if (
-        closing.current ||
-        updater.busy.current ||
-        sessionPublication.current ||
-        fileOperationBusy.current
-      )
+      if (closing.current || updater.busy.current || fileOperationBusy.current)
         return false;
       const latestSession = currentSession.current;
       if (!latestSession) return false;
@@ -1465,54 +1387,6 @@ export default function Workbench() {
   const git = useGit(selected?.project.path ?? "");
   const closeProjectMenu = useCallback(() => setProjectMenuOpen(false), []);
 
-  useEffect(() => {
-    if (!native) return;
-    const stop = listen<string>("chat-conversation-deleted", ({ payload }) => {
-      setSession((state) =>
-        state
-          ? removeChatConversation(state, payload, defaultProfileId)
-          : state,
-      );
-    });
-    return () => {
-      void stop.then((fn) => fn()).catch(() => {});
-    };
-  }, [setSession, defaultProfileId]);
-  useEffect(
-    () =>
-      configureChats({
-        activate: (workspace, panel) =>
-          setSession((state) =>
-            state
-              ? updateWorkspace(state, workspace, (w) => {
-                  const parent = w.tabs.find(
-                    (t) =>
-                      t.id === panel ||
-                      (t.type === "terminal" &&
-                        layoutPanes(t.layout).some((p) => p.id === panel)),
-                  );
-                  return parent
-                    ? {
-                        ...w,
-                        activeTabId: parent.id,
-                        tabs: w.tabs.map((t) =>
-                          t === parent && t.type === "terminal"
-                            ? { ...t, activePaneId: panel }
-                            : t,
-                        ),
-                      }
-                    : w;
-                })
-              : state,
-          ),
-        update: (id, change) =>
-          setSession((state) =>
-            state ? updateChat(state, id, change) : state,
-          ),
-        error: setError,
-      }),
-    [setSession],
-  );
   useEffect(() => {
     configureBrowsers(
       (id, change) =>
@@ -1688,6 +1562,13 @@ export default function Workbench() {
     let current = true;
     let target: HTMLElement | null = null;
     let explorer: HTMLElement | null = null;
+    let chat: HTMLElement | null = null;
+    const leaveChat = () => {
+      chat?.dispatchEvent(
+        new CustomEvent("thread-file-drag", { detail: { type: "leave" } }),
+      );
+      chat = null;
+    };
     const leaveExplorer = () => {
       explorer?.dispatchEvent(
         new CustomEvent("explorer-file-drag", { detail: { type: "leave" } }),
@@ -1700,6 +1581,7 @@ export default function Workbench() {
         target?.classList.remove("drop-target");
         if (payload.type === "leave") {
           leaveExplorer();
+          leaveChat();
           target = null;
           return;
         }
@@ -1723,6 +1605,26 @@ export default function Workbench() {
           if (payload.type === "drop") explorer = null;
           return;
         }
+        const nextChat =
+          document
+            .elementFromPoint(position.x, position.y)
+            ?.closest<HTMLElement>(".thread-pane") ?? null;
+        if (chat !== nextChat) leaveChat();
+        chat = nextChat;
+        if (chat) {
+          target = null;
+          const drop = payload.type === "drop";
+          chat.dispatchEvent(
+            new CustomEvent("thread-file-drag", {
+              detail: {
+                type: drop ? "drop" : "over",
+                paths: drop ? payload.paths : [],
+              },
+            }),
+          );
+          if (drop) chat = null;
+          return;
+        }
         target = terminalAt(position.x, position.y);
         if (payload.type === "drop") {
           void dropPaths(target, payload.paths, setError);
@@ -1739,6 +1641,7 @@ export default function Workbench() {
       current = false;
       target?.classList.remove("drop-target");
       leaveExplorer();
+      leaveChat();
       void unlisten.then((stop) => stop()).catch(() => {});
     };
   }, [info]);
@@ -2134,6 +2037,21 @@ export default function Workbench() {
         activeTabId: added.id,
       }));
     });
+  const changeThread = (
+    id: string,
+    patch: Parameters<typeof updateThread>[2],
+  ) => change((state) => updateThread(state, id, patch));
+  const addChat = () =>
+    change((state) => {
+      const selection = active(state);
+      if (!selection) return state;
+      const added = newThreadTab();
+      return updateWorkspace(state, selection.workspace.id, (workspace) => ({
+        ...workspace,
+        tabs: [...workspace.tabs, added],
+        activeTabId: added.id,
+      }));
+    });
   const openAgents = () => {
     const state = currentSession.current;
     const selection = state && active(state);
@@ -2190,138 +2108,6 @@ export default function Workbench() {
         `${failures.length} of ${count} agents could not start. ${errorMessage(failures[0].reason)}`,
       );
   };
-  useEffect(() => {
-    if (!native || !info) return;
-    const stop = listen<{ accountId: string }>(
-      "agent-account-open-terminal",
-      ({ payload }) => {
-        void (async () => {
-          const state = currentSession.current;
-          const selection = state && active(state);
-          if (!selection)
-            throw new Error(
-              "Open a project workspace before connecting a CLI account.",
-            );
-          const snapshot = await api<AccountsSnapshot>(
-            "agent_accounts_snapshot",
-          );
-          const currentState = currentSession.current;
-          const currentSelection = currentState && active(currentState);
-          if (
-            !currentSelection ||
-            currentSelection.project.id !== selection.project.id ||
-            currentSelection.project.path !== selection.project.path ||
-            currentSelection.workspace.id !== selection.workspace.id ||
-            closing.current ||
-            updater.busy.current
-          )
-            throw new Error(
-              "The workspace changed before the account terminal opened. Open it again from its project.",
-            );
-          const account = snapshot.accounts.find(
-            (account) =>
-              account.accountId === payload.accountId && account.enabled,
-          );
-          if (!account)
-            throw new Error("The CLI account is disabled or no longer exists.");
-          const shellId =
-            currentSelection.tab.type === "terminal"
-              ? currentSelection.tab.profileId
-              : defaultProfileId;
-          const shell = info.profiles.find((profile) => profile.id === shellId);
-          if (!shell)
-            throw new Error(
-              "Choose an installed shell for the account terminal.",
-            );
-          const added = newTab(
-            currentSelection.project.path,
-            shell.id,
-            `${cliNames[account.cli]} · ${account.label}`,
-          );
-          const pane = panes(added.layout)[0];
-          if (!pane) throw new Error("Could not create the account terminal.");
-          change((state) =>
-            updateWorkspace(
-              state,
-              currentSelection.workspace.id,
-              (workspace) => ({
-                ...workspace,
-                tabs: [...workspace.tabs, added],
-                activeTabId: added.id,
-              }),
-            ),
-          );
-          const committed = currentSession.current?.projects
-            .find((project) => project.id === currentSelection.project.id)
-            ?.workspaces.find(
-              (workspace) => workspace.id === currentSelection.workspace.id,
-            )
-            ?.tabs.some((tab) => tab.id === added.id);
-          if (!committed) return;
-          await terminalFor(
-            pane,
-            shell,
-            undefined,
-            account.accountId,
-          ).startInBackground();
-        })().catch((error) => setError(errorMessage(error)));
-      },
-    );
-    return () => {
-      void stop.then((unlisten) => unlisten()).catch(() => {});
-    };
-  }, [info, defaultProfileId]);
-
-  const openAgentTask = (task: Task) => {
-    getTaskView(task.taskId).accept(task);
-    const state = currentSession.current;
-    const selection = state && active(state);
-    if (!selection || selection.project.path !== task.cwd) return;
-    const match = selection.workspace.tabs.flatMap((tab) =>
-      (tab.type === "terminal" ? layoutPanes(tab.layout) : [tab])
-        .filter(
-          (pane): pane is AgentTaskTab =>
-            pane.type === "agent-task" && pane.taskId === task.taskId,
-        )
-        .map((pane) => ({ tabId: tab.id, paneId: pane.id })),
-    )[0];
-    const added = match ? undefined : newAgentTaskTab(task.taskId, task.title);
-    change((state) =>
-      updateWorkspace(state, selection.workspace.id, (workspace) => ({
-        ...workspace,
-        tabs: added
-          ? [...workspace.tabs, added]
-          : workspace.tabs.map((tab) =>
-              match && tab.id === match.tabId && tab.type === "terminal"
-                ? { ...tab, activePaneId: match.paneId }
-                : tab,
-            ),
-        activeTabId: added?.id ?? match!.tabId,
-      })),
-    );
-    setTaskTarget(null);
-  };
-  const addChat = async () => {
-    const state = currentSession.current;
-    const selection = state && active(state);
-    if (!selection) return;
-    try {
-      const conversation = await createChat(
-        selection.project,
-        selection.workspace,
-      );
-      const added = newChatTab(conversation.id, conversation.title);
-      change((state) =>
-        updateWorkspace(state, selection.workspace.id, (workspace) => ({
-          ...workspace,
-          tabs: [...workspace.tabs, added],
-          activeTabId: added.id,
-        })),
-      );
-    } catch (error) {
-      setError(errorMessage(error));
-    }
-  };
   const closeTab = async (id: string, action: TabCloseAction = "close") => {
     const state = currentSession.current;
     if (!state) return;
@@ -2365,35 +2151,32 @@ export default function Workbench() {
       ))
     )
       return;
-    try {
-      if (!(await prepareAndroidRemoval(fileIds))) return;
-      const current = currentSession.current?.projects
-        .find((candidate) => candidate.id === project.id)
-        ?.workspaces.find((candidate) => candidate.id === workspace.id);
-      if (!current) return;
-      closeWorkspaceTerminals(
-        current.tabs.flatMap((tab) =>
-          ids.has(tab.id) && tab.type === "terminal"
-            ? panes(tab.layout).map((pane) => pane.id)
-            : [],
+
+    if (!(await prepareAndroidRemoval(fileIds))) return;
+    const current = currentSession.current?.projects
+      .find((candidate) => candidate.id === project.id)
+      ?.workspaces.find((candidate) => candidate.id === workspace.id);
+    if (!current) return;
+    closeWorkspaceTerminals(
+      current.tabs.flatMap((tab) =>
+        ids.has(tab.id) && tab.type === "terminal"
+          ? panes(tab.layout).map((pane) => pane.id)
+          : [],
+      ),
+      workspace.id,
+    );
+    change((state) =>
+      updateWorkspace(state, workspace.id, (workspace) =>
+        removeTabs(
+          workspace,
+          ids,
+          project.path,
+          info?.platform !== "windows" && tab.type === "terminal"
+            ? tab.profileId
+            : defaultProfileId,
         ),
-        workspace.id,
-      );
-      change((state) =>
-        updateWorkspace(state, workspace.id, (workspace) =>
-          removeTabs(
-            workspace,
-            ids,
-            project.path,
-            info?.platform !== "windows" && tab.type === "terminal"
-              ? tab.profileId
-              : defaultProfileId,
-          ),
-        ),
-      );
-    } finally {
-      await closeGuard.release(fileIds);
-    }
+      ),
+    );
   };
   const openSettings = () => {
     setProjectMenuOpen(false);
@@ -2428,18 +2211,18 @@ export default function Workbench() {
       const container =
         selection?.tab.type === "terminal" && id
           ? stage?.querySelector<HTMLElement>(
-              `[data-pane-id="${id}"], [data-file-pane-id="${id}"], [data-browser-pane-id="${id}"], [data-chat-pane-id="${id}"], [data-android-pane-id="${id}"], [data-plugin-pane-id="${id}"]`,
+              `[data-pane-id="${id}"], [data-file-pane-id="${id}"], [data-browser-pane-id="${id}"], [data-android-pane-id="${id}"], [data-plugin-pane-id="${id}"]`,
             )
           : stage;
       const target = [
         ...(container?.querySelectorAll<HTMLElement>(
-          '.terminal-overview, .xterm-helper-textarea, .cm-content, [data-chat-input], [data-android-input], [data-plugin-focus], .browser-toolbar input[aria-label="Web address"]',
+          '.terminal-overview, .xterm-helper-textarea, .cm-content, [data-android-input], [data-plugin-focus], .browser-toolbar input[aria-label="Web address"]',
         ) ?? []),
       ].find((element) => element.getClientRects().length);
       (
         target ??
         document.querySelector<HTMLElement>(
-          '[role="tab"][aria-selected="true"], .welcome-action',
+          '[role="tab"][aria-selected="true"], .welcome-buttons .button',
         )
       )?.focus({ preventScroll: true });
     });
@@ -2531,14 +2314,6 @@ export default function Workbench() {
       const runtime =
         panel?.type === "terminal" ? runningTerminal(panel.id) : undefined;
       switch (action) {
-        case "chatNew":
-          void addChat();
-          break;
-        case "chatFocusInput":
-        case "chatStop":
-        case "chatHistory":
-          if (panel?.type === "chat") chatAction(panel.id, action);
-          break;
         case "movePanel":
         case "dockTab": {
           const target =
@@ -2604,6 +2379,9 @@ export default function Workbench() {
         case "newTab":
           addTab();
           break;
+        case "newChat":
+          addChat();
+          break;
         case "closeTab":
           closeTab(tab.id);
           break;
@@ -2615,19 +2393,13 @@ export default function Workbench() {
           break;
         case "nextTab":
         case "previousTab": {
-          const ids = [
-            ...workspace.tabs.map((tab) => tab.id),
-            ...(settings.opened ? [SETTINGS_TAB_ID] : []),
-          ];
+          // Settings is a dialog, not a tab, so cycling covers workspace tabs only.
+          const ids = workspace.tabs.map((tab) => tab.id);
           const index =
             (ids.indexOf(tab.id) +
               (action === "previousTab" ? -1 : 1) +
               ids.length) %
             ids.length;
-          if (ids[index] === SETTINGS_TAB_ID) {
-            settings.select();
-            break;
-          }
           change((state) =>
             updateWorkspace(state, workspace.id, (workspace) => ({
               ...workspace,
@@ -2675,7 +2447,8 @@ export default function Workbench() {
         event.defaultPrevented ||
         (event.target instanceof Element &&
           event.target.closest(".shortcut-recorder.recording")) ||
-        document.querySelector("dialog[open]") ||
+        // The Settings sheet keeps its own shortcut handling (close, leave).
+        document.querySelector("dialog[open]:not(.settings-dialog)") ||
         (event.target instanceof Element &&
           event.target.closest(
             ".tab-context-menu, .editor-status-menu, .sidebar-context-menu, .markdown-preview-menu, .explorer-context-menu, .notification-center",
@@ -2688,17 +2461,6 @@ export default function Workbench() {
           !action?.includes(".") &&
           !inEditor &&
           !settingsAction &&
-          !(
-            panel?.type === "chat" &&
-            [
-              "chatNew",
-              "chatFocusInput",
-              "chatStop",
-              "chatHistory",
-              "closeTerminal",
-              "commandPicker",
-            ].includes(action ?? "")
-          ) &&
           !(
             action === "terminalOverview" &&
             event.target instanceof Element &&
@@ -2930,7 +2692,9 @@ export default function Workbench() {
             ),
           };
         }
-        const added = found ?? newProject(normalized, defaultProfileId);
+        const added =
+          found ??
+          newProject(normalized, defaultProfileId, workMode() === "chat");
         if (!found) {
           const initialWorkspace = added.workspaces[0];
           const initialTab = initialWorkspace?.tabs[0];
@@ -2998,7 +2762,7 @@ export default function Workbench() {
             ? "Choose workspace folder"
             : intent === "file"
               ? "Choose a folder for your new file"
-              : "Open Local Folder",
+              : "Open local folder",
       });
       if (!path) return;
       if (intent === "workspace") {
@@ -3044,19 +2808,25 @@ export default function Workbench() {
       onToggle={() => setProjectMenuOpen(!projectMenuOpen)}
       onClose={closeProjectMenu}
       onSelect={(path) => void selectProject(path)}
-      onBrowse={() => void browse()}
+      onSource={(kind) => {
+        setProjectMenuOpen(false);
+        if (kind === "local") void browse();
+        else setProjectSource(kind);
+      }}
+    />
+  );
+  const projectSourceDialog = projectSource && (
+    <OpenProjectDialog
+      kind={projectSource}
+      home={info.home}
+      currentProject={selected?.project.path}
+      onOpen={(path) => void selectProject(path)}
+      onClose={() => setProjectSource(null)}
     />
   );
   const notice = <AgentControlStartup />;
   const settingsPanel = settings.mounted ? (
-    <main
-      className="settings-tab-container"
-      id={`panel-${SETTINGS_TAB_ID}`}
-      role="tabpanel"
-      aria-labelledby={`tab-${SETTINGS_TAB_ID}`}
-      hidden={!settings.active}
-      inert={!settings.active}
-    >
+    <SettingsDialog open={settings.active} onClose={closeSettings}>
       <Suspense
         fallback={
           <div className="empty-message" role="status">
@@ -3068,6 +2838,7 @@ export default function Workbench() {
           active={settings.active}
           requestedPage={settings.page}
           requestRevision={settings.requestRevision}
+          onClose={closeSettings}
           remoteAvailable={sharedHostBackend}
           remoteDisabledReason={
             sharedHostBackend
@@ -3078,7 +2849,7 @@ export default function Workbench() {
           }
         />
       </Suspense>
-    </main>
+    </SettingsDialog>
   ) : null;
   const sidebarOpen = (panel: SidebarPanel) =>
     session.sidebarSides[panel] === "left"
@@ -3118,29 +2889,26 @@ export default function Workbench() {
           ))
         )
           return;
-        try {
-          const androidIds = new Set(
-            target.tabs.flatMap((tab) =>
-              tab.type === "terminal"
-                ? layoutPanes(tab.layout).map((pane) => pane.id)
-                : [tab.id],
-            ),
-          );
-          if (!(await prepareAndroidRemoval(androidIds))) return;
-          const remaining = current();
-          if (!remaining) return;
-          closeWorkspaceTerminals(
-            remaining.tabs.flatMap((tab) =>
-              tab.type === "terminal"
-                ? panes(tab.layout).map((pane) => pane.id)
-                : [],
-            ),
-            workspace.id,
-          );
-          change((state) => removeWorkspace(state, workspace.id));
-        } finally {
-          await closeGuard.release(closeIds);
-        }
+
+        const androidIds = new Set(
+          target.tabs.flatMap((tab) =>
+            tab.type === "terminal"
+              ? layoutPanes(tab.layout).map((pane) => pane.id)
+              : [tab.id],
+          ),
+        );
+        if (!(await prepareAndroidRemoval(androidIds))) return;
+        const remaining = current();
+        if (!remaining) return;
+        closeWorkspaceTerminals(
+          remaining.tabs.flatMap((tab) =>
+            tab.type === "terminal"
+              ? panes(tab.layout).map((pane) => pane.id)
+              : [],
+          ),
+          workspace.id,
+        );
+        change((state) => removeWorkspace(state, workspace.id));
       },
     });
   };
@@ -3181,6 +2949,7 @@ export default function Workbench() {
           })
         }
         onNew={() => void browse("workspace")}
+        onSource={setProjectSource}
         onRename={(workspace) =>
           setDialog({
             type: "name",
@@ -3221,24 +2990,6 @@ export default function Workbench() {
           <div className="app-shell">
             <header className="titlebar" data-tauri-drag-region>
               {projectPicker}
-              {settings.opened && (
-                <div className="tab-bar">
-                  <div className="tab-viewport">
-                    <div
-                      className="tab-strip"
-                      role="tablist"
-                      aria-label="Application tabs"
-                      data-tauri-drag-region
-                    >
-                      <SettingsTabButton
-                        active={settings.active}
-                        onSelect={settings.select}
-                        onClose={closeSettings}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
               <div className="titlebar-space" data-tauri-drag-region />
               {agentUsage.bar}
               <TitlebarAccount
@@ -3260,7 +3011,9 @@ export default function Workbench() {
               {workspacePanel}
               <Welcome
                 busy={browsing}
-                onOpenFolder={() => void browse()}
+                onSource={(kind) =>
+                  kind === "local" ? void browse() : setProjectSource(kind)
+                }
                 onNewFile={() => void browse("file")}
               />
             </div>
@@ -3276,6 +3029,7 @@ export default function Workbench() {
             {dialog && (
               <AppDialog dialog={dialog} onClose={() => setDialog(null)} />
             )}
+            {projectSourceDialog}
             {commandPicker && (
               <CommandPicker
                 settingsActive={settings.active}
@@ -3288,10 +3042,8 @@ export default function Workbench() {
               />
             )}
             {updater.dialog}
-            <PermissionReview />
             {closeGuard.dialog}
             {gitApproval.dialog}
-            {chatApproval.dialog}
 
             {agentNotifications.dialog}
           </div>
@@ -3480,29 +3232,26 @@ export default function Workbench() {
       ))
     )
       return;
-    try {
-      if (!(await prepareAndroidRemoval(closeIds))) return;
-      if (pane.type === "terminal") closeWorkspaceTerminals([id], workspace.id);
-      change(
-        (state) =>
-          updateTab(state, current.id, (tab) => {
-            if (tab.type !== "terminal") return tab;
-            const layout = removePane(tab.layout, id);
-            if (!layout) return tab;
-            return {
-              ...tab,
-              layout,
-              activePaneId:
-                tab.activePaneId === id
-                  ? layoutPanes(layout)[0].id
-                  : tab.activePaneId,
-            };
-          }),
-        true,
-      );
-    } finally {
-      await closeGuard.release(closeIds);
-    }
+
+    if (!(await prepareAndroidRemoval(closeIds))) return;
+    if (pane.type === "terminal") closeWorkspaceTerminals([id], workspace.id);
+    change(
+      (state) =>
+        updateTab(state, current.id, (tab) => {
+          if (tab.type !== "terminal") return tab;
+          const layout = removePane(tab.layout, id);
+          if (!layout) return tab;
+          return {
+            ...tab,
+            layout,
+            activePaneId:
+              tab.activePaneId === id
+                ? layoutPanes(layout)[0].id
+                : tab.activePaneId,
+          };
+        }),
+      true,
+    );
   };
   const restartPane = async (
     id: string,
@@ -3530,30 +3279,27 @@ export default function Workbench() {
     }
     const closeIds = new Set([id]);
     if (!(await closeGuard.confirm(closeIds, [id]))) return;
-    try {
-      closeWorkspaceTerminals([id], workspace.id);
-      modifyTab((tab) => {
-        let activePaneId = tab.activePaneId;
-        const layout = mapLayout(tab.layout, (pane) => {
-          if (pane.id !== id) return pane;
-          const added = newPane(
-            useProjectDirectory || pane.profileId === ""
-              ? project.path
-              : pane.cwd,
-          );
-          if (pane.type === "terminal" && pane.profileId !== undefined)
-            added.profileId = pane.profileId;
-          if (selectedProfileId) added.profileId = selectedProfileId;
-          if (sharedHostBackend)
-            stageSharedHostCreate(added.id, { kind: "create" });
-          if (activePaneId === id) activePaneId = added.id;
-          return added;
-        });
-        return { ...tab, layout, activePaneId };
+
+    closeWorkspaceTerminals([id], workspace.id);
+    modifyTab((tab) => {
+      let activePaneId = tab.activePaneId;
+      const layout = mapLayout(tab.layout, (pane) => {
+        if (pane.id !== id) return pane;
+        const added = newPane(
+          useProjectDirectory || pane.profileId === ""
+            ? project.path
+            : pane.cwd,
+        );
+        if (pane.type === "terminal" && pane.profileId !== undefined)
+          added.profileId = pane.profileId;
+        if (selectedProfileId) added.profileId = selectedProfileId;
+        if (sharedHostBackend)
+          stageSharedHostCreate(added.id, { kind: "create" });
+        if (activePaneId === id) activePaneId = added.id;
+        return added;
       });
-    } finally {
-      await closeGuard.release(closeIds);
-    }
+      return { ...tab, layout, activePaneId };
+    });
   };
   const changeEnvironment = () => {
     if (tab.type !== "terminal") return;
@@ -3566,19 +3312,15 @@ export default function Workbench() {
         const ids = panes(tab.layout).map((pane) => pane.id);
         const closeIds = new Set(ids);
         if (!(await closeGuard.confirm(closeIds, ids))) return;
-        try {
-          closeWorkspaceTerminals(ids, workspace.id);
-          const layout = mapLayout(tab.layout, () => newPane(project.path));
-          modifyTab((tab) => ({
-            ...tab,
-            profileId,
-            layout,
-            activePaneId:
-              panel?.type === "file" ? panel.id : panes(layout)[0].id,
-          }));
-        } finally {
-          await closeGuard.release(closeIds);
-        }
+
+        closeWorkspaceTerminals(ids, workspace.id);
+        const layout = mapLayout(tab.layout, () => newPane(project.path));
+        modifyTab((tab) => ({
+          ...tab,
+          profileId,
+          layout,
+          activePaneId: panel?.type === "file" ? panel.id : panes(layout)[0].id,
+        }));
       },
     });
   };
@@ -3673,7 +3415,6 @@ export default function Workbench() {
       throw new Error("Another file operation is in progress.");
     fileOperationBusy.current = true;
     let resume: (() => void) | undefined;
-    let closeIds: ReadonlySet<string> | undefined;
     try {
       const current = currentSession.current!;
       const requiredRoots = new Set([project.path]);
@@ -3746,25 +3487,6 @@ export default function Workbench() {
             )
             .map((file) => file.id),
         );
-        for (const panel of [
-          ...chatTabs(currentSession.current),
-          ...agentTaskTabs(currentSession.current),
-        ].filter((panel) =>
-          currentSession.current!.projects.some(
-            (project) =>
-              affectsProject(project) &&
-              project.workspaces.some((workspace) =>
-                workspace.tabs.some(
-                  (tab) =>
-                    tab.id === panel.id ||
-                    (tab.type === "terminal" &&
-                      layoutPanes(tab.layout).some((p) => p.id === panel.id)),
-                ),
-              ),
-          ),
-        ))
-          ids.add(panel.id);
-        closeIds = ids;
         if (
           !(await closeGuard.confirm(
             ids,
@@ -3797,7 +3519,6 @@ export default function Workbench() {
       if (result.warning) setError(result.warning);
       return true;
     } finally {
-      if (closeIds) await closeGuard.release(closeIds);
       resume?.();
       fileOperationBusy.current = false;
     }
@@ -3852,15 +3573,15 @@ export default function Workbench() {
               }
               activeTabId={tab.id}
               settings={{
-                opened: settings.opened,
-                active: settings.active,
+                opened: false,
+                active: false,
                 onSelect: settings.select,
                 onClose: closeSettings,
               }}
               newTabTitle={shortcutTitle("New tab", bindings.newTab)}
               onNew={() => addTab()}
-              onNewChat={() => void addChat()}
               onNewAgents={openAgents}
+              onNewChat={addChat}
               onNewAndroid={() =>
                 change((state) => {
                   const added = newAndroidTab();
@@ -4048,10 +3769,17 @@ export default function Workbench() {
                   (state) =>
                     updateWorkspace(state, workspace.id, (current) =>
                       current.activeTabId === targetId
-                        ? mergeTabs(current, id, targetId, side, {
-                            width: container.clientWidth,
-                            height: container.clientHeight,
-                          })
+                        ? mergeTabs(
+                            current,
+                            id,
+                            targetId,
+                            side,
+                            {
+                              width: container.clientWidth,
+                              height: container.clientHeight,
+                            },
+                            defaultProfileId,
+                          )
                         : current,
                     ),
                   true,
@@ -4263,26 +3991,21 @@ export default function Workbench() {
                     onClose={() => void closeTab(tab.id)}
                   />
                 </Suspense>
-              ) : tab.type === "agent-task" ? (
-                <Suspense
-                  fallback={<div role="status">Loading CLI Agent…</div>}
-                >
-                  <builtinViews.agentTask
-                    tab={tab}
-                    onFocus={() => {}}
-                    onClose={() => void closeTab(tab.id)}
-                  />
-                </Suspense>
-              ) : tab.type === "chat" ? (
-                <Suspense
-                  fallback={<div role="status">Loading conversation…</div>}
-                >
-                  <builtinViews.chat
-                    tab={tab}
-                    onFocus={() => {}}
-                    onClose={() => void closeTab(tab.id)}
-                  />
-                </Suspense>
+              ) : tab.type === "thread" ? (
+                // The merge target for tab drops; a chat tab splits into panels like terminals.
+                <div className="terminal-layout" ref={terminalLayout}>
+                  <Suspense fallback={<div role="status">Loading chat…</div>}>
+                    <builtinViews.thread
+                      key={tab.id}
+                      tab={tab}
+                      projectPath={project.path}
+                      workspaceId={workspace.id}
+                      onFocus={() => {}}
+                      onClose={() => void closeTab(tab.id)}
+                      onChange={(change) => changeThread(tab.id, change)}
+                    />
+                  </Suspense>
+                </div>
               ) : tab.type === "browser" ? (
                 <builtinViews.browser
                   key={tab.id}
@@ -4538,6 +4261,9 @@ export default function Workbench() {
                       }, true);
                     }}
                     onClosePane={closePane}
+                    projectPath={project.path}
+                    workspaceId={workspace.id}
+                    onThreadChange={(id, change) => changeThread(id, change)}
                     onPluginState={(id, value) =>
                       change((state) => updatePluginPanel(state, id, value))
                     }
@@ -4572,34 +4298,31 @@ export default function Workbench() {
                         ))
                       )
                         return;
-                      try {
-                        if (
-                          !(await prepareAndroidRemoval(
-                            new Set(removed.map((pane) => pane.id)),
-                          ))
-                        )
-                          return;
-                        closeWorkspaceTerminals(
-                          removed
-                            .filter((pane) => pane.type === "terminal")
-                            .map((pane) => pane.id),
-                          workspace.id,
-                        );
-                        const removedIds = new Set(
-                          removed.map((pane) => pane.id),
-                        );
-                        modifyTab((tab) => {
-                          let layout = tab.layout;
-                          for (const id of removedIds) {
-                            const next = removePane(layout, id);
-                            if (next) layout = next;
-                          }
-                          return { ...tab, layout };
-                        });
-                        setPaneNotice("");
-                      } finally {
-                        await closeGuard.release(closeIds);
-                      }
+
+                      if (
+                        !(await prepareAndroidRemoval(
+                          new Set(removed.map((pane) => pane.id)),
+                        ))
+                      )
+                        return;
+                      closeWorkspaceTerminals(
+                        removed
+                          .filter((pane) => pane.type === "terminal")
+                          .map((pane) => pane.id),
+                        workspace.id,
+                      );
+                      const removedIds = new Set(
+                        removed.map((pane) => pane.id),
+                      );
+                      modifyTab((tab) => {
+                        let layout = tab.layout;
+                        for (const id of removedIds) {
+                          const next = removePane(layout, id);
+                          if (next) layout = next;
+                        }
+                        return { ...tab, layout };
+                      });
+                      setPaneNotice("");
                     }}
                     onResize={(id, ratio) =>
                       modifyTab((tab) => ({
@@ -4848,6 +4571,7 @@ export default function Workbench() {
                           docking.target,
                           docking.side,
                           size,
+                          defaultProfileId,
                         )
                       : tab.type === "terminal"
                         ? (() => {
@@ -4949,6 +4673,7 @@ export default function Workbench() {
           {dialog && (
             <AppDialog dialog={dialog} onClose={() => setDialog(null)} />
           )}
+          {projectSourceDialog}
           {agentsTarget && (
             <AgentsDialog
               key={JSON.stringify([agentsTarget.profile, agentsTarget.cwd])}
@@ -4957,31 +4682,11 @@ export default function Workbench() {
               stage={terminalStage}
               onClose={() => setAgentsTarget(null)}
               onLaunch={launchAgents}
-              onTask={() => {
-                setTaskTarget({
-                  cwd: agentsTarget.cwd,
-                  shellProfileId: agentsTarget.profile.id,
-                });
-                setAgentsTarget(null);
-              }}
             />
           )}
-          {taskTarget && (
-            <Suspense fallback={<div role="status">Loading task…</div>}>
-              <TaskCreateDialog
-                {...taskTarget}
-                onOpenTask={openAgentTask}
-                onClose={() => {
-                  if (!sessionPublication.current) setTaskTarget(null);
-                }}
-              />
-            </Suspense>
-          )}
           {updater.dialog}
-          <PermissionReview />
           {closeGuard.dialog}
           {gitApproval.dialog}
-          {chatApproval.dialog}
           {stoppingForClose && (
             <Modal
               protectTheme

@@ -1000,7 +1000,6 @@ export class TerminalRuntime {
                 }
               : null,
             cliLaunch: this.cliLaunch ?? null,
-            accountId: this.accountId ?? null,
           },
           output,
           exited,

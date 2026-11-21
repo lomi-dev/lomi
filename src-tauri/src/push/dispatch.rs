@@ -7,14 +7,11 @@ use std::{
     time::{Duration, Instant},
 };
 use tauri::{AppHandle, Manager};
-use tauri_plugin_notification::NotificationExt;
 
 // Store reads and CAS always go through the existing owner. None of these
 // operations runs under emission/auth/preferences locks.
 #[derive(Clone, Copy)]
 enum Source {
-    Runtime,
-    Chat,
     Terminal,
 }
 fn rows(app: &AppHandle, source: Source, channel: Channel) -> Result<Vec<Intent>, String> {
@@ -29,30 +26,6 @@ fn rows(app: &AppHandle, source: Source, channel: Channel) -> Result<Vec<Intent>
                 .as_ref()
                 .map(|s| s.ready(channel))
                 .unwrap_or_else(|| Ok(Vec::new()))
-        }
-        Source::Runtime => {
-            let runtime = app.state::<crate::agent_runtime::AgentRuntime>();
-            let owner = runtime
-                .inner
-                .lock()
-                .map_err(|_| "Runtime owner unavailable.")?;
-            owner
-                .store
-                .as_ref()
-                .map(|s| s.notification_ready(channel))
-                .unwrap_or_else(|| Ok(Vec::new()))
-        }
-        Source::Chat => {
-            let backend = app.state::<crate::chat::commands::Chats>().backend(app)?;
-            let owner = backend
-                .services
-                .lock()
-                .map_err(|_| "Chat owner unavailable.")?;
-            owner
-                .store
-                .as_ref()
-                .map_err(|e| e.clone())?
-                .notification_ready(channel)
         }
     }
 }
@@ -77,30 +50,6 @@ fn cas(
                 .ok_or("Terminal notification ledger unavailable.")?
                 .transition(channel, intent, expected, state, next)
         }
-        Source::Runtime => {
-            let runtime = app.state::<crate::agent_runtime::AgentRuntime>();
-            let owner = runtime
-                .inner
-                .lock()
-                .map_err(|_| "Runtime owner unavailable.")?;
-            owner
-                .store
-                .as_ref()
-                .ok_or("Runtime unavailable.")?
-                .notification_transition(channel, intent, expected, state, next)
-        }
-        Source::Chat => {
-            let backend = app.state::<crate::chat::commands::Chats>().backend(app)?;
-            let owner = backend
-                .services
-                .lock()
-                .map_err(|_| "Chat owner unavailable.")?;
-            owner
-                .store
-                .as_ref()
-                .map_err(|e| e.clone())?
-                .notification_transition(channel, intent, expected, state, next)
-        }
     }
 }
 #[derive(Debug, PartialEq, Eq)]
@@ -108,142 +57,6 @@ enum Eligibility {
     Allow,
     Wait,
     Suppress(&'static str),
-}
-fn local_eligibility(app: &AppHandle, intent: &Intent) -> Eligibility {
-    let Some(stamp) = intent.admission.desktop.as_ref() else {
-        return Eligibility::Suppress("NO_ADMISSION");
-    };
-    if ledger::now() >= intent.expires_at {
-        return Eligibility::Suppress("EXPIRED");
-    }
-    let auth = app.state::<crate::auth::AuthController>();
-    if auth.snapshot().status == crate::auth::AuthStatus::Checking {
-        return Eligibility::Wait;
-    }
-    let Ok(b) = auth.local_notification_binding() else {
-        return Eligibility::Suppress("SESSION_REQUIRED");
-    };
-    let push = app.state::<Push>();
-    let c = push.inner.lock().unwrap();
-    if c.path.is_none()
-        || c.file.retired_sessions.contains(&b.session_id)
-        || stamp.installation_id != c.file.installation_id
-        || !stamp.owner.matches(&b, &c.process_id)
-    {
-        return Eligibility::Suppress("OWNER_CHANGED");
-    }
-    let Some(p) = c.file.accounts.get(&b.user_id) else {
-        return Eligibility::Suppress("CONSENT_CHANGED");
-    };
-    local_policy(
-        p,
-        stamp.consent_epoch,
-        c.denied,
-        app.get_window("main").and_then(|w| w.is_focused().ok()),
-    )
-}
-fn local_policy(
-    p: &super::DesktopPreferences,
-    epoch: u64,
-    denied: bool,
-    focused: Option<bool>,
-) -> Eligibility {
-    if !p.enabled || p.consent_epoch != epoch {
-        return Eligibility::Suppress("CONSENT_CHANGED");
-    }
-    if denied {
-        return Eligibility::Suppress("PERMISSION_DENIED");
-    }
-    if p.background_only && focused != Some(false) {
-        return Eligibility::Suppress("MAIN_FOCUSED_OR_UNKNOWN");
-    }
-    Eligibility::Allow
-}
-
-fn local(
-    app: &AppHandle,
-    source: Source,
-    mut intent: Intent,
-    checking: &mut HashMap<String, Instant>,
-) {
-    let eligibility = local_eligibility(app, &intent);
-    if eligibility == Eligibility::Wait
-        && checking_may_wait(
-            checking
-                .entry(intent.key.clone())
-                .or_insert_with(Instant::now)
-                .elapsed(),
-        )
-    {
-        return;
-    }
-    checking.remove(&intent.key);
-    if eligibility != Eligibility::Allow {
-        intent.reason = Some(
-            match eligibility {
-                Eligibility::Suppress(reason) => reason,
-                _ => "CHECKING_TIMEOUT",
-            }
-            .into(),
-        );
-        let state = if ledger::now() >= intent.expires_at {
-            "expired"
-        } else {
-            "suppressed"
-        };
-        let _ = cas(app, source, Channel::Desktop, &intent, "ready", state, 0);
-        return;
-    }
-    let Some(result) = claim_and_enqueue(
-        || {
-            matches!(
-                cas(
-                    app,
-                    source,
-                    Channel::Desktop,
-                    &intent,
-                    "ready",
-                    "claimed",
-                    0
-                ),
-                Ok(true)
-            )
-        },
-        || match local_eligibility(app, &intent) {
-            Eligibility::Allow => app
-                .notification()
-                .builder()
-                .title("Lomi")
-                .body("Agent zakończył zadanie.")
-                .show()
-                .map(|_| "plugin_accepted")
-                .unwrap_or("failed"),
-            _ => "suppressed",
-        },
-    ) else {
-        return;
-    };
-    if result == "failed" {
-        intent.reason = Some("PLUGIN_ERROR".into());
-    }
-    if result == "suppressed" {
-        intent.reason = Some("AUTHORITY_CHANGED".into());
-    }
-    let _ = cas(app, source, Channel::Desktop, &intent, "claimed", result, 0);
-}
-// This is the production claim/enqueue boundary. Injected closures let tests
-// drive SQLite CAS and authority changes without showing an actual OS alert.
-fn claim_and_enqueue(
-    claim: impl FnOnce() -> bool,
-    enqueue: impl FnOnce() -> &'static str,
-) -> Option<&'static str> {
-    if !claim() {
-        return None;
-    }
-    let _guard = crate::auth::controller::LOCAL_NOTIFICATION_EMISSION_GUARD
-        .lock()
-        .ok()?;
-    Some(enqueue())
 }
 fn checking_may_wait(elapsed: Duration) -> bool {
     elapsed < Duration::from_secs(10)
@@ -441,23 +254,7 @@ fn event_type(intent: &Intent) -> &'static str {
     }
 }
 pub(super) fn start(app: AppHandle) {
-    // Local alerts have their own consumer and never wait for HTTP/cache
-    // refresh or a cloud queue. There is exactly one cloud dispatcher.
-    let local_app = app.clone();
-    tauri::async_runtime::spawn(async move {
-        let mut checking = HashMap::new();
-        loop {
-            for source in [Source::Runtime, Source::Chat] {
-                if let Ok(intents) = rows(&local_app, source, Channel::Desktop) {
-                    for intent in intents {
-                        local(&local_app, source, intent, &mut checking);
-                    }
-                }
-            }
-            checking.retain(|_, t| t.elapsed() < Duration::from_secs(60));
-            tokio::time::sleep(Duration::from_secs(1)).await;
-        }
-    });
+    // There is exactly one cloud dispatcher.
     if !crate::desktop_runtime::shared_host_enabled() {
         return;
     }
@@ -481,7 +278,7 @@ pub(super) fn start(app: AppHandle) {
                 app.state::<Push>().publish(&app);
                 authority = current;
             }
-            for source in [Source::Runtime, Source::Chat, Source::Terminal] {
+            for source in [Source::Terminal] {
                 if let Ok(intents) = rows(&app, source, Channel::Cloud) {
                     for intent in intents.into_iter().take(2) {
                         cloud(&app, source, intent, &mut checking).await;

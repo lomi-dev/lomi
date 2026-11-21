@@ -12,4 +12,3 @@ declare module "@lomi/terminal-renderer-experimental" {
     enabled: boolean,
   ): void;
 }
-
