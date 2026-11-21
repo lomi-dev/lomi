@@ -2,14 +2,13 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lomi disk image background</title>
     <style>
       @font-face {
-        font-family: Manrope;
-        src: url("../../public/fonts/manrope/Manrope.woff") format("woff");
-        font-style: normal;
-        font-weight: 200 800;
+        font-family: "Mona Sans";
+        src: url("../../public/fonts/mona-sans/MonaSans-Variable.woff2")
+          format("woff2");
+        font-weight: 200 900;
       }
 
       * {
@@ -24,88 +23,97 @@
         overflow: hidden;
       }
 
+      /* Brand Guidelines 4.0: Paper canvas, Night ink, Violet and Signal accents. */
       body {
         position: relative;
-        color: #0b0d0c;
-        background: #f7f8f3;
-        font-family: Manrope, sans-serif;
+        color: #18181c;
+        background: #f7f7f9;
+        font-family: "Mona Sans", sans-serif;
         -webkit-font-smoothing: antialiased;
       }
 
-      .header {
+      .grid {
         position: absolute;
-        inset: 0 0 auto;
-        height: 208px;
-        background: #0b0d0c;
+        inset: 0;
+        background-image: radial-gradient(#dcdce2 1px, transparent 1.2px);
+        background-size: 16px 16px;
+        background-position: 8px 8px;
+        mask-image: linear-gradient(180deg, #000 0%, transparent 78%);
       }
 
-      .wordmark {
+      .glow {
         position: absolute;
-        top: 22.83px;
-        left: 38.83px;
-        width: 132px;
-        height: auto;
+        inset: 0;
+        background: radial-gradient(
+          300px 180px at 528px 300px,
+          rgb(114 59 250 / 0.09),
+          transparent 70%
+        );
       }
 
-      .tagline {
+      h1 {
         position: absolute;
-        top: 104px;
-        left: 48px;
-        color: #f7f8f3;
+        top: 100px;
+        left: 0;
+        width: 100%;
+        margin: 0;
         font-size: 32px;
-        font-weight: 700;
+        font-weight: 620;
+        letter-spacing: -0.025em;
         line-height: 40px;
+        text-align: center;
       }
 
-      .instruction {
+      h1 span {
+        color: #9696a2;
+      }
+
+      /* Finder centers the icons at (192, 312) and (528, 312); see tauri.macos.conf.json. */
+      .drop {
         position: absolute;
-        top: 155px;
-        left: 48px;
-        color: #f7f8f3;
-        font-size: 16px;
-        font-weight: 400;
-        line-height: 24px;
+        top: 226px;
+        left: 444px;
+        width: 168px;
+        height: 184px;
+        border: 1.5px dashed #ae8dff;
+        border-radius: 36px;
+        background: rgb(243 238 255 / 0.55);
       }
 
-      .drop-arrow {
+      .path {
         position: absolute;
-        top: 292px;
-        left: 328px;
-        display: grid;
-        width: 64px;
-        height: 40px;
-        place-items: center;
-        border-radius: 20px;
-        background: #c8ff3d;
+        top: 307px;
+        left: 276px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
       }
 
-      .drop-arrow svg {
-        width: 24px;
-        height: 24px;
-        fill: none;
-        stroke: #0b0d0c;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-        stroke-width: 2;
+      .path i {
+        width: 6px;
+        height: 6px;
+        border-radius: 1.5px;
+      }
+
+      .path i.end {
+        width: 11px;
+        height: 11px;
+        border-radius: 3px;
+        background: #b9f500;
+        box-shadow: 0 0 0 4px rgb(185 245 0 / 0.22);
       }
     </style>
   </head>
   <body>
-    <header class="header">
-      <img
-        class="wordmark"
-        src="./lomi-primary-dark.svg"
-        alt=""
-        width="576"
-        height="282"
-      />
-      <div class="tagline">Create at your own pace.</div>
-      <div class="instruction">Drag Lomi to Applications.</div>
-    </header>
-    <div class="drop-arrow" aria-hidden="true">
-      <svg viewBox="0 0 24 24">
-        <path d="M4 12h15M13 5l7 7-7 7" />
-      </svg>
+    <div class="grid"></div>
+    <div class="glow"></div>
+    <h1>Drag Lomi to <span>Applications.</span></h1>
+    <div class="drop"></div>
+    <div class="path" aria-hidden="true">
+      <i style="background: #dcdce2"></i><i style="background: #cfd3c4"></i
+      ><i style="background: #c4d39a"></i><i style="background: #bbd96d"></i
+      ><i style="background: #b6e340"></i><i style="background: #b4ec1c"></i
+      ><i style="background: #b9f500"></i><i class="end"></i>
     </div>
   </body>
 </html>

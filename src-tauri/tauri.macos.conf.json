@@ -38,7 +38,7 @@
     "macOS": {
       "hardenedRuntime": true,
       "dmg": {
-        "background": "dmg/background.png",
+        "background": "dmg/background.tiff",
         "windowSize": {
           "width": 720,
           "height": 480

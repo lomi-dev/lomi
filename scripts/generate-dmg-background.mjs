@@ -1,4 +1,6 @@
-import { mkdirSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "playwright";
@@ -6,38 +8,57 @@ import { chromium } from "playwright";
 const projectRoot = fileURLToPath(new URL("../", import.meta.url));
 const source = path.join(projectRoot, "src-tauri", "dmg", "background.html");
 const outputDirectory = path.dirname(source);
-const output = path.join(outputDirectory, "background.png");
+const output = path.join(outputDirectory, "background.tiff");
+const scratch = mkdtempSync(path.join(tmpdir(), "lomi-dmg-"));
 
 mkdirSync(outputDirectory, { recursive: true });
 
 const browser = await chromium.launch({ headless: true });
 try {
-  const page = await browser.newPage({
-    viewport: { width: 720, height: 480 },
-    deviceScaleFactor: 1,
-  });
-  await page.goto(pathToFileURL(source).href, { waitUntil: "load" });
-  await page.evaluate(async () => {
-    await Promise.all([
-      document.fonts.load("700 32px Manrope"),
-      document.fonts.load("400 16px Manrope"),
-      document.fonts.load("500 12px Manrope"),
-    ]);
-    await document.fonts.ready;
-  });
-
-  const isManropeReady = await page.evaluate(() =>
-    document.fonts.check("700 32px Manrope"),
-  );
-  if (!isManropeReady) {
-    throw new Error(
-      "Manrope did not load; refusing to render the fallback font.",
+  // Finder picks the 2x representation of a multi-resolution TIFF on Retina displays.
+  for (const scale of [1, 2]) {
+    const page = await browser.newPage({
+      viewport: { width: 720, height: 480 },
+      deviceScaleFactor: scale,
+    });
+    await page.goto(pathToFileURL(source).href, { waitUntil: "load" });
+    await page.evaluate(async () => {
+      await document.fonts.load('620 32px "Mona Sans"');
+      await document.fonts.ready;
+    });
+    const areFontsReady = await page.evaluate(() =>
+      document.fonts.check('620 32px "Mona Sans"'),
     );
+    if (!areFontsReady) {
+      throw new Error(
+        "Mona Sans did not load; refusing to render the fallback font.",
+      );
+    }
+    await page.screenshot({
+      path: path.join(
+        scratch,
+        scale === 1 ? "background.png" : "background@2x.png",
+      ),
+      animations: "disabled",
+    });
+    await page.close();
   }
-
-  await page.screenshot({ path: output, animations: "disabled" });
 } finally {
   await browser.close();
 }
 
-console.log(`Generated ${path.relative(projectRoot, output)} (720x480, 1x).`);
+try {
+  execFileSync("tiffutil", [
+    "-cathidpicheck",
+    path.join(scratch, "background.png"),
+    path.join(scratch, "background@2x.png"),
+    "-out",
+    output,
+  ]);
+} finally {
+  rmSync(scratch, { recursive: true, force: true });
+}
+
+console.log(
+  `Generated ${path.relative(projectRoot, output)} (720x480 with 2x).`,
+);
