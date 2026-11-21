@@ -5,6 +5,7 @@ import { initializeAppearance } from "./theme/runtime";
 import { api, macOS, native } from "./api";
 import { trackRemoteActivity } from "./remote-activity";
 import { SettingsNotice } from "./settings-ui";
+import { QuitHint } from "./QuitHint";
 import "./styles.css";
 import "./content-ui.css";
 import "./workflow-ui.css";
@@ -82,6 +83,7 @@ createRoot(document.getElementById("root")!).render(
       fallback={<main className="empty-message">Opening workspace…</main>}
     >
       {remoteV2View ? <RemoteV2ViewEntry /> : <App />}
+      {native && macOS && !remoteV2View && <QuitHint />}
     </Suspense>
   </StrictMode>,
 );

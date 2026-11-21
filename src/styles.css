@@ -7389,3 +7389,49 @@ html[data-hide-explorer-arrows="true"] .tree-toggle > svg {
   background: var(--tab-background-active);
   color: var(--color-surface-text);
 }
+
+.quit-hint {
+  position: fixed;
+  top: 30%;
+  left: 50%;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  overflow: hidden;
+  padding: 12px 18px;
+  border: var(--border-width) solid var(--color-outline);
+  border-radius: 12px;
+  background: color-mix(
+    in srgb,
+    var(--color-surface-container-high) 88%,
+    transparent
+  );
+  backdrop-filter: blur(16px);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 0.28);
+  color: var(--color-surface-text);
+  font-size: var(--font-size-13);
+  font-weight: 500;
+  pointer-events: none;
+  translate: -50% 0;
+  animation: lomi-rise 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.quit-hint-countdown {
+  position: absolute;
+  inset: auto 0 0;
+  height: 2px;
+  background: var(--color-primary);
+  transform-origin: left;
+  animation: quit-hint-countdown 2s linear both;
+}
+@keyframes quit-hint-countdown {
+  to {
+    transform: scaleX(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .quit-hint,
+  .quit-hint-countdown {
+    animation: none;
+  }
+}

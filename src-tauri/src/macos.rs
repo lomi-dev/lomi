@@ -105,7 +105,9 @@ pub fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
         return;
     }
     if event.id().as_ref() == "quit" {
-        app.exit(0);
+        if confirm_quit(app) {
+            app.exit(0);
+        }
         return;
     }
     if event.id().as_ref() == "close-window" {
@@ -117,6 +119,30 @@ pub fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
             let _ = window.close();
         }
     }
+}
+
+/// Requires a second Quit (or a held ⌘Q, via key repeat) within the hint's
+/// lifetime while the main window is in front, like Chrome's quit warning.
+fn confirm_quit(app: &AppHandle) -> bool {
+    static ARMED: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+    let Some(main) = app.get_window("main") else {
+        return true;
+    };
+    // The hint renders inside main, so quit directly when it cannot be seen.
+    if !main.is_visible().unwrap_or(false)
+        || main.is_minimized().unwrap_or(false)
+        || !main.is_focused().unwrap_or(false)
+    {
+        return true;
+    }
+    let mut armed = ARMED.lock().unwrap_or_else(|error| error.into_inner());
+    if armed.is_some_and(|at| at.elapsed() < std::time::Duration::from_secs(2)) {
+        *armed = None;
+        return true;
+    }
+    *armed = Some(std::time::Instant::now());
+    let _ = tauri::Emitter::emit(&main, "lomi-quit-armed", ());
+    false
 }
 
 pub fn handle_run_event(app: &AppHandle, event: &RunEvent) {
