@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import { api, errorMessage, native } from "./api";
+import { t, useT } from "./i18n";
 import {
   clearNotificationError,
   acceptNotificationSnapshot,
@@ -105,7 +106,11 @@ export function useNotifications() {
           }
         } catch (failure) {
           if (active && errorVersion.current === startedErrorVersion)
-            setError(`Could not load notifications: ${errorMessage(failure)}`);
+            setError(
+              t("Could not load notifications: {error}", {
+                error: errorMessage(failure),
+              }),
+            );
         } finally {
           if (retrying && active) {
             pending.current = false;
@@ -142,7 +147,11 @@ export function useNotifications() {
       return true;
     } catch (failure) {
       if (mounted.current && errorVersion.current === startedErrorVersion)
-        setError(`Could not update notifications: ${errorMessage(failure)}`);
+        setError(
+          t("Could not update notifications: {error}", {
+            error: errorMessage(failure),
+          }),
+        );
       return false;
     } finally {
       pending.current = false;
@@ -193,6 +202,7 @@ export default function NotificationCenter({
   notifications: Notifications;
   onClose: () => void;
 }) {
+  useT();
   const panel = useRef<HTMLDivElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const [position, setPosition] = useState({ left: 8, top: 8 });
@@ -297,7 +307,7 @@ export default function NotificationCenter({
       ref={panel}
       className="menu notification-center"
       role="dialog"
-      aria-label="Notifications"
+      aria-label={t("Notifications")}
       style={position}
       onContextMenu={(event) => event.preventDefault()}
       onKeyDown={(event) => {
@@ -325,20 +335,20 @@ export default function NotificationCenter({
     >
       <div className="notification-center-heading">
         <div>
-          <strong>Notifications</strong>
+          <strong>{t("Notifications")}</strong>
           <span>
             {!snapshot
-              ? "Loading…"
+              ? t("Loading…")
               : unread
-                ? `${unread} unread`
-                : "All caught up"}
+                ? t("{count} unread", { count: unread })
+                : t("All caught up")}
           </span>
         </div>
         <button
           ref={closeButton}
           type="button"
           className="notification-icon-button"
-          aria-label="Close notifications"
+          aria-label={t("Close notifications")}
           onClick={() => close(true)}
         >
           <X size={15} aria-hidden="true" />
@@ -348,14 +358,14 @@ export default function NotificationCenter({
         <div className="notification-center-error" role="status">
           <span>{error}</span>
           <button type="button" disabled={busy} onClick={retry}>
-            Retry
+            {t("Retry")}
           </button>
         </div>
       )}
       <div
         className="notification-center-list"
         role="region"
-        aria-label="Notification list"
+        aria-label={t("Notification list")}
         tabIndex={0}
         aria-busy={busy || undefined}
       >
@@ -364,12 +374,12 @@ export default function NotificationCenter({
             <Bell size={24} aria-hidden="true" />
             <strong>
               {snapshot
-                ? "No notifications yet"
+                ? t("No notifications yet")
                 : error
-                  ? "Notifications unavailable"
-                  : "Loading notifications…"}
+                  ? t("Notifications unavailable")
+                  : t("Loading notifications…")}
             </strong>
-            <span>Application and agent updates will appear here.</span>
+            <span>{t("Application and agent updates will appear here.")}</span>
           </div>
         )}
         {items.map((item) => {
@@ -399,8 +409,17 @@ export default function NotificationCenter({
                 type="button"
                 className="notification-item-open"
                 disabled={busy}
-                aria-label={`${item.title}${item.read ? "" : ", unread"}`}
-                aria-description={`${notificationSource(item)}. ${notificationKindLabel(item)}. ${notificationRelativeTime(item.createdAt, now)}. ${item.body}`}
+                aria-label={
+                  item.read
+                    ? item.title
+                    : t("{title}, unread", { title: item.title })
+                }
+                aria-description={t("{source}. {kind}. {time}. {body}", {
+                  source: notificationSource(item),
+                  kind: notificationKindLabel(item),
+                  time: notificationRelativeTime(item.createdAt, now),
+                  body: item.body,
+                })}
                 title={item.body}
                 onClick={() => {
                   if (!item.read && !notSaved) markRead([item.id]);
@@ -429,13 +448,13 @@ export default function NotificationCenter({
                 <strong>{item.title}</strong>
                 <time
                   dateTime={validDate ? date.toISOString() : undefined}
-                  title={validDate ? date.toLocaleString() : "Unknown time"}
+                  title={validDate ? date.toLocaleString() : t("Unknown time")}
                 >
                   {notificationRelativeTime(item.createdAt, now)}
                 </time>
                 <span className="notification-source">
                   {notificationSource(item)}
-                  {notSaved && <span> · Not saved yet</span>}
+                  {notSaved && <span> · {t("Not saved yet")}</span>}
                   {item.body && (
                     <span className="notification-context"> · {item.body}</span>
                   )}
@@ -455,8 +474,8 @@ export default function NotificationCenter({
                 type="button"
                 className="notification-item-dismiss notification-icon-button"
                 disabled={busy}
-                aria-label={`Dismiss ${item.title}`}
-                title="Dismiss notification"
+                aria-label={t("Dismiss {title}", { title: item.title })}
+                title={t("Dismiss notification")}
                 onClick={() => dismiss(item.id)}
               >
                 <X size={14} aria-hidden="true" />
@@ -469,7 +488,7 @@ export default function NotificationCenter({
         {recovery &&
           !items.some((item) => item.action === "recover-session") && (
             <>
-              <span>Session recovery required</span>
+              <span>{t("Session recovery required")}</span>
               <button
                 type="button"
                 disabled={busy || actionBusy}
@@ -485,7 +504,7 @@ export default function NotificationCenter({
           onClick={clearAll}
         >
           <Trash2 size={14} aria-hidden="true" />
-          Clear all notifications
+          {t("Clear all notifications")}
         </button>
       </div>
     </div>,

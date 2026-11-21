@@ -1,4 +1,5 @@
 import { api, native } from "./api";
+import { t } from "./i18n";
 
 export type ReleaseClosePreparation = () => Promise<void>;
 
@@ -29,7 +30,7 @@ export async function prepareApplicationClose(
   },
 ): Promise<ReleaseClosePreparation | null> {
   if (preparing)
-    throw new Error("Application shutdown is already in progress.");
+    throw new Error(t("Application shutdown is already in progress."));
   preparing = true;
   let protection:
     ReturnType<NonNullable<typeof protectWhileStopping>> | undefined;
@@ -44,7 +45,9 @@ export async function prepareApplicationClose(
         action: { type: "begin" },
       });
       if (typeof token !== "string" || !token) {
-        throw new Error("Could not prepare Android shutdown. Retry closing.");
+        throw new Error(
+          t("Could not prepare Android shutdown. Retry closing."),
+        );
       }
       pendingPreparation = token;
     }
@@ -90,7 +93,10 @@ export async function prepareApplicationClose(
     } catch (releaseError) {
       throw new AggregateError(
         [error, releaseError],
-        `${String(error)}; closing could not be cancelled: ${String(releaseError)}`,
+        t("{error}; closing could not be cancelled: {releaseError}", {
+          error: String(error),
+          releaseError: String(releaseError),
+        }),
       );
     }
     throw error;

@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import { useT } from "../../i18n";
 import { Modal } from "../../ui";
 import { ProviderIcon } from "../../ProviderIcon";
 import { applyModelPrefs, slugify } from "../providers";
@@ -26,6 +27,7 @@ export default function AddProviderDialog({
   onAdded: (instanceId: string) => void;
   error: string;
 }) {
+  const { t } = useT();
   const [kind, setKind] = useState<ApiKind>("anthropic");
   const [label, setLabel] = useState(presets.anthropic.name);
   const [labelEdited, setLabelEdited] = useState(false);
@@ -83,12 +85,12 @@ export default function AddProviderDialog({
     onClose();
   };
 
-  const message = test.busy ? "Connecting…" : test.message || pageError;
+  const message = test.busy ? t("Connecting…") : test.message || pageError;
   const isError =
     !test.busy && (failed || !test.ok || (!!pageError && !test.message));
   return (
     <Modal
-      title="Add API provider"
+      title={t("Add API provider")}
       className="prov-add-dialog"
       closeDisabled={busy}
       onClose={onClose}
@@ -101,7 +103,11 @@ export default function AddProviderDialog({
         }}
       >
         <div className="dialog-content prov-add-body">
-          <div className="prov-kinds" role="radiogroup" aria-label="Service">
+          <div
+            className="prov-kinds"
+            role="radiogroup"
+            aria-label={t("Service")}
+          >
             {apiKinds.map((item) => (
               <button
                 key={item}
@@ -116,7 +122,7 @@ export default function AddProviderDialog({
               </button>
             ))}
           </div>
-          <label htmlFor={ids[0]}>Name</label>
+          <label htmlFor={ids[0]}>{t("Name")}</label>
           <input
             id={ids[0]}
             maxLength={64}
@@ -126,7 +132,7 @@ export default function AddProviderDialog({
               setLabelEdited(true);
             }}
           />
-          <label htmlFor={ids[1]}>Base URL</label>
+          <label htmlFor={ids[1]}>{t("Base URL")}</label>
           <input
             id={ids[1]}
             className="prov-mono"
@@ -138,14 +144,14 @@ export default function AddProviderDialog({
               setFailed(false);
             }}
           />
-          <label htmlFor={ids[2]}>API key</label>
+          <label htmlFor={ids[2]}>{t("API key")}</label>
           <input
             id={ids[2]}
             type="password"
             autoComplete="off"
             spellCheck={false}
             autoFocus
-            placeholder={keyRequired ? "Paste an API key" : "Optional"}
+            placeholder={keyRequired ? t("Paste an API key") : t("Optional")}
             value={apiKey}
             onChange={(event) => {
               setApiKey(event.target.value);
@@ -153,7 +159,9 @@ export default function AddProviderDialog({
             }}
           />
           <small className="settings-help">
-            Stored in the system key store. Models are fetched automatically.
+            {t(
+              "Stored in the system key store. Models are fetched automatically.",
+            )}
           </small>
         </div>
         <div className="dialog-actions">
@@ -169,14 +177,14 @@ export default function AddProviderDialog({
             disabled={busy}
             onClick={onClose}
           >
-            Cancel
+            {t("Cancel")}
           </button>
           <button
             type="submit"
             className="button button-primary"
             disabled={!ready || busy}
           >
-            {failed ? "Add anyway" : "Add provider"}
+            {failed ? t("Add anyway") : t("Add provider")}
           </button>
         </div>
       </form>

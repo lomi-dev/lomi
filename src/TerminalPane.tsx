@@ -32,6 +32,7 @@ import { IconButton } from "./ui";
 import { actionForEvent, formatShortcut } from "./keybindings";
 import { useKeybindings } from "./KeybindingsProvider";
 import { useTerminalPreferences } from "./TerminalPreferencesProvider";
+import { useT } from "./i18n";
 
 interface Props {
   pane: Pane;
@@ -49,15 +50,17 @@ interface Props {
 }
 
 export default function TerminalPane(props: Props) {
+  const { t } = useT();
   const { bindings } = useKeybindings();
   if (!props.profile)
     return (
       <section className="terminal-pane">
         <div className="empty-message">
-          <h2>Shell unavailable</h2>
+          <h2>{t("Shell unavailable")}</h2>
           <p>
-            Use {formatShortcut(bindings.changeEnvironment)} to choose an
-            installed terminal environment.
+            {t("Use {shortcut} to choose an installed terminal environment.", {
+              shortcut: formatShortcut(bindings.changeEnvironment),
+            })}
           </p>
         </div>
       </section>
@@ -79,6 +82,7 @@ function LiveTerminal({
   onRestart,
   sharedHost,
 }: Props & { profile: ShellProfile }) {
+  const { t } = useT();
   const [runtime] = useState(() =>
     terminalFor(pane, profile, undefined, undefined, sharedHost),
   );
@@ -167,13 +171,13 @@ function LiveTerminal({
       : null;
   const activityLabel =
     activity === "working"
-      ? "Working"
+      ? t("Working")
       : activity === "attention"
-        ? "Needs input"
+        ? t("Needs input")
         : activity === "finished"
-          ? "Done"
+          ? t("Done")
           : activity === "error"
-            ? "Error"
+            ? t("Error")
             : "";
   const fallbackTitle = pane.cwd || profile.name;
   const displayTitle = title || (canMove || revealTitle ? fallbackTitle : "");
@@ -185,7 +189,7 @@ function LiveTerminal({
     <section
       className={`terminal-pane${active ? " is-active" : ""}${overview ? " is-overview" : ""}`}
       data-pane-id={pane.id}
-      aria-label={`Terminal ${profile.name}`}
+      aria-label={t("Terminal {name}", { name: profile.name })}
       onPointerDownCapture={onFocus}
       onFocusCapture={onFocus}
     >
@@ -204,8 +208,8 @@ function LiveTerminal({
           <Search size={14} />
           <input
             ref={searchInput}
-            aria-label="Search terminal output"
-            placeholder="Find in terminal…"
+            aria-label={t("Search terminal output")}
+            placeholder={t("Find in terminal…")}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
@@ -224,32 +228,35 @@ function LiveTerminal({
           />
           <span className="search-result">{snapshot.searchResult}</span>
           <IconButton
-            title="Match case"
+            title={t("Match case")}
             aria-pressed={caseSensitive}
             onClick={() => setCaseSensitive(!caseSensitive)}
           >
             <CaseSensitive size={16} />
           </IconButton>
           <IconButton
-            title="Regular expression"
+            title={t("Regular expression")}
             aria-pressed={regex}
             onClick={() => setRegex(!regex)}
           >
             <span className="regex-icon">.*</span>
           </IconButton>
           <IconButton
-            title="Previous match"
+            title={t("Previous match")}
             onClick={() => runtime.find(query, true, caseSensitive, regex)}
           >
             <ArrowUp size={14} />
           </IconButton>
           <IconButton
-            title="Next match"
+            title={t("Next match")}
             onClick={() => runtime.find(query, false, caseSensitive, regex)}
           >
             <ArrowDown size={14} />
           </IconButton>
-          <IconButton title="Close search" onClick={() => setSearchOpen(false)}>
+          <IconButton
+            title={t("Close search")}
+            onClick={() => setSearchOpen(false)}
+          >
             <X size={14} />
           </IconButton>
         </div>
@@ -265,7 +272,7 @@ function LiveTerminal({
             className={`terminal-title-box${canMove ? " is-movable" : ""}`}
             title={
               canMove
-                ? "Alt+drag or Ctrl+drag to move terminal · Esc to cancel"
+                ? t("Alt+drag or Ctrl+drag to move terminal · Esc to cancel")
                 : undefined
             }
           >
@@ -282,10 +289,12 @@ function LiveTerminal({
               <button
                 type="button"
                 className="terminal-control"
-                title="Agent input is enabled. Take control without sending a key or stopping the shell."
+                title={t(
+                  "Agent input is enabled. Take control without sending a key or stopping the shell.",
+                )}
                 onClick={() => void runtime.takeControl()}
               >
-                Agent input · Take control
+                {t("Agent input · Take control")}
               </button>
             )}
             {activity && (
@@ -307,7 +316,9 @@ function LiveTerminal({
             {canMaximize && (
               <IconButton
                 title={
-                  maximized ? "Restore terminal size" : "Maximize terminal"
+                  maximized
+                    ? t("Restore terminal size")
+                    : t("Maximize terminal")
                 }
                 aria-pressed={maximized}
                 onClick={() => {
@@ -325,10 +336,10 @@ function LiveTerminal({
             <p>{snapshot.error}</p>
             <button className="button" onClick={() => onRestart()}>
               <RotateCcw size={14} />
-              Retry terminal
+              {t("Retry terminal")}
             </button>
             <button className="button" onClick={() => onRestart(true)}>
-              Start in project folder
+              {t("Start in project folder")}
             </button>
           </div>
         )}
@@ -338,15 +349,15 @@ function LiveTerminal({
             onClick={() => onRestart()}
           >
             <RotateCcw size={14} />
-            Restart
+            {t("Restart")}
           </button>
         )}
         {blocks && (
-          <aside className="command-blocks" aria-label="Command blocks">
+          <aside className="command-blocks" aria-label={t("Command blocks")}>
             <header>
-              <span>COMMANDS</span>
+              <span>{t("COMMANDS")}</span>
               <IconButton
-                title="Close command blocks"
+                title={t("Close command blocks")}
                 onClick={() => setBlocks(false)}
               >
                 <X size={14} />
@@ -354,7 +365,7 @@ function LiveTerminal({
             </header>
             {!snapshot.blocks.length && (
               <p className="muted">
-                Run a command to see its output block here.
+                {t("Run a command to see its output block here.")}
               </p>
             )}
             {[...snapshot.blocks].reverse().map((block) => (
@@ -362,7 +373,7 @@ function LiveTerminal({
                 className="command-block"
                 key={block.id}
                 onClick={() => runtime.jumpTo(block)}
-                title="Jump to command output"
+                title={t("Jump to command output")}
               >
                 <span className="command-block-text">
                   <Command size={13} />
@@ -372,9 +383,9 @@ function LiveTerminal({
                   <span className={block.exitCode ? "text-error" : ""}>
                     {block.finished
                       ? block.exitCode === undefined
-                        ? "Completed"
-                        : `Exit ${block.exitCode}`
-                      : "Running"}
+                        ? t("Completed")
+                        : t("Exit {code}", { code: block.exitCode })
+                      : t("Running")}
                   </span>
                   <span>
                     {block.finished
@@ -391,20 +402,22 @@ function LiveTerminal({
         <div className="command-composer" inert={overview}>
           <div className="composer-heading">
             <Code size={14} />
-            <span>Command input</span>
+            <span>{t("Command input")}</span>
             <span className="muted">
               {bindings.runCommand
-                ? `${formatShortcut(bindings.runCommand)} to run`
-                : "Run command"}
+                ? t("{shortcut} to run", {
+                    shortcut: formatShortcut(bindings.runCommand),
+                  })
+                : t("Run command")}
             </span>
             <IconButton
-              title="Close command input"
+              title={t("Close command input")}
               onClick={() => runtime.setView("composerOpen", false)}
             >
               <X size={14} />
             </IconButton>
             <IconButton
-              title="Copy terminal selection"
+              title={t("Copy terminal selection")}
               onClick={() => void runtime.copy()}
             >
               <Copy size={13} />
@@ -412,8 +425,8 @@ function LiveTerminal({
           </div>
           <textarea
             ref={composerInput}
-            aria-label="Command input"
-            placeholder="Write a command…"
+            aria-label={t("Command input")}
+            placeholder={t("Write a command…")}
             spellCheck={false}
             value={command}
             onChange={(event) => setCommand(event.target.value)}
@@ -454,7 +467,7 @@ function LiveTerminal({
             onClick={execute}
           >
             <Play size={13} />
-            Run
+            {t("Run")}
           </button>
         </div>
       )}

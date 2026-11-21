@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { errorMessage } from "../api";
+import { useT } from "../i18n";
 import { Pencil, Trash2 } from "../icons";
 import { IconButton, Modal } from "../ui";
 import { removeThread, renameThread, useThreads } from "./thread-runtime";
@@ -22,6 +23,7 @@ export default function ThreadHistory({
   onRenamed: (thread: ThreadSummary) => void;
   onDeleted: (threadId: string) => void;
 }) {
+  const { t } = useT();
   const { threads, error, reload } = useThreads(project, workspaceId);
   const [action, setAction] = useState<Action>();
   const [title, setTitle] = useState("");
@@ -54,11 +56,11 @@ export default function ThreadHistory({
     }
   }
   return (
-    <aside className="thread-history" aria-label="Chat history">
-      <h2>History</h2>
+    <aside className="thread-history" aria-label={t("Chat history")}>
+      <h2>{t("History")}</h2>
       {error && <p className="thread-note">{error}</p>}
       {!threads.length && !error && (
-        <p className="thread-note">No chats in this workspace yet.</p>
+        <p className="thread-note">{t("No chats in this workspace yet.")}</p>
       )}
       <ul>
         {threads.map((thread) => (
@@ -73,13 +75,13 @@ export default function ThreadHistory({
             >
               <span className="thread-history-title">{thread.title}</span>
               <small>
-                {thread.kind === "cli" ? "CLI · " : ""}
+                {thread.kind === "cli" ? t("CLI · ") : ""}
                 {thread.model} ·{" "}
                 {new Date(thread.updatedMs).toLocaleDateString()}
               </small>
             </button>
             <IconButton
-              title="Rename chat"
+              title={t("Rename chat")}
               onClick={() => {
                 setTitle(thread.title);
                 setAction({ kind: "rename", thread });
@@ -88,7 +90,7 @@ export default function ThreadHistory({
               <Pencil size={13} />
             </IconButton>
             <IconButton
-              title="Delete chat"
+              title={t("Delete chat")}
               onClick={() => setAction({ kind: "delete", thread })}
             >
               <Trash2 size={13} />
@@ -98,7 +100,9 @@ export default function ThreadHistory({
       </ul>
       {action && (
         <Modal
-          title={action.kind === "rename" ? "Rename chat" : "Delete chat?"}
+          title={
+            action.kind === "rename" ? t("Rename chat") : t("Delete chat?")
+          }
           tone={action.kind === "delete" ? "danger" : undefined}
           initialFocus={action.kind === "rename" ? input : cancel}
           closeDisabled={busy}
@@ -117,13 +121,14 @@ export default function ThreadHistory({
                   ref={input}
                   value={title}
                   maxLength={200}
-                  aria-label="Chat title"
+                  aria-label={t("Chat title")}
                   onChange={(event) => setTitle(event.target.value)}
                 />
               ) : (
                 <p>
-                  Delete <strong>{action.thread.title}</strong>? This cannot be
-                  undone.
+                  {t("Delete {title}? This cannot be undone.", {
+                    title: action.thread.title,
+                  })}
                 </p>
               )}
               {failure && <p role="alert">{failure}</p>}
@@ -136,14 +141,14 @@ export default function ThreadHistory({
                 disabled={busy}
                 onClick={close}
               >
-                Cancel
+                {t("Cancel")}
               </button>
               <button
                 type="submit"
                 className="button button-primary"
                 disabled={busy || (action.kind === "rename" && !title.trim())}
               >
-                {action.kind === "rename" ? "Rename" : "Delete"}
+                {action.kind === "rename" ? t("Rename") : t("Delete")}
               </button>
             </div>
           </form>

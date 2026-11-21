@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { ArrowLeft, Check } from "./icons";
 import type { EditorDocument } from "./editor-runtime";
 import { editorLanguage, editorLanguages } from "./editor-languages";
+import { useT } from "./i18n";
 
 type Step = "indentation" | "spaces" | "tabs" | "display" | "language";
 interface Item {
@@ -24,6 +25,7 @@ export default function EditorStatusMenu({
   anchor: HTMLButtonElement;
   onClose: () => void;
 }) {
+  const { t } = useT();
   const [step, setStep] = useState<Step>(kind);
   const [query, setQuery] = useState("");
   const ref = useRef<HTMLDivElement>(null);
@@ -38,14 +40,15 @@ export default function EditorStatusMenu({
   let title: string;
   let items: Item[];
   if (step === "language") {
-    title = "Select language mode";
+    title = t("Select language mode");
     items = [
       {
-        label: "Auto detect",
+        label: t("Auto detect"),
         value: "auto",
-        detail: editorLanguage(editor.location.relative)?.name ?? "Plain text",
+        detail:
+          editorLanguage(editor.location.relative)?.name ?? t("Plain text"),
       },
-      { label: "Plain text", value: "Plain text" },
+      { label: t("Plain text"), value: "Plain text" },
       ...editorLanguages.map((language) => ({
         label: language.name,
         value: language.name,
@@ -61,26 +64,26 @@ export default function EditorStatusMenu({
         run: () => finish(() => editor.setLanguage(item.value)),
       }));
   } else if (step === "indentation") {
-    title = "Indentation";
+    title = t("Indentation");
     items = [
       {
-        label: "Indent using spaces",
+        label: t("Indent using spaces"),
         selected: status.insertSpaces,
         run: () => setStep("spaces"),
       },
       {
-        label: "Indent using tabs",
+        label: t("Indent using tabs"),
         selected: !status.insertSpaces,
         run: () => setStep("tabs"),
       },
       {
-        label: "Change tab display size",
+        label: t("Change tab display size"),
         detail: String(status.tabSize),
         run: () => setStep("display"),
       },
       {
-        label: "Use default indentation",
-        detail: status.customIndentation ? undefined : "Current",
+        label: t("Use default indentation"),
+        detail: status.customIndentation ? undefined : t("Current"),
         divider: true,
         run: () => finish(() => editor.setIndentation(null)),
       },
@@ -88,16 +91,16 @@ export default function EditorStatusMenu({
   } else {
     title =
       step === "display"
-        ? "Select tab display size"
+        ? t("Select tab display size")
         : step === "spaces"
-          ? "Indent using spaces"
-          : "Indent using tabs";
+          ? t("Indent using spaces")
+          : t("Indent using tabs");
     const size = step === "spaces" ? status.indentSize : status.tabSize;
     items = Array.from({ length: 16 }, (_, index) => {
       const value = index + 1;
       return {
         label: String(value),
-        detail: value === size ? "Current" : undefined,
+        detail: value === size ? t("Current") : undefined,
         selected: value === size,
         run: () =>
           finish(() =>
@@ -222,21 +225,21 @@ export default function EditorStatusMenu({
         {step !== kind && (
           <button
             className="icon-button"
-            aria-label="Back to indentation options"
+            aria-label={t("Back to indentation options")}
             onClick={() => setStep(kind)}
           >
             <ArrowLeft size={14} />
           </button>
         )}
         <span id={titleId}>{title}</span>
-        <small>Current file</small>
+        <small>{t("Current file")}</small>
       </header>
       {step === "language" && (
         <input
           ref={search}
           type="search"
-          aria-label="Filter languages"
-          placeholder="Search languages…"
+          aria-label={t("Filter languages")}
+          placeholder={t("Search languages…")}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
@@ -260,18 +263,18 @@ export default function EditorStatusMenu({
         ))}
         {items.length === 0 && (
           <p className="editor-menu-empty" role="status">
-            No matching languages.
+            {t("No matching languages.")}
           </p>
         )}
       </div>
       {step === "display" && (
         <p className="editor-menu-help">
-          Changes how tab characters are displayed.
+          {t("Changes how tab characters are displayed.")}
         </p>
       )}
       {step === "language" && status.large && (
         <p className="editor-menu-help">
-          Syntax highlighting is disabled in large file mode.
+          {t("Syntax highlighting is disabled in large file mode.")}
         </p>
       )}
     </div>,

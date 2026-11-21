@@ -1,3 +1,4 @@
+import { t } from "./i18n.ts";
 export function restoreBrowserUrl(value: unknown): string {
   if (value === "about:blank") return value;
   if (typeof value !== "string" || value.length > 16_384) return "about:blank";
@@ -30,6 +31,7 @@ export function browserAddress(value: string): string {
         ? `https://${text}`
         : `https://duckduckgo.com/?q=${encodeURIComponent(text)}`;
   const url = restoreBrowserUrl(address);
-  if (url === "about:blank") throw new Error("Enter an HTTP or HTTPS address.");
+  if (url === "about:blank")
+    throw new Error(t("Enter an HTTP or HTTPS address."));
   return url;
 }

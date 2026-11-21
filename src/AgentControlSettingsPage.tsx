@@ -6,6 +6,7 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { listen } from "@tauri-apps/api/event";
 import { api, errorMessage, native } from "./api";
+import { useT } from "./i18n";
 import { Modal } from "./ui";
 import {
   SettingRow,
@@ -42,16 +43,21 @@ function ThemePreferenceChanges({
   before: Record<string, unknown>;
   after: Record<string, unknown>;
 }) {
+  const { t } = useT();
   const name = (id: unknown) => (id === null ? "Lomi" : String(id));
   const appearance = (value: unknown) =>
-    value === "system" ? "Follow system" : value === "light" ? "Light" : "Dark";
+    value === "system"
+      ? t("Follow system")
+      : value === "light"
+        ? t("Light")
+        : t("Dark");
   return (
     <dl>
-      <dt>Color theme</dt>
+      <dt>{t("Color theme")}</dt>
       <dd>
         {name(before.active)} → {name(after.active)}
       </dd>
-      <dt>Appearance preference</dt>
+      <dt>{t("Appearance preference")}</dt>
       <dd>
         {appearance(before.appearance)} → {appearance(after.appearance)}
       </dd>
@@ -68,6 +74,7 @@ function KeybindingChanges({
   after: Record<string, unknown>;
   reset: boolean;
 }) {
+  const { t } = useT();
   const action = before.action as {
     id: string;
     label: string;
@@ -78,33 +85,35 @@ function KeybindingChanges({
     <dl>
       <dt>
         {reset
-          ? "Restore default shortcut"
+          ? t("Restore default shortcut")
           : next.shortcut === null
-            ? "Disable shortcut"
-            : "Assign shortcut"}
+            ? t("Disable shortcut")
+            : t("Assign shortcut")}
       </dt>
       <dd>
         {action.label} (<code>{action.id}</code>)
       </dd>
-      <dt>Shortcut</dt>
+      <dt>{t("Shortcut")}</dt>
       <dd>
         <code>
           {action.shortcut === null
-            ? "Disabled"
+            ? t("Disabled")
             : formatShortcut(action.shortcut)}
         </code>{" "}
         →{" "}
         <code>
-          {next.shortcut === null ? "Disabled" : formatShortcut(next.shortcut)}
+          {next.shortcut === null
+            ? t("Disabled")
+            : formatShortcut(next.shortcut)}
         </code>
       </dd>
     </dl>
   ) : (
     <dl>
-      <dt>Focus follows pointer</dt>
+      <dt>{t("Focus follows pointer")}</dt>
       <dd>
-        {before.focusFollowsPointer ? "On" : "Off"} →{" "}
-        {after.focusFollowsPointer ? "On" : "Off"}
+        {before.focusFollowsPointer ? t("On") : t("Off")} →{" "}
+        {after.focusFollowsPointer ? t("On") : t("Off")}
       </dd>
     </dl>
   );
@@ -117,6 +126,7 @@ function TerminalPreferenceChanges({
   before: Record<string, unknown>;
   after: Record<string, unknown>;
 }) {
+  const { t } = useT();
   const changes: { path: string; before: unknown; after: unknown }[] = [];
   const visit = (left: unknown, right: unknown, path: string) => {
     if (JSON.stringify(left) === JSON.stringify(right)) return;
@@ -133,11 +143,11 @@ function TerminalPreferenceChanges({
   visit(before, after, "");
   const display = (value: unknown) =>
     value === undefined
-      ? "Theme default"
+      ? t("Theme default")
       : typeof value === "boolean"
         ? value
-          ? "On"
-          : "Off"
+          ? t("On")
+          : t("Off")
         : String(value);
   return changes.length ? (
     <>
@@ -149,8 +159,9 @@ function TerminalPreferenceChanges({
           c.after < c.before,
       ) && (
         <p className="settings-help">
-          Reducing scrollback removes older lines beyond the new limit from
-          terminal displays.
+          {t(
+            "Reducing scrollback removes older lines beyond the new limit from terminal displays.",
+          )}
         </p>
       )}
       <dl>
@@ -162,7 +173,7 @@ function TerminalPreferenceChanges({
           return (
             <Fragment key={change.path}>
               <dt>
-                {change.path.includes(".colors.") ? "Color: " : ""}
+                {change.path.includes(".colors.") ? t("Color: ") : ""}
                 {name[0].toUpperCase() + name.slice(1)}
               </dt>
               <dd>
@@ -174,7 +185,7 @@ function TerminalPreferenceChanges({
       </dl>
     </>
   ) : (
-    <p>The requested value is already selected.</p>
+    <p>{t("The requested value is already selected.")}</p>
   );
 }
 
@@ -183,6 +194,7 @@ export default function AgentControlSettingsPage({
 }: {
   active?: boolean;
 }) {
+  const { t, tp } = useT();
   const [state, setState] = useState<ControlState>();
   const [startupState, setStartupState] = useState<ControlStartupState>();
   const [error, setError] = useState("");
@@ -391,7 +403,7 @@ export default function AgentControlSettingsPage({
   const pendingOperationRequests = broker ? (
     <>
       {!!broker.pendingControls.length && (
-        <SettingsSection title="Terminal input requests" grouped={false}>
+        <SettingsSection title={t("Terminal input requests")} grouped={false}>
           {broker.pendingControls.map((request) => (
             <article
               className="agent-control-request"
@@ -400,16 +412,22 @@ export default function AgentControlSettingsPage({
             >
               <h3>{request.title}</h3>
               <p>
-                {request.clientLabel} requests permission to type in this
-                running terminal. Existing text and processes will remain in
-                place.
+                {t(
+                  "{client} requests permission to type in this running terminal. Existing text and processes will remain in place.",
+                  { client: request.clientLabel },
+                )}
               </p>
               <p className="settings-help">
-                Workspace:{" "}
-                {broker.workspaces.find((w) => w.id === request.workspaceId)
-                  ?.name ?? "Unavailable"}
-                . Request expires in {request.secondsRemaining} seconds. Typing
-                in the terminal takes control back.
+                {t(
+                  "Workspace: {workspace}. Request expires in {seconds} seconds. Typing in the terminal takes control back.",
+                  {
+                    workspace:
+                      broker.workspaces.find(
+                        (w) => w.id === request.workspaceId,
+                      )?.name ?? t("Unavailable"),
+                    seconds: request.secondsRemaining,
+                  },
+                )}
               </p>
               <div className="agent-control-actions">
                 <button
@@ -423,11 +441,11 @@ export default function AgentControlSettingsPage({
                           operationId: request.operationId,
                           approve: false,
                         }),
-                      "Terminal input request denied.",
+                      t("Terminal input request denied."),
                     )
                   }
                 >
-                  Deny input
+                  {t("Deny input")}
                 </button>
                 <button
                   type="button"
@@ -440,11 +458,11 @@ export default function AgentControlSettingsPage({
                           operationId: request.operationId,
                           approve: true,
                         }),
-                      "Terminal input decision recorded.",
+                      t("Terminal input decision recorded."),
                     )
                   }
                 >
-                  Allow input
+                  {t("Allow input")}
                 </button>
               </div>
             </article>
@@ -452,7 +470,10 @@ export default function AgentControlSettingsPage({
         </SettingsSection>
       )}
       {!!broker.pendingSettingsUpdates?.length && (
-        <SettingsSection title="Preference change requests" grouped={false}>
+        <SettingsSection
+          title={t("Preference change requests")}
+          grouped={false}
+        >
           {broker.pendingSettingsUpdates.map((request) => (
             <article
               className="agent-control-request"
@@ -462,22 +483,22 @@ export default function AgentControlSettingsPage({
               <h3>
                 {request.clientLabel} —{" "}
                 {request.section === "terminal"
-                  ? "Terminal preferences"
+                  ? t("Terminal preferences")
                   : request.section === "keybinds"
-                    ? "Keyboard shortcuts"
+                    ? t("Keyboard shortcuts")
                     : request.section === "themes"
-                      ? "Theme preferences"
-                      : "Editor defaults"}
+                      ? t("Theme preferences")
+                      : t("Editor defaults")}
               </h3>
               <p>
-                This changes application defaults across all projects.{" "}
+                {t("This changes application defaults across all projects.")}{" "}
                 {request.section === "terminal"
-                  ? "Running terminals keep their processes."
+                  ? t("Running terminals keep their processes.")
                   : request.section === "keybinds"
-                    ? "Shortcut changes apply to every window."
+                    ? t("Shortcut changes apply to every window.")
                     : request.section === "themes"
-                      ? "Running terminals and editor text are retained."
-                      : "Existing buffer overrides remain in place."}
+                      ? t("Running terminals and editor text are retained.")
+                      : t("Existing buffer overrides remain in place.")}
               </p>
               {request.section === "terminal" ? (
                 <TerminalPreferenceChanges
@@ -497,21 +518,26 @@ export default function AgentControlSettingsPage({
                 />
               ) : (
                 <dl>
-                  <dt>Tab size</dt>
+                  <dt>{t("Tab size")}</dt>
                   <dd>
                     {request.before.tabSize} → {request.after.tabSize}
                   </dd>
-                  <dt>Indentation</dt>
+                  <dt>{t("Indentation")}</dt>
                   <dd>
-                    {request.before.insertSpaces ? "Spaces" : "Tabs"} →{" "}
-                    {request.after.insertSpaces ? "Spaces" : "Tabs"}
+                    {request.before.insertSpaces ? t("Spaces") : t("Tabs")} →{" "}
+                    {request.after.insertSpaces ? t("Spaces") : t("Tabs")}
                   </dd>
                 </dl>
               )}
               <p className="settings-help">
-                Operation {request.operationId}; request {request.requestKey}.
-                Expires in {request.secondsRemaining} s. A concurrent preference
-                change cancels this write.
+                {t(
+                  "Operation {operation}; request {request}. Expires in {seconds} s. A concurrent preference change cancels this write.",
+                  {
+                    operation: request.operationId,
+                    request: request.requestKey,
+                    seconds: request.secondsRemaining,
+                  },
+                )}
               </p>
               <div className="agent-control-actions">
                 <button
@@ -525,11 +551,11 @@ export default function AgentControlSettingsPage({
                           operationId: request.operationId,
                           approve: false,
                         }),
-                      "Preference change rejected.",
+                      t("Preference change rejected."),
                     )
                   }
                 >
-                  Reject change
+                  {t("Reject change")}
                 </button>
                 <button
                   type="button"
@@ -542,11 +568,11 @@ export default function AgentControlSettingsPage({
                           operationId: request.operationId,
                           approve: true,
                         }),
-                      "Preference change applied.",
+                      t("Preference change applied."),
                     )
                   }
                 >
-                  Apply change
+                  {t("Apply change")}
                 </button>
               </div>
             </article>
@@ -554,32 +580,44 @@ export default function AgentControlSettingsPage({
         </SettingsSection>
       )}
       {!!broker.pendingProjectOpens?.length && (
-        <SettingsSection title="Project folder requests" grouped={false}>
+        <SettingsSection title={t("Project folder requests")} grouped={false}>
           {broker.pendingProjectOpens.map((request) => (
             <article
               className="agent-control-request"
               key={request.operationId}
             >
-              <h3>{request.clientLabel} — Open project folder</h3>
+              <h3>
+                {t("{client} — Open project folder", {
+                  client: request.clientLabel,
+                })}
+              </h3>
               <p>
-                Folder: <code>{request.projectPath}</code>
+                {t("Folder:")} <code>{request.projectPath}</code>
               </p>
               <p>
-                Initial workspace: <strong>{request.workspaceName}</strong>
+                {t("Initial workspace:")}{" "}
+                <strong>{request.workspaceName}</strong>
               </p>
               <p>
-                This project will share the connection’s approved permissions:
+                {t(
+                  "This project will share the connection’s approved permissions:",
+                )}
               </p>
               <p>{request.scopes.join(", ")}</p>
               <p className="settings-help">
-                A blank editor opens first. Any terminal execution permission
-                runs with your user account permissions; the folder is not a
-                sandbox.
+                {t(
+                  "A blank editor opens first. Any terminal execution permission runs with your user account permissions; the folder is not a sandbox.",
+                )}
               </p>
               <p className="settings-help">
-                Operation {request.operationId}; request {request.requestKey}.
-                Expires in {request.secondsRemaining}
-                s.
+                {t(
+                  "Operation {operation}; request {request}. Expires in {seconds} s.",
+                  {
+                    operation: request.operationId,
+                    request: request.requestKey,
+                    seconds: request.secondsRemaining,
+                  },
+                )}
               </p>
               <div className="agent-control-actions">
                 <button
@@ -592,11 +630,11 @@ export default function AgentControlSettingsPage({
                           operationId: request.operationId,
                           approved: false,
                         }),
-                      "Project request rejected.",
+                      t("Project request rejected."),
                     )
                   }
                 >
-                  Reject folder
+                  {t("Reject folder")}
                 </button>
                 <button
                   className="button button-primary"
@@ -608,11 +646,11 @@ export default function AgentControlSettingsPage({
                           operationId: request.operationId,
                           approved: true,
                         }),
-                      "Project folder approved for this request.",
+                      t("Project folder approved for this request."),
                     )
                   }
                 >
-                  Approve folder
+                  {t("Approve folder")}
                 </button>
               </div>
             </article>
@@ -621,7 +659,7 @@ export default function AgentControlSettingsPage({
       )}
       {!!broker.pendingAndroidManagement?.length && (
         <SettingsSection
-          title="Android setup and device requests"
+          title={t("Android setup and device requests")}
           grouped={false}
         >
           {broker.pendingAndroidManagement.map((request) => (
@@ -640,36 +678,44 @@ export default function AgentControlSettingsPage({
         run={run}
       />
       {!!broker.pendingInstalls?.length && (
-        <SettingsSection title="APK installation requests" grouped={false}>
+        <SettingsSection title={t("APK installation requests")} grouped={false}>
           {broker.pendingInstalls.map((request) => (
             <article
               className="agent-control-request"
               key={request.operationId}
             >
               <h3>
-                {request.clientLabel} — Install APK on {request.title}
+                {t("{client} — Install APK on {device}", {
+                  client: request.clientLabel,
+                  device: request.title,
+                })}
               </h3>
               <p>
-                {request.relativePath} ({request.byteLength.toLocaleString()}{" "}
-                bytes)
+                {request.relativePath} (
+                {t("{bytes} bytes", {
+                  bytes: request.byteLength.toLocaleString(),
+                })}
+                )
               </p>
               <p className="settings-help">
-                Workspace:{" "}
+                {t("Workspace:")}{" "}
                 {broker.workspaces.find((w) => w.id === request.workspaceId)
-                  ?.name ?? "Unavailable workspace"}
+                  ?.name ?? t("Unavailable workspace")}
                 <br />
-                Device: <code>{request.deviceId}</code>
+                {t("Device:")} <code>{request.deviceId}</code>
                 <br />
-                Running instance: <code>{request.generation}</code>
+                {t("Running instance:")} <code>{request.generation}</code>
                 <br />
                 SHA-256: <code>{request.sha256}</code>
                 <br />
-                Expires in {request.secondsRemaining} seconds
+                {t("Expires in {seconds} seconds", {
+                  seconds: request.secondsRemaining,
+                })}
               </p>
               <p className="settings-help">
-                Install this completed private copy. It may update an existing
-                app and retain its data. Lomi will not uninstall an app to
-                resolve an installation failure.
+                {t(
+                  "Install this completed private copy. It may update an existing app and retain its data. Lomi will not uninstall an app to resolve an installation failure.",
+                )}
               </p>
               <div className="agent-control-actions">
                 <button
@@ -682,11 +728,11 @@ export default function AgentControlSettingsPage({
                           operationId: request.operationId,
                           approve: false,
                         }),
-                      "APK installation denied.",
+                      t("APK installation denied."),
                     )
                   }
                 >
-                  Deny installation
+                  {t("Deny installation")}
                 </button>
                 <button
                   className="button button-primary"
@@ -698,11 +744,11 @@ export default function AgentControlSettingsPage({
                           operationId: request.operationId,
                           approve: true,
                         }),
-                      "APK installation approved.",
+                      t("APK installation approved."),
                     )
                   }
                 >
-                  Install this APK
+                  {t("Install this APK")}
                 </button>
               </div>
             </article>
@@ -713,12 +759,12 @@ export default function AgentControlSettingsPage({
   ) : null;
   const requestCount = pendingRequestCount(broker);
   const serverStatus = !state
-    ? "Checking…"
+    ? t("Checking…")
     : broker
       ? broker.uiReady
-        ? "Ready"
-        : "Waiting for workspace"
-      : "Off";
+        ? t("Ready")
+        : t("Waiting for workspace")
+      : t("Off");
   const serverState = !state
     ? "loading"
     : broker
@@ -755,14 +801,16 @@ export default function AgentControlSettingsPage({
   });
   return (
     <SettingsPage
-      title="Agent control"
+      title={t("Agent control")}
       className="agent-control-page"
       status={status}
     >
       {startupState?.yoloMode && (
         <SettingsNotice tone="warning" role="note">
-          <strong>YOLO mode is on.</strong> Local clients pair automatically and
-          Lomi approves their requests in every workspace.
+          <strong>{t("YOLO mode is on.")}</strong>{" "}
+          {t(
+            "Local clients pair automatically and Lomi approves their requests in every workspace.",
+          )}
         </SettingsNotice>
       )}
       {startupError && !yoloConfirmationOpen && (
@@ -771,39 +819,46 @@ export default function AgentControlSettingsPage({
       {startupState?.error && (
         <SettingsNotice tone="error">
           {startupState.autoStart === true
-            ? `The server couldn’t start automatically: ${startupState.error} Automatic start stays on.`
+            ? t(
+                "The server couldn’t start automatically: {error} Automatic start stays on.",
+                { error: startupState.error },
+              )
             : startupState.error}
         </SettingsNotice>
       )}
       {error && <SettingsNotice tone="error">{error}</SettingsNotice>}
       {state && !state.supported && (
         <SettingsNotice tone="warning">
-          Agent control isn’t available on this computer yet.
+          {t("Agent control isn’t available on this computer yet.")}
         </SettingsNotice>
       )}
 
       <div
         className="agent-control-tabs"
         role="tablist"
-        aria-label="Agent control"
+        aria-label={t("Agent control")}
       >
         <button
           type="button"
           className="agent-control-tab"
           {...tabButtons("connect")}
         >
-          Connect an agent
+          {t("Connect an agent")}
         </button>
         <button
           type="button"
           className="agent-control-tab"
           {...tabButtons("sessions")}
         >
-          Sessions
+          {t("Sessions")}
           {requestCount > 0 && (
             <span
               className="agent-control-tab-count"
-              aria-label={`${requestCount} pending requests`}
+              aria-label={tp(
+                requestCount,
+                "{count} pending request",
+                "{count} pending requests",
+              )}
             >
               {requestCount}
             </span>
@@ -814,7 +869,7 @@ export default function AgentControlSettingsPage({
           className="agent-control-tab"
           {...tabButtons("preferences")}
         >
-          Preferences
+          {t("Preferences")}
         </button>
       </div>
 
@@ -828,21 +883,24 @@ export default function AgentControlSettingsPage({
               className="button"
               onClick={() => selectTab("sessions")}
             >
-              Review requests
+              {t("Review requests")}
             </button>
           }
         >
-          {requestCount} request{requestCount === 1 ? " needs" : "s need"}{" "}
-          review.
+          {tp(
+            requestCount,
+            "{count} request needs review.",
+            "{count} requests need review.",
+          )}
         </SettingsNotice>
       )}
 
       {activeTab === "sessions" && (
         <SettingsSection
-          title="Local connection"
+          title={t("Local connection")}
           className="agent-control-server-section"
         >
-          <SettingRow label="Connection server">
+          <SettingRow label={t("Connection server")}>
             <span
               className="agent-control-badge"
               data-state={serverState}
@@ -860,7 +918,7 @@ export default function AgentControlSettingsPage({
                 )
               }
             >
-              {broker ? "Turn off server" : "Start server"}
+              {broker ? t("Turn off server") : t("Start server")}
             </button>
           </SettingRow>
         </SettingsSection>
@@ -871,7 +929,7 @@ export default function AgentControlSettingsPage({
           protectTheme
           role="alertdialog"
           tone="warning"
-          title="Enable YOLO mode?"
+          title={t("Enable YOLO mode?")}
           descriptionId="agent-control-yolo-confirmation-description"
           initialFocus={yoloCancelButton}
           closeDisabled={startupBusy}
@@ -882,10 +940,9 @@ export default function AgentControlSettingsPage({
           <div className="dialog-form dialog-layout" aria-busy={startupBusy}>
             <div className="dialog-content">
               <p id="agent-control-yolo-confirmation-description">
-                Local MCP clients will pair automatically, and their requests
-                run in every workspace without asking: terminal commands, file
-                changes, Git, browser, and Android. Active sessions disconnect
-                and must reconnect.
+                {t(
+                  "Local MCP clients will pair automatically, and their requests run in every workspace without asking: terminal commands, file changes, Git, browser, and Android. Active sessions disconnect and must reconnect.",
+                )}
               </p>
               {startupError && (
                 <div className="keybindings-error" role="alert">
@@ -901,7 +958,7 @@ export default function AgentControlSettingsPage({
                 disabled={startupBusy}
                 onClick={() => setYoloConfirmationOpen(false)}
               >
-                Cancel
+                {t("Cancel")}
               </button>
               <button
                 type="button"
@@ -909,7 +966,7 @@ export default function AgentControlSettingsPage({
                 disabled={startupBusy}
                 onClick={() => void confirmYoloMode()}
               >
-                {startupBusy ? "Saving…" : "Enable YOLO mode"}
+                {startupBusy ? t("Saving…") : t("Enable YOLO mode")}
               </button>
             </div>
           </div>
@@ -941,7 +998,7 @@ export default function AgentControlSettingsPage({
           />
         ) : state ? null : (
           <p className="settings-help" role="status">
-            Loading…
+            {t("Loading…")}
           </p>
         )}
       </section>
@@ -956,25 +1013,26 @@ export default function AgentControlSettingsPage({
       >
         {!broker ? (
           <div className="settings-empty">
-            <h2>No active sessions</h2>
+            <h2>{t("No active sessions")}</h2>
             <p>
-              Start the server above, then connect an agent to review its access
-              request here.
+              {t(
+                "Start the server above, then connect an agent to review its access request here.",
+              )}
             </p>
             <button
               type="button"
               className="button"
               onClick={() => selectTab("connect")}
             >
-              Connect an agent
+              {t("Connect an agent")}
             </button>
           </div>
         ) : (
           <>
-            <SettingsSection title="New session requests" grouped={false}>
+            <SettingsSection title={t("New session requests")} grouped={false}>
               {!broker.pending.length && (
                 <p className="settings-help">
-                  No client is waiting to connect.
+                  {t("No client is waiting to connect.")}
                 </p>
               )}
               {broker.pending.map((request) => (
@@ -994,9 +1052,9 @@ export default function AgentControlSettingsPage({
 
             {pendingOperationRequests}
 
-            <SettingsSection title="Active sessions" grouped={false}>
+            <SettingsSection title={t("Active sessions")} grouped={false}>
               {!broker.sessions.length && (
-                <p className="settings-help">No active sessions.</p>
+                <p className="settings-help">{t("No active sessions.")}</p>
               )}
               {broker.sessions.map((session) => (
                 <article className="agent-control-request" key={session.id}>
@@ -1007,32 +1065,32 @@ export default function AgentControlSettingsPage({
                         (id) =>
                           broker.workspaces.find(
                             (workspace) => workspace.id === id,
-                          )?.name ?? "Unavailable workspace",
+                          )?.name ?? t("Unavailable workspace"),
                       )
                       .join(", ")}
                   </p>
                   <div className="agent-control-details-content">
                     <dl>
-                      <dt>Granted access</dt>
+                      <dt>{t("Granted access")}</dt>
                       <dd>
-                        {session.scopes.join(", ") || "No additional scopes"}
+                        {session.scopes.join(", ") || t("No additional scopes")}
                       </dd>
                       {session.scopes.includes("terminal.execute") &&
                         session.terminalProfile && (
                           <>
-                            <dt>Shell</dt>
+                            <dt>{t("Shell")}</dt>
                             <dd>{session.terminalProfile.id}</dd>
                           </>
                         )}
                       {session.androidPackages?.length > 0 && (
                         <>
-                          <dt>Android apps</dt>
+                          <dt>{t("Android apps")}</dt>
                           <dd>{session.androidPackages.join(", ")}</dd>
                         </>
                       )}
                       {session.browserOrigins.length > 0 && (
                         <>
-                          <dt>Browser origins</dt>
+                          <dt>{t("Browser origins")}</dt>
                           <dd>{session.browserOrigins.join(", ")}</dd>
                         </>
                       )}
@@ -1043,8 +1101,10 @@ export default function AgentControlSettingsPage({
             </SettingsSection>
             {(broker.sessions.length > 0 || requestCount > 0) && (
               <SettingRow
-                label="Stop all access"
-                description="Ends every session and rejects pending requests. The server stays on."
+                label={t("Stop all access")}
+                description={t(
+                  "Ends every session and rejects pending requests. The server stays on.",
+                )}
               >
                 <button
                   type="button"
@@ -1053,16 +1113,16 @@ export default function AgentControlSettingsPage({
                   onClick={() =>
                     void run(
                       () => api("agent_control_revoke"),
-                      "All sessions stopped and pending requests rejected.",
+                      t("All sessions stopped and pending requests rejected."),
                     )
                   }
                 >
-                  Stop all sessions
+                  {t("Stop all sessions")}
                 </button>
               </SettingRow>
             )}
             <p className="settings-footnote">
-              Client names are labels, not verified identities.
+              {t("Client names are labels, not verified identities.")}
             </p>
           </>
         )}
@@ -1076,9 +1136,9 @@ export default function AgentControlSettingsPage({
         tabIndex={0}
         hidden={activeTab !== "preferences"}
       >
-        <SettingsSection title="Server preferences">
+        <SettingsSection title={t("Server preferences")}>
           <SettingRow
-            label="Start MCP server when Lomi opens"
+            label={t("Start MCP server when Lomi opens")}
             htmlFor="agent-control-auto-start"
           >
             <input
@@ -1098,13 +1158,15 @@ export default function AgentControlSettingsPage({
           </SettingRow>
         </SettingsSection>
         <SettingsSection
-          title="Automatic approvals (YOLO)"
+          title={t("Automatic approvals (YOLO)")}
           className="agent-control-automatic-approvals"
         >
           <SettingRow
-            label="Automatically approve requests (YOLO)"
+            label={t("Automatically approve requests (YOLO)")}
             htmlFor="agent-control-yolo-mode"
-            description="Approves requests from all local clients without asking. Active sessions reconnect."
+            description={t(
+              "Approves requests from all local clients without asking. Active sessions reconnect.",
+            )}
             descriptionId="agent-control-yolo-mode-help"
           >
             <input
@@ -1113,7 +1175,7 @@ export default function AgentControlSettingsPage({
               className="settings-switch"
               type="checkbox"
               role="switch"
-              aria-label="YOLO mode"
+              aria-label={t("YOLO mode")}
               aria-describedby="agent-control-yolo-mode-help"
               checked={startupState?.yoloMode === true}
               disabled={
@@ -1133,12 +1195,12 @@ export default function AgentControlSettingsPage({
         </SettingsSection>
 
         {state?.supported && (
-          <SettingsSection title="Manual configuration">
+          <SettingsSection title={t("Manual configuration")}>
             <div className="agent-control-details-content">
               {config ? (
                 <>
                   <label htmlFor="control-config">
-                    MCP configuration for this server
+                    {t("MCP configuration for this server")}
                   </label>
                   <textarea
                     id="control-config"
@@ -1152,21 +1214,26 @@ export default function AgentControlSettingsPage({
                     type="button"
                     className="button"
                     onClick={() =>
-                      void run(() => writeText(config), "Configuration copied.")
+                      void run(
+                        () => writeText(config),
+                        t("Configuration copied."),
+                      )
                     }
                   >
-                    Copy configuration
+                    {t("Copy configuration")}
                   </button>
                 </>
               ) : broker ? (
                 <p className="settings-help">
-                  Manual setup needs the optional lomi-mcp executable next to
-                  the app. Automatic setup is in Connect an agent.
+                  {t(
+                    "Manual setup needs the optional lomi-mcp executable next to the app. Automatic setup is in Connect an agent.",
+                  )}
                 </p>
               ) : (
                 <p className="settings-help">
-                  Start the server to generate a configuration. Automatic setup
-                  is in Connect an agent.
+                  {t(
+                    "Start the server to generate a configuration. Automatic setup is in Connect an agent.",
+                  )}
                 </p>
               )}
             </div>

@@ -21,7 +21,8 @@
     "dmg:background": "node scripts/generate-dmg-background.mjs",
     "release:check": "node scripts/check-release.mjs",
     "tauri": "tauri",
-    "tauri:dev": "tauri dev --config src-tauri/tauri.dev.conf.json"
+    "tauri:dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
+    "i18n:check": "node scripts/i18n-check.mjs"
   },
   "dependencies": {
     "@lomi/remote-contracts": "file:../lomi-remote/packages/remote-contracts",

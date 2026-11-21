@@ -21,6 +21,7 @@ import { useKeybindings } from "./KeybindingsProvider";
 import { shortcutFromEvent, type ActionId } from "./keybindings";
 import LomiSymbol from "./LomiSymbol";
 import { useThemes } from "./ThemeProvider";
+import { msg, t, useT } from "./i18n";
 import type { AppearancePreference } from "./theme/format";
 import {
   completeOnboarding,
@@ -33,12 +34,12 @@ import "./onboarding.css";
 const at = (index: number) => ({ "--i": index }) as CSSProperties;
 
 const STEPS = [
-  { id: "intro", label: "Welcome" },
-  { id: "mode", label: "Workflow" },
-  { id: "appearance", label: "Appearance" },
-  { id: "agents", label: "Agents" },
-  { id: "keys", label: "Shortcuts" },
-  { id: "trust", label: "Ready" },
+  { id: "intro", label: msg("Welcome") },
+  { id: "mode", label: msg("Workflow") },
+  { id: "appearance", label: msg("Appearance") },
+  { id: "agents", label: msg("Agents") },
+  { id: "keys", label: msg("Shortcuts") },
+  { id: "trust", label: msg("Ready") },
 ] as const;
 
 const KEYS: Record<WorkMode, ActionId[]> = {
@@ -54,14 +55,18 @@ const MODES: {
 }[] = [
   {
     value: "cli",
-    label: "CLI first",
-    text: "Terminals up front. Run Claude Code, Codex or any agent in real shells.",
+    label: msg("CLI first"),
+    text: msg(
+      "Terminals up front. Run Claude Code, Codex or any agent in real shells.",
+    ),
     Icon: Terminal,
   },
   {
     value: "chat",
-    label: "Chat first",
-    text: "A calm chat up front. Talk to your agents; terminals stay one click away.",
+    label: msg("Chat first"),
+    text: msg(
+      "A calm chat up front. Talk to your agents; terminals stay one click away.",
+    ),
     Icon: MessageSquare,
   },
 ];
@@ -71,26 +76,28 @@ const APPEARANCES: {
   label: string;
   Icon: typeof Sun;
 }[] = [
-  { value: "dark", label: "Dark", Icon: Moon },
-  { value: "light", label: "Light", Icon: Sun },
-  { value: "system", label: "System", Icon: Monitor },
+  { value: "dark", label: msg("Dark"), Icon: Moon },
+  { value: "light", label: msg("Light"), Icon: Sun },
+  { value: "system", label: msg("System"), Icon: Monitor },
 ];
 
 const TRUST = [
   {
     Icon: Terminal,
-    title: "Real terminals, real tools",
-    text: "Agents run in your own shells, next to your editor and Git.",
+    title: msg("Real terminals, real tools"),
+    text: msg("Agents run in your own shells, next to your editor and Git."),
   },
   {
     Icon: ShieldCheck,
-    title: "You approve every action",
-    text: "Agents act on your workspace only after you allow it.",
+    title: msg("You approve every action"),
+    text: msg("Agents act on your workspace only after you allow it."),
   },
   {
     Icon: Check,
-    title: "Your work stays here",
-    text: "Keys live in the system keychain. History stays on this device.",
+    title: msg("Your work stays here"),
+    text: msg(
+      "Keys live in the system keychain. History stays on this device.",
+    ),
   },
 ];
 
@@ -108,12 +115,12 @@ const reducedMotion = () =>
 
 const nextLabel = (step: number, last: boolean, mode: WorkMode) =>
   step === 0
-    ? "Get started"
+    ? t("Get started")
     : last
       ? mode === "chat"
-        ? "Start chatting"
-        : "Start building"
-      : "Continue";
+        ? t("Start chatting")
+        : t("Start building")
+      : t("Continue");
 
 function moveRadio(radio: HTMLElement, delta: number) {
   const group = radio.closest('[role="radiogroup"]');
@@ -126,6 +133,7 @@ function moveRadio(radio: HTMLElement, delta: number) {
 }
 
 export default function Onboarding({ onDone }: { onDone: () => void }) {
+  const { t } = useT();
   // `step` is on screen; `target` leads it while the old step exits.
   const [step, setStep] = useState(0);
   const [target, setTarget] = useState(0);
@@ -203,7 +211,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
       className="onboarding"
       role="dialog"
       aria-modal="true"
-      aria-label="Welcome to Lomi"
+      aria-label={t("Welcome to Lomi")}
       data-leaving={leaving || undefined}
       style={{ "--step": target } as CSSProperties}
     >
@@ -219,7 +227,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         onClick={finish}
         hidden={last}
       >
-        Skip
+        {t("Skip")}
       </button>
 
       <section
@@ -244,7 +252,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
           type="button"
           className="onboarding-back"
           onClick={back}
-          aria-label="Back"
+          aria-label={t("Back")}
           disabled={target === 0}
         >
           <ArrowLeft size={16} />
@@ -255,12 +263,12 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
             aria-hidden="true"
             key={target}
           >
-            {STEPS[target].label}
+            {t(STEPS[target].label)}
             <span>
               {target + 1}/{STEPS.length}
             </span>
           </span>
-          <ol className="onboarding-progress" aria-label="Progress">
+          <ol className="onboarding-progress" aria-label={t("Progress")}>
             {STEPS.map(({ id, label }, index) => (
               <li
                 key={id}
@@ -276,8 +284,12 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
                   type="button"
                   onClick={() => go(index)}
                   aria-current={index === target ? "step" : undefined}
-                  aria-label={`Step ${index + 1} of ${STEPS.length}: ${label}`}
-                  title={label}
+                  aria-label={t("Step {step} of {total}: {label}", {
+                    step: index + 1,
+                    total: STEPS.length,
+                    label: t(label),
+                  })}
+                  title={t(label)}
                 />
               </li>
             ))}
@@ -300,20 +312,22 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
 }
 
 function Intro() {
+  const { t } = useT();
   return (
     <>
       <LomiSymbol size={84} className="onboarding-symbol" />
       <h1 style={at(1)}>
-        Build side
+        {t("Build side")}
         <br />
-        by side.
+        {t("by side.")}
       </h1>
       <p style={at(2)}>
-        Lomi is the workspace where you and your AI agents build in one window.
-        Three quick choices and you are in.
+        {t(
+          "Lomi is the workspace where you and your AI agents build in one window. Three quick choices and you are in.",
+        )}
       </p>
       <p className="onboarding-prompt" style={at(3)}>
-        <span aria-hidden="true">›</span> ready when you are
+        <span aria-hidden="true">›</span> {t("ready when you are")}
         <i className="onboarding-cursor" aria-hidden="true" />
       </p>
     </>
@@ -327,20 +341,22 @@ function Mode({
   mode: WorkMode;
   onChange: (mode: WorkMode) => void;
 }) {
+  const { t } = useT();
   return (
     <>
       <span className="onboarding-eyebrow" style={at(0)}>
-        Workflow
+        {t("Workflow")}
       </span>
-      <h2 style={at(1)}>How do you like to work?</h2>
+      <h2 style={at(1)}>{t("How do you like to work?")}</h2>
       <p style={at(2)}>
-        This only sets what opens first. Terminals and chats are always in the +
-        menu.
+        {t(
+          "This only sets what opens first. Terminals and chats are always in the + menu.",
+        )}
       </p>
       <div
         className="onboarding-modes"
         role="radiogroup"
-        aria-label="Workflow"
+        aria-label={t("Workflow")}
         style={at(3)}
       >
         {MODES.map(({ value, label, text, Icon }) => (
@@ -363,7 +379,7 @@ function Mode({
                   <i />
                   <i />
                   <b data-done>
-                    <em>✓</em> 3 files changed
+                    <em>✓</em> {t("3 files changed")}
                   </b>
                   <b>
                     <em>›</em>
@@ -384,14 +400,14 @@ function Mode({
             <span className="onboarding-mode-text">
               <strong>
                 <Icon size={15} aria-hidden="true" />
-                {label}
+                {t(label)}
                 <Check
                   size={14}
                   className="onboarding-tick"
                   aria-hidden="true"
                 />
               </strong>
-              <span>{text}</span>
+              <span>{t(text)}</span>
             </span>
           </button>
         ))}
@@ -401,18 +417,19 @@ function Mode({
 }
 
 function Appearance() {
+  const { t } = useT();
   const { preferences, select } = useThemes();
   return (
     <>
       <span className="onboarding-eyebrow" style={at(0)}>
-        Appearance
+        {t("Appearance")}
       </span>
-      <h2 style={at(1)}>Pick your light.</h2>
-      <p style={at(2)}>You can change it any time in Settings.</p>
+      <h2 style={at(1)}>{t("Pick your light.")}</h2>
+      <p style={at(2)}>{t("You can change it any time in Settings.")}</p>
       <div
         className="onboarding-appearances"
         role="radiogroup"
-        aria-label="Appearance"
+        aria-label={t("Appearance")}
         style={at(3)}
       >
         {APPEARANCES.map(({ value, label, Icon }) => (
@@ -432,7 +449,7 @@ function Appearance() {
             </span>
             <span className="onboarding-appearance-label">
               <Icon size={14} aria-hidden="true" />
-              {label}
+              {t(label)}
               <Check size={14} className="onboarding-tick" aria-hidden="true" />
             </span>
           </button>
@@ -443,6 +460,7 @@ function Appearance() {
 }
 
 function Agents({ mode }: { mode: WorkMode }) {
+  const { t } = useT();
   const [clients, setClients] = useState<InstalledCli[] | null>(null);
   useEffect(() => {
     let live = true;
@@ -462,17 +480,21 @@ function Agents({ mode }: { mode: WorkMode }) {
   return (
     <>
       <span className="onboarding-eyebrow" style={at(0)}>
-        Agents
+        {t("Agents")}
       </span>
       <h2 style={at(1)}>
-        Your agents,
+        {t("Your agents,")}
         <br />
-        in plain sight.
+        {t("in plain sight.")}
       </h2>
       <p style={at(2)}>
         {mode === "chat"
-          ? "Chat through the agent CLIs you already use, with your own login. No new accounts."
-          : "Run Claude Code, Codex, Gemini CLI or any CLI agent next to your own work."}
+          ? t(
+              "Chat through the agent CLIs you already use, with your own login. No new accounts.",
+            )
+          : t(
+              "Run Claude Code, Codex, Gemini CLI or any CLI agent next to your own work.",
+            )}
       </p>
       <div className="onboarding-agents" style={at(3)} aria-live="polite">
         {clients === null ? (
@@ -482,12 +504,13 @@ function Agents({ mode }: { mode: WorkMode }) {
               <i />
               <i />
             </span>
-            Looking for agents on this computer…
+            {t("Looking for agents on this computer…")}
           </div>
         ) : clients.length === 0 ? (
           <div className="onboarding-scanning">
-            No agent CLIs found yet. Install one any time; Lomi picks it up in a
-            new terminal.
+            {t(
+              "No agent CLIs found yet. Install one any time; Lomi picks it up in a new terminal.",
+            )}
           </div>
         ) : (
           <ul>
@@ -496,7 +519,7 @@ function Agents({ mode }: { mode: WorkMode }) {
                 <CliAgentIcon cli={client.cli} />
                 <span>{client.name}</span>
                 <code>{client.command}</code>
-                <i className="onboarding-live" aria-label="Installed" />
+                <i className="onboarding-live" aria-label={t("Installed")} />
               </li>
             ))}
           </ul>
@@ -507,6 +530,7 @@ function Agents({ mode }: { mode: WorkMode }) {
 }
 
 function Keys({ mode }: { mode: WorkMode }) {
+  const { t } = useT();
   const { actions, bindings } = useKeybindings();
   const [pressed, setPressed] = useState<ActionId[]>([]);
   useEffect(() => {
@@ -526,16 +550,17 @@ function Keys({ mode }: { mode: WorkMode }) {
   return (
     <>
       <span className="onboarding-eyebrow" style={at(0)}>
-        Shortcuts
+        {t("Shortcuts")}
       </span>
       <h2 style={at(1)}>
-        Keep your hands
+        {t("Keep your hands")}
         <br />
-        on the keys.
+        {t("on the keys.")}
       </h2>
       <p style={at(2)}>
-        Try one now. Every shortcut is listed, and can be changed, in Settings
-        under Keybinds.
+        {t(
+          "Try one now. Every shortcut is listed, and can be changed, in Settings under Keybinds.",
+        )}
       </p>
       <ul className="onboarding-keys" style={at(3)}>
         {rows.map((id, index) => (
@@ -544,7 +569,7 @@ function Keys({ mode }: { mode: WorkMode }) {
             style={{ "--j": index } as CSSProperties}
             data-pressed={pressed.includes(id) || undefined}
           >
-            <span>{actions.find((action) => action.id === id)?.label}</span>
+            <span>{t(actions.find((action) => action.id === id)!.label)}</span>
             <Keycaps binding={bindings[id]} />
             <Check size={14} className="onboarding-tick" aria-hidden="true" />
           </li>
@@ -559,14 +584,18 @@ function Keys({ mode }: { mode: WorkMode }) {
         }
       >
         {rows.length > 0 && pressed.length === rows.length
-          ? "All of them, first try. Nice."
-          : `${pressed.length} of ${rows.length} tried`}
+          ? t("All of them, first try. Nice.")
+          : t("{pressed} of {total} tried", {
+              pressed: pressed.length,
+              total: rows.length,
+            })}
       </p>
     </>
   );
 }
 
 function Trust({ mode }: { mode: WorkMode }) {
+  const { t } = useT();
   const { preferences } = useThemes();
   const appearance = APPEARANCES.find(
     ({ value }) => value === preferences.appearance,
@@ -575,28 +604,28 @@ function Trust({ mode }: { mode: WorkMode }) {
   return (
     <>
       <span className="onboarding-eyebrow" style={at(0)}>
-        Ready
+        {t("Ready")}
       </span>
       <h2 style={at(1)}>
-        Nothing runs
+        {t("Nothing runs")}
         <br />
-        without you.
+        {t("without you.")}
       </h2>
       <ul
         className="onboarding-summary"
         style={at(2)}
-        aria-label="Your choices"
+        aria-label={t("Your choices")}
       >
         {chosen && (
           <li>
             <chosen.Icon size={13} aria-hidden="true" />
-            {chosen.label}
+            {t(chosen.label)}
           </li>
         )}
         {appearance && (
           <li>
             <appearance.Icon size={13} aria-hidden="true" />
-            {appearance.label}
+            {t(appearance.label)}
           </li>
         )}
       </ul>
@@ -607,8 +636,8 @@ function Trust({ mode }: { mode: WorkMode }) {
               <Icon size={16} aria-hidden="true" />
             </span>
             <div>
-              <strong>{title}</strong>
-              <p>{text}</p>
+              <strong>{t(title)}</strong>
+              <p>{t(text)}</p>
             </div>
           </li>
         ))}

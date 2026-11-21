@@ -1,4 +1,5 @@
 import { FilePlus2 } from "./icons";
+import { useT } from "./i18n";
 import LomiSymbol from "./LomiSymbol";
 import { AddProjectButton, type SourceKind } from "./project-sources";
 
@@ -11,13 +12,14 @@ export default function Welcome({
   onSource: (kind: SourceKind) => void;
   onNewFile: () => void;
 }) {
+  const { t } = useT();
   return (
-    <main className="terminal-stage welcome" aria-label="No project open">
+    <main className="terminal-stage welcome" aria-label={t("No project open")}>
       <div className="welcome-content">
         <header className="welcome-heading">
           <LomiSymbol size={36} className="welcome-symbol" />
-          <h1>What are we building?</h1>
-          <p>Add a project, or start with a single file.</p>
+          <h1>{t("What are we building?")}</h1>
+          <p>{t("Add a project, or start with a single file.")}</p>
         </header>
 
         <div className="welcome-buttons" aria-busy={busy}>
@@ -29,7 +31,7 @@ export default function Welcome({
             onClick={() => !busy && onNewFile()}
           >
             <FilePlus2 size={15} aria-hidden="true" />
-            New file
+            {t("New file")}
           </button>
         </div>
       </div>

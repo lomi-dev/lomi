@@ -12,6 +12,7 @@ import Markdown from "react-markdown";
 import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { useT } from "../i18n";
 import { Check, Circle, CircleAlert, Copy, Terminal } from "../icons";
 import { MessageAttachments } from "./Attachments";
 import type { ChatItem, ToolRow } from "./types";
@@ -19,6 +20,7 @@ import type { ChatItem, ToolRow } from "./types";
 const plugins = [remarkGfm];
 
 function CodeBlock({ children }: { children?: ReactNode }) {
+  const { t } = useT();
   const [copied, setCopied] = useState(false);
   const code = Children.toArray(children).find(isValidElement) as
     { props: { className?: string; children?: ReactNode } } | undefined;
@@ -44,7 +46,7 @@ function CodeBlock({ children }: { children?: ReactNode }) {
           }
         >
           {copied ? <Check size={13} /> : <Copy size={13} />}
-          {copied ? "Copied" : "Copy"}
+          {copied ? t("Copied") : t("Copy")}
         </button>
       </div>
       <pre>{children}</pre>
@@ -105,6 +107,7 @@ const Message = memo(function Message({
   item: ChatItem;
   onEdit: (text: string) => void;
 }) {
+  const { t } = useT();
   if (item.role === "user")
     return (
       <div className="thread-msg thread-msg-user">
@@ -129,7 +132,7 @@ const Message = memo(function Message({
           <Markup text={item.text} />
         </div>
       )}
-      {item.stopped && <p className="thread-note">Stopped.</p>}
+      {item.stopped && <p className="thread-note">{t("Stopped.")}</p>}
       {item.error && (
         <div className="thread-notice" role="alert">
           <CircleAlert size={14} aria-hidden="true" />
@@ -140,7 +143,7 @@ const Message = memo(function Message({
               className="thread-link"
               onClick={() => onEdit(item.resend!)}
             >
-              Edit and resend
+              {t("Edit and resend")}
             </button>
           )}
         </div>

@@ -20,6 +20,7 @@ import {
 import type { Tab, TabCloseAction, TabDropSide } from "./model";
 import { tabTitle } from "./model";
 import { useTabDrag } from "./tab-drag";
+import { useT } from "./i18n";
 import { IconButton } from "./ui";
 import TabContextMenu from "./TabContextMenu";
 import type { TabMenuAnchor } from "./TabContextMenu";
@@ -69,6 +70,7 @@ export function SettingsTabButton({
 }: Omit<SettingsTabControl, "opened"> & {
   onNavigate?: (event: React.KeyboardEvent) => void;
 }) {
+  const { t } = useT();
   return (
     <div
       className={`tab${active ? " active-tab" : ""}`}
@@ -86,13 +88,13 @@ export function SettingsTabButton({
         onKeyDown={onNavigate}
       >
         <Settings size={14} aria-hidden="true" />
-        <span>Settings</span>
+        <span>{t("Settings")}</span>
       </button>
       <button
         className="tab-close"
         tabIndex={active ? 0 : -1}
-        aria-label="Close Settings"
-        title="Close Settings"
+        aria-label={t("Close Settings")}
+        title={t("Close Settings")}
         onClick={onClose}
       >
         <X size={13} iconId="tab-close" />
@@ -123,6 +125,7 @@ export default function TabBar({
   modified = new Set<string>(),
   settings,
 }: Props) {
+  const { t } = useT();
   const selectedId = settings?.active ? SETTINGS_TAB_ID : activeTabId;
   const navigationIds = [
     ...tabs.map((tab) => tab.id),
@@ -206,7 +209,7 @@ export default function TabBar({
 
   const chatFirst = workMode() === "chat";
   const chatAction = {
-    label: "New chat",
+    label: t("New chat"),
     icon: <MessageSquare size={14} aria-hidden="true" />,
     run: onNewChat,
   };
@@ -231,7 +234,7 @@ export default function TabBar({
           ref={strip}
           className="tab-strip"
           role="tablist"
-          aria-label="Workspace tabs"
+          aria-label={t("Workspace tabs")}
           data-tauri-drag-region
           onScroll={updateScroll}
           onWheel={(event) => {
@@ -280,7 +283,13 @@ export default function TabBar({
                 }}
                 title={
                   tab.type === "file"
-                    ? `${tab.untitled ? tab.title : tab.relative}${modified?.has(tab.id) ? " • Modified" : ""}`
+                    ? modified?.has(tab.id)
+                      ? t("{name} • Modified", {
+                          name: tab.untitled ? tab.title : tab.relative,
+                        })
+                      : tab.untitled
+                        ? tab.title
+                        : tab.relative
                     : tabTitle(tab)
                 }
                 onClick={(event) => {
@@ -348,7 +357,10 @@ export default function TabBar({
                 )}
                 <span>{tabTitle(tab)}</span>
                 {modified?.has(tab.id) && (
-                  <span className="tab-modified" aria-label="Unsaved changes">
+                  <span
+                    className="tab-modified"
+                    aria-label={t("Unsaved changes")}
+                  >
                     ●
                   </span>
                 )}
@@ -356,8 +368,8 @@ export default function TabBar({
               <button
                 className="tab-close"
                 tabIndex={tab.id === selectedId ? 0 : -1}
-                aria-label={`Close ${tabTitle(tab)}`}
-                title={`Close ${tabTitle(tab)}`}
+                aria-label={t("Close {title}", { title: tabTitle(tab) })}
+                title={t("Close {title}", { title: tabTitle(tab) })}
                 onClick={() => onClose(tab.id)}
               >
                 <X size={13} iconId="tab-close" />
@@ -390,14 +402,14 @@ export default function TabBar({
       {(scroll.left || scroll.right) && (
         <div className="tab-navigation">
           <IconButton
-            title="Scroll tabs left"
+            title={t("Scroll tabs left")}
             disabled={!scroll.left}
             onClick={() => scrollTabs(-1)}
           >
             <ChevronLeft size={15} />
           </IconButton>
           <IconButton
-            title="Scroll tabs right"
+            title={t("Scroll tabs right")}
             disabled={!scroll.right}
             onClick={() => scrollTabs(1)}
           >
@@ -418,31 +430,31 @@ export default function TabBar({
       {newMenu && (
         <ContextMenu
           {...newMenu}
-          label="New tab"
+          label={t("New tab")}
           actions={[
             ...(chatFirst ? [chatAction] : []),
             {
-              label: "New terminal",
+              label: t("New terminal"),
               icon: <Terminal size={14} aria-hidden="true" />,
               run: onNew,
             },
             {
-              label: "New file",
+              label: t("New file"),
               icon: <FileCode size={14} aria-hidden="true" />,
               run: onNewFile,
             },
             {
-              label: "Agents",
+              label: t("Agents"),
               icon: <Layers size={14} aria-hidden="true" />,
               run: onNewAgents,
             },
             {
-              label: "New browser",
+              label: t("New browser"),
               icon: <Globe size={14} aria-hidden="true" />,
               run: onNewBrowser,
             },
             {
-              label: "New android symulator",
+              label: t("New Android emulator"),
               icon: <Monitor size={14} aria-hidden="true" />,
               run: onNewAndroid,
             },

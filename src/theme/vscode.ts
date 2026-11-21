@@ -1,3 +1,4 @@
+import { t, tp } from "../i18n.ts";
 import type { SyntaxName, SyntaxStyle, ThemeValues } from "./format.ts";
 
 export interface TokenRule {
@@ -28,34 +29,36 @@ export interface VSCodeTheme {
 const hex = /^#(?:[\da-f]{3,4}|[\da-f]{6}|[\da-f]{8})$/i;
 function record(value: unknown, path: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value))
-    throw new Error(`${path} must be an object.`);
+    throw new Error(t("{path} must be an object.", { path }));
   return value as Record<string, unknown>;
 }
 function checkColor(value: unknown, path: string) {
   if (typeof value !== "string" || !hex.test(value))
-    throw new Error(`${path} must be a hexadecimal color.`);
+    throw new Error(t("{path} must be a hexadecimal color.", { path }));
 }
 export function parseVSCodeTheme(value: unknown): VSCodeTheme {
   const data = record(value, "vscode");
   if (data.include !== undefined || typeof data.tokenColors === "string")
     throw new Error(
-      "Import the VS Code file or extension to resolve include and TextMate paths first.",
+      t(
+        "Import the VS Code file or extension to resolve include and TextMate paths first.",
+      ),
     );
   if (
     data.type !== undefined &&
     !["dark", "light", "hcDark", "hcLight"].includes(String(data.type))
   )
-    throw new Error("Invalid VS Code theme type.");
+    throw new Error(t("Invalid VS Code theme type."));
   if (
     data.semanticHighlighting !== undefined &&
     typeof data.semanticHighlighting !== "boolean"
   )
-    throw new Error("vscode.semanticHighlighting must be a boolean.");
+    throw new Error(t("vscode.semanticHighlighting must be a boolean."));
   for (const [key, value] of Object.entries(
     record(data.colors ?? {}, "vscode.colors"),
   )) {
     if (!/^[a-zA-Z][\w.-]*$/.test(key))
-      throw new Error(`Invalid VS Code color identifier: ${key}`);
+      throw new Error(t("Invalid VS Code color identifier: {key}", { key }));
     if (value !== null && value !== "default")
       checkColor(value, `vscode.colors.${key}`);
   }
@@ -69,11 +72,11 @@ export function parseVSCodeTheme(value: unknown): VSCodeTheme {
             s && !["bold", "italic", "underline", "strikethrough"].includes(s),
         )
     )
-      throw new Error("Invalid VS Code token fontStyle.");
+      throw new Error(t("Invalid VS Code token fontStyle."));
   };
   if (data.tokenColors !== undefined) {
     if (!Array.isArray(data.tokenColors))
-      throw new Error("vscode.tokenColors must be an array.");
+      throw new Error(t("vscode.tokenColors must be an array."));
     for (const rule of data.tokenColors) {
       const token = record(rule, "vscode.tokenColors rule");
       if (
@@ -85,7 +88,7 @@ export function parseVSCodeTheme(value: unknown): VSCodeTheme {
         )
       )
         throw new Error(
-          "TextMate scope must be a string or an array of strings.",
+          t("TextMate scope must be a string or an array of strings."),
         );
       const settings = record(token.settings, "TextMate settings");
       for (const name of ["foreground", "background"])
@@ -105,7 +108,9 @@ export function parseVSCodeTheme(value: unknown): VSCodeTheme {
       if (style.fontStyle !== undefined) fontStyle(style.fontStyle);
       for (const name of ["bold", "italic", "underline", "strikethrough"])
         if (style[name] !== undefined && typeof style[name] !== "boolean")
-          throw new Error(`Semantic token ${name} must be a boolean.`);
+          throw new Error(
+            t("Semantic token {name} must be a boolean.", { name }),
+          );
     }
   }
   return data as VSCodeTheme;
@@ -377,16 +382,24 @@ export function vscodeCompatibility(theme: VSCodeTheme) {
   return {
     unmatchedColors,
     messages: [
-      "Editor syntax uses a TextMate-to-CodeMirror approximation; contextual and language-specific scopes may look different.",
+      t(
+        "Editor syntax uses a TextMate-to-CodeMirror approximation; contextual and language-specific scopes may look different.",
+      ),
       ...(Object.keys(theme.semanticTokenColors ?? {}).length ||
       theme.semanticHighlighting
         ? [
-            "Semantic rules are preserved for VS Code export. Lomi does not provide VS Code language-service tokens.",
+            t(
+              "Semantic rules are preserved for VS Code export. Lomi does not provide VS Code language-service tokens.",
+            ),
           ]
         : []),
       ...(unmatchedColors.length
         ? [
-            `${unmatchedColors.length} color identifiers have no mapped Lomi component. They are retained for export.`,
+            tp(
+              unmatchedColors.length,
+              "{count} color identifier has no mapped Lomi component. It is retained for export.",
+              "{count} color identifiers have no mapped Lomi component. They are retained for export.",
+            ),
           ]
         : []),
     ],

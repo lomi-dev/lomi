@@ -1,4 +1,5 @@
 import mitt from "mitt";
+import { t } from "../i18n";
 import type { ComponentType } from "react";
 import type {
   CommandContext,
@@ -88,7 +89,7 @@ export class PluginHost {
   catalog: PluginCatalog = { directory: "", entries: [], safeMode: false };
   context = emptyContext;
   openView: (id: string, state: Json) => Promise<string> = async () => {
-    throw new Error("Open a workspace first.");
+    throw new Error(t("Open a workspace first."));
   };
   private readonly events = mitt<{ [K in keyof HostEvents]: HostEvents[K] }>();
   private readonly listeners = new Set<() => void>();
@@ -172,7 +173,7 @@ export class PluginHost {
         if (raw.manifest) {
           raw.manifest = parsePlugin(raw.manifest);
           if (raw.manifest.id !== raw.id)
-            throw new Error("Installed identity differs from the manifest.");
+            throw new Error(t("Installed identity differs from the manifest."));
         }
       } catch (error) {
         raw.manifest = null;
@@ -221,11 +222,13 @@ export class PluginHost {
       this.catalog.safeMode
     )
       return Promise.reject(
-        new Error("Enable and trust this plugin in Settings → Plugins first."),
+        new Error(
+          t("Enable and trust this plugin in Settings → Plugins first."),
+        ),
       );
     if (entry.restartRequired)
       return Promise.reject(
-        new Error("Restart Lomi to use the updated plugin."),
+        new Error(t("Restart Lomi to use the updated plugin.")),
       );
     const activation: Activation = {
       abort: new AbortController(),
@@ -355,7 +358,7 @@ export class PluginHost {
         const prepared = parsePlugin(await this.loader.prepare(entry));
         live();
         if (JSON.stringify(prepared) !== JSON.stringify(manifest))
-          throw new Error("Plugin metadata changed before activation.");
+          throw new Error(t("Plugin metadata changed before activation."));
         add(await this.loader.css(entry, activation.abort.signal));
         live();
         const module = await this.loader.import(entry);
@@ -424,14 +427,14 @@ export class PluginHost {
     const command = entry?.manifest?.contributes?.commands?.find(
       (c) => c.id === id,
     );
-    if (!entry || !command) throw new Error("Command is unavailable.");
+    if (!entry || !command) throw new Error(t("Command is unavailable."));
     if (!commandAvailable(command.context, this.context, textInput))
-      throw new Error("Command is unavailable in this context.");
+      throw new Error(t("Command is unavailable in this context."));
     try {
       await this.activate(entry.id);
       const registered = this.commands.get(id);
       if (!registered)
-        throw new Error("The plugin did not register this command.");
+        throw new Error(t("The plugin did not register this command."));
       await registered.handler();
     } catch (error) {
       this.report(entry.id, "command", error);

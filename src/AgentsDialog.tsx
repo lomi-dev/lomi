@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { errorMessage } from "./api";
+import { useT } from "./i18n";
 import { CliAgentIcon } from "./CliAgentIcon";
 import type { CliAgent } from "./cli-agents";
 import { maximumAgentCount, type ShellProfile } from "./model";
@@ -31,6 +32,7 @@ export default function AgentsDialog({
   onClose: () => void;
   onLaunch: (cli: CliAgent, count: number) => Promise<void>;
 }) {
+  const { t, tp } = useT();
   const id = useId();
   const refreshButton = useRef<HTMLButtonElement>(null);
   const request = useRef(0);
@@ -55,6 +57,11 @@ export default function AgentsDialog({
   const amount = Number(count);
   const validCount =
     Number.isSafeInteger(amount) && amount >= 1 && amount <= maximum;
+  const tooManyMessage = tp(
+    maximum,
+    "Only {count} agent fits in the current window.",
+    "Only {count} agents fit in the current window.",
+  );
   useEffect(() => {
     if (maximum < 1) return;
     setCount((previous) => {
@@ -109,7 +116,7 @@ export default function AgentsDialog({
 
   return (
     <Modal
-      title="Agents"
+      title={t("Agents")}
       className="agents-dialog"
       wide
       descriptionId={`${id}-description`}
@@ -125,13 +132,11 @@ export default function AgentsDialog({
           if (launching.current || !clients.length) return;
           const amount = Number(count);
           if (!Number.isSafeInteger(amount) || amount < 1) {
-            setError("Enter a whole number of terminals, at least 1.");
+            setError(t("Enter a whole number of terminals, at least 1."));
             return;
           }
           if (amount > maximum) {
-            setError(
-              `Only ${maximum} ${maximum === 1 ? "agent fits" : "agents fit"} in the current window.`,
-            );
+            setError(tooManyMessage);
             return;
           }
           if (!selected || !clients.some((client) => client.cli === selected))
@@ -152,17 +157,17 @@ export default function AgentsDialog({
       >
         <div className="dialog-content agents-dialog-body">
           <p id={`${id}-description`} className="agents-description">
-            Choose an agent and how many terminals to open.
+            {t("Choose an agent and how many terminals to open.")}
           </p>
           <section className="agents-chooser">
             <div className="agents-chooser-heading">
-              <span id={`${id}-cli-label`}>Installed CLI</span>
+              <span id={`${id}-cli-label`}>{t("Installed CLI")}</span>
               <button
                 ref={refreshButton}
                 type="button"
                 className="icon-button"
-                aria-label="Refresh installed CLI"
-                title="Refresh installed CLI"
+                aria-label={t("Refresh installed CLI")}
+                title={t("Refresh installed CLI")}
                 disabled={loading || busy}
                 onClick={() => void refresh(true)}
               >
@@ -173,9 +178,11 @@ export default function AgentsDialog({
               {loading
                 ? clients.length
                   ? ""
-                  : "Looking for installed agents…"
+                  : t("Looking for installed agents…")
                 : !error && !clients.length
-                  ? "No supported agent CLI found. Install a CLI, then refresh."
+                  ? t(
+                      "No supported agent CLI found. Install a CLI, then refresh.",
+                    )
                   : ""}
             </div>
             {!!clients.length && (
@@ -207,13 +214,13 @@ export default function AgentsDialog({
           <section className="agents-count">
             <div className="agents-count-heading">
               <label id={`${id}-count-label`} htmlFor={`${id}-count`}>
-                Number of terminals
+                {t("Number of terminals")}
               </label>
               <div className="agents-count-controls">
                 <button
                   type="button"
                   className="agents-count-step"
-                  aria-label="Decrease terminal count"
+                  aria-label={t("Decrease terminal count")}
                   disabled={
                     busy || maximum === 0 || (validCount && amount === 1)
                   }
@@ -236,7 +243,7 @@ export default function AgentsDialog({
                 <button
                   type="button"
                   className="agents-count-step"
-                  aria-label="Increase terminal count"
+                  aria-label={t("Increase terminal count")}
                   disabled={busy || maximum === 0 || amount >= maximum}
                   onClick={() => adjustCount(1)}
                 >
@@ -246,20 +253,20 @@ export default function AgentsDialog({
             </div>
             <div
               className="agents-count-presets"
-              aria-label="Terminal count presets"
+              aria-label={t("Terminal count presets")}
             >
               {[1, 2, 4, 6, 8].map((preset) => (
                 <button
                   key={preset}
                   type="button"
-                  aria-label={`Use ${preset} ${preset === 1 ? "terminal" : "terminals"}`}
+                  aria-label={tp(
+                    preset,
+                    "Use {count} terminal",
+                    "Use {count} terminals",
+                  )}
                   aria-pressed={validCount && amount === preset}
                   disabled={busy || preset > maximum}
-                  title={
-                    preset > maximum
-                      ? `Only ${maximum} ${maximum === 1 ? "agent fits" : "agents fit"} in the current window.`
-                      : undefined
-                  }
+                  title={preset > maximum ? tooManyMessage : undefined}
                   onClick={() => setCount(String(preset))}
                 >
                   {preset}
@@ -270,12 +277,17 @@ export default function AgentsDialog({
           <div className="agents-launch-context">
             <div className="agents-layout-summary" aria-live="polite">
               {maximum === 0
-                ? "Not enough space for a terminal."
+                ? t("Not enough space for a terminal.")
                 : validCount
-                  ? `One tab · ${amount} ${amount === 1 ? "panel" : "panels"} · Up to ${maximum} fit`
+                  ? tp(
+                      amount,
+                      "One tab · {count} panel · Up to {max} fit",
+                      "One tab · {count} panels · Up to {max} fit",
+                      { max: maximum },
+                    )
                   : amount > maximum
-                    ? `Only ${maximum} ${maximum === 1 ? "agent fits" : "agents fit"} in the current window.`
-                    : "Choose a whole number, at least 1"}
+                    ? tooManyMessage
+                    : t("Choose a whole number, at least 1")}
             </div>
             <div className="agents-directory" title={cwd}>
               <Folder size={14} aria-hidden="true" />
@@ -295,7 +307,7 @@ export default function AgentsDialog({
             disabled={busy}
             onClick={onClose}
           >
-            Cancel
+            {t("Cancel")}
           </button>
           <button
             type="submit"
@@ -304,7 +316,7 @@ export default function AgentsDialog({
               busy || !clients.length || maximum === 0 || amount > maximum
             }
           >
-            {busy ? "Launching…" : "Launch agents"}
+            {busy ? t("Launching…") : t("Launch agents")}
           </button>
         </div>
       </form>

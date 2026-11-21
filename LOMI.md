@@ -379,6 +379,12 @@ or acronym.
   provider licenses; Windows line-ending conversion must not change their hashes.
   Settings sends expiring, acknowledged open intents to the workbench; closed setup targets
   are not recreated or redirected into another workspace.
+- `src/i18n.ts` translates the interface (English source; Polish, German,
+  Russian, Ukrainian, Italian, Spanish in `src/locales/`). The first launch
+  follows the system language, falling back to English; Settings → General
+  switches it live. Every new user-visible string goes through `t()`/`tp()`
+  with an English literal key; run `pnpm i18n:check` and add translations
+  for all languages. See `docs/i18n.md` and `docs/i18n-glossary.md`.
 - `src/GeneralSettingsPage.tsx` (Settings → General, the default page) switches
   the CLI-first/Chat-first workflow and the default parent folder for new and
   cloned projects. Both are stored in webview storage next to onboarding state.

@@ -2,6 +2,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { tabsToClose } from "./model";
 import type { Tab, TabCloseAction } from "./model";
+import { msg, useT } from "./i18n";
 
 export interface TabMenuAnchor {
   id: string;
@@ -11,12 +12,12 @@ export interface TabMenuAnchor {
 
 const actions: { action: TabCloseAction; label: string; divider?: boolean }[] =
   [
-    { action: "close", label: "Close" },
-    { action: "others", label: "Close others" },
-    { action: "left", label: "Close left", divider: true },
-    { action: "right", label: "Close right" },
-    { action: "clean", label: "Close clean", divider: true },
-    { action: "all", label: "Close all" },
+    { action: "close", label: msg("Close") },
+    { action: "others", label: msg("Close others") },
+    { action: "left", label: msg("Close left"), divider: true },
+    { action: "right", label: msg("Close right") },
+    { action: "clean", label: msg("Close clean"), divider: true },
+    { action: "all", label: msg("Close all") },
   ];
 
 export default function TabContextMenu({
@@ -34,6 +35,7 @@ export default function TabContextMenu({
   onRename: (tab: Tab) => void;
   onDismiss: () => void;
 }) {
+  const { t } = useT();
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const menu = ref.current!;
@@ -69,7 +71,7 @@ export default function TabContextMenu({
       ref={ref}
       className="menu tab-context-menu"
       role="menu"
-      aria-label="Tab actions"
+      aria-label={t("Tab actions")}
       style={{ left: anchor.x, top: anchor.y }}
       onContextMenu={(event) => event.preventDefault()}
       onBlur={(event) => {
@@ -115,7 +117,7 @@ export default function TabContextMenu({
           if (tab) onRename(tab);
         }}
       >
-        Rename tab…
+        {t("Rename tab…")}
       </button>
       <div className="menu-divider" role="separator" />
       {actions.map(({ action, label, divider }) => (
@@ -140,7 +142,7 @@ export default function TabContextMenu({
               });
             }}
           >
-            {label}
+            {t(label)}
           </button>
         </Fragment>
       ))}

@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import type { AndroidRenderer } from "./canvas";
 import type { AndroidFrame } from "./frame";
 
@@ -11,7 +12,7 @@ export class LinuxCanvas2D implements AndroidRenderer {
 
   constructor(onError: (message: string) => void) {
     this.element.className = "android-screen";
-    this.element.setAttribute("aria-label", "Android phone screen");
+    this.element.setAttribute("aria-label", t("Android phone screen"));
     this.element.tabIndex = 0;
     const context = this.element.getContext("2d", {
       alpha: false,
@@ -19,7 +20,7 @@ export class LinuxCanvas2D implements AndroidRenderer {
     });
     if (!context)
       throw new Error(
-        "Android 2D graphics are unavailable. Reconnect the panel.",
+        t("Android 2D graphics are unavailable. Reconnect the panel."),
       );
     this.context = context;
     this.onLost = (event) => {

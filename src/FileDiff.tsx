@@ -7,6 +7,7 @@ import type { GitFileDiff } from "./api";
 import type { DiffTab } from "./model";
 import { Patch } from "./CommitDetails";
 import { IconButton } from "./ui";
+import { useT } from "./i18n";
 
 export default function FileDiff({
   tab,
@@ -17,6 +18,7 @@ export default function FileDiff({
   requestRevision: number;
   onOpenFile: () => void;
 }) {
+  const { t } = useT();
   const agentSource = useAgentGit(tab.id);
   const [result, setResult] = useState<GitFileDiff>();
   const [error, setError] = useState("");
@@ -58,7 +60,7 @@ export default function FileDiff({
   return (
     <section
       className="commit-file-diff working-file-diff"
-      aria-label={`Changes in ${tab.relative}`}
+      aria-label={t("Changes in {path}", { path: tab.relative })}
     >
       <header>
         <ResourceIcon
@@ -68,32 +70,32 @@ export default function FileDiff({
         />
         <span className="working-diff-path">{tab.relative}</span>
         <button type="button" className="button" onClick={onOpenFile}>
-          Open file
+          {t("Open file")}
         </button>
-        <IconButton title="Refresh file changes" onClick={refresh}>
+        <IconButton title={t("Refresh file changes")} onClick={refresh}>
           <RefreshCw size={14} />
         </IconButton>
       </header>
       <div className="working-diff-comparison">
         <span>
           {tab.staged
-            ? "Staged changes · HEAD → Index"
-            : "Working tree changes · Index → Disk"}
+            ? t("Staged changes · HEAD → Index")
+            : t("Working tree changes · Index → Disk")}
         </span>
-        <span className="diff-additions">+ Added</span>
-        <span className="diff-deletions">− Removed</span>
-        <span>Read-only</span>
+        <span className="diff-additions">{t("+ Added")}</span>
+        <span className="diff-deletions">{t("− Removed")}</span>
+        <span>{t("Read-only")}</span>
       </div>
       {error ? (
         <div className="commit-view-message" role="alert">
           <p>{error}</p>
           <button type="button" className="button" onClick={refresh}>
-            Retry diff
+            {t("Retry diff")}
           </button>
         </div>
       ) : !result ? (
         <div className="commit-view-message" role="status">
-          Loading file changes…
+          {t("Loading file changes…")}
         </div>
       ) : (
         <>
@@ -104,15 +106,16 @@ export default function FileDiff({
           )}
           {result.truncated && (
             <p className="commit-diff-notice" role="status">
-              This file exceeds the preview limit. Showing the first 2 MiB or
-              20,000 lines.
+              {t(
+                "This file exceeds the preview limit. Showing the first 2 MiB or 20,000 lines.",
+              )}
             </p>
           )}
           <div
             className="commit-patch"
             tabIndex={0}
             role="region"
-            aria-label={`Diff for ${tab.relative}`}
+            aria-label={t("Diff for {path}", { path: tab.relative })}
           >
             <Patch patch={result.patch} fullFile />
           </div>

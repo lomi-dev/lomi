@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { api } from "../api";
+import { t, useT } from "../i18n";
 import { Slot } from "./Slots";
 import { pluginHost } from "./runtime";
 import type { ViewProps } from "@lomi-dev/plugin-sdk";
@@ -23,10 +24,10 @@ export class PluginBoundary extends Component<
   render() {
     return this.state.error ? (
       <div className="empty-message" role="alert">
-        <h2>Plugin view failed</h2>
+        <h2>{t("Plugin view failed")}</h2>
         <p>{this.state.error}</p>
         <button className="button" onClick={() => this.setState({ error: "" })}>
-          Retry view
+          {t("Retry view")}
         </button>
       </div>
     ) : (
@@ -37,6 +38,7 @@ export class PluginBoundary extends Component<
 export default function PluginPanel(
   props: ViewProps & { placement?: "central" | "sidebar" },
 ) {
+  const { t } = useT();
   const [error, setError] = useState("");
   useSyncExternalStore(pluginHost.subscribe, pluginHost.revision);
   const entry = pluginHost.catalog.entries.find(
@@ -79,10 +81,10 @@ export default function PluginPanel(
         <Slot name="view-actions" />
         <button
           className="text-button"
-          aria-label={`Close ${props.panel.title}`}
+          aria-label={t("Close {title}", { title: props.panel.title })}
           onClick={props.onClose}
         >
-          Close
+          {t("Close")}
         </button>
       </header>
       {View && entry?.enabled && compatible ? (
@@ -93,22 +95,24 @@ export default function PluginPanel(
         <div className="empty-message" role="status">
           <h2>
             {status?.phase === "activating"
-              ? "Opening plugin view…"
-              : "Plugin view unavailable"}
+              ? t("Opening plugin view…")
+              : t("Plugin view unavailable")}
           </h2>
           <p>
             {error ||
               status?.error ||
               (declared && !compatible
-                ? "This view uses an unsupported state version or placement."
-                : "Enable the matching plugin to restore this view. Its saved state is preserved.")}
+                ? t("This view uses an unsupported state version or placement.")
+                : t(
+                    "Enable the matching plugin to restore this view. Its saved state is preserved.",
+                  ))}
           </p>
           {entry?.enabled && status?.phase === "failed" && (
             <button
               className="button"
               onClick={() => void pluginHost.activate(entry.id).catch(() => {})}
             >
-              Retry activation
+              {t("Retry activation")}
             </button>
           )}
           <button
@@ -119,7 +123,7 @@ export default function PluginPanel(
               )
             }
           >
-            Open Plugins
+            {t("Open Plugins")}
           </button>
         </div>
       )}

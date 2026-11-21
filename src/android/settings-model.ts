@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import type { Catalog, Package, Snapshot, Profile } from "./types";
 
 export function formatBytes(bytes: number) {
@@ -74,12 +75,15 @@ export function imageDescription(image: Pick<ImageChoice, "id" | "image">) {
   const family = imageFamily(image);
   return (
     (family === "play"
-      ? "Includes Play Store and Google services."
+      ? t("Includes Play Store and Google services.")
       : family === "google"
-        ? "Google services for testing; no Play Store."
-        : "Open-source Android with basic apps; no Google services.") +
+        ? t("Google services for testing; no Play Store.")
+        : t("Open-source Android with basic apps; no Google services.")) +
     (imageInfo(image).tag.endsWith("_ps16k")
-      ? " Uses 16 KB memory pages; apps with native libraries must support this page size."
+      ? " " +
+        t(
+          "Uses 16 KB memory pages; apps with native libraries must support this page size.",
+        )
       : "")
   );
 }
@@ -141,14 +145,23 @@ export function installationSelection(
     if (!pkg)
       throw new Error(
         repair && installed
-          ? `Revision ${installed.revision} of ${id} is no longer available from the provider. The installed files have been preserved.`
-          : `No compatible package is available for ${id}. Refresh the catalog and retry.`,
+          ? t(
+              "Revision {revision} of {id} is no longer available from the provider. The installed files have been preserved.",
+              { revision: installed.revision, id },
+            )
+          : t(
+              "No compatible package is available for {id}. Refresh the catalog and retry.",
+              { id },
+            ),
       );
     const users =
       snapshot.devices?.devices.filter((device) => device.image === id) ?? [];
     if (users.length && installed && pkg.revision !== installed.revision)
       throw new Error(
-        `This image is used by ${users.map((device) => device.name).join(", ")}. Its revision cannot change; choose a different image for a new device.`,
+        t(
+          "This image is used by {devices}. Its revision cannot change; choose a different image for a new device.",
+          { devices: users.map((device) => device.name).join(", ") },
+        ),
       );
     selected.set(id, pkg);
     for (const dependency of pkg.dependencies) {
@@ -169,7 +182,9 @@ export function installationSelection(
     }
     if (selected.size > 16)
       throw new Error(
-        "This selection requires too many packages. Install the tools first.",
+        t(
+          "This selection requires too many packages. Install the tools first.",
+        ),
       );
   }
   return [...selected.values()].map(({ id, revision }) => ({ id, revision }));

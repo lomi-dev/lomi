@@ -1,4 +1,5 @@
 import { api, errorMessage, native } from "./api";
+import { t, tp } from "./i18n";
 import { reportNotificationError } from "./notifications";
 import type {
   ApplicationNotificationAction,
@@ -67,11 +68,11 @@ export function reportAppNotification(
   const title =
     notification.title ??
     (kind === "info"
-      ? "Application update"
+      ? t("Application update")
       : {
-          app: "Application needs attention",
-          android: "Android needs attention",
-          mcp: "MCP needs attention",
+          app: t("Application needs attention"),
+          android: t("Android needs attention"),
+          mcp: t("MCP needs attention"),
         }[source]);
   const clean = (value: string, limit: number) => {
     const characters = Array.from(value.replace(/[\x00-\x1f\x7f-\x9f]/g, " "));
@@ -123,7 +124,14 @@ export function reportAppNotification(
       }
       publishUnsaved();
       reportNotificationError(
-        `Could not save application notification: ${errorMessage(reason)}${droppedNotifications ? " Older unsaved notifications could not be retained." : ""}`,
+        droppedNotifications
+          ? t(
+              "Could not save application notification: {error} Older unsaved notifications could not be retained.",
+              { error: errorMessage(reason) },
+            )
+          : t("Could not save application notification: {error}", {
+              error: errorMessage(reason),
+            }),
       );
     } finally {
       pending.delete(key);
@@ -141,15 +149,21 @@ export async function retryApplicationNotifications() {
     droppedNotifications -= dropped;
     await reportAppNotification(
       {
-        title: "Some notifications could not be saved",
-        body: `${dropped} older application notifications could not be saved while notification storage was unavailable.`,
+        title: t("Some notifications could not be saved"),
+        body: tp(
+          dropped,
+          "{count} older application notification could not be saved while notification storage was unavailable.",
+          "{count} older application notifications could not be saved while notification storage was unavailable.",
+        ),
       },
       { deduplicate: false },
     );
   }
   if (failed.size)
     throw new Error(
-      "Some application notifications could not be saved. Retry to keep them in your inbox.",
+      t(
+        "Some application notifications could not be saved. Retry to keep them in your inbox.",
+      ),
     );
 }
 
@@ -162,14 +176,18 @@ const actions = new Map<ApplicationNotificationAction, Action>([
   [
     "open-android-settings",
     {
-      label: "Android settings",
+      get label() {
+        return t("Android settings");
+      },
       run: () => api("open_settings", { page: "android" }),
     },
   ],
   [
     "open-agent-control-settings",
     {
-      label: "Agent control settings",
+      get label() {
+        return t("Agent control settings");
+      },
       run: () => api("open_settings", { page: "agent-control" }),
     },
   ],

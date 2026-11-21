@@ -12,6 +12,7 @@ import {
 import { listen } from "@tauri-apps/api/event";
 import { watch } from "@tauri-apps/plugin-fs";
 import { api, errorMessage, native } from "./api";
+import { t } from "./i18n";
 import { opaqueWindowBackground } from "./window-background";
 import {
   builtinPreferences,
@@ -174,7 +175,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       if (mounted.current && request === generation.current)
         setError(
-          `${errorMessage(error)} The last working appearance is still in use.`,
+          t("{error} The last working appearance is still in use.", {
+            error: errorMessage(error),
+          }),
         );
     } finally {
       if (mounted.current && request === generation.current) setReady(true);
@@ -250,7 +253,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       .catch((error) => {
         if (active)
           setError(
-            `Theme watch failed: ${errorMessage(error)} Use Refresh to retry loading.`,
+            t("Theme watch failed: {error} Use Refresh to retry loading.", {
+              error: errorMessage(error),
+            }),
           );
       });
     return () => {

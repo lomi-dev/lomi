@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
+import { t as translate, useT } from "./i18n";
 import { Plus, RotateCcw, Search, X } from "./icons";
 import { IconButton } from "./ui";
 import { errorMessage } from "./api";
@@ -44,13 +45,16 @@ function recordKey(
     return;
   const shortcut = shortcutFromEvent(event.nativeEvent);
   if (!shortcut) {
-    onError("Use Ctrl, Alt, or Cmd with a key, or use a function key.");
+    onError(
+      translate("Use Ctrl, Alt, or Cmd with a key, or use a function key."),
+    );
     return;
   }
   onShortcut(shortcut);
 }
 
 export default function KeybindsSettingsPage({ active }: { active: boolean }) {
+  const { t } = useT();
   const preferences = useKeybindings();
   const [recording, setRecording] = useState<Recording>(null);
   const [query, setQuery] = useState("");
@@ -106,7 +110,10 @@ export default function KeybindsSettingsPage({ active }: { active: boolean }) {
   const conflictMessage = (id: ActionId, shortcut: string | null) => {
     const conflict = bindingConflict(preferences.bindings, id, shortcut);
     return conflict
-      ? `${formatShortcut(shortcut)} is already assigned to “${conflict}”. Change or remove that keybinding first.`
+      ? t(
+          "{shortcut} is already assigned to “{conflict}”. Change or remove that keybinding first.",
+          { shortcut: formatShortcut(shortcut), conflict },
+        )
       : "";
   };
 
@@ -125,7 +132,7 @@ export default function KeybindsSettingsPage({ active }: { active: boolean }) {
     (action) =>
       preferences.bindings[action.id] &&
       terms.every((term) =>
-        `${action.label} ${action.description} ${action.group} ${formatShortcut(preferences.bindings[action.id])}`
+        `${t(action.label)} ${t(action.description)} ${t(action.group)} ${formatShortcut(preferences.bindings[action.id])}`
           .toLocaleLowerCase()
           .includes(term),
       ),
@@ -158,7 +165,7 @@ export default function KeybindsSettingsPage({ active }: { active: boolean }) {
 
   return (
     <SettingsPage
-      title="Keybinds"
+      title={t("Keybinds")}
       className="keybindings-page"
       busy={!preferences.ready || busy}
     >
@@ -172,7 +179,7 @@ export default function KeybindsSettingsPage({ active }: { active: boolean }) {
                   className="text-button"
                   onClick={() => void preferences.reload()}
                 >
-                  Retry loading
+                  {t("Retry loading")}
                 </button>
                 <button
                   className="text-button"
@@ -181,7 +188,7 @@ export default function KeybindsSettingsPage({ active }: { active: boolean }) {
                     void persist(preferences.defaults, false, false)
                   }
                 >
-                  Reset to defaults
+                  {t("Reset to defaults")}
                 </button>
               </>
             )
@@ -197,8 +204,8 @@ export default function KeybindsSettingsPage({ active }: { active: boolean }) {
           <input
             ref={search}
             type="text"
-            aria-label="Search keybindings"
-            placeholder="Search keybindings"
+            aria-label={t("Search keybindings")}
+            placeholder={t("Search keybindings")}
             value={query}
             onChange={(event) => {
               setRecording(null);
@@ -219,13 +226,13 @@ export default function KeybindsSettingsPage({ active }: { active: boolean }) {
           disabled={locked || !!draft || unassigned.length === 0}
           title={
             unassigned.length === 0
-              ? "Every action already has a keybinding"
+              ? t("Every action already has a keybinding")
               : undefined
           }
           onClick={openDraft}
         >
           <Plus size={15} aria-hidden="true" />
-          Add keybinding
+          {t("Add keybinding")}
         </button>
       </div>
 
@@ -233,19 +240,19 @@ export default function KeybindsSettingsPage({ active }: { active: boolean }) {
         <div
           className="keybinding-draft"
           role="group"
-          aria-label="New keybinding"
+          aria-label={t("New keybinding")}
         >
-          <strong>New keybinding</strong>
+          <strong>{t("New keybinding")}</strong>
           <Select
             className="keybinding-draft-command"
-            aria-label="Action"
+            aria-label={t("Action")}
             autoFocus
             value={draft.action}
             options={[
-              { value: "", label: "Choose an action", disabled: true },
+              { value: "", label: t("Choose an action"), disabled: true },
               ...unassigned.map((action) => ({
                 value: action.id,
-                label: `${action.group}: ${action.label}`,
+                label: `${t(action.group)}: ${t(action.label)}`,
               })),
             ]}
             onChange={(value) => {
@@ -257,7 +264,7 @@ export default function KeybindsSettingsPage({ active }: { active: boolean }) {
             ref={recording === "new" ? recordingButton : undefined}
             type="button"
             className={`shortcut-recorder keybinding-draft-keys${recording === "new" ? " recording" : ""}`}
-            aria-label="Shortcut"
+            aria-label={t("Shortcut")}
             disabled={locked}
             onClick={() => {
               setRecording("new");
@@ -281,11 +288,13 @@ export default function KeybindsSettingsPage({ active }: { active: boolean }) {
             }}
           >
             {recording === "new" ? (
-              <span className="shortcut-unassigned">Press keys…</span>
+              <span className="shortcut-unassigned">{t("Press keys…")}</span>
             ) : draft.shortcut ? (
               <Keycaps binding={draft.shortcut} />
             ) : (
-              <span className="shortcut-unassigned">Record shortcut</span>
+              <span className="shortcut-unassigned">
+                {t("Record shortcut")}
+              </span>
             )}
           </button>
           <button
@@ -294,10 +303,10 @@ export default function KeybindsSettingsPage({ active }: { active: boolean }) {
             disabled={locked || !draft.action || !draft.shortcut}
             onClick={() => void saveDraft()}
           >
-            Save
+            {t("Save")}
           </button>
           <IconButton
-            title="Cancel"
+            title={t("Cancel")}
             onClick={() => {
               setDraft(null);
               setRecording(null);
@@ -312,7 +321,9 @@ export default function KeybindsSettingsPage({ active }: { active: boolean }) {
       {assigned.length === 0 && preferences.ready && (
         <div className="settings-shortcut-empty">
           <p role="status">
-            {terms.length ? "No matching keybindings." : "No keybindings yet."}
+            {terms.length
+              ? t("No matching keybindings.")
+              : t("No keybindings yet.")}
           </p>
           {terms.length > 0 && (
             <button
@@ -323,14 +334,14 @@ export default function KeybindsSettingsPage({ active }: { active: boolean }) {
                 search.current?.focus();
               }}
             >
-              Clear search
+              {t("Clear search")}
             </button>
           )}
         </div>
       )}
 
       {groups.map((group) => (
-        <SettingsSection key={group} title={group}>
+        <SettingsSection key={group} title={t(group)}>
           {assigned
             .filter((action) => action.group === group)
             .map((action) => {
@@ -339,14 +350,16 @@ export default function KeybindsSettingsPage({ active }: { active: boolean }) {
               return (
                 <SettingRow
                   key={action.id}
-                  label={action.label}
-                  description={action.description}
+                  label={t(action.label)}
+                  description={t(action.description)}
                   className="keybinding-row"
                 >
                   <div className="keybinding-controls">
                     <IconButton
                       className="icon-button keybinding-row-action"
-                      title={`Restore default for ${action.label}`}
+                      title={t("Restore default for {label}", {
+                        label: t(action.label),
+                      })}
                       disabled={
                         locked || binding === preferences.defaults[action.id]
                       }
@@ -358,7 +371,9 @@ export default function KeybindsSettingsPage({ active }: { active: boolean }) {
                     </IconButton>
                     <IconButton
                       className="icon-button keybinding-row-action"
-                      title={`Remove keybinding for ${action.label}`}
+                      title={t("Remove keybinding for {label}", {
+                        label: t(action.label),
+                      })}
                       disabled={locked}
                       onClick={() => assign(action.id, null)}
                     >
@@ -368,8 +383,14 @@ export default function KeybindsSettingsPage({ active }: { active: boolean }) {
                       ref={isRecording ? recordingButton : undefined}
                       type="button"
                       className={`shortcut-recorder${isRecording ? " recording" : ""}`}
-                      aria-label={`Shortcut for ${action.label}: ${formatShortcut(binding)}. Activate to change.`}
-                      title="Click to change"
+                      aria-label={t(
+                        "Shortcut for {label}: {shortcut}. Activate to change.",
+                        {
+                          label: t(action.label),
+                          shortcut: formatShortcut(binding),
+                        },
+                      )}
+                      title={t("Click to change")}
                       disabled={locked}
                       onClick={() => {
                         setRecording(action.id);
@@ -392,7 +413,9 @@ export default function KeybindsSettingsPage({ active }: { active: boolean }) {
                       }}
                     >
                       {isRecording ? (
-                        <span className="shortcut-unassigned">Press keys…</span>
+                        <span className="shortcut-unassigned">
+                          {t("Press keys…")}
+                        </span>
                       ) : (
                         <Keycaps binding={binding} />
                       )}
@@ -404,11 +427,13 @@ export default function KeybindsSettingsPage({ active }: { active: boolean }) {
         </SettingsSection>
       ))}
       {terms.length === 0 && (
-        <SettingsSection title="Interaction">
+        <SettingsSection title={t("Interaction")}>
           <SettingRow
-            label="Focus follows pointer"
+            label={t("Focus follows pointer")}
             htmlFor="focus-follows-pointer"
-            description="Typing, paste and shortcuts go to the panel under the mouse."
+            description={t(
+              "Typing, paste and shortcuts go to the panel under the mouse.",
+            )}
             descriptionId="pointer-focus-help"
           >
             <input
@@ -425,9 +450,11 @@ export default function KeybindsSettingsPage({ active }: { active: boolean }) {
             />
           </SettingRow>
           <SettingRow
-            label="Open with one click"
+            label={t("Open with one click")}
             htmlFor="explorer-open-on-single-click"
-            description="On: one click opens after a brief pause; a double click selects without opening. Off: one click selects and a double click opens."
+            description={t(
+              "On: one click opens after a brief pause; a double click selects without opening. Off: one click selects and a double click opens.",
+            )}
             descriptionId="explorer-click-mode-help"
           >
             <input

@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, Columns2, Eye, FileCode } from "./icons";
 import type { FilePreviewView } from "./model";
+import { useT } from "./i18n";
 
 export default function FilePreviewToggle({
   kind,
@@ -12,6 +13,7 @@ export default function FilePreviewToggle({
   view: FilePreviewView;
   onChange: (view: FilePreviewView) => void;
 }) {
+  const { t } = useT();
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -59,9 +61,15 @@ export default function FilePreviewToggle({
         type="button"
         className="button markdown-preview-toggle"
         aria-label={
-          view === "editor" ? `Preview ${kind}` : `Close ${kind} preview`
+          view === "editor"
+            ? t("Preview {kind}", { kind })
+            : t("Close {kind} preview", { kind })
         }
-        title={`${view === "editor" ? "Preview beside editor" : "Back to editor"}. Right-click for preview options.`}
+        title={
+          view === "editor"
+            ? t("Preview beside editor. Right-click for preview options.")
+            : t("Back to editor. Right-click for preview options.")
+        }
         aria-pressed={view !== "editor"}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -85,7 +93,7 @@ export default function FilePreviewToggle({
         }}
       >
         {view === "editor" ? <Eye size={15} /> : <FileCode size={15} />}
-        {view === "editor" ? "Preview" : "Editor"}
+        {view === "editor" ? t("Preview") : t("Editor")}
       </button>
       {open &&
         createPortal(
@@ -93,7 +101,7 @@ export default function FilePreviewToggle({
             ref={menu}
             className="menu markdown-preview-menu"
             role="menu"
-            aria-label={`${kind} preview options`}
+            aria-label={t("{kind} preview options", { kind })}
             onContextMenu={(event) => event.preventDefault()}
             onBlur={(event) => {
               if (
@@ -143,7 +151,9 @@ export default function FilePreviewToggle({
               >
                 {mode === "split" ? <Columns2 size={15} /> : <Eye size={15} />}
                 <span>
-                  {mode === "split" ? "Preview beside editor" : "Preview only"}
+                  {mode === "split"
+                    ? t("Preview beside editor")
+                    : t("Preview only")}
                 </span>
                 {view === mode && <Check size={14} />}
               </button>

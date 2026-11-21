@@ -19,6 +19,7 @@ import type { FileOperation } from "./explorer-model";
 import ContextMenu from "./ContextMenu";
 import { Modal } from "./ui";
 import GitHistory from "./GitHistory";
+import { useT } from "./i18n";
 
 export interface ExplorerClipboard {
   root: string;
@@ -53,6 +54,7 @@ interface Props {
 }
 
 export function useExplorerActions(props: Props) {
+  const { t } = useT();
   const clipboardSnapshot = useSyncExternalStore(
     subscribeClipboard,
     getClipboard,
@@ -198,7 +200,7 @@ export function useExplorerActions(props: Props) {
     run(async () => {
       const repository = repositoryForPath(props.repositories, entry.path);
       if (!repository)
-        throw new Error("This file is no longer in a Git repository.");
+        throw new Error(t("This file is no longer in a Git repository."));
       await api("ignore_project_item", {
         root: repository.root,
         relative: gitFilePath(entry.path).slice(
@@ -272,24 +274,24 @@ export function useExplorerActions(props: Props) {
   const menu = context && entry && (
     <ContextMenu
       {...context}
-      label={`${entry.name} actions`}
+      label={t("{name} actions", { name: entry.name })}
       onClose={dismiss}
       actions={[
-        { label: "New file", run: () => ask(entry, "newFile") },
-        { label: "New folder", run: () => ask(entry, "newFolder") },
+        { label: t("New file"), run: () => ask(entry, "newFile") },
+        { label: t("New folder"), run: () => ask(entry, "newFolder") },
         null,
         ...(entry.isDirectory
           ? [
               {
-                label: "Search in Folder…",
+                label: t("Search in Folder…"),
                 run: () => props.onSearch(entry.relativePath),
               },
             ]
           : []),
-        { label: "Reveal in File Manager", run: () => reveal(entry, true) },
-        { label: "Open in Default App", run: () => reveal(entry, false) },
+        { label: t("Reveal in File Manager"), run: () => reveal(entry, true) },
+        { label: t("Open in Default App"), run: () => reveal(entry, false) },
         {
-          label: "Open in Terminal",
+          label: t("Open in Terminal"),
           run: () =>
             props.onTerminal(
               entry.isDirectory ? entry.path : parentPath(entry.path),
@@ -297,49 +299,49 @@ export function useExplorerActions(props: Props) {
         },
         null,
         {
-          label: "Cut",
+          label: t("Cut"),
           shortcut: macOS ? "⌘X" : "Ctrl+X",
           disabled: !entry.relativePath,
           run: () => copy(entry, true),
         },
         {
-          label: "Copy",
+          label: t("Copy"),
           shortcut: macOS ? "⌘C" : "Ctrl+C",
           disabled: !entry.relativePath,
           run: () => copy(entry, false),
         },
         {
-          label: "Duplicate",
+          label: t("Duplicate"),
           shortcut: macOS ? "⌘D" : "Ctrl+D",
           disabled: !entry.relativePath,
           run: () =>
             run(() => operate(entry.relativePath, { kind: "duplicate" })),
         },
         {
-          label: "Paste",
+          label: t("Paste"),
           shortcut: macOS ? "⌘V" : "Ctrl+V",
           disabled: !clipboardSnapshot,
           run: () => paste(entry),
         },
         null,
-        { label: "Copy path", run: () => run(() => writeText(entry.path)) },
+        { label: t("Copy path"), run: () => run(() => writeText(entry.path)) },
         {
-          label: "Copy relative path",
+          label: t("Copy relative path"),
           run: () => run(() => writeText(entry.relativePath || ".")),
         },
         null,
         {
-          label: "Add to .gitignore",
+          label: t("Add to .gitignore"),
           disabled: !canIgnore,
           run: () => ignore(entry, false),
         },
         {
-          label: "Add to .git/info/exclude",
+          label: t("Add to .git/info/exclude"),
           disabled: !canIgnore,
           run: () => ignore(entry, true),
         },
         {
-          label: "View history",
+          label: t("View history"),
           disabled: !entryRepository,
           run: () => setHistory(entry),
         },
@@ -348,17 +350,17 @@ export function useExplorerActions(props: Props) {
           : [
               null,
               {
-                label: "Rename…",
+                label: t("Rename…"),
                 shortcut: "F2",
                 run: () => ask(entry, "rename"),
               },
               {
-                label: "Move to trash…",
+                label: t("Move to trash…"),
                 shortcut: macOS ? "⌘⌫" : "Delete",
                 run: () => ask(entry, "trash"),
               },
               {
-                label: "Delete permanently…",
+                label: t("Delete permanently…"),
                 shortcut: macOS ? "⌥⌘⌫" : "Ctrl+Delete",
                 danger: true,
                 run: () => ask(entry, "delete"),
@@ -371,14 +373,14 @@ export function useExplorerActions(props: Props) {
   const deleting = prompt?.kind === "delete" || prompt?.kind === "trash";
   const title =
     prompt?.kind === "rename"
-      ? "Rename"
+      ? t("Rename")
       : prompt?.kind === "newFile"
-        ? "New file"
+        ? t("New file")
         : prompt?.kind === "newFolder"
-          ? "New folder"
+          ? t("New folder")
           : prompt?.kind === "trash"
-            ? "Move to trash"
-            : "Delete permanently";
+            ? t("Move to trash")
+            : t("Delete permanently");
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (busy || !prompt) return;
@@ -436,10 +438,14 @@ export function useExplorerActions(props: Props) {
                     size={14}
                   />
                   <input
-                    aria-label={`${title} name`}
+                    aria-label={t("{title} name", { title })}
                     aria-invalid={!!error}
                     aria-describedby={error ? errorId : undefined}
-                    title={`Enter to ${creating ? "create" : "rename"}, Escape to cancel`}
+                    title={
+                      creating
+                        ? t("Enter to create, Escape to cancel")
+                        : t("Enter to rename, Escape to cancel")
+                    }
                     autoFocus
                     autoComplete="off"
                     spellCheck={false}
@@ -498,12 +504,20 @@ export function useExplorerActions(props: Props) {
       <form className="dialog-form dialog-layout" onSubmit={submit}>
         <div className="dialog-content">
           <p>
-            {prompt.kind === "trash" ? "Move" : "Permanently delete"}{" "}
-            <strong>{prompt.entry.name}</strong>
-            {prompt.entry.isDirectory ? " and all its contents" : ""}?{" "}
-            {prompt.kind === "delete" && "This cannot be undone."}
+            {prompt.kind === "trash"
+              ? prompt.entry.isDirectory
+                ? t("Move {name} and all its contents to the trash?", {
+                    name: prompt.entry.name,
+                  })
+                : t("Move {name} to the trash?", { name: prompt.entry.name })
+              : prompt.entry.isDirectory
+                ? t("Permanently delete {name} and all its contents?", {
+                    name: prompt.entry.name,
+                  })
+                : t("Permanently delete {name}?", { name: prompt.entry.name })}
+            {prompt.kind === "delete" && ` ${t("This cannot be undone.")}`}
             {!prompt.entry.relativePath &&
-              " This also closes the project and its terminals."}
+              ` ${t("This also closes the project and its terminals.")}`}
           </p>
           {error && (
             <p className="text-error" role="alert">
@@ -518,10 +532,10 @@ export function useExplorerActions(props: Props) {
             disabled={busy}
             onClick={() => setPrompt(undefined)}
           >
-            Cancel
+            {t("Cancel")}
           </button>
           <button type="submit" className="button text-error" disabled={busy}>
-            {busy ? "Working…" : title}
+            {busy ? t("Working…") : title}
           </button>
         </div>
       </form>
@@ -531,7 +545,7 @@ export function useExplorerActions(props: Props) {
     history && repositoryForPath(props.repositories, history.path)?.root;
   const historyDialog = history && historyRoot && (
     <Modal
-      title={`Git History · ${history.name}`}
+      title={t("Git History · {name}", { name: history.name })}
       wide
       className="file-history-dialog"
       onClose={() => setHistory(undefined)}

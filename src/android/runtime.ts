@@ -1,6 +1,7 @@
 import { Channel } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api, errorMessage, native, windows } from "../api";
+import { t } from "../i18n";
 import type { AndroidTab } from "../model";
 import { AndroidCanvas, type AndroidRenderer } from "./canvas";
 import { LinuxCanvas2D } from "./canvas-2d";
@@ -155,7 +156,7 @@ export function retain(tabs: AndroidTab[]) {
 export function start(deviceId: string): Promise<void> {
   if (stops.has(deviceId))
     return Promise.reject(
-      new Error("Wait for the phone to stop before starting it again."),
+      new Error(t("Wait for the phone to stop before starting it again.")),
     );
   const existing = starts.get(deviceId);
   if (existing) return existing.promise;
@@ -226,7 +227,7 @@ export async function choose(viewId: string, deviceId: string) {
   );
   if (!device)
     throw new Error(
-      "This Android device is unavailable. Refresh Android settings.",
+      t("This Android device is unavailable. Refresh Android settings."),
     );
   changeAndroid(viewId, { deviceId, title: device.name });
 }
@@ -851,7 +852,9 @@ async function synchronize() {
         packet.release();
         error(
           deviceId,
-          "Android sent another frame before acknowledgement. Reconnect the panel.",
+          t(
+            "Android sent another frame before acknowledgement. Reconnect the panel.",
+          ),
         );
         void disconnect(deviceId, stream);
         return;
@@ -881,7 +884,7 @@ async function synchronize() {
             (encoding === 2 && !rle32Frames)
           )
             throw new Error(
-              "Unexpected compressed Android frame. Reconnect the panel.",
+              t("Unexpected compressed Android frame. Reconnect the panel."),
             );
           const frame =
             encoding === 2

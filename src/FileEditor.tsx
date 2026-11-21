@@ -29,6 +29,7 @@ import ImagePreview from "./ImagePreview";
 import { imagePreviewType, isSvgFile } from "./image-preview";
 import SvgPreview from "./SvgPreview";
 import { useAgentPreview } from "./agent-preview";
+import { useT } from "./i18n";
 
 const MarkdownPreview = lazy(() => import("./MarkdownPreview"));
 
@@ -59,6 +60,7 @@ export default function FileEditor(props: Props) {
 }
 
 function TextFileEditor(props: Props) {
+  const { t } = useT();
   const { ready } = useEditorPreferences();
   const [document, setDocument] = useState(() => loadedEditor(props.tab));
   const [error, setError] = useState("");
@@ -86,13 +88,13 @@ function TextFileEditor(props: Props) {
           size={25}
         />
         <strong>{props.tab.title}</strong>
-        <p>{error || "Opening file…"}</p>
+        <p>{error || t("Opening file…")}</p>
         {error && (
           <button
             className="button"
             onClick={() => setAttempt((value) => value + 1)}
           >
-            Try again
+            {t("Try again")}
           </button>
         )}
       </div>
@@ -110,6 +112,7 @@ function DocumentEditor({
   onPreviewResize,
   onOpenFile,
 }: Props & { document: EditorDocument }) {
+  const { t } = useT();
   const agentPreview = useAgentPreview(tab.id);
   const status = useSyncExternalStore(document.subscribe, document.getSnapshot);
   const { bindings } = useKeybindings();
@@ -178,7 +181,10 @@ function DocumentEditor({
   const resizePreview = (ratio: number) =>
     onPreviewResize(Math.max(0.1, Math.min(0.9, ratio)));
   return (
-    <section className="file-editor" aria-label={`Editor for ${tab.title}`}>
+    <section
+      className="file-editor"
+      aria-label={t("Editor for {name}", { name: tab.title })}
+    >
       <header className="editor-heading" data-pane-drag-handle>
         <ResourceIcon path={document.path} size={15} />
         <span className="editor-path" title={document.path}>
@@ -187,28 +193,28 @@ function DocumentEditor({
         </span>
         <div className="editor-actions">
           <IconButton
-            title="Undo"
+            title={t("Undo")}
             disabled={status.readOnly || !sourceVisible}
             onClick={() => document.command("undo")}
           >
             <Undo2 size={15} />
           </IconButton>
           <IconButton
-            title="Redo"
+            title={t("Redo")}
             disabled={status.readOnly || !sourceVisible}
             onClick={() => document.command("redo")}
           >
             <Redo2 size={15} />
           </IconButton>
           <IconButton
-            title={shortcutTitle("Find in file", bindings.findFile)}
+            title={shortcutTitle(t("Find in file"), bindings.findFile)}
             disabled={!sourceVisible}
             onClick={() => document.command("findFile")}
           >
             <Search size={15} />
           </IconButton>
           <IconButton
-            title="Reload from disk"
+            title={t("Reload from disk")}
             disabled={status.saving || !!tab.untitled}
             onClick={() => setConfirmation("reload")}
           >
@@ -216,7 +222,7 @@ function DocumentEditor({
           </IconButton>
           <button
             className="button editor-save"
-            title={shortcutTitle("Save file", bindings.saveFile)}
+            title={shortcutTitle(t("Save file"), bindings.saveFile)}
             disabled={
               status.readOnly ||
               status.saving ||
@@ -226,10 +232,13 @@ function DocumentEditor({
             onClick={save}
           >
             <Save size={14} />
-            {status.saving ? "Saving…" : "Save"}
+            {status.saving ? t("Saving…") : t("Save")}
           </button>
           {onClose && (
-            <IconButton title={`Close ${tab.title} panel`} onClick={onClose}>
+            <IconButton
+              title={t("Close {name} panel", { name: tab.title })}
+              onClick={onClose}
+            >
               <X size={15} />
             </IconButton>
           )}
@@ -246,19 +255,19 @@ function DocumentEditor({
                 className="text-button"
                 onClick={() => setConfirmation("reload")}
               >
-                Reload from disk…
+                {t("Reload from disk…")}
               </button>
               <button
                 className="text-button"
                 disabled={status.saving || status.readOnly}
                 onClick={() => setConfirmation("overwrite")}
               >
-                Overwrite disk version…
+                {t("Overwrite disk version…")}
               </button>
             </>
           }
         >
-          This file changed on disk. Your edits are preserved.
+          {t("This file changed on disk. Your edits are preserved.")}
         </Notice>
       )}
       {status.error && (
@@ -281,7 +290,7 @@ function DocumentEditor({
           <div
             className="split-divider file-preview-divider"
             role="separator"
-            aria-label="Resize preview"
+            aria-label={t("Resize preview")}
             aria-orientation="vertical"
             aria-valuemin={10}
             aria-valuemax={90}
@@ -350,7 +359,7 @@ function DocumentEditor({
                 className="empty-message markdown-preview-loading"
                 role="status"
               >
-                Loading preview…
+                {t("Loading preview…")}
               </div>
             }
           >
@@ -373,8 +382,8 @@ function DocumentEditor({
           tone="warning"
           title={
             confirmation === "reload"
-              ? "Reload file from disk?"
-              : "Overwrite disk version?"
+              ? t("Reload file from disk?")
+              : t("Overwrite disk version?")
           }
           closeDisabled={busy}
           onClose={() => {
@@ -385,8 +394,12 @@ function DocumentEditor({
             <div className="dialog-content">
               <p>
                 {confirmation === "reload"
-                  ? "Reloading replaces the editor contents and clears its undo history. Any unsaved edits to this file will be discarded."
-                  : "Saving replaces the version currently on disk with your editor contents. Changes made by another program will be replaced."}
+                  ? t(
+                      "Reloading replaces the editor contents and clears its undo history. Any unsaved edits to this file will be discarded.",
+                    )
+                  : t(
+                      "Saving replaces the version currently on disk with your editor contents. Changes made by another program will be replaced.",
+                    )}
               </p>
               <p className="editor-confirm-path">{document.path}</p>
             </div>
@@ -397,7 +410,7 @@ function DocumentEditor({
                 disabled={busy}
                 onClick={() => setConfirmation(null)}
               >
-                Cancel
+                {t("Cancel")}
               </button>
               <button
                 className="button button-primary button-danger"
@@ -405,10 +418,10 @@ function DocumentEditor({
                 onClick={() => void confirm()}
               >
                 {busy
-                  ? "Working…"
+                  ? t("Working…")
                   : confirmation === "reload"
-                    ? "Reload file"
-                    : "Overwrite file"}
+                    ? t("Reload file")
+                    : t("Overwrite file")}
               </button>
             </div>
           </div>

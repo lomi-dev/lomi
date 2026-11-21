@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import type { ITheme } from "@xterm/xterm";
 const fields = [
   "foreground",
@@ -26,7 +27,7 @@ const fields = [
 ] as const;
 export function normalizePalette(value: unknown): ITheme {
   if (!value || typeof value !== "object" || Array.isArray(value))
-    throw new Error("Invalid terminal palette.");
+    throw new Error(t("Invalid terminal palette."));
   const source = value as Record<string, unknown>;
   const result: ITheme = {};
   for (const key of fields) {
@@ -38,12 +39,12 @@ export function normalizePalette(value: unknown): ITheme {
       typeof color !== "string" ||
       !/^#[\da-f]{6}(?:[\da-f]{2})?$/i.test(color)
     )
-      throw new Error(`Invalid palette color: ${key}`);
+      throw new Error(t("Invalid palette color: {key}", { key }));
     result[key] = color;
   }
   if (!result.foreground || !result.background)
     throw new Error(
-      "A terminal palette needs foreground and background colors.",
+      t("A terminal palette needs foreground and background colors."),
     );
   return result;
 }

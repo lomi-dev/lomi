@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { api, errorMessage, native } from "./api";
 import type { ControlStartupState } from "./agent-control-startup";
+import { useT } from "./i18n";
 import { Modal } from "./ui";
 import {
   registerNotificationAction,
@@ -9,6 +10,7 @@ import {
 } from "./app-notifications";
 
 export default function AgentControlStartup() {
+  const { t } = useT();
   const [state, setState] = useState<ControlStartupState>();
   const [loadError, setLoadError] = useState("");
   const reportedLoadError = useRef("");
@@ -118,7 +120,7 @@ export default function AgentControlStartup() {
       setLoadError("");
       setSaveError("");
       if (next.autoStart === null)
-        setSaveError("The startup choice was not saved.");
+        setSaveError(t("The startup choice was not saved."));
     } catch (error) {
       if (request === decisionRevision.current)
         setSaveError(errorMessage(error));
@@ -132,23 +134,33 @@ export default function AgentControlStartup() {
   const startupMessage =
     startupError && state
       ? state.autoStart
-        ? `Automatic MCP startup is enabled, but the server could not start: ${startupError} The saved choice is still enabled. Open Settings → Agent control to change it or enable control for this session.`
+        ? t(
+            "Automatic MCP startup is enabled, but the server could not start: {error} The saved choice is still enabled. Open Settings → Agent control to change it or enable control for this session.",
+            { error: startupError },
+          )
         : state.autoStart === false
-          ? `Automatic MCP startup is disabled. ${startupError}`
-          : `Could not load the saved automatic MCP startup choice: ${startupError}`
+          ? t("Automatic MCP startup is disabled. {error}", {
+              error: startupError,
+            })
+          : t(
+              "Could not load the saved automatic MCP startup choice: {error}",
+              { error: startupError },
+            )
       : "";
   useEffect(() => {
     if (loadError && loadError !== reportedLoadError.current)
       void reportAppNotification(
         {
           source: "mcp",
-          body: `Could not load automatic MCP startup settings: ${loadError}`,
+          body: t("Could not load automatic MCP startup settings: {error}", {
+            error: loadError,
+          }),
           action: "retry-mcp-startup",
         },
         { deduplicate: false },
       );
     reportedLoadError.current = loadError;
-  }, [loadError]);
+  }, [loadError, t]);
   useEffect(() => {
     if (startupMessage && startupMessage !== reportedStartupError.current)
       void reportAppNotification(
@@ -164,10 +176,10 @@ export default function AgentControlStartup() {
   useEffect(
     () =>
       registerNotificationAction("retry-mcp-startup", {
-        label: "Retry",
+        label: t("Retry"),
         run: refresh,
       }),
-    [refresh],
+    [refresh, t],
   );
   return (
     <>
@@ -175,7 +187,7 @@ export default function AgentControlStartup() {
         <Modal
           protectTheme
           tone="warning"
-          title="Start the MCP server automatically?"
+          title={t("Start the MCP server automatically?")}
           className="agent-control-startup-dialog"
           descriptionId="agent-control-startup-description"
           initialFocus={disabledButton}
@@ -190,26 +202,33 @@ export default function AgentControlStartup() {
             <div className="dialog-content">
               <div id="agent-control-startup-description">
                 <p>
-                  Lomi starts its MCP server now and on every launch, so local
-                  clients can request access to your workspaces.
+                  {t(
+                    "Lomi starts its MCP server now and on every launch, so local clients can request access to your workspaces.",
+                  )}
                 </p>
                 <ul className="dialog-points">
                   <li>
-                    Lomi approvals follow your YOLO mode choice in Settings →
-                    Agent control.
+                    {t(
+                      "Lomi approvals follow your YOLO mode choice in Settings → Agent control.",
+                    )}
                   </li>
                   <li>
-                    Your MCP client&apos;s own confirmation prompts stay
-                    independent.
+                    {t(
+                      "Your MCP client's own confirmation prompts stay independent.",
+                    )}
                   </li>
                   <li>
-                    You can change this later in Settings → Agent control.
+                    {t(
+                      "You can change this later in Settings → Agent control.",
+                    )}
                   </li>
                 </ul>
               </div>
               {saveError && (
                 <p className="keybindings-error" role="alert">
-                  Could not save your choice: {saveError}
+                  {t("Could not save your choice: {error}", {
+                    error: saveError,
+                  })}
                 </p>
               )}
             </div>
@@ -221,7 +240,7 @@ export default function AgentControlStartup() {
                 disabled={saving}
                 onClick={() => void decide(false)}
               >
-                Keep disabled
+                {t("Keep disabled")}
               </button>
               <button
                 type="button"
@@ -229,7 +248,7 @@ export default function AgentControlStartup() {
                 disabled={saving}
                 onClick={() => void decide(true)}
               >
-                {saving ? "Saving…" : "Enable automatic start"}
+                {saving ? t("Saving…") : t("Enable automatic start")}
               </button>
             </div>
           </div>

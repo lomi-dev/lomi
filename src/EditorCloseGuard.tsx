@@ -12,6 +12,7 @@ interface CloseDocument {
 import { errorMessage } from "./api";
 import { basename } from "./model";
 import { Modal } from "./ui";
+import { t, tp, useT } from "./i18n";
 
 interface Request {
   documents: CloseDocument[];
@@ -27,6 +28,7 @@ export interface EditorCloseDecision {
 }
 
 export function useEditorCloseGuard() {
+  useT();
   const descriptionId = useId();
   const [request, setRequest] = useState<Request>();
   const current = useRef<Request>(undefined);
@@ -113,7 +115,7 @@ export function useEditorCloseGuard() {
       for (const document of request.documents)
         if (document.dirty && !(await document.save())) return;
       if (request.documents.some((document) => document.dirty))
-        throw new Error("Some files still have unsaved changes.");
+        throw new Error(t("Some files still have unsaved changes."));
       if (request.cancelled) return;
       await request.decision?.onDecision("save");
       request.finish(true);
@@ -130,7 +132,7 @@ export function useEditorCloseGuard() {
     dialog: request && (
       <Modal
         protectTheme
-        title="Save changes before closing?"
+        title={t("Save changes before closing?")}
         tone="warning"
         className="editor-close-dialog"
         descriptionId={descriptionId}
@@ -142,14 +144,16 @@ export function useEditorCloseGuard() {
           <div className="dialog-content editor-close-content">
             <p id={descriptionId} className="editor-close-description">
               {request.decision && <>{request.decision.description} </>}
-              {request.documents.length === 1
-                ? "This file has unsaved changes."
-                : `${request.documents.length} files have unsaved changes.`}{" "}
-              Your edits will be lost if you discard them.
+              {tp(
+                request.documents.length,
+                "This file has unsaved changes.",
+                "{count} files have unsaved changes.",
+              )}{" "}
+              {t("Your edits will be lost if you discard them.")}
             </p>
             <ul
               className="editor-unsaved-files"
-              aria-label="Files with unsaved changes"
+              aria-label={t("Files with unsaved changes")}
             >
               {request.documents.map((document) => (
                 <li key={document.path} title={document.path}>
@@ -177,7 +181,7 @@ export function useEditorCloseGuard() {
               disabled={busy}
               onClick={() => finish(false)}
             >
-              Cancel
+              {t("Cancel")}
             </button>
             <button
               type="button"
@@ -202,7 +206,7 @@ export function useEditorCloseGuard() {
                 }
               }}
             >
-              Discard changes
+              {t("Discard changes")}
             </button>
             <button
               ref={saveButton}
@@ -212,7 +216,7 @@ export function useEditorCloseGuard() {
               onClick={() => void save()}
             >
               <Save size={14} aria-hidden="true" />
-              {busy ? "Saving…" : "Save changes"}
+              {busy ? t("Saving…") : t("Save changes")}
             </button>
           </div>
         </div>

@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
 import { layoutPositions, movePane, tabTitle } from "./model";
@@ -174,11 +175,11 @@ export function usePaneDrag(props: Props) {
         if (allowed) tabDestination = proposed;
         ghost.textContent = allowed
           ? proposed.type === "new-tab"
-            ? "Move panel to a new tab"
-            : `Move panel to ${tabTitle(hoveredTab!)}`
+            ? t("Move panel to a new tab")
+            : t("Move panel to {title}", { title: tabTitle(hoveredTab!) })
           : typeof permission === "string"
             ? permission
-            : "Cannot move panel here";
+            : t("Cannot move panel here");
         indicator.removeAttribute("style");
         indicator.textContent = "";
         delete indicator.dataset.side;
@@ -269,10 +270,10 @@ export function usePaneDrag(props: Props) {
       indicator.className = `pane-drop-preview${allowed ? "" : " is-blocked"}`;
       indicator.dataset.side = side;
       indicator.textContent = allowed
-        ? "Move panel here"
+        ? t("Move panel here")
         : typeof permission === "string"
           ? permission
-          : "Not enough room for these panels";
+          : t("Not enough room for these panels");
       Object.assign(indicator.style, {
         left: `${area.left + proposed.left}px`,
         top: `${area.top + proposed.top}px`,

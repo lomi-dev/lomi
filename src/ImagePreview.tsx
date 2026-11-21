@@ -6,6 +6,7 @@ import { imagePreviewType } from "./image-preview";
 import ResourceIcon from "./ResourceIcon";
 import { IconButton } from "./ui";
 import { useAgentPreview } from "./agent-preview";
+import { t as translate, useT } from "./i18n";
 
 export default function ImagePreview({
   tab,
@@ -20,6 +21,7 @@ export default function ImagePreview({
   sourceText?: string;
   children?: ReactNode;
 }) {
+  const { t } = useT();
   const prepared = useAgentPreview(tab.id)?.image;
   const [source, setSource] = useState("");
   const [error, setError] = useState("");
@@ -43,14 +45,18 @@ export default function ImagePreview({
     };
     reader.onerror = () => {
       if (current)
-        setError("Cannot read this image. Try reloading it from disk.");
+        setError(
+          translate("Cannot read this image. Try reloading it from disk."),
+        );
     };
     if (sourceText === undefined && tab.agentPreview) {
       if (prepared)
         setSource(`data:${prepared.mimeType};base64,${prepared.dataBase64}`);
       else
         setError(
-          "Reopen this preview through Agent control to load the image.",
+          translate(
+            "Reopen this preview through Agent control to load the image.",
+          ),
         );
     } else if (sourceText !== undefined) {
       reader.readAsDataURL(
@@ -104,7 +110,7 @@ export default function ImagePreview({
   return (
     <section
       className="file-editor image-preview"
-      aria-label={`Image preview for ${tab.title}`}
+      aria-label={t("Image preview for {name}", { name: tab.title })}
     >
       <header className="editor-heading" data-pane-drag-handle>
         {sourceText === undefined && (
@@ -117,7 +123,7 @@ export default function ImagePreview({
         )}
         <div className="editor-actions">
           <IconButton
-            title="Zoom out"
+            title={t("Zoom out")}
             disabled={!ready || (typeof zoom === "number" && zoom <= 0.1)}
             onClick={() => changeZoom(0.8)}
           >
@@ -125,7 +131,7 @@ export default function ImagePreview({
           </IconButton>
           <button
             className="button"
-            title={prepared ? "Preview pixels" : "Actual size"}
+            title={prepared ? t("Preview pixels") : t("Actual size")}
             disabled={!ready}
             aria-pressed={zoom === 1}
             onClick={() => setZoom(1)}
@@ -133,7 +139,7 @@ export default function ImagePreview({
             100%
           </button>
           <IconButton
-            title="Zoom in"
+            title={t("Zoom in")}
             disabled={!ready || zoom === 8}
             onClick={() => changeZoom(1.25)}
           >
@@ -141,23 +147,23 @@ export default function ImagePreview({
           </IconButton>
           <button
             className="button"
-            title="Fit image to panel"
+            title={t("Fit image to panel")}
             disabled={!ready}
             aria-pressed={zoom === "fit"}
             onClick={() => setZoom("fit")}
           >
-            Fit
+            {t("Fit")}
           </button>
           {sourceText === undefined && !tab.agentPreview && (
             <IconButton
-              title="Reload image from disk"
+              title={t("Reload image from disk")}
               onClick={() => setAttempt((value) => value + 1)}
             >
               <RotateCcw size={15} />
             </IconButton>
           )}
           {onClose && (
-            <IconButton title="Close panel" onClick={onClose}>
+            <IconButton title={t("Close panel")} onClick={onClose}>
               <X size={15} />
             </IconButton>
           )}
@@ -168,24 +174,24 @@ export default function ImagePreview({
           className="image-viewport"
           ref={viewport}
           tabIndex={0}
-          aria-label={`View ${tab.title}`}
+          aria-label={t("View {name}", { name: tab.title })}
         >
           {error ? (
             <div className="empty-message" role="alert">
-              <strong>Cannot display image</strong>
+              <strong>{t("Cannot display image")}</strong>
               <p>{error}</p>
               <button
                 className="button"
                 onClick={() => setAttempt((value) => value + 1)}
               >
-                Try again
+                {t("Try again")}
               </button>
             </div>
           ) : (
             <>
               {!ready && (
                 <div className="empty-message image-loading" role="status">
-                  Opening image…
+                  {t("Opening image…")}
                 </div>
               )}
               {source && (
@@ -212,7 +218,9 @@ export default function ImagePreview({
                     }
                     onError={() =>
                       setError(
-                        "The file is damaged or its image format is not supported by this system.",
+                        t(
+                          "The file is damaged or its image format is not supported by this system.",
+                        ),
                       )
                     }
                   />

@@ -29,6 +29,7 @@ import {
 } from "./browser-runtime";
 import { errorMessage } from "./api";
 import { IconButton } from "./ui";
+import { useT } from "./i18n";
 
 export default function BrowserPane({
   tab,
@@ -41,6 +42,7 @@ export default function BrowserPane({
   onClose?: () => void;
   overview?: boolean;
 }) {
+  const { t } = useT();
   const page = useSyncExternalStore(subscribeBrowsers, () =>
     browserSnapshot(tab),
   );
@@ -154,7 +156,7 @@ export default function BrowserPane({
   return (
     <section
       className="browser-pane"
-      aria-label="Browser"
+      aria-label={t("Browser")}
       data-browser-pane-id={tab.id}
       onPointerDownCapture={onFocus}
       onFocusCapture={onFocus}
@@ -175,7 +177,7 @@ export default function BrowserPane({
       <form
         className="browser-toolbar"
         data-pane-drag-handle
-        aria-label="Browser navigation"
+        aria-label={t("Browser navigation")}
         onSubmit={(event) => {
           event.preventDefault();
           try {
@@ -194,27 +196,29 @@ export default function BrowserPane({
             type="button"
             className="browser-control"
             onClick={() => run({ type: "takeControl" })}
-            title="End agent access and keep browsing in this isolated profile."
+            title={t(
+              "End agent access and keep browsing in this isolated profile.",
+            )}
           >
-            Agent · Take control
+            {t("Agent · Take control")}
           </button>
         )}
         <IconButton
-          title="Back"
+          title={t("Back")}
           disabled={tab.url === "about:blank"}
           onClick={() => run({ type: "back" })}
         >
           <ArrowLeft size={14} />
         </IconButton>
         <IconButton
-          title="Forward"
+          title={t("Forward")}
           disabled={tab.url === "about:blank"}
           onClick={() => run({ type: "forward" })}
         >
           <ArrowRight size={14} />
         </IconButton>
         <IconButton
-          title={page.loading ? "Stop loading" : "Reload page"}
+          title={page.loading ? t("Stop loading") : t("Reload page")}
           disabled={tab.url === "about:blank"}
           onClick={() => run({ type: page.loading ? "stop" : "reload" })}
         >
@@ -222,7 +226,7 @@ export default function BrowserPane({
         </IconButton>
         <input
           ref={address}
-          aria-label="Web address"
+          aria-label={t("Web address")}
           role="combobox"
           aria-autocomplete="list"
           aria-expanded={suggesting}
@@ -232,7 +236,7 @@ export default function BrowserPane({
               ? `${suggestionsId}-${activeIndex}`
               : undefined
           }
-          placeholder="Search or enter address"
+          placeholder={t("Search or enter address")}
           value={value}
           spellCheck={false}
           autoCapitalize="off"
@@ -280,13 +284,13 @@ export default function BrowserPane({
           popover="auto"
           className="select-menu browser-servers"
           role="listbox"
-          aria-label="Local web servers"
+          aria-label={t("Local web servers")}
           aria-busy={servers === null}
           onBeforeToggle={(event) => setSuggesting(event.newState === "open")}
           onPointerDown={(event) => event.preventDefault()}
         >
           <div className="browser-message" role="presentation">
-            Local web servers
+            {t("Local web servers")}
           </div>
           {matches.map((url, index) => (
             <div
@@ -309,15 +313,15 @@ export default function BrowserPane({
             <div className="browser-message" role="status">
               {serverError ||
                 (servers === null
-                  ? "Looking for local servers…"
+                  ? t("Looking for local servers…")
                   : servers.length
-                    ? "No matching servers."
-                    : "No local HTTP servers found.")}
+                    ? t("No matching servers.")
+                    : t("No local HTTP servers found."))}
             </div>
           )}
         </div>
         <IconButton
-          title="Open in default browser"
+          title={t("Open in default browser")}
           disabled={tab.url === "about:blank"}
           onClick={() => {
             void openUrl(tab.url).catch((error) =>
@@ -328,7 +332,7 @@ export default function BrowserPane({
           <ExternalLink size={14} />
         </IconButton>
         {onClose && (
-          <IconButton title="Close browser panel" onClick={onClose}>
+          <IconButton title={t("Close browser panel")} onClick={onClose}>
             <X size={14} />
           </IconButton>
         )}
@@ -344,7 +348,7 @@ export default function BrowserPane({
           <Search size={14} />
           <input
             ref={find}
-            aria-label="Find in page"
+            aria-label={t("Find in page")}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
@@ -359,19 +363,19 @@ export default function BrowserPane({
             }}
           />
           <IconButton
-            title="Find previous"
+            title={t("Find previous")}
             onClick={() => run({ type: "find", text: query, backwards: true })}
           >
             <ArrowLeft size={14} />
           </IconButton>
           <IconButton
-            title="Find next"
+            title={t("Find next")}
             onClick={() => run({ type: "find", text: query, backwards: false })}
           >
             <ArrowRight size={14} />
           </IconButton>
           <IconButton
-            title="Close page search"
+            title={t("Close page search")}
             onClick={() => setSearching(false)}
           >
             <X size={14} />
@@ -391,14 +395,16 @@ export default function BrowserPane({
       <div
         className="browser-viewport"
         ref={host}
-        aria-label="Web page"
+        aria-label={t("Web page")}
         aria-busy={page.loading}
       >
         {(tab.url === "about:blank" || overview) && (
           <div className="empty-message">
             <Globe size={28} />
-            <h2>{overview ? tab.title : "Browse the web"}</h2>
-            <p>{overview ? tab.url : "Enter a web address or search above."}</p>
+            <h2>{overview ? tab.title : t("Browse the web")}</h2>
+            <p>
+              {overview ? tab.url : t("Enter a web address or search above.")}
+            </p>
           </div>
         )}
       </div>

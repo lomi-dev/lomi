@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 interface RepositoryState {
   message: string;
   busy: boolean;
@@ -46,7 +47,7 @@ export class SourceControlState {
   }
   async run(root: string, action: () => Promise<void>, progress = "") {
     if (this.repository(root).busy)
-      throw new Error("Wait for the current Git operation to finish.");
+      throw new Error(t("Wait for the current Git operation to finish."));
     this.update(root, { busy: true, remoteStatus: progress });
     try {
       await action();

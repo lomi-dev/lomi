@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import { macOS } from "../api";
+import { useT } from "../i18n";
 import { ArrowUp, Paperclip, Square } from "../icons";
 import { IconButton } from "../ui";
 import { PendingAttachments } from "./Attachments";
@@ -42,6 +43,7 @@ export default function ThreadComposer({
   onPasteImages: (files: File[]) => void;
   onRemoveAttachment: (id: string) => void;
 }) {
+  const { t } = useT();
   const field = useRef<HTMLTextAreaElement>(null);
   useLayoutEffect(() => {
     const element = field.current;
@@ -76,7 +78,7 @@ export default function ThreadComposer({
         rows={1}
         value={value}
         placeholder={placeholder}
-        aria-label="Message"
+        aria-label={t("Message")}
         onChange={(event) => onChange(event.target.value)}
         onPaste={(event) => {
           const images = Array.from(event.clipboardData.files).filter((file) =>
@@ -101,16 +103,22 @@ export default function ThreadComposer({
         }}
       />
       <div className="thread-composer-bar">
-        <IconButton title="Attach files" disabled={disabled} onClick={onPick}>
+        <IconButton
+          title={t("Attach files")}
+          disabled={disabled}
+          onClick={onPick}
+        >
           <Paperclip size={16} />
         </IconButton>
         {picker}
         <span className="thread-composer-hint">
-          {sendKey === "enter" ? "Enter to send" : `${modifier} Enter to send`}
+          {sendKey === "enter"
+            ? t("Enter to send")
+            : t("{modifier} Enter to send", { modifier })}
         </span>
         {running ? (
           <IconButton
-            title="Stop"
+            title={t("Stop")}
             className="thread-send thread-stop"
             onClick={onStop}
           >
@@ -118,7 +126,7 @@ export default function ThreadComposer({
           </IconButton>
         ) : (
           <IconButton
-            title="Send"
+            title={t("Send")}
             className="thread-send"
             disabled={!canSend}
             onClick={onSend}

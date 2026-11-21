@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { errorMessage } from "../api";
+import { useT } from "../i18n";
 import { History, Plus } from "../icons";
 import { newId, type ThreadTab } from "../model";
 import { IconButton, Modal } from "../ui";
@@ -38,6 +39,7 @@ export default function ThreadPane({
   onClose: () => void;
   onChange: (change: TabChange) => void;
 }) {
+  const { t } = useT();
   const { entries, settings } = useChatProviders();
   const { view, state } = useThreadView(tab.threadId);
   const thread = state.snapshot?.thread;
@@ -111,9 +113,9 @@ export default function ThreadPane({
     ) || state.busy;
   const blockReason =
     entry && !entry.available
-      ? (entry.unavailableReason ?? "This provider is unavailable.")
+      ? (entry.unavailableReason ?? t("This provider is unavailable."))
       : !entry
-        ? "No provider is available. Add one in Settings → Chat AI."
+        ? t("No provider is available. Add one in Settings → Chat AI.")
         : null;
 
   const edit = useCallback(
@@ -179,7 +181,7 @@ export default function ThreadPane({
         getThreadView(threadId).seed(summary);
         onChange({ threadId, title: summary.title });
       }
-      if (!summary) throw new Error("The chat is still loading.");
+      if (!summary) throw new Error(t("The chat is still loading."));
       const sendView = getThreadView(threadId);
       const revision =
         sendView.state.snapshot?.thread.revision ?? summary.revision;
@@ -250,7 +252,7 @@ export default function ThreadPane({
             autoFocus
             value={renaming}
             maxLength={200}
-            aria-label="Chat title"
+            aria-label={t("Chat title")}
             onChange={(event) => setRenaming(event.target.value)}
             onBlur={() => void commitRename()}
             onKeyDown={(event) => {
@@ -262,20 +264,20 @@ export default function ThreadPane({
         ) : (
           <strong
             className="thread-title"
-            title="Double-click to rename"
+            title={t("Double-click to rename")}
             onDoubleClick={() => setRenaming(title)}
           >
             {title}
           </strong>
         )}
         <IconButton
-          title="History"
+          title={t("History")}
           aria-pressed={historyOpen}
           onClick={() => setHistoryOpen((open) => !open)}
         >
           <History size={15} />
         </IconButton>
-        <IconButton title="New chat" onClick={newChat}>
+        <IconButton title={t("New chat")} onClick={newChat}>
           <Plus size={16} />
         </IconButton>
       </header>
@@ -283,22 +285,22 @@ export default function ThreadPane({
         <div className="thread-main">
           {tab.threadId && !state.loaded && (
             <p className="thread-empty" role="status">
-              Loading chat…
+              {t("Loading chat…")}
             </p>
           )}
           {state.missing && (
             <div className="thread-empty" role="status">
-              <p>This thread was deleted.</p>
+              <p>{t("This thread was deleted.")}</p>
               <button type="button" className="button" onClick={newChat}>
-                New chat
+                {t("New chat")}
               </button>
             </div>
           )}
           {!state.missing && fresh && !items.length && (
             <div className="thread-empty">
-              <p className="thread-empty-title">New chat</p>
+              <p className="thread-empty-title">{t("New chat")}</p>
               <p className="thread-note">
-                Pick a provider and model below, then write a message.
+                {t("Pick a provider and model below, then write a message.")}
               </p>
             </div>
           )}
@@ -330,7 +332,7 @@ export default function ThreadPane({
                   (tab.threadId !== null && !state.loaded)
                 }
                 sendKey={settings?.behavior.sendKey ?? "enter"}
-                placeholder="Message"
+                placeholder={t("Message")}
                 focusKey={focusKey || undefined}
                 attachments={attach.items}
                 importing={attach.importing}
@@ -368,14 +370,17 @@ export default function ThreadPane({
       </div>
       {dragging && (
         <div className="thread-drop" aria-hidden="true">
-          Drop files to attach
+          {t("Drop files to attach")}
         </div>
       )}
       {confirmNew && (
-        <Modal title="Start a new chat?" onClose={() => setConfirmNew(false)}>
+        <Modal
+          title={t("Start a new chat?")}
+          onClose={() => setConfirmNew(false)}
+        >
           <div className="dialog-form dialog-layout">
             <div className="dialog-content">
-              <p>The current chat stays in this workspace's history.</p>
+              <p>{t("The current chat stays in this workspace's history.")}</p>
             </div>
             <div className="dialog-actions">
               <button
@@ -383,7 +388,7 @@ export default function ThreadPane({
                 className="button"
                 onClick={() => setConfirmNew(false)}
               >
-                Cancel
+                {t("Cancel")}
               </button>
               <button
                 type="button"
@@ -391,7 +396,7 @@ export default function ThreadPane({
                 autoFocus
                 onClick={startNewChat}
               >
-                New chat
+                {t("New chat")}
               </button>
             </div>
           </div>

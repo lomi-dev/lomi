@@ -2,6 +2,7 @@ import { useId, useState } from "react";
 import Select from "../Select";
 import { DisclosureSummary, Modal } from "../ui";
 import { errorMessage } from "../api";
+import { msg, useT } from "../i18n";
 import {
   imageTitle,
   imageDescription,
@@ -26,6 +27,7 @@ export default function DeviceForm({
     draft: Pick<Device, "name" | "image" | "profile" | "hardware">,
   ) => Promise<void>;
 }) {
+  const { t } = useT();
   const id = useId();
   const images = Object.values(snapshot.packages?.packages ?? {})
     .filter((pkg) => pkg.id.startsWith("system-images;"))
@@ -68,7 +70,11 @@ export default function DeviceForm({
   return (
     <Modal
       className="android-dialog"
-      title={device ? `Configure ${device.name}` : "Create Android device"}
+      title={
+        device
+          ? t("Configure {name}", { name: device.name })
+          : t("Create Android device")
+      }
       closeDisabled={busy}
       onClose={() => {
         if (!busy) onClose();
@@ -105,7 +111,7 @@ export default function DeviceForm({
       >
         <div className="dialog-content android-device-form">
           <div className="android-form-field">
-            <label htmlFor={`${id}-name`}>Name</label>
+            <label htmlFor={`${id}-name`}>{t("Name")}</label>
             <input
               id={`${id}-name`}
               autoFocus
@@ -119,7 +125,7 @@ export default function DeviceForm({
             />
           </div>
           <div className="android-form-field">
-            <label htmlFor={`${id}-image`}>Android version</label>
+            <label htmlFor={`${id}-image`}>{t("Android version")}</label>
             <Select
               id={`${id}-image`}
               value={image}
@@ -142,16 +148,16 @@ export default function DeviceForm({
             <p id={`${id}-image-help`} className="settings-help">
               {selectedImage
                 ? imageDescription(selectedImage)
-                : "Download an Android version first."}
+                : t("Download an Android version first.")}
             </p>
             {device && (
               <p className="settings-help">
-                To use another Android version, create a new phone.
+                {t("To use another Android version, create a new phone.")}
               </p>
             )}
           </div>
           <div className="android-form-field">
-            <label htmlFor={`${id}-profile`}>Phone profile</label>
+            <label htmlFor={`${id}-profile`}>{t("Phone profile")}</label>
             <Select
               id={`${id}-profile`}
               value={profile}
@@ -163,30 +169,39 @@ export default function DeviceForm({
                 label:
                   selectedImage && compatibleProfile(item, selectedImage)
                     ? item.name
-                    : `${item.name} · needs ${androidVersion(item.minApi, item.minMinorApi)}`,
+                    : t("{name} · needs {version}", {
+                        name: item.name,
+                        version: androidVersion(item.minApi, item.minMinorApi),
+                      }),
                 disabled:
                   !selectedImage || !compatibleProfile(item, selectedImage),
               }))}
             />
             {selected && (
               <p className="settings-help" id={`${id}-profile-help`}>
-                {selected.width} × {selected.height} · {selected.dpi} DPI ·
-                Screen size and density only.
+                {t(
+                  "{width} × {height} · {dpi} DPI · Screen size and density only.",
+                  {
+                    width: selected.width,
+                    height: selected.height,
+                    dpi: selected.dpi,
+                  },
+                )}
               </p>
             )}
           </div>
           <details className="android-form-advanced">
-            <DisclosureSummary>Advanced settings</DisclosureSummary>
+            <DisclosureSummary>{t("Advanced settings")}</DisclosureSummary>
             <div className="android-form-grid">
               {(
                 [
-                  ["ramMib", "Memory (MiB)", 2560, 32768],
-                  ["cpuCount", "CPU cores", 1, 32],
-                  ["dataGib", "Data capacity (GiB)", 2, 128],
+                  ["ramMib", msg("Memory (MiB)"), 2560, 32768],
+                  ["cpuCount", msg("CPU cores"), 1, 32],
+                  ["dataGib", msg("Data capacity (GiB)"), 2, 128],
                 ] as const
               ).map(([key, label, min, max]) => (
                 <label key={key}>
-                  {label}
+                  {t(label)}
                   <input
                     type="number"
                     min={min}
@@ -205,7 +220,7 @@ export default function DeviceForm({
                 </label>
               ))}
               <label htmlFor={`${id}-graphics`}>
-                Graphics
+                {t("Graphics")}
                 <Select
                   id={`${id}-graphics`}
                   value={hardware.gpu}
@@ -214,25 +229,27 @@ export default function DeviceForm({
                     setHardware({ ...hardware, gpu: gpu as Hardware["gpu"] })
                   }
                   options={[
-                    { value: "auto", label: "Automatic" },
-                    { value: "host", label: "Host GPU" },
-                    { value: "software", label: "Software" },
+                    { value: "auto", label: t("Automatic") },
+                    { value: "host", label: t("Host GPU") },
+                    { value: "software", label: t("Software") },
                   ]}
                 />
               </label>
             </div>
             <p className="settings-help">
-              Host GPU gives the best performance. Software rendering uses more
-              CPU.
+              {t(
+                "Host GPU gives the best performance. Software rendering uses more CPU.",
+              )}
             </p>
             <p className="settings-help">
-              Phones start with a cold boot. Audio, cameras and microphone are
-              disabled.
+              {t(
+                "Phones start with a cold boot. Audio, cameras and microphone are disabled.",
+              )}
             </p>
           </details>
           {device && (
             <p className="settings-help">
-              Hardware changes apply after you stop and start the phone.
+              {t("Hardware changes apply after you stop and start the phone.")}
             </p>
           )}
           {!device && (
@@ -246,11 +263,12 @@ export default function DeviceForm({
                   required
                   aria-describedby={`${id}-input-help`}
                 />
-                Enable Lomi text input
+                {t("Enable Lomi text input")}
               </label>
               <p id={`${id}-input-help`} className="settings-help">
-                Installs and selects the Lomi keyboard in this phone so you can
-                type in any language. Typed text stays local.
+                {t(
+                  "Installs and selects the Lomi keyboard in this phone so you can type in any language. Typed text stays local.",
+                )}
               </p>
             </div>
           )}
@@ -267,13 +285,17 @@ export default function DeviceForm({
             disabled={busy}
             onClick={onClose}
           >
-            Cancel
+            {t("Cancel")}
           </button>
           <button
             className="button button-primary"
             disabled={busy || !input || !image || !profile || !compatible}
           >
-            {busy ? "Saving…" : device ? "Save configuration" : "Create device"}
+            {busy
+              ? t("Saving…")
+              : device
+                ? t("Save configuration")
+                : t("Create device")}
           </button>
         </div>
       </form>

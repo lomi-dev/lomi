@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { api, errorMessage } from "../api.ts";
 import type { CliAgent } from "../cli-agents.ts";
+import { t, tp } from "../i18n.ts";
 import type {
   ChatSettings,
   CliStatus,
@@ -59,12 +60,14 @@ export function pickableModels(models: readonly ModelEntry[]) {
 export type CliStatuses = Readonly<Record<string, CliStatus | undefined>>;
 
 export function cliStatusLine(status: CliStatus | undefined) {
-  if (!status) return "Checking…";
-  if (!status.binaryPath) return "Not installed";
-  if (status.signedIn === false) return "Not signed in";
+  if (!status) return t("Checking…");
+  if (!status.binaryPath) return t("Not installed");
+  if (status.signedIn === false) return t("Not signed in");
   if (status.signedIn)
-    return `Signed in${status.plan ? ` · ${status.plan}` : ""}`;
-  return "Sign-in unknown";
+    return status.plan
+      ? t("Signed in · {plan}", { plan: status.plan })
+      : t("Signed in");
+  return t("Sign-in unknown");
 }
 
 export function mergeProviders(
@@ -86,12 +89,12 @@ export function mergeProviders(
       unavailableReason: available
         ? null
         : !provider.enabled
-          ? "This provider is disabled."
+          ? t("This provider is disabled.")
           : !status
-            ? "Checking the CLI…"
+            ? t("Checking the CLI…")
             : !found
-              ? "The CLI is not installed."
-              : "Not signed in. Run the CLI login in a terminal.",
+              ? t("The CLI is not installed.")
+              : t("Not signed in. Run the CLI login in a terminal."),
       statusLine: cliStatusLine(status),
       versionLabel: status?.version ?? null,
       models: [],
@@ -101,7 +104,7 @@ export function mergeProviders(
   }
   for (const provider of settings.apiProviders) {
     const count = provider.models.length;
-    const models = `${count} ${count === 1 ? "model" : "models"}`;
+    const models = tp(count, "{count} model", "{count} models");
     const keyless = provider.kind === "openai-compatible";
     entries.push({
       instanceId: provider.instanceId,
@@ -111,15 +114,15 @@ export function mergeProviders(
       enabled: provider.enabled,
       available: provider.enabled && (provider.apiKeySet || keyless),
       unavailableReason: !provider.enabled
-        ? "This provider is disabled."
+        ? t("This provider is disabled.")
         : provider.apiKeySet || keyless
           ? null
-          : "The API key is missing.",
+          : t("The API key is missing."),
       statusLine: provider.apiKeySet
-        ? `API key stored · ${models}`
+        ? t("API key stored · {models}", { models })
         : keyless
-          ? `No API key · ${models}`
-          : "API key missing",
+          ? t("No API key · {models}", { models })
+          : t("API key missing"),
       versionLabel: host(provider.baseUrl),
       models: pickableModels(provider.models),
       modelPrefs: provider.models,
@@ -212,7 +215,7 @@ export function useChatProviders() {
   }, [clis, refreshStatus]);
   const run = useCallback(
     async (name: string, request: Record<string, unknown>) => {
-      if (busyRef.current) throw new Error("An operation is in progress.");
+      if (busyRef.current) throw new Error(t("An operation is in progress."));
       busyRef.current = true;
       setBusy(true);
       setError("");

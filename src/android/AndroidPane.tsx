@@ -9,6 +9,7 @@ import {
 import { readText } from "@tauri-apps/plugin-clipboard-manager";
 import type { AndroidTab } from "../model";
 import { api, errorMessage } from "../api";
+import { useT } from "../i18n";
 import {
   ArrowLeft,
   Camera,
@@ -84,6 +85,7 @@ export default function AndroidPane({
   onClose?: () => void;
   overview?: boolean;
 }) {
+  const { t } = useT();
   const state = useAndroid();
   const snapshot = state.snapshot;
   const device = snapshot?.devices?.devices.find(
@@ -233,13 +235,13 @@ export default function AndroidPane({
     >
       <aside
         className="android-toolbar"
-        aria-label="Phone controls"
+        aria-label={t("Phone controls")}
         data-pane-drag-handle
       >
         {onClose && (
           <IconButton
             className="icon-button android-toolbar-close"
-            title="Close Android panel"
+            title={t("Close Android panel")}
             onClick={onClose}
           >
             <X size={14} />
@@ -249,24 +251,24 @@ export default function AndroidPane({
           <div
             className="android-navigation android-toolbar-group"
             role="group"
-            aria-label="Android navigation"
+            aria-label={t("Android navigation")}
           >
             <IconButton
-              title="Android back"
+              title={t("Android back")}
               disabled={!running || overview}
               onClick={() => control({ type: "navigation", key: "GoBack" })}
             >
               <ArrowLeft size={14} />
             </IconButton>
             <IconButton
-              title="Android home"
+              title={t("Android home")}
               disabled={!running || overview}
               onClick={() => control({ type: "navigation", key: "GoHome" })}
             >
               <Circle size={13} />
             </IconButton>
             <IconButton
-              title="Android Recent apps"
+              title={t("Android Recent apps")}
               disabled={!running || overview}
               onClick={() => control({ type: "navigation", key: "AppSwitch" })}
             >
@@ -276,17 +278,17 @@ export default function AndroidPane({
           <div
             className="android-toolbar-group"
             role="group"
-            aria-label="Phone screen"
+            aria-label={t("Phone screen")}
           >
             <IconButton
-              title="Toggle phone screen"
+              title={t("Toggle phone screen")}
               disabled={!running || overview}
               onClick={() => control({ type: "navigation", key: "Power" })}
             >
               <Power size={16} />
             </IconButton>
             <IconButton
-              title="Rotate phone"
+              title={t("Rotate phone")}
               disabled={!running || overview}
               onClick={rotatePhone}
             >
@@ -296,17 +298,17 @@ export default function AndroidPane({
           <div
             className="android-toolbar-group"
             role="group"
-            aria-label="Phone files"
+            aria-label={t("Phone files")}
           >
             <IconButton
-              title="Install APK…"
+              title={t("Install APK…")}
               disabled={busy || !running || overview}
               onClick={() => fileAction("android_install_apk")}
             >
               <Import size={16} />
             </IconButton>
             <IconButton
-              title="Save screenshot…"
+              title={t("Save screenshot…")}
               disabled={busy || !running || overview}
               onClick={() => fileAction("android_save_screenshot")}
             >
@@ -318,8 +320,8 @@ export default function AndroidPane({
           ref={button}
           type="button"
           className="icon-button android-toolbar-more"
-          title="Android actions"
-          aria-label="Android actions"
+          title={t("Android actions")}
+          aria-label={t("Android actions")}
           aria-haspopup="menu"
           aria-expanded={!!menu}
           disabled={overview}
@@ -344,44 +346,47 @@ export default function AndroidPane({
           stream?.phase === "disconnected") && (
           <div className="android-placeholder">
             {overview ? (
-              <PhoneState title="Android is running">
+              <PhoneState title={t("Android is running")}>
                 <p>
-                  Android continues running. Select this panel to resume its
-                  screen.
+                  {t(
+                    "Android continues running. Select this panel to resume its screen.",
+                  )}
                 </p>
               </PhoneState>
             ) : state.loading && !snapshot ? (
-              <PhoneState title="Checking Android…">
-                <p>Looking for your devices and Android tools.</p>
+              <PhoneState title={t("Checking Android…")}>
+                <p>{t("Looking for your devices and Android tools.")}</p>
               </PhoneState>
             ) : snapshot && !snapshot.qualified && !status?.processAlive ? (
               <PhoneState
-                title="Android is unavailable on this computer"
+                title={t("Android is unavailable on this computer")}
                 icon={<CircleAlert size={22} />}
                 actions={
                   <button className="button" onClick={setup}>
-                    Android settings
+                    {t("Android settings")}
                   </button>
                 }
               >
                 <p>
-                  Android setup and Start are unavailable on {snapshot.host} in
-                  this build. Use a Lomi build qualified for this operating
-                  system and CPU.
+                  {t(
+                    "Android setup and Start are unavailable on {host} in this build. Use a Lomi build qualified for this operating system and CPU.",
+                    { host: snapshot.host },
+                  )}
                 </p>
               </PhoneState>
             ) : !ready ? (
               <PhoneState
-                title="Bring Android into your workspace"
+                title={t("Bring Android into your workspace")}
                 actions={
                   <button className="button button-primary" onClick={setup}>
-                    Set up Android
+                    {t("Set up Android")}
                   </button>
                 }
               >
                 <p>
-                  Run a virtual phone alongside your code. Set up Android to
-                  choose a device and get started.
+                  {t(
+                    "Run a virtual phone alongside your code. Set up Android to choose a device and get started.",
+                  )}
                 </p>
               </PhoneState>
             ) : !device ? (
@@ -406,7 +411,7 @@ export default function AndroidPane({
               />
             ) : running && stream?.phase === "sleeping" ? (
               <PhoneState
-                title="Your phone screen is asleep"
+                title={t("Your phone screen is asleep")}
                 icon={<Moon size={22} />}
                 actions={
                   <button
@@ -415,38 +420,39 @@ export default function AndroidPane({
                       control({ type: "navigation", key: "Power" })
                     }
                   >
-                    Wake phone
+                    {t("Wake phone")}
                   </button>
                 }
               >
-                <p>The phone screen is asleep.</p>
+                <p>{t("The phone screen is asleep.")}</p>
               </PhoneState>
             ) : running ? (
               <PhoneState
-                title="Reconnect to your phone"
+                title={t("Reconnect to your phone")}
                 icon={<RotateCw size={22} />}
                 actions={
                   <button
                     className="button button-primary"
                     onClick={() => runtime?.reconnect(device.id)}
                   >
-                    Reconnect
+                    {t("Reconnect")}
                   </button>
                 }
               >
                 <p>
-                  The screen is disconnected. Your Android apps are still
-                  running.
+                  {t(
+                    "The screen is disconnected. Your Android apps are still running.",
+                  )}
                 </p>
               </PhoneState>
             ) : (
               <PhoneState
                 title={
                   status?.processAlive
-                    ? "Stop the previous phone session"
+                    ? t("Stop the previous phone session")
                     : status?.phase === "failed"
-                      ? "Your phone couldn’t start"
-                      : "Start your phone"
+                      ? t("Your phone couldn’t start")
+                      : t("Start your phone")
                 }
                 icon={
                   status?.processAlive || status?.phase === "failed" ? (
@@ -472,14 +478,14 @@ export default function AndroidPane({
                       }
                     >
                       {status?.processAlive
-                        ? "Retry stop"
+                        ? t("Retry stop")
                         : status?.phase === "failed"
-                          ? "Retry start"
-                          : "Start"}
+                          ? t("Retry start")
+                          : t("Start")}
                     </button>
                     {status?.processAlive && (
                       <button className="button" onClick={() => setForce(true)}>
-                        Force stop…
+                        {t("Force stop…")}
                       </button>
                     )}
                   </>
@@ -487,8 +493,10 @@ export default function AndroidPane({
               >
                 <p>
                   {status?.processAlive
-                    ? "The previous phone process is still running. Stop it before retrying."
-                    : "Android is stopped. Its apps and data are kept."}
+                    ? t(
+                        "The previous phone process is still running. Stop it before retrying.",
+                      )
+                    : t("Android is stopped. Its apps and data are kept.")}
                 </p>
               </PhoneState>
             )}
@@ -509,15 +517,17 @@ export default function AndroidPane({
               })
             }
           >
-            Agent input · Take control
+            {t("Agent input · Take control")}
           </button>
         )}
       <textarea
         ref={input}
         className="android-input"
         data-android-input
-        aria-label="Android phone input"
-        aria-description="Type into the focused phone. Tab leaves the screen. Alt-drag performs a mirrored two-finger gesture."
+        aria-label={t("Android phone input")}
+        aria-description={t(
+          "Type into the focused phone. Tab leaves the screen. Alt-drag performs a mirrored two-finger gesture.",
+        )}
         autoCapitalize="off"
         autoComplete="off"
         spellCheck={false}
@@ -526,12 +536,12 @@ export default function AndroidPane({
       {menu && (
         <ContextMenu
           {...menu}
-          label="Android actions"
+          label={t("Android actions")}
           trigger={button}
           onClose={() => setMenu(null)}
           actions={[
             {
-              label: "Start",
+              label: t("Start"),
               disabled:
                 busy ||
                 starting ||
@@ -545,12 +555,12 @@ export default function AndroidPane({
                 ),
             },
             {
-              label: "Stop",
+              label: t("Stop"),
               disabled: stopping || (!starting && !status?.processAlive),
               run: stopPhone,
             },
             {
-              label: "Restart (cold boot)",
+              label: t("Restart (cold boot)"),
               disabled:
                 busy || starting || stopping || !device || !snapshot?.qualified,
               run: () =>
@@ -559,22 +569,22 @@ export default function AndroidPane({
                 ),
             },
             {
-              label: "Rotate phone",
+              label: t("Rotate phone"),
               disabled: !running,
               run: rotatePhone,
             },
             {
-              label: "Power",
+              label: t("Power"),
               disabled: !running,
               run: () => control({ type: "navigation", key: "Power" }),
             },
             {
-              label: "Zoom in",
+              label: t("Zoom in"),
               disabled: !running || !runtime?.canZoom(tab.id, 1),
               run: () => runtime?.stepZoom(tab.id, 1),
             },
             {
-              label: "Zoom out",
+              label: t("Zoom out"),
               disabled: !running || !runtime?.canZoom(tab.id, -1),
               run: () => runtime?.stepZoom(tab.id, -1),
             },
@@ -582,14 +592,14 @@ export default function AndroidPane({
               label:
                 zoom === "fit"
                   ? scaledPreview
-                    ? "Preview size (100%)"
-                    : "Actual size (1:1)"
-                  : "Fit to panel",
+                    ? t("Preview size (100%)")
+                    : t("Actual size (1:1)")
+                  : t("Fit to panel"),
               disabled: !running,
               run: () => runtime?.setZoom(tab.id, zoom === "fit" ? 100 : "fit"),
             },
             {
-              label: "Paste",
+              label: t("Paste"),
               disabled: !running,
               run: () =>
                 void act(async () => {
@@ -597,69 +607,73 @@ export default function AndroidPane({
                 }),
             },
             {
-              label: "Install APK…",
+              label: t("Install APK…"),
               disabled: busy || !running,
               run: () => fileAction("android_install_apk"),
             },
             {
-              label: "Save screenshot…",
+              label: t("Save screenshot…"),
               disabled: busy || !running,
               run: () => fileAction("android_save_screenshot"),
             },
             {
-              label: "Phone settings",
+              label: t("Phone settings"),
               disabled: !running,
               run: () => control({ type: "settings" }),
             },
             {
-              label: "Device details",
+              label: t("Device details"),
               disabled: !device,
               run: () => setDetails(true),
             },
-            { label: "Manage Android", run: setup },
+            { label: t("Manage Android"), run: setup },
           ]}
         />
       )}
       {details && (
         <Modal
           className="android-dialog"
-          title="Android device details"
+          title={t("Android device details")}
           onClose={() => setDetails(false)}
         >
           <div className="dialog-form dialog-layout">
             <div className="dialog-content android-device-form">
               <p className="android-path">
-                ADB serial:{" "}
-                <code>{status?.serial ?? "Available after Start"}</code>
+                {t("ADB serial:")}{" "}
+                <code>{status?.serial ?? t("Available after Start")}</code>
               </p>
               <p className="android-path">
-                ADB:{" "}
+                {t("ADB:")}{" "}
                 <code>
-                  {snapshot?.adbPath ?? "Install platform tools in Settings"}
+                  {snapshot?.adbPath ?? t("Install platform tools in Settings")}
                 </code>
               </p>
               <p className="settings-help">
-                Click and drag to touch. Alt-drag adds a mirrored second finger.
-                Scroll over the screen to swipe. Tab moves focus out of the
-                phone. Paste is sent only when you request it.
+                {t(
+                  "Click and drag to touch. Alt-drag adds a mirrored second finger. Scroll over the screen to swipe. Tab moves focus out of the phone. Paste is sent only when you request it.",
+                )}
               </p>
               <p className="settings-help">
-                Fit shows the entire phone. Pinch or Ctrl/Cmd-scroll to zoom;
-                middle-drag or Shift-scroll to move around the enlarged preview.
-                Ordinary scrolling still swipes inside Android. Zoom is separate
-                for each view and does not change the phone’s resolution.
+                {t(
+                  "Fit shows the entire phone. Pinch or Ctrl/Cmd-scroll to zoom; middle-drag or Shift-scroll to move around the enlarged preview. Ordinary scrolling still swipes inside Android. Zoom is separate for each view and does not change the phone’s resolution.",
+                )}
               </p>
               <p className="settings-help">
-                100% maps one preview pixel to one display pixel. Large phones
-                use a scaled preview to keep streaming responsive; zoom does not
-                add detail. Save screenshot exports the full phone resolution.
-                Hidden panels pause image transfer; use Stop to release
-                Android’s memory.
+                {t(
+                  "100% maps one preview pixel to one display pixel. Large phones use a scaled preview to keep streaming responsive; zoom does not add detail. Save screenshot exports the full phone resolution. Hidden panels pause image transfer; use Stop to release Android’s memory.",
+                )}
               </p>
               {status?.display && fullPreview && (
                 <p className="settings-help">
-                  Phone: {status.display[0]} × {status.display[1]} · Preview: up
-                  to {fullPreview.width} × {fullPreview.height}
+                  {t(
+                    "Phone: {width} × {height} · Preview: up to {previewWidth} × {previewHeight}",
+                    {
+                      width: status.display[0],
+                      height: status.display[1],
+                      previewWidth: fullPreview.width,
+                      previewHeight: fullPreview.height,
+                    },
+                  )}
                 </p>
               )}
             </div>
@@ -670,20 +684,21 @@ export default function AndroidPane({
         <Modal
           protectTheme
           className="android-dialog"
-          title={`Force stop ${device.name}?`}
+          title={t("Force stop {name}?", { name: device.name })}
           tone="warning"
           onClose={() => setForce(false)}
         >
           <div className="dialog-form dialog-layout">
             <div className="dialog-content android-device-form">
               <p>
-                Unsaved Android data can be lost. The device and its stored apps
-                will be kept.
+                {t(
+                  "Unsaved Android data can be lost. The device and its stored apps will be kept.",
+                )}
               </p>
             </div>
             <div className="dialog-actions">
               <button className="button" onClick={() => setForce(false)}>
-                Cancel
+                {t("Cancel")}
               </button>
               <button
                 className="button danger"
@@ -695,7 +710,7 @@ export default function AndroidPane({
                   })
                 }
               >
-                Force stop
+                {t("Force stop")}
               </button>
             </div>
           </div>

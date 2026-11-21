@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { prepareIcons, type PreparedIcons } from "./icon-theme";
 import { terminalPresets } from "./palette";
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -263,10 +264,14 @@ function setDeclaration(
   const important = /\s*!important\s*$/.test(value);
   const plain = value.replace(/\s*!important\s*$/, "");
   if (!property.startsWith("--") && !CSS.supports(property, plain))
-    throw new Error(`Invalid CSS value for ${property}: ${value}`);
+    throw new Error(
+      t("Invalid CSS value for {property}: {value}", { property, value }),
+    );
   style.setProperty(property, plain, important ? "important" : "");
   if (!style.getPropertyValue(property))
-    throw new Error(`Invalid CSS value for ${property}: ${value}`);
+    throw new Error(
+      t("Invalid CSS value for {property}: {value}", { property, value }),
+    );
 }
 
 export function compileTheme(
@@ -281,10 +286,10 @@ export function compileTheme(
       const index = sheet.insertRule(`${selector} {}`, sheet.cssRules.length);
       rule = sheet.cssRules[index];
     } catch {
-      throw new Error(`Invalid CSS selector: ${selector}`);
+      throw new Error(t("Invalid CSS selector: {selector}", { selector }));
     }
     if (!(rule instanceof CSSStyleRule))
-      throw new Error(`Invalid CSS selector: ${selector}`);
+      throw new Error(t("Invalid CSS selector: {selector}", { selector }));
     const style = rule.style;
     for (const [property, value] of Object.entries(declarations))
       setDeclaration(style, property, value);
@@ -299,7 +304,7 @@ export function compileTheme(
   }
   for (const [name, color] of Object.entries(theme.terminal?.colors ?? {})) {
     if (!CSS.supports("color", color))
-      throw new Error(`Invalid terminal color: ${name}`);
+      throw new Error(t("Invalid terminal color: {name}", { name }));
     tokens[`--terminal-${kebab(name)}`] = color;
   }
   for (const [area, background] of Object.entries(theme.backgrounds ?? {})) {
@@ -320,7 +325,13 @@ export function compileTheme(
       const value = background[key as keyof typeof background];
       if (typeof value === "string") {
         if (!CSS.supports(property, value))
-          throw new Error(`Invalid backgrounds.${area}.${key}: ${value}`);
+          throw new Error(
+            t("Invalid backgrounds.{area}.{key}: {value}", {
+              area,
+              key,
+              value,
+            }),
+          );
         tokens[`${prefix}${kebab(key)}`] = value;
       }
     }
@@ -433,7 +444,7 @@ export async function prepareTheme(
 ): Promise<PreparedTheme> {
   const manifest = bundle ? parseThemeText(bundle.raw) : builtinTheme;
   if (manifest.iconTheme)
-    throw new Error("Select icon themes in their own category.");
+    throw new Error(t("Select icon themes in their own category."));
   const appearance =
     manifest.appearance && manifest.appearance !== "adaptive"
       ? manifest.appearance
@@ -449,7 +460,11 @@ export async function prepareTheme(
     const palettes = await terminalPresets();
     const palette = palettes[resolved.terminal.preset];
     if (!palette)
-      throw new Error(`Unknown terminal preset: ${resolved.terminal.preset}`);
+      throw new Error(
+        t("Unknown terminal preset: {preset}", {
+          preset: resolved.terminal.preset,
+        }),
+      );
     resolved.terminal.colors = { ...palette, ...resolved.terminal.colors };
   }
   const currentRevision = `${Date.now()}-${++revision}`;
@@ -477,7 +492,7 @@ export async function prepareTheme(
     for (const link of links) link.remove();
   };
   signal?.addEventListener("abort", dispose, { once: true });
-  if (signal?.aborted) throw new Error("Theme loading was canceled.");
+  if (signal?.aborted) throw new Error(t("Theme loading was canceled."));
   try {
     if (iconBundles)
       for (const kind of ["file", "product"] as const) {
@@ -487,7 +502,7 @@ export async function prepareTheme(
           parseThemeText(iconBundle.raw).iconTheme?.kind !== kind ||
           !iconBundle.iconTheme
         )
-          throw new Error(`Expected a ${kind} icon theme.`);
+          throw new Error(t("Expected a {kind} icon theme.", { kind }));
         const prepared = await prepareIcons(
           iconBundle.iconTheme,
           (path) => themeAssetUrl(iconBundle.id, path, currentRevision),
@@ -496,7 +511,7 @@ export async function prepareTheme(
         );
         if (signal?.aborted) {
           prepared.dispose();
-          throw new Error("Icon loading was canceled.");
+          throw new Error(t("Icon loading was canceled."));
         }
         stagedIcons[kind] = prepared;
       }
@@ -518,9 +533,9 @@ export async function prepareTheme(
               else resolve();
             };
             const cancel = () =>
-              finish(new Error("Theme loading was cancelled."));
+              finish(new Error(t("Theme loading was cancelled.")));
             const timeout = setTimeout(
-              () => finish(new Error(`Loading ${path} timed out.`)),
+              () => finish(new Error(t("Loading {path} timed out.", { path }))),
               10000,
             );
             cancelLoads.add(cancel);
@@ -528,7 +543,9 @@ export async function prepareTheme(
             link.onerror = () =>
               finish(
                 new Error(
-                  `Cannot load ${path}. The previous theme is still active.`,
+                  t("Cannot load {path}. The previous theme is still active.", {
+                    path,
+                  }),
                 ),
               );
             // Append in manifest order; completion order must not change the cascade.
@@ -564,16 +581,24 @@ export async function prepareTheme(
               } else resolve();
             };
             const cancel = () =>
-              finish(new Error("Theme loading was canceled."));
+              finish(new Error(t("Theme loading was canceled.")));
             const timer = setTimeout(
               () =>
-                finish(new Error(`Cannot load background or image: ${path}`)),
+                finish(
+                  new Error(
+                    t("Cannot load background or image: {path}", { path }),
+                  ),
+                ),
               10000,
             );
             cancelLoads.add(cancel);
             image.onload = () => finish();
             image.onerror = () =>
-              finish(new Error(`Cannot decode background or image: ${path}`));
+              finish(
+                new Error(
+                  t("Cannot decode background or image: {path}", { path }),
+                ),
+              );
             image.src = asset(path);
           }),
       ),
@@ -595,7 +620,10 @@ export async function prepareTheme(
               if (error)
                 reject(
                   new Error(
-                    `Cannot load required font ${path}: ${String(error)}`,
+                    t("Cannot load required font {path}: {error}", {
+                      path,
+                      error: String(error),
+                    }),
                   ),
                 );
               else resolve();
@@ -616,7 +644,7 @@ export async function prepareTheme(
     appearance,
     dispose,
     commit: async (onVisible) => {
-      if (signal?.aborted) throw new Error("Theme loading was canceled.");
+      if (signal?.aborted) throw new Error(t("Theme loading was canceled."));
       signal?.removeEventListener("abort", dispose);
       terminalAppearance();
       document

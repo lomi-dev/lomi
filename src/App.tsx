@@ -1,4 +1,5 @@
 import { PluginsProvider } from "./plugins/PluginsProvider";
+import { useT } from "./i18n";
 import { lazy, Suspense, useState } from "react";
 import { KeybindingsProvider } from "./KeybindingsProvider";
 import { ThemeProvider } from "./ThemeProvider";
@@ -13,6 +14,7 @@ const Workbench = lazy(() => import("./Workbench"));
 const Onboarding = lazy(() => import("./Onboarding"));
 
 export default function App() {
+  const { t } = useT();
   useWindowFullscreen();
   const [onboarding, setOnboarding] = useState(() => !onboardingDone());
   return (
@@ -23,7 +25,9 @@ export default function App() {
             <TerminalPreferencesProvider>
               <Suspense
                 fallback={
-                  <main className="empty-message">Opening workspace…</main>
+                  <main className="empty-message">
+                    {t("Opening workspace…")}
+                  </main>
                 }
               >
                 <Workbench />

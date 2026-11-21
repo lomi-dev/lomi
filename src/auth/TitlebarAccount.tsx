@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { Bell, LogOut } from "lucide-react";
 import { api, errorMessage, native } from "../api";
 import ContextMenu from "../ContextMenu";
+import { useT } from "../i18n";
 import NotificationCenter, { useNotifications } from "../NotificationCenter";
 import { notificationBadge } from "../notifications";
 import { ChevronDown, ExternalLink, Github, Settings } from "../icons";
@@ -17,6 +18,7 @@ export default function TitlebarAccount({
   onError: (message: string) => void;
   onOpenSettings: () => void;
 }) {
+  const { t } = useT();
   const [state, setState] = useState<AuthState | null>(
     native ? null : unavailableState,
   );
@@ -94,21 +96,23 @@ export default function TitlebarAccount({
     .map((part) => part[0])
     .join("")
     .toLocaleUpperCase();
-  const status = state ? authStatusLabel(state.status) : "Checking account…";
+  const status = state ? authStatusLabel(state.status) : t("Checking account…");
   const buttonLabel = account
-    ? `Open account menu for ${displayName || "your account"}`
+    ? t("Open account menu for {name}", {
+        name: displayName || t("your account"),
+      })
     : hasAccount
-      ? "Open account menu"
-      : "Sign in";
+      ? t("Open account menu")
+      : t("Sign in");
   const title = opening
     ? hasAccount
-      ? "Updating account…"
-      : "Starting sign-in…"
+      ? t("Updating account…")
+      : t("Starting sign-in…")
     : !native
-      ? "Sign-in is available in the Lomi desktop app"
+      ? t("Sign-in is available in the Lomi desktop app")
       : hasAccount
-        ? `${buttonLabel} · ${status}`
-        : `Sign in to your Lomi account · ${status}`;
+        ? t("{label} · {status}", { label: buttonLabel, status })
+        : t("Sign in to your Lomi account · {status}", { status });
 
   const showMenu = () => {
     if (!native || pending.current || !trigger.current) return;
@@ -144,10 +148,17 @@ export default function TitlebarAccount({
             const localMessage =
               result.message ||
               (result.status === "signed-out"
-                ? "Signed out on this device."
+                ? t("Signed out on this device.")
                 : "");
             onError(
-              `${localMessage} The server could not confirm that its session was revoked. You can remove it from your account in a browser.`.trim(),
+              [
+                localMessage,
+                t(
+                  "The server could not confirm that its session was revoked. You can remove it from your account in a browser.",
+                ),
+              ]
+                .filter(Boolean)
+                .join(" "),
             );
           } else if (result.message) onError(result.message);
         }
@@ -198,7 +209,9 @@ export default function TitlebarAccount({
               started.status === "unavailable" ||
               started.status === "error"
             ) {
-              onError(started.message || "Sign-in is not available right now.");
+              onError(
+                started.message || t("Sign-in is not available right now."),
+              );
             }
             return;
           }
@@ -230,7 +243,7 @@ export default function TitlebarAccount({
           !opened.attempt &&
           accepted === opened
         ) {
-          onError(opened.message || "The sign-in page could not be opened.");
+          onError(opened.message || t("The sign-in page could not be opened."));
         }
       } catch (error) {
         if (mounted.current) onError(errorMessage(error));
@@ -252,7 +265,14 @@ export default function TitlebarAccount({
             type="button"
             className="titlebar-account titlebar-account-avatar"
             title={title}
-            aria-label={`${buttonLabel}${notifications.unread ? `, ${notifications.unread} unread notifications` : ""}`}
+            aria-label={
+              notifications.unread
+                ? t("{label}, {count} unread notifications", {
+                    label: buttonLabel,
+                    count: notifications.unread,
+                  })
+                : buttonLabel
+            }
             aria-busy={opening || undefined}
             aria-haspopup="menu"
             aria-expanded={Boolean(menu) || inboxOpen}
@@ -303,19 +323,19 @@ export default function TitlebarAccount({
               type="button"
               className="titlebar-account titlebar-account-sign-in"
               title={title}
-              aria-label="Sign in"
+              aria-label={t("Sign in")}
               aria-busy={opening || undefined}
               disabled={!native || opening}
               onClick={signIn}
             >
-              Sign in
+              {t("Sign in")}
             </button>
             <button
               ref={trigger}
               type="button"
               className="titlebar-account titlebar-account-menu-trigger"
-              title={`Open account menu · ${status}`}
-              aria-label="Open account menu"
+              title={t("Open account menu · {status}", { status })}
+              aria-label={t("Open account menu")}
               aria-haspopup="menu"
               aria-expanded={Boolean(menu) || inboxOpen}
               disabled={!native || opening}
@@ -355,25 +375,29 @@ export default function TitlebarAccount({
           className="account-context-menu"
           align="end"
           trigger={trigger}
-          label="Account menu"
+          label={t("Account menu")}
           onClose={() => setMenu(null)}
           actions={[
             {
-              label: "Settings",
+              label: t("Settings"),
               icon: <Settings size={15} aria-hidden="true" />,
               run: onOpenSettings,
             },
             {
-              label: "Notifications",
+              label: t("Notifications"),
               description: notifications.unread
-                ? `${notifications.unread} unread notifications`
-                : "No unread notifications",
+                ? t("{count} unread notifications", {
+                    count: notifications.unread,
+                  })
+                : t("No unread notifications"),
               icon: <Bell size={15} aria-hidden="true" />,
               badge:
                 notifications.unread > 0 ? (
                   <span
                     className="notification-badge"
-                    aria-label={`${notifications.unread} unread notifications`}
+                    aria-label={t("{count} unread notifications", {
+                      count: notifications.unread,
+                    })}
                   >
                     {notificationBadge(notifications.unread)}
                   </span>
@@ -384,14 +408,14 @@ export default function TitlebarAccount({
               ? [
                   null,
                   {
-                    label: "Account settings",
+                    label: t("Account settings"),
                     icon: <Settings size={15} aria-hidden="true" />,
                     run: () => void runAccountAction("open_settings"),
                   },
                   ...(hasAccount
                     ? [
                         {
-                          label: "Manage account",
+                          label: t("Manage account"),
                           icon: <ExternalLink size={15} aria-hidden="true" />,
                           run: () =>
                             void runAccountAction("auth_open_account_portal"),
@@ -400,7 +424,7 @@ export default function TitlebarAccount({
                     : []),
                   null,
                   {
-                    label: "Sign out",
+                    label: t("Sign out"),
                     icon: <LogOut size={15} aria-hidden="true" />,
                     run: () => void runAccountAction("auth_sign_out"),
                   },

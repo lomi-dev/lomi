@@ -1,5 +1,6 @@
 import { cliNames } from "./cli-agents.ts";
 import type { CliAgent } from "./cli-agents.ts";
+import { t } from "./i18n.ts";
 
 export interface InboxNotification {
   id: string;
@@ -35,27 +36,33 @@ export function notificationAgent(item: InboxNotification): CliAgent | null {
 
 export function notificationSource(item: InboxNotification) {
   if (item.source)
-    return `Notification from ${{ app: "Lomi", android: "Android", mcp: "MCP" }[item.source]}`;
+    return t("Notification from {source}", {
+      source: { app: "Lomi", android: "Android", mcp: "MCP" }[item.source],
+    });
   const agent = notificationAgent(item);
-  return `Notification from ${agent ? cliNames[agent] : "terminal"}`;
+  return agent
+    ? t("Notification from {source}", { source: cliNames[agent] })
+    : t("Notification from terminal");
 }
 
 export function notificationKindLabel(item: InboxNotification) {
   return item.kind === "attention"
-    ? "Needs attention"
+    ? t("Needs attention")
     : item.kind === "info"
-      ? "Information"
-      : "Finished";
+      ? t("Information")
+      : t("Finished");
 }
 
 export function notificationRelativeTime(createdAt: number, now = Date.now()) {
   if (!Number.isFinite(createdAt) || !Number.isFinite(now))
-    return "Unknown time";
+    return t("Unknown time");
   const seconds = Math.max(0, Math.floor((now - createdAt) / 1000));
-  if (seconds < 60) return "Just now";
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-  return `${Math.floor(seconds / 86400)}d ago`;
+  if (seconds < 60) return t("Just now");
+  if (seconds < 3600)
+    return t("{count}m ago", { count: Math.floor(seconds / 60) });
+  if (seconds < 86400)
+    return t("{count}h ago", { count: Math.floor(seconds / 3600) });
+  return t("{count}d ago", { count: Math.floor(seconds / 86400) });
 }
 
 export interface NotificationSnapshot {

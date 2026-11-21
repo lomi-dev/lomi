@@ -7,6 +7,7 @@ import { api, errorMessage } from "./api";
 import type { GitCommitDetails, GitCommitDiff, GitCommitSummary } from "./api";
 import { diffLines } from "./git-diff";
 import { useGitFileActions } from "./GitFileActions";
+import { useT } from "./i18n";
 
 export default function CommitDetails({
   root,
@@ -25,6 +26,7 @@ export default function CommitDetails({
   onOpenCommit: (commit: GitCommitSummary) => void;
   onError: (message: string) => void;
 }) {
+  const { t, tp } = useT();
   const agentSource = useAgentGit(agentPanelId);
   const [details, setDetails] = useState<GitCommitDetails>();
   const [error, setError] = useState("");
@@ -103,21 +105,21 @@ export default function CommitDetails({
   if (error)
     return (
       <div className="commit-view-message" role="alert">
-        <h2>Unable to load commit</h2>
+        <h2>{t("Unable to load commit")}</h2>
         <p>{error}</p>
         <button
           type="button"
           className="button"
           onClick={() => setRevision((value) => value + 1)}
         >
-          Retry
+          {t("Retry")}
         </button>
       </div>
     );
   if (!details)
     return (
       <div className="commit-view-message" role="status">
-        Loading commit…
+        {t("Loading commit…")}
       </div>
     );
   const { commit, files } = details;
@@ -125,21 +127,24 @@ export default function CommitDetails({
   const deletions = files.reduce((sum, file) => sum + (file.deletions ?? 0), 0);
   const currentDiff = diff?.path === selectedPath ? diff : undefined;
   return (
-    <article className="commit-details" aria-label={`Commit ${commit.shortId}`}>
+    <article
+      className="commit-details"
+      aria-label={t("Commit {id}", { id: commit.shortId })}
+    >
       <header className="commit-details-header">
         <div className="commit-details-title">
           <GitCommitHorizontal size={20} />
-          <h1>{commit.subject || "(no subject)"}</h1>
+          <h1>{commit.subject || t("(no subject)")}</h1>
         </div>
         <dl className="commit-metadata">
           <div>
-            <dt>Commit</dt>
+            <dt>{t("Commit")}</dt>
             <dd>
               <code>{commit.id}</code>
             </dd>
           </div>
           <div>
-            <dt>Author</dt>
+            <dt>{t("Author")}</dt>
             <dd>
               {commit.authorName} &lt;{details.authorEmail}&gt;
               <time dateTime={commit.authoredAt}>
@@ -148,7 +153,7 @@ export default function CommitDetails({
             </dd>
           </div>
           <div>
-            <dt>Committer</dt>
+            <dt>{t("Committer")}</dt>
             <dd>
               {details.committerName} &lt;{details.committerEmail}&gt;
               <time dateTime={details.committedAt}>
@@ -158,7 +163,7 @@ export default function CommitDetails({
           </div>
           {!!details.parents.length && (
             <div>
-              <dt>{details.parents.length > 1 ? "Parents" : "Parent"}</dt>
+              <dt>{details.parents.length > 1 ? t("Parents") : t("Parent")}</dt>
               <dd>
                 {details.parents.map((parent) => (
                   <code key={parent}>{parent}</code>
@@ -168,23 +173,27 @@ export default function CommitDetails({
           )}
         </dl>
         <details className="commit-full-message">
-          <DisclosureSummary>Full commit message</DisclosureSummary>
+          <DisclosureSummary>{t("Full commit message")}</DisclosureSummary>
           <pre>{details.message}</pre>
         </details>
       </header>
       {!!details.omittedEntries && (
         <p className="commit-diff-notice" role="status">
-          {details.omittedEntries} secret or unsupported file entries omitted.
+          {tp(
+            details.omittedEntries,
+            "{count} secret or unsupported file entry omitted.",
+            "{count} secret or unsupported file entries omitted.",
+          )}
         </p>
       )}
       {details.statisticsUnavailable && (
         <p className="commit-diff-notice">
-          Line statistics are unavailable for this view.
+          {t("Line statistics are unavailable for this view.")}
         </p>
       )}
       <div className="commit-files-heading">
         <span>
-          {files.length} {files.length === 1 ? "changed file" : "changed files"}
+          {tp(files.length, "{count} changed file", "{count} changed files")}
         </span>
         {!details.statisticsUnavailable && (
           <span className="commit-file-stats">
@@ -194,19 +203,25 @@ export default function CommitDetails({
         )}
         <span className="commit-comparison">
           {details.parents.length
-            ? `Compared with ${details.parents.length > 1 ? "first parent " : "parent "}${details.parents[0].slice(0, 7)}`
-            : "Initial commit"}
+            ? details.parents.length > 1
+              ? t("Compared with first parent {id}", {
+                  id: details.parents[0].slice(0, 7),
+                })
+              : t("Compared with parent {id}", {
+                  id: details.parents[0].slice(0, 7),
+                })
+            : t("Initial commit")}
         </span>
       </div>
       {!files.length ? (
         <div className="commit-view-message">
           {details.omittedEntries
-            ? "No permitted file changes are available."
-            : "This commit has no file changes."}
+            ? t("No permitted file changes are available.")
+            : t("This commit has no file changes.")}
         </div>
       ) : (
         <div className="commit-changes">
-          <nav className="commit-file-list" aria-label="Changed files">
+          <nav className="commit-file-list" aria-label={t("Changed files")}>
             {files.map((file) => (
               <button
                 type="button"
@@ -231,7 +246,7 @@ export default function CommitDetails({
                 <span className="commit-file-stats">
                   {details.statisticsUnavailable ? null : file.additions ===
                     null ? (
-                    "Binary"
+                    t("Binary")
                   ) : (
                     <>
                       <span className="diff-additions">+{file.additions}</span>
@@ -242,7 +257,7 @@ export default function CommitDetails({
               </button>
             ))}
           </nav>
-          <section className="commit-file-diff" aria-label="File changes">
+          <section className="commit-file-diff" aria-label={t("File changes")}>
             <header>
               <ResourceIcon
                 path={`${root}/${selectedPath}`}
@@ -263,19 +278,20 @@ export default function CommitDetails({
                   className="button"
                   onClick={() => setDiffRevision((value) => value + 1)}
                 >
-                  Retry diff
+                  {t("Retry diff")}
                 </button>
               </div>
             ) : !currentDiff?.result ? (
               <div className="commit-view-message" role="status">
-                Loading diff…
+                {t("Loading diff…")}
               </div>
             ) : (
               <>
                 {currentDiff.result.truncated && (
                   <p className="commit-diff-notice" role="status">
-                    This diff is too large to display in full. Showing the first
-                    2 MiB or 20,000 lines.
+                    {t(
+                      "This diff is too large to display in full. Showing the first 2 MiB or 20,000 lines.",
+                    )}
                   </p>
                 )}
                 {currentDiff.result.patch ? (
@@ -283,13 +299,15 @@ export default function CommitDetails({
                     className="commit-patch"
                     tabIndex={0}
                     role="region"
-                    aria-label={`Diff for ${selectedPath}`}
+                    aria-label={t("Diff for {path}", {
+                      path: selectedPath ?? "",
+                    })}
                   >
                     <Patch patch={currentDiff.result.patch} />
                   </div>
                 ) : (
                   <div className="commit-view-message">
-                    No text changes in this file.
+                    {t("No text changes in this file.")}
                   </div>
                 )}
               </>

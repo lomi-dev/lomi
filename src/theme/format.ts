@@ -1,4 +1,5 @@
 import type { IconKind, IconTheme } from "./icon-theme";
+import { t } from "../i18n.ts";
 import lomi from "../../themes/lomi.json" with { type: "json" };
 import { parseVSCodeTheme, vscodeValues, type VSCodeTheme } from "./vscode.ts";
 import {
@@ -168,7 +169,7 @@ export const kebab = (value: string) =>
 
 function object(value: unknown, path: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value))
-    throw new Error(`${path} must be an object.`);
+    throw new Error(t("{path} must be an object.", { path }));
   return value as Record<string, unknown>;
 }
 function keys(
@@ -178,7 +179,7 @@ function keys(
 ) {
   for (const key of Object.keys(value))
     if (!allowed.includes(key))
-      throw new Error(`Unknown ${path} field: ${key}`);
+      throw new Error(t("Unknown {path} field: {key}", { path, key }));
 }
 function string(
   value: unknown,
@@ -192,7 +193,10 @@ function string(
     /[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(value)
   )
     throw new Error(
-      `${path} must be a nonempty string of at most ${limit} characters.`,
+      t("{path} must be a nonempty string of at most {limit} characters.", {
+        path,
+        limit,
+      }),
     );
 }
 function number(value: unknown, path: string, min: number, max: number) {
@@ -202,7 +206,9 @@ function number(value: unknown, path: string, min: number, max: number) {
     value < min ||
     value > max
   )
-    throw new Error(`${path} must be between ${min} and ${max}.`);
+    throw new Error(
+      t("{path} must be between {min} and {max}.", { path, min, max }),
+    );
 }
 export function relativeAsset(value: unknown): asserts value is string {
   string(value, "Asset path", 1024);
@@ -219,7 +225,9 @@ export function relativeAsset(value: unknown): asserts value is string {
           /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)/i.test(part),
       )
   )
-    throw new Error(`Use a relative path inside the theme folder: ${value}`);
+    throw new Error(
+      t("Use a relative path inside the theme folder: {value}", { value }),
+    );
 }
 export function parseLegacyTheme(value: unknown): LegacyTheme {
   const data = object(value, "theme.json");
@@ -244,7 +252,7 @@ export function parseLegacyTheme(value: unknown): LegacyTheme {
     "theme",
   );
   if (data.version !== 1)
-    throw new Error("Unsupported theme version. Expected version 1.");
+    throw new Error(t("Unsupported theme version. Expected version 1."));
   string(data.name, "name", 160);
   for (const field of ["$schema", "author", "description"])
     if (data[field] !== undefined) string(data[field], field);
@@ -252,7 +260,7 @@ export function parseLegacyTheme(value: unknown): LegacyTheme {
     data.appearance !== undefined &&
     !["dark", "light"].includes(data.appearance as string)
   )
-    throw new Error("appearance must be dark or light.");
+    throw new Error(t("appearance must be dark or light."));
   if (data.layout !== undefined) {
     const layout = object(data.layout, "layout");
     const options = {
@@ -263,36 +271,36 @@ export function parseLegacyTheme(value: unknown): LegacyTheme {
     keys(layout, Object.keys(options), "layout");
     for (const [key, values] of Object.entries(options))
       if (layout[key] !== undefined && !values.includes(layout[key] as string))
-        throw new Error(`Invalid layout.${key}.`);
+        throw new Error(t("Invalid layout.{key}.", { key }));
   }
   if (data.stylesheet !== undefined && data.stylesheets !== undefined)
     throw new Error(
-      "Use stylesheets or the legacy stylesheet field, not both.",
+      t("Use stylesheets or the legacy stylesheet field, not both."),
     );
   if (data.stylesheets !== undefined && !Array.isArray(data.stylesheets))
-    throw new Error("stylesheets must be an array of relative CSS paths.");
+    throw new Error(t("stylesheets must be an array of relative CSS paths."));
   const stylesheets =
     (data.stylesheets as unknown[] | undefined) ??
     (data.stylesheet !== undefined ? [data.stylesheet] : []);
   for (const path of stylesheets) {
     relativeAsset(path);
     if (!path.endsWith(".css"))
-      throw new Error("Stylesheet paths must name CSS files.");
+      throw new Error(t("Stylesheet paths must name CSS files."));
   }
   if (new Set(stylesheets).size !== stylesheets.length)
-    throw new Error("stylesheets must not contain duplicate paths.");
+    throw new Error(t("stylesheets must not contain duplicate paths."));
   for (const [name, token] of Object.entries(
     object(data.tokens ?? {}, "tokens"),
   )) {
     if (!/^--[a-z][a-z0-9-]*$/.test(name))
-      throw new Error(`Invalid CSS token: ${name}`);
+      throw new Error(t("Invalid CSS token: {name}", { name }));
     string(token, `tokens.${name}`, 4000);
   }
   for (const [name, path] of Object.entries(
     object(data.assets ?? {}, "assets"),
   )) {
     if (!/^[a-z][a-z0-9-]*$/.test(name))
-      throw new Error(`Invalid asset name: ${name}`);
+      throw new Error(t("Invalid asset name: {name}", { name }));
     relativeAsset(path);
   }
   for (const [selector, declarations] of Object.entries(
@@ -303,7 +311,9 @@ export function parseLegacyTheme(value: unknown): LegacyTheme {
       object(declarations, `styles.${selector}`),
     )) {
       if (!/^(--)?[a-z][a-z0-9-]*$/.test(property))
-        throw new Error(`Use kebab-case CSS property names: ${property}`);
+        throw new Error(
+          t("Use kebab-case CSS property names: {property}", { property }),
+        );
       string(value, `styles.${selector}.${property}`, 4000);
     }
   }
@@ -356,10 +366,10 @@ export function parseLegacyTheme(value: unknown): LegacyTheme {
       terminal[key] !== undefined &&
       !(values as readonly unknown[]).includes(terminal[key])
     )
-      throw new Error(`Invalid terminal.${key}.`);
+      throw new Error(t("Invalid terminal.{key}.", { key }));
   for (const key of terminalBooleans)
     if (terminal[key] !== undefined && typeof terminal[key] !== "boolean")
-      throw new Error(`terminal.${key} must be a boolean.`);
+      throw new Error(t("terminal.{key} must be a boolean.", { key }));
   if (terminal.fontFamily !== undefined)
     string(terminal.fontFamily, "terminal.fontFamily");
   for (const key of ["fontWeight", "fontWeightBold"])
@@ -463,7 +473,10 @@ export function color(value: unknown, path: string) {
     )
   )
     throw new Error(
-      `${path} must be a hex color, transparent, or a semantic token reference.`,
+      t(
+        "{path} must be a hex color, transparent, or a semantic token reference.",
+        { path },
+      ),
     );
 }
 function validateValues(value: unknown, path: string) {
@@ -548,18 +561,20 @@ function validateValues(value: unknown, path: string) {
         ) &&
         !values.includes(style[name] as string)
       )
-        throw new Error(`Invalid ${path}.editor.syntax.${key}.${name}.`);
+        throw new Error(
+          t("Invalid {path}.editor.syntax.{key}.{name}.", { path, key, name }),
+        );
   }
   for (const [owner, tokens] of Object.entries(
     object(plugins ?? {}, `${path}.plugins`),
   )) {
     if (!/^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+$/.test(owner))
-      throw new Error(`Invalid plugin namespace: ${owner}`);
+      throw new Error(t("Invalid plugin namespace: {owner}", { owner }));
     for (const [key, value] of Object.entries(
       object(tokens, `${path}.plugins.${owner}`),
     )) {
       if (!/^[a-z][a-z0-9-]*$/.test(key))
-        throw new Error(`Invalid plugin token: ${key}`);
+        throw new Error(t("Invalid plugin token: {key}", { key }));
       string(value, `${path}.plugins.${owner}.${key}`, 4000);
     }
   }
@@ -586,7 +601,9 @@ export function parseTheme(value: unknown): ThemeManifest {
   );
   if (data.version !== 2)
     throw new Error(
-      "Unsupported theme version. Expected version 2; import a legacy package to migrate version 1.",
+      t(
+        "Unsupported theme version. Expected version 2; import a legacy package to migrate version 1.",
+      ),
     );
   string(data.name, "name", 160);
   for (const field of ["$schema", "author", "description"])
@@ -595,21 +612,21 @@ export function parseTheme(value: unknown): ThemeManifest {
     data.appearance !== undefined &&
     !["adaptive", "light", "dark"].includes(data.appearance as string)
   )
-    throw new Error("appearance must be adaptive, light, or dark.");
+    throw new Error(t("appearance must be adaptive, light, or dark."));
   for (const field of ["common", "light", "dark"])
     if (data[field] !== undefined) validateValues(data[field], field);
   if (data.iconTheme !== undefined) {
     const icons = object(data.iconTheme, "iconTheme");
     keys(icons, ["kind", "path"], "iconTheme");
     if (icons.kind !== "file" && icons.kind !== "product")
-      throw new Error("Unknown icon theme kind.");
+      throw new Error(t("Unknown icon theme kind."));
     relativeAsset(icons.path);
     if (
       ["common", "light", "dark", "resources", "vscode"].some(
         (field) => data[field] !== undefined,
       )
     )
-      throw new Error("Icon themes cannot also define color surfaces.");
+      throw new Error(t("Icon themes cannot also define color surfaces."));
   }
   if (data.vscode !== undefined) parseVSCodeTheme(data.vscode);
   const resources = object(data.resources ?? {}, "resources");
@@ -619,7 +636,7 @@ export function parseTheme(value: unknown): ThemeManifest {
 }
 function jsonTree(raw: string, file: string) {
   if (new TextEncoder().encode(raw).length > 256 * 1024)
-    throw new Error(`${file}: exceeds 256 KiB.`);
+    throw new Error(t("{file}: exceeds 256 KiB.", { file }));
   const errors: ParseError[] = [];
   const tree = parseTree(raw, errors, {
     allowTrailingComma: true,
@@ -634,9 +651,9 @@ function jsonTree(raw: string, file: string) {
   };
   if (errors.length)
     fail(errors[0].offset, printParseErrorCode(errors[0].error));
-  if (!tree) fail(0, "Expected a theme object.");
+  if (!tree) fail(0, t("Expected a theme object."));
   const visit = (node: Node, depth: number) => {
-    if (depth > 32) fail(node.offset, "Theme nesting exceeds 32 levels.");
+    if (depth > 32) fail(node.offset, t("Theme nesting exceeds 32 levels."));
     if (node.type === "object") {
       const seen = new Set<string>();
       for (const property of node.children ?? []) {
@@ -644,7 +661,9 @@ function jsonTree(raw: string, file: string) {
         if (seen.has(key.value))
           fail(
             key.offset,
-            `Duplicate key ${[...getNodePath(node), key.value].join(".")}`,
+            t("Duplicate key {key}", {
+              key: [...getNodePath(node), key.value].join("."),
+            }),
           );
         seen.add(key.value);
       }

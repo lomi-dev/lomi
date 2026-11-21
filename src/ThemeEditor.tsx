@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api, errorMessage, native } from "./api";
+import { msg, useT } from "./i18n";
 import { useThemes } from "./ThemeProvider";
 import { prepareTheme } from "./theme/runtime";
 import {
@@ -26,6 +27,7 @@ export default function ThemeEditor({
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
+  const { t } = useT();
   const themes = useThemes();
   const [raw, setRaw] = useState(initial.raw),
     [saved, setSaved] = useState(initial);
@@ -126,7 +128,9 @@ export default function ThemeEditor({
       await themes.cancelPreview();
       await onSaved();
       setStatus(
-        "Theme saved. Open windows have been notified; each keeps its last working appearance if loading fails.",
+        t(
+          "Theme saved. Open windows have been notified; each keeps its last working appearance if loading fails.",
+        ),
       );
     });
   let savedName = saved.id;
@@ -149,7 +153,7 @@ export default function ThemeEditor({
   };
   return (
     <Modal
-      title={`Edit theme: ${savedName}`}
+      title={t("Edit theme: {name}", { name: savedName })}
       wide
       className={`theme-editor${json ? " theme-editor-json" : ""}`}
       closeDisabled={busy}
@@ -165,8 +169,9 @@ export default function ThemeEditor({
           <fieldset disabled={busy} className="theme-editor-controls">
             <div className="theme-editor-toolbar">
               <p className="settings-help">
-                One JSONC draft. Comments and trailing commas are supported.
-                Preview affects this window only.
+                {t(
+                  "One JSONC draft. Comments and trailing commas are supported. Preview affects this window only.",
+                )}
               </p>
               <button
                 type="button"
@@ -180,7 +185,7 @@ export default function ThemeEditor({
                   setJson(!json);
                 }}
               >
-                {json ? "Show controls" : "Edit JSON"}
+                {json ? t("Show controls") : t("Edit JSON")}
               </button>
             </div>
             {saved.migration?.map((message) => (
@@ -190,25 +195,31 @@ export default function ThemeEditor({
             ))}
             {draft?.vscode && !diagnostic && (
               <details className="settings-help">
-                <DisclosureSummary>VS Code compatibility</DisclosureSummary>
+                <DisclosureSummary>
+                  {t("VS Code compatibility")}
+                </DisclosureSummary>
                 <ul>
                   {vscodeCompatibility(draft.vscode).messages.map((message) => (
                     <li key={message}>{message}</li>
                   ))}
                 </ul>
                 <p>
-                  Original VS Code data is stored in the vscode section. Lomi
-                  overrides are applied above it.
+                  {t(
+                    "Original VS Code data is stored in the vscode section. Lomi overrides are applied above it.",
+                  )}
                 </p>
               </details>
             )}
             {saved.readOnly && (
               <p role="status">
-                This theme belongs to an immutable plugin package. Duplicate it
-                to edit.
+                {t(
+                  "This theme belongs to an immutable plugin package. Duplicate it to edit.",
+                )}
               </p>
             )}
-            <Suspense fallback={<p role="status">Opening JSONC editor…</p>}>
+            <Suspense
+              fallback={<p role="status">{t("Opening JSONC editor…")}</p>}
+            >
               <JsonEditor
                 value={json ? raw : null}
                 disabled={busy || !!saved.readOnly}
@@ -220,7 +231,7 @@ export default function ThemeEditor({
             {!json && draft && (
               <>
                 <label className="theme-token-row">
-                  <span>Name</span>
+                  <span>{t("Name")}</span>
                   <input
                     required
                     maxLength={160}
@@ -230,62 +241,80 @@ export default function ThemeEditor({
                 </label>
                 <div className="theme-layout-controls">
                   <label>
-                    Theme appearance
+                    {t("Theme appearance")}
                     <Select
-                      aria-label="Theme appearance"
+                      aria-label={t("Theme appearance")}
                       value={draft.appearance ?? "adaptive"}
                       onChange={(value) => change(["appearance"], value)}
-                      options={["adaptive", "light", "dark"].map((value) => ({
-                        value,
-                        label: value,
-                      }))}
+                      options={(
+                        [
+                          ["adaptive", msg("Adaptive")],
+                          ["light", msg("Light")],
+                          ["dark", msg("Dark")],
+                        ] as const
+                      ).map(([value, label]) => ({ value, label: t(label) }))}
                     />
                   </label>
                   <label>
-                    Edit variant
+                    {t("Edit variant")}
                     <Select
-                      aria-label="Edit variant"
+                      aria-label={t("Edit variant")}
                       value={section}
                       onChange={(value) => setSection(value as typeof section)}
-                      options={["common", "light", "dark"].map((value) => ({
-                        value,
-                        label: value,
-                      }))}
+                      options={(
+                        [
+                          ["common", msg("Common")],
+                          ["light", msg("Light")],
+                          ["dark", msg("Dark")],
+                        ] as const
+                      ).map(([value, label]) => ({ value, label: t(label) }))}
                     />
                   </label>
                   {(
                     [
                       [
                         "tabs",
-                        "Tab placement",
-                        ["inline", "above", "below"],
+                        msg("Tab placement"),
+                        [
+                          ["inline", msg("Inline")],
+                          ["above", msg("Above")],
+                          ["below", msg("Below")],
+                        ],
                         "inline",
                       ],
                       [
                         "statusbar",
-                        "Status bar placement",
-                        ["top", "bottom"],
+                        msg("Status bar placement"),
+                        [
+                          ["top", msg("Top")],
+                          ["bottom", msg("Bottom")],
+                        ],
                         "bottom",
                       ],
                       [
                         "settingsNavigation",
-                        "Settings navigation",
-                        ["left", "right", "top", "bottom"],
+                        msg("Settings navigation"),
+                        [
+                          ["left", msg("Left")],
+                          ["right", msg("Right")],
+                          ["top", msg("Top")],
+                          ["bottom", msg("Bottom")],
+                        ],
                         "left",
                       ],
                     ] as const
                   ).map(([key, label, options, fallback]) => (
                     <label key={key}>
-                      {label}
+                      {t(label)}
                       <Select
-                        aria-label={label}
+                        aria-label={t(label)}
                         value={values?.layout?.[key] ?? fallback}
                         onChange={(value) =>
                           change([section, "layout", key], value)
                         }
-                        options={options.map((value) => ({
+                        options={options.map(([value, text]) => ({
                           value,
-                          label: value[0].toUpperCase() + value.slice(1),
+                          label: t(text),
                         }))}
                       />
                     </label>
@@ -293,9 +322,9 @@ export default function ThemeEditor({
                 </div>
                 <div className="theme-layout-controls">
                   <label>
-                    Terminal palette
+                    {t("Terminal palette")}
                     <Select
-                      aria-label="Terminal palette"
+                      aria-label={t("Terminal palette")}
                       value={values?.terminal?.preset ?? ""}
                       onChange={(value) =>
                         change(
@@ -307,8 +336,8 @@ export default function ThemeEditor({
                         {
                           value: "",
                           label: draft.vscode
-                            ? "Inherit theme"
-                            : "Inherit Lomi",
+                            ? t("Inherit theme")
+                            : t("Inherit Lomi"),
                         },
                         ...presets.map((value) => ({ value, label: value })),
                       ]}
@@ -323,18 +352,20 @@ export default function ThemeEditor({
                       )
                     }
                   >
-                    Load terminal presets
+                    {t("Load terminal presets")}
                   </button>
                 </div>
                 <details>
-                  <DisclosureSummary>Editor syntax colors</DisclosureSummary>
+                  <DisclosureSummary>
+                    {t("Editor syntax colors")}
+                  </DisclosureSummary>
                   <div className="theme-token-list">
                     {syntaxNames.map((name) => (
                       <label className="theme-token-row" key={name}>
                         <span>{name}</span>
                         <input
-                          aria-label={`Syntax ${name}`}
-                          placeholder="Inherit"
+                          aria-label={t("Syntax {name}", { name })}
+                          placeholder={t("Inherit")}
                           value={values?.editor?.syntax?.[name]?.color ?? ""}
                           onChange={(event) =>
                             change(
@@ -350,8 +381,8 @@ export default function ThemeEditor({
                 <div className="theme-token-filter">
                   <input
                     type="search"
-                    aria-label="Search theme tokens"
-                    placeholder="Search spacing, radius, font, color…"
+                    aria-label={t("Search theme tokens")}
+                    placeholder={t("Search spacing, radius, font, color…")}
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
                   />
@@ -363,7 +394,7 @@ export default function ThemeEditor({
                         setOverridesOnly(event.target.checked)
                       }
                     />{" "}
-                    Overrides only
+                    {t("Overrides only")}
                   </label>
                 </div>
                 <div className="theme-token-list">
@@ -412,7 +443,7 @@ export default function ThemeEditor({
               disabled={busy}
               onClick={requestClose}
             >
-              Close
+              {t("Close")}
             </button>
             <button
               type="button"
@@ -425,7 +456,7 @@ export default function ThemeEditor({
                 })
               }
             >
-              Preview
+              {t("Preview")}
             </button>
             {previewing && (
               <button
@@ -439,7 +470,7 @@ export default function ThemeEditor({
                   })
                 }
               >
-                Cancel preview
+                {t("Cancel preview")}
               </button>
             )}
             <button
@@ -447,7 +478,7 @@ export default function ThemeEditor({
               className="button button-primary"
               disabled={busy || !dirty || !!diagnostic || saved.readOnly}
             >
-              {busy ? "Saving…" : "Save theme"}
+              {busy ? t("Saving…") : t("Save theme")}
             </button>
           </div>
         </footer>
@@ -455,23 +486,23 @@ export default function ThemeEditor({
       {discard && (
         <Modal
           protectTheme
-          title="Discard theme changes?"
+          title={t("Discard theme changes?")}
           tone="warning"
           onClose={() => setDiscard(false)}
         >
           <div className="dialog-form dialog-layout">
             <div className="dialog-content">
-              <p>Your unsaved theme changes will be lost.</p>
+              <p>{t("Your unsaved theme changes will be lost.")}</p>
             </div>
             <div className="dialog-actions">
               <button className="button" onClick={() => setDiscard(false)}>
-                Keep editing
+                {t("Keep editing")}
               </button>
               <button
                 className="button button-danger"
                 onClick={() => void close()}
               >
-                Discard changes
+                {t("Discard changes")}
               </button>
             </div>
           </div>

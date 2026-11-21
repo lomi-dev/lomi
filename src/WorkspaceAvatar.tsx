@@ -1,17 +1,18 @@
 import type { CSSProperties } from "react";
 import { Bot, Briefcase, Rocket } from "lucide-react";
 import { Code, Folder, Globe, Layers, Terminal } from "./icons";
+import { msg } from "./i18n";
 import type { WorkspaceAppearance } from "./workspace-appearance";
 
 export const workspaceIconOptions = [
-  { id: "layers", label: "Layers", Icon: Layers },
-  { id: "folder", label: "Folder", Icon: Folder },
-  { id: "code", label: "Code", Icon: Code },
-  { id: "terminal", label: "Terminal", Icon: Terminal },
-  { id: "globe", label: "Globe", Icon: Globe },
-  { id: "rocket", label: "Rocket", Icon: Rocket },
-  { id: "bot", label: "Bot", Icon: Bot },
-  { id: "briefcase", label: "Briefcase", Icon: Briefcase },
+  { id: "layers", label: msg("Layers"), Icon: Layers },
+  { id: "folder", label: msg("Folder"), Icon: Folder },
+  { id: "code", label: msg("Code"), Icon: Code },
+  { id: "terminal", label: msg("Terminal"), Icon: Terminal },
+  { id: "globe", label: msg("Globe"), Icon: Globe },
+  { id: "rocket", label: msg("Rocket"), Icon: Rocket },
+  { id: "bot", label: msg("Bot"), Icon: Bot },
+  { id: "briefcase", label: msg("Briefcase"), Icon: Briefcase },
 ];
 
 export default function WorkspaceAvatar({

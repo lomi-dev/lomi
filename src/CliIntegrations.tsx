@@ -6,6 +6,7 @@ import {
 } from "@tauri-apps/plugin-notification";
 import { X } from "lucide-react";
 import { api, errorMessage, native } from "./api";
+import { msg, useT } from "./i18n";
 import type { TerminalContext, TitleProcess } from "./terminal-runtime";
 
 import { cliNames } from "./cli-agents";
@@ -28,9 +29,9 @@ interface Offer extends CliStatus {
   issue?: string;
 }
 const featureNames = {
-  notifications: "notifications",
-  mcp: "Lomi MCP",
-  titlebar: "titlebar",
+  notifications: msg("notifications"),
+  mcp: msg("Lomi MCP"),
+  titlebar: msg("titlebar"),
 };
 const dismissalKey = (cli: TitleProcess["cli"], feature: CliFeature) =>
   `${cli}:${feature}`;
@@ -42,6 +43,7 @@ export function useCliIntegrations(
   onError: (message: string) => void,
   onConfigured: (message: string) => void,
 ) {
+  const { t } = useT();
   const [offers, setOffers] = useState<Offer[]>([]);
   const [permission, setPermission] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -187,7 +189,9 @@ export function useCliIntegrations(
         setPermission(granted);
         if (!granted)
           throw new Error(
-            "Notifications are blocked. Allow notifications for Lomi in your system settings, then try again.",
+            t(
+              "Notifications are blocked. Allow notifications for Lomi in your system settings, then try again.",
+            ),
           );
       }
       const message = await api<string>("enable_cli_integration", {
@@ -238,7 +242,7 @@ export function useCliIntegrations(
       <div
         className="cli-integrations"
         role="group"
-        aria-label={`${cliNames[offer.cli]} integrations`}
+        aria-label={t("{cli} integrations", { cli: cliNames[offer.cli] })}
         aria-busy={busy}
       >
         <div className="cli-integration-actions">
@@ -250,7 +254,7 @@ export function useCliIntegrations(
                 invalidate();
               }}
             >
-              Check {cliNames[offer.cli]} integrations
+              {t("Check {cli} integrations", { cli: cliNames[offer.cli] })}
             </button>
           ) : (
             missing(offer).map((feature) => (
@@ -260,17 +264,32 @@ export function useCliIntegrations(
                   disabled={busy}
                   title={
                     feature.error ??
-                    `Enable ${featureNames[feature.feature]} in ${feature.path}. Existing configuration is backed up; restart or reload the CLI to apply changes.`
+                    t(
+                      "Enable {feature} in {path}. Existing configuration is backed up; restart or reload the CLI to apply changes.",
+                      {
+                        feature: t(featureNames[feature.feature]),
+                        path: feature.path,
+                      },
+                    )
                   }
                   onClick={() => void enable(offer, feature)}
                 >
-                  Enable {cliNames[offer.cli]} {featureNames[feature.feature]}
+                  {t("Enable {cli} {feature}", {
+                    cli: cliNames[offer.cli],
+                    feature: t(featureNames[feature.feature]),
+                  })}
                 </button>
                 <button
                   className="cli-integration-dismiss"
                   disabled={busy}
-                  aria-label={`Dismiss ${cliNames[offer.cli]} ${featureNames[feature.feature]} suggestion until Lomi restarts`}
-                  title="Hide until Lomi restarts"
+                  aria-label={t(
+                    "Dismiss {cli} {feature} suggestion until Lomi restarts",
+                    {
+                      cli: cliNames[offer.cli],
+                      feature: t(featureNames[feature.feature]),
+                    },
+                  )}
+                  title={t("Hide until Lomi restarts")}
                   onClick={() => void dismiss(offer, feature.feature)}
                 >
                   <X size={12} aria-hidden="true" />

@@ -25,6 +25,7 @@ import ProjectSearch from "./ProjectSearch";
 import type { SearchMatch } from "./ProjectSearch";
 import type { FileOperation } from "./explorer-model";
 import { useExplorerDrop } from "./explorer-drop";
+import { t, useT } from "./i18n";
 import {
   explorerGitStatuses,
   gitFilePath,
@@ -55,6 +56,7 @@ interface Props {
 }
 
 export default function Explorer(props: Props) {
+  useT();
   const gitStatuses = useMemo(
     () => explorerGitStatuses(props.repositories, props.root),
     [props.repositories, props.root],
@@ -100,7 +102,11 @@ export default function Explorer(props: Props) {
       .then(() => changed(relatives))
       .catch((error) => {
         if (current)
-          props.onError(`Explorer auto-refresh failed: ${errorMessage(error)}`);
+          props.onError(
+            t("Explorer auto-refresh failed: {error}", {
+              error: errorMessage(error),
+            }),
+          );
       });
     return () => {
       current = false;
@@ -300,24 +306,27 @@ export default function Explorer(props: Props) {
           onKeyDownCapture={cancelPendingActivation}
         >
           <header className="sidebar-heading">
-            <span>Explorer</span>
+            <span>{t("Explorer")}</span>
             <div>
-              <IconButton title="Search in project" onClick={() => search("")}>
+              <IconButton
+                title={t("Search in project")}
+                onClick={() => search("")}
+              >
                 <Search size={14} />
               </IconButton>
               <IconButton
-                title={showHidden ? "Hide dotfiles" : "Show dotfiles"}
+                title={showHidden ? t("Hide dotfiles") : t("Show dotfiles")}
                 onClick={() => setShowHidden(!showHidden)}
               >
                 {showHidden ? <Eye size={14} /> : <EyeOff size={14} />}
               </IconButton>
               <IconButton
-                title="Collapse folders"
+                title={t("Collapse folders")}
                 onClick={() => setExpanded(new Set())}
               >
                 <ChevronsDownUp size={14} />
               </IconButton>
-              <IconButton title="Refresh explorer" onClick={refresh}>
+              <IconButton title={t("Refresh explorer")} onClick={refresh}>
                 <RefreshCw size={14} />
               </IconButton>
             </div>
@@ -344,7 +353,9 @@ export default function Explorer(props: Props) {
               <button
                 type="button"
                 className="tree-entry project-tree-entry"
-                aria-label={`Project folder ${rootEntry.name}`}
+                aria-label={t("Project folder {name}", {
+                  name: rootEntry.name,
+                })}
                 aria-pressed={selectedPath === ""}
                 onFocus={() => select("")}
                 onClick={(event) => {
@@ -370,7 +381,7 @@ export default function Explorer(props: Props) {
           <div
             className="file-tree"
             data-explorer-directory=""
-            aria-label="Project files"
+            aria-label={t("Project files")}
             onContextMenu={(event) => onContext(event, rootEntry, true)}
           >
             <Directory
@@ -433,6 +444,7 @@ interface DirectoryProps extends Props {
   cancelPendingActivation: () => void;
 }
 function Directory(props: DirectoryProps) {
+  useT();
   const {
     root,
     relative,
@@ -504,9 +516,9 @@ function Directory(props: DirectoryProps) {
   const message =
     error ||
     (loading && !entries.length
-      ? "Loading…"
+      ? t("Loading…")
       : !visible.length && !creation
-        ? "Empty folder"
+        ? t("Empty folder")
         : "");
   return (
     <>
@@ -592,8 +604,16 @@ function Directory(props: DirectoryProps) {
                   <button
                     type="button"
                     className="tree-toggle"
-                    title={`${open ? "Collapse" : "Expand"} ${entry.name}`}
-                    aria-label={`${open ? "Collapse" : "Expand"} ${entry.name}`}
+                    title={
+                      open
+                        ? t("Collapse {name}", { name: entry.name })
+                        : t("Expand {name}", { name: entry.name })
+                    }
+                    aria-label={
+                      open
+                        ? t("Collapse {name}", { name: entry.name })
+                        : t("Expand {name}", { name: entry.name })
+                    }
                     aria-expanded={open}
                     onFocus={() => onSelect(entry.relativePath)}
                     onClick={(event) => {
@@ -623,7 +643,7 @@ function Directory(props: DirectoryProps) {
                   aria-pressed={selected}
                   aria-description={
                     isCutItem(props.clipboard, root, entry.relativePath)
-                      ? "Cut item"
+                      ? t("Cut item")
                       : undefined
                   }
                   onClick={(event) => {
@@ -707,9 +727,11 @@ function Directory(props: DirectoryProps) {
                   type="button"
                   className="tree-action"
                   title={
-                    entry.isDirectory ? "Copy folder path" : "Copy file path"
+                    entry.isDirectory
+                      ? t("Copy folder path")
+                      : t("Copy file path")
                   }
-                  aria-label={`Copy path of ${entry.name}`}
+                  aria-label={t("Copy path of {name}", { name: entry.name })}
                   onClick={() =>
                     void writeText(entry.path).catch((error) =>
                       onError(errorMessage(error)),
@@ -722,8 +744,10 @@ function Directory(props: DirectoryProps) {
                   <button
                     type="button"
                     className="tree-action"
-                    title="Open terminal here"
-                    aria-label={`Open terminal in ${entry.name}`}
+                    title={t("Open terminal here")}
+                    aria-label={t("Open terminal in {name}", {
+                      name: entry.name,
+                    })}
                     onClick={() => onTerminal(entry.path)}
                   >
                     <Terminal size={13} />

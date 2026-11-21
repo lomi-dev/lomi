@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { api } from "./api";
+import { t } from "./i18n";
 import type { FileTab } from "./model";
 import type { DiskFile } from "./editor-runtime";
 
@@ -87,14 +88,14 @@ export function readAgentPreviewAsset(
   if (!permitId)
     return Promise.reject(
       new Error(
-        "Reopen this preview through Agent control to load its images.",
+        t("Reopen this preview through Agent control to load its images."),
       ),
     );
   const key = `${permitId}\0${relative}`;
   const existing = inFlight.get(key);
   if (existing) return existing;
   if (pending >= 64)
-    return Promise.reject(new Error("Too many preview images"));
+    return Promise.reject(new Error(t("Too many preview images")));
   ++pending;
   const result = queue.then(() =>
     api<PreviewImage>("agent_control_preview_asset", { permitId, relative }),

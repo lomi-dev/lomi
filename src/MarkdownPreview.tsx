@@ -16,6 +16,7 @@ import { api, errorMessage } from "./api";
 import type { EditorDocument } from "./editor-runtime";
 import { markdownTarget } from "./markdown";
 import { readAgentPreviewAsset } from "./agent-preview";
+import { useT } from "./i18n";
 
 const plugins = [remarkGfm];
 
@@ -28,6 +29,7 @@ export default memo(function MarkdownPreview({
   onOpenFile: (root: string, relative: string) => void;
   assetPermit?: string | null;
 }) {
+  const { t } = useT();
   const current = useSyncExternalStore(
     document.subscribeText,
     document.getTextSnapshot,
@@ -122,7 +124,7 @@ export default memo(function MarkdownPreview({
   return (
     <section
       className="markdown-preview"
-      aria-label={`Markdown preview for ${relative}`}
+      aria-label={t("Markdown preview for {path}", { path: relative })}
       tabIndex={0}
     >
       <article
@@ -151,6 +153,7 @@ function MarkdownImage({
   title?: string;
   assetPermit?: string | null;
 }) {
+  const { t } = useT();
   const [source, setSource] = useState("");
   const [error, setError] = useState("");
   useEffect(() => {
@@ -183,14 +186,14 @@ function MarkdownImage({
     };
     const type = types[relative.split(".").pop()?.toLowerCase() ?? ""];
     if (!type) {
-      setError("Unsupported image format");
+      setError(t("Unsupported image format"));
       return;
     }
     reader.onload = () => {
       if (active) setSource(String(reader.result));
     };
     reader.onerror = () => {
-      if (active) setError("Cannot read image");
+      if (active) setError(t("Cannot read image"));
     };
     void api<ArrayBuffer>("read_markdown_image", { root, relative })
       .then((bytes) => {
@@ -207,7 +210,7 @@ function MarkdownImage({
   if (error)
     return (
       <span className="markdown-image-error" title={error}>
-        {alt || relative} (image unavailable)
+        {t("{name} (image unavailable)", { name: alt || relative })}
       </span>
     );
   return source ? (
@@ -215,9 +218,9 @@ function MarkdownImage({
       src={source}
       alt={alt}
       title={title}
-      onError={() => setError("Cannot decode image")}
+      onError={() => setError(t("Cannot decode image"))}
     />
   ) : (
-    <span className="muted">{alt || "Loading image…"}</span>
+    <span className="muted">{alt || t("Loading image…")}</span>
   );
 }

@@ -9,6 +9,7 @@ import {
 import type { ReactNode } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { api, errorMessage, macOS, native } from "./api";
+import { useT } from "./i18n";
 import { usePlugins } from "./plugins/PluginsProvider";
 import { defaultKeybindings, restoreKeybindings, actions } from "./keybindings";
 import type {
@@ -37,6 +38,7 @@ const Context = createContext<Preferences | null>(null);
 const builtinDefaults = defaultKeybindings(macOS);
 
 export function KeybindingsProvider({ children }: { children: ReactNode }) {
+  const { t } = useT();
   const { catalog } = usePlugins();
   const contributions: ShortcutAction[] = catalog.entries.flatMap(
     (entry) =>
@@ -59,7 +61,10 @@ export function KeybindingsProvider({ children }: { children: ReactNode }) {
   );
   for (const action of contributions)
     if (action.shortcut && defaults[action.id] === null)
-      action.description += ` Default ${action.shortcut} conflicts with another command; assign a free shortcut.`;
+      action.description = t(
+        "{description} Default {shortcut} conflicts with another command; assign a free shortcut.",
+        { description: action.description, shortcut: action.shortcut },
+      );
   const [bindings, setBindings] = useState(builtinDefaults);
   const [focusFollowsPointer, setFocusFollowsPointer] = useState(false);
   const [explorerOpenOnSingleClick, setExplorerOpenOnSingleClick] =

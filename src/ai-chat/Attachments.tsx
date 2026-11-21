@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useT } from "../i18n";
 import { File, FileText, X } from "../icons";
 import { IconButton, Modal } from "../ui";
 import { formatSize } from "./attachment-size";
@@ -32,6 +33,7 @@ function Chip({
   attachment: Attachment;
   onRemove?: () => void;
 }) {
+  const { t } = useT();
   const url = usePreview(attachment);
   return (
     <li className="thread-chip">
@@ -44,7 +46,7 @@ function Chip({
       <span className="thread-chip-size">{formatSize(attachment.size)}</span>
       {onRemove && (
         <IconButton
-          title={`Remove ${attachment.name}`}
+          title={t("Remove {name}", { name: attachment.name })}
           className="thread-chip-remove"
           onClick={onRemove}
         >
@@ -66,6 +68,7 @@ export function PendingAttachments({
   error: string;
   onRemove: (id: string) => void;
 }) {
+  const { t } = useT();
   if (!items.length && !importing && !error) return null;
   return (
     <div className="thread-attachments">
@@ -81,7 +84,7 @@ export function PendingAttachments({
           {importing > 0 && (
             <li className="thread-chip thread-chip-busy" role="status">
               <span className="thread-chip-thumb" aria-hidden="true" />
-              <span className="thread-chip-name">Importing…</span>
+              <span className="thread-chip-name">{t("Importing…")}</span>
             </li>
           )}
         </ul>
@@ -96,6 +99,7 @@ export function PendingAttachments({
 }
 
 function Thumb({ attachment }: { attachment: Attachment }) {
+  const { t } = useT();
   const url = usePreview(attachment);
   const [open, setOpen] = useState(false);
   return (
@@ -104,7 +108,7 @@ function Thumb({ attachment }: { attachment: Attachment }) {
         type="button"
         className="thread-image"
         title={attachment.name}
-        aria-label={`Open ${attachment.name}`}
+        aria-label={t("Open {name}", { name: attachment.name })}
         onClick={() => url && setOpen(true)}
       >
         {url ? <img src={url} alt={attachment.name} /> : <File size={18} />}

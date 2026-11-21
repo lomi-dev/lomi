@@ -1,10 +1,11 @@
+import { msg } from "../i18n";
 import type { Status } from "./types";
 
 export const deviceStatusLabels: Record<Status["phase"], string> = {
-  stopped: "Stopped",
-  starting: "Preparing phone…",
-  booting: "Starting Android…",
-  running: "Running",
-  stopping: "Stopping…",
-  failed: "Needs attention",
+  stopped: msg("Stopped"),
+  starting: msg("Preparing phone…"),
+  booting: msg("Starting Android…"),
+  running: msg("Running"),
+  stopping: msg("Stopping…"),
+  failed: msg("Needs attention"),
 };

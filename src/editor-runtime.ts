@@ -36,6 +36,7 @@ import {
 } from "./editor-text";
 import type { LineEndings } from "./editor-text";
 import { editorAppearance } from "./theme/editor";
+import { t } from "./i18n";
 import { themeAppliedEvent } from "./theme/runtime";
 
 import {
@@ -128,7 +129,9 @@ export async function freezeNativeProject(
       const state = document.getSnapshot();
       if (document.dirty || state.conflict || state.saving)
         throw new Error(
-          "Save or close unsaved project editors before approving this native operation.",
+          t(
+            "Save or close unsaved project editors before approving this native operation.",
+          ),
         );
     }
     return { release };
@@ -195,7 +198,9 @@ export function configureEditors(notify: () => void) {
     for (const path of payload) buffers.get(path)?.scheduleRefresh();
   }).catch((error) => {
     for (const document of buffers.values())
-      document.reportError(`File monitoring: ${errorMessage(error)}`);
+      document.reportError(
+        t("File monitoring: {error}", { error: errorMessage(error) }),
+      );
   });
   window.addEventListener("focus", () => {
     for (const document of buffers.values()) document.scheduleRefresh();
@@ -215,7 +220,10 @@ function updateWatches() {
       } catch (error) {
         for (const document of buffers.values())
           document.reportError(
-            `File monitoring: ${errorMessage(error)}. Changes are also checked when the window gains focus.`,
+            t(
+              "File monitoring: {error}. Changes are also checked when the window gains focus.",
+              { error: errorMessage(error) },
+            ),
           );
       }
     });
@@ -335,7 +343,7 @@ export function openDocument(tab: FileTab): Promise<EditorDocument> {
     )
       .then((data) => {
         if (!retained.has(key))
-          throw new Error("This file tab has been closed.");
+          throw new Error(t("This file tab has been closed."));
         let document = buffers.get(data.path);
         if (!document) {
           document = new EditorDocument(tab, data);
@@ -461,7 +469,9 @@ export class EditorDocument {
       .catch((error) => {
         if (this.disposed || version !== this.languageVersion) return;
         this.syntaxDefinition = undefined;
-        this.syntaxError = `Syntax highlighting: ${errorMessage(error)}`;
+        this.syntaxError = t("Syntax highlighting: {error}", {
+          error: errorMessage(error),
+        });
         this.reportError(this.syntaxError);
       });
   }
@@ -529,7 +539,7 @@ export class EditorDocument {
             : transaction,
         ),
         EditorView.contentAttributes.of({
-          "aria-label": "File contents",
+          "aria-label": t("File contents"),
           spellcheck: "false",
           autocapitalize: "off",
           autocorrect: "off",
@@ -764,8 +774,10 @@ export class EditorDocument {
         this.publish({
           error:
             code === "REVISION_CONFLICT"
-              ? "The file changed on disk. Reload it before saving."
-              : "The agent save did not complete. Check the disk version before saving again.",
+              ? t("The file changed on disk. Reload it before saving.")
+              : t(
+                  "The agent save did not complete. Check the disk version before saving again.",
+                ),
           ...(code === "REVISION_CONFLICT" ? { conflict: true } : {}),
         });
         this.recheck = true;
@@ -995,17 +1007,19 @@ export class EditorDocument {
       return Promise.reject(new Error("TARGET_BUSY"));
     if (this.fileOperationsPaused || this.nativeOperationFrozen)
       return Promise.reject(
-        new Error("A file operation is in progress. Please try saving again."),
+        new Error(
+          t("A file operation is in progress. Please try saving again."),
+        ),
       );
     if (this.savePromise)
       return this.savePromise.then((saved) =>
         saved && this.dirty ? this.save(overwrite) : saved,
       );
     if (this.snapshot.readOnly)
-      return Promise.reject(new Error("This file is read-only."));
+      return Promise.reject(new Error(t("This file is read-only.")));
     if (this.snapshot.conflict && !overwrite)
       return Promise.reject(
-        new Error("Resolve the file's disk changes before saving."),
+        new Error(t("Resolve the file's disk changes before saving.")),
       );
     const savedState = this.state;
     this.publish({ saving: true, error: "" });
@@ -1220,7 +1234,9 @@ export class EditorDocument {
       } else this.replaceFromDisk(data);
     } catch (error) {
       if (this.disposed || reloadVersion !== this.reloadVersion) return;
-      this.diskError = `Cannot check the file on disk: ${errorMessage(error)}`;
+      this.diskError = t("Cannot check the file on disk: {error}", {
+        error: errorMessage(error),
+      });
       this.reportError(this.diskError);
     } finally {
       this.checking = false;

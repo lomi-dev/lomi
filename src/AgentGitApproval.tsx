@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { api, errorMessage } from "./api";
+import { useT } from "./i18n";
 import { Modal } from "./ui";
 
 export interface GitMutationPlan {
@@ -67,6 +68,7 @@ export interface GitApprovalRequest {
 }
 
 export function useAgentGitApproval() {
+  const { t } = useT();
   const [request, setRequest] = useState<GitApprovalRequest>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -124,7 +126,9 @@ export function useAgentGitApproval() {
     try {
       if (approved && !(await request.isActive()))
         throw new Error(
-          "The Git request is no longer current. Cancel and request a fresh preview.",
+          t(
+            "The Git request is no longer current. Cancel and request a fresh preview.",
+          ),
         );
       await api("agent_control_git_mutation_decide", {
         operationId: request.operationId,
@@ -151,18 +155,18 @@ export function useAgentGitApproval() {
         tone="warning"
         title={
           plan.operation === "pull"
-            ? "Pull this branch for the agent?"
+            ? t("Pull this branch for the agent?")
             : plan.operation === "discard"
-              ? "Discard working changes for the agent?"
+              ? t("Discard working changes for the agent?")
               : plan.operation === "push"
-                ? "Push this commit for the agent?"
+                ? t("Push this commit for the agent?")
                 : plan.operation === "fetch"
-                  ? "Fetch this branch for the agent?"
+                  ? t("Fetch this branch for the agent?")
                   : plan.operation === "commit"
-                    ? "Create this commit for the agent?"
+                    ? t("Create this commit for the agent?")
                     : plan.operation === "stage"
-                      ? "Stage files for this agent?"
-                      : "Unstage files for this agent?"
+                      ? t("Stage files for this agent?")
+                      : t("Unstage files for this agent?")
         }
         descriptionId={description}
         initialFocus={cancel}
@@ -175,28 +179,42 @@ export function useAgentGitApproval() {
           <div className="dialog-content agent-git-details">
             <p id={description}>
               {plan.operation === "pull"
-                ? "Fetch the listed branch and integrate only the approved commit. A changed remote stops before integration. A conflict stays in the repository for you to resolve; Lomi does not stash or roll back your work."
+                ? t(
+                    "Fetch the listed branch and integrate only the approved commit. A changed remote stops before integration. A conflict stays in the repository for you to resolve; Lomi does not stash or roll back your work.",
+                  )
                 : plan.operation === "discard"
-                  ? "Replace these working files with their staged versions. Discarded working changes are not saved in Git or Trash. Staged changes are kept; unsaved editor buffers must be resolved first."
+                  ? t(
+                      "Replace these working files with their staged versions. Discarded working changes are not saved in Git or Trash. Staged changes are kept; unsaved editor buffers must be resolved first.",
+                    )
                   : plan.operation === "push"
-                    ? "Publish this exact commit to the listed remote branch. The request is limited to creating a branch or moving it forward from the expected commit."
+                    ? t(
+                        "Publish this exact commit to the listed remote branch. The request is limited to creating a branch or moving it forward from the expected commit.",
+                      )
                     : plan.operation === "fetch"
-                      ? "Contact this remote and update the listed local tracking branch. This fetch does not merge, prune, fetch tags or recurse into submodules."
+                      ? t(
+                          "Contact this remote and update the listed local tracking branch. This fetch does not merge, prune, fetch tags or recurse into submodules.",
+                        )
                       : plan.operation === "commit"
-                        ? "Commit exactly the staged changes listed below. Newer disk versions and unsaved editor changes are not included."
+                        ? t(
+                            "Commit exactly the staged changes listed below. Newer disk versions and unsaved editor changes are not included.",
+                          )
                         : plan.operation === "stage"
-                          ? "Stage the listed file versions from disk. Unsaved editor changes are not included. Configured filters may transform the staged content."
-                          : "Remove the listed changes from the staging area. Working files are kept."}
+                          ? t(
+                              "Stage the listed file versions from disk. Unsaved editor changes are not included. Configured filters may transform the staged content.",
+                            )
+                          : t(
+                              "Remove the listed changes from the staging area. Working files are kept.",
+                            )}
             </p>
             <p>
-              Git may run this repository’s configured hooks, helpers or filters
-              with your account’s access. Approve only if you trust the
-              repository and its Git configuration.
+              {t(
+                "Git may run this repository’s configured hooks, helpers or filters with your account’s access. Approve only if you trust the repository and its Git configuration.",
+              )}
             </p>
             <p className="agent-git-repository">{plan.repositoryPath}</p>
             <p>
-              {plan.branch ?? "Detached HEAD"} ·{" "}
-              {plan.head ? plan.head.slice(0, 12) : "No commits yet"}
+              {plan.branch ?? t("Detached HEAD")} ·{" "}
+              {plan.head ? plan.head.slice(0, 12) : t("No commits yet")}
             </p>
             {plan.pull && (
               <>
@@ -206,20 +224,26 @@ export function useAgentGitApproval() {
                   {plan.pull.network.location}
                 </p>
                 <p>
-                  Remote branch: <code>{plan.pull.target.reference}</code>
+                  {t("Remote branch:")}{" "}
+                  <code>{plan.pull.target.reference}</code>
                   <br />
-                  Current commit: <code>{plan.pull.target.sourceCommit}</code>
+                  {t("Current commit:")}{" "}
+                  <code>{plan.pull.target.sourceCommit}</code>
                   <br />
-                  Approved incoming commit:{" "}
+                  {t("Approved incoming commit:")}{" "}
                   <code>{plan.pull.target.expectedRemoteCommit}</code>
                 </p>
                 <p>
                   {plan.pull.target.mode === "ff_only"
-                    ? "Fast-forward only: local history will not be rewritten."
-                    : "Rebase: replay these local commits on the incoming commit. Their IDs may change; equivalent or empty changes may be dropped. Other branches are kept."}
+                    ? t(
+                        "Fast-forward only: local history will not be rewritten.",
+                      )
+                    : t(
+                        "Rebase: replay these local commits on the incoming commit. Their IDs may change; equivalent or empty changes may be dropped. Other branches are kept.",
+                      )}
                 </p>
                 {plan.pull.replayCommits.length > 0 && (
-                  <ul aria-label="Commits to rebase">
+                  <ul aria-label={t("Commits to rebase")}>
                     {plan.pull.replayCommits.map((commit) => (
                       <li key={commit}>
                         <code>{commit}</code>
@@ -228,8 +252,9 @@ export function useAgentGitApproval() {
                   </ul>
                 )}
                 <p>
-                  The working files below may change. Unsaved editor buffers
-                  must be resolved first.
+                  {t(
+                    "The working files below may change. Unsaved editor buffers must be resolved first.",
+                  )}
                 </p>
               </>
             )}
@@ -241,18 +266,20 @@ export function useAgentGitApproval() {
                   {plan.network.location}
                 </p>
                 <p>
-                  Remote branch: <code>{plan.network.reference}</code>
+                  {t("Remote branch:")} <code>{plan.network.reference}</code>
                   <br />
-                  Local tracking branch: <code>{plan.network.destination}</code>
+                  {t("Local tracking branch:")}{" "}
+                  <code>{plan.network.destination}</code>
                   <br />
-                  Current tracking commit:{" "}
+                  {t("Current tracking commit:")}{" "}
                   <code>
-                    {plan.network.previousCommit ?? "Not fetched yet"}
+                    {plan.network.previousCommit ?? t("Not fetched yet")}
                   </code>
                 </p>
                 <p>
-                  Credentials are omitted from this preview. Git may use your
-                  configured credentials and transports to connect.
+                  {t(
+                    "Credentials are omitted from this preview. Git may use your configured credentials and transports to connect.",
+                  )}
                 </p>
               </>
             )}
@@ -264,34 +291,36 @@ export function useAgentGitApproval() {
                   {plan.push.location}
                 </p>
                 <p>
-                  Remote branch: <code>{plan.push.target.reference}</code>
+                  {t("Remote branch:")}{" "}
+                  <code>{plan.push.target.reference}</code>
                   <br />
-                  Expected remote commit:{" "}
+                  {t("Expected remote commit:")}{" "}
                   <code>
                     {plan.push.target.expectedRemoteCommit ??
-                      "Branch must not exist"}
+                      t("Branch must not exist")}
                   </code>
                   <br />
-                  Commit to publish:{" "}
+                  {t("Commit to publish:")}{" "}
                   <code>{plan.push.target.sourceCommit}</code>
                 </p>
                 <p>
-                  A changed remote rejects the update. Tags and other branches
-                  are excluded. Credentials are omitted from this preview.
+                  {t(
+                    "A changed remote rejects the update. Tags and other branches are excluded. Credentials are omitted from this preview.",
+                  )}
                 </p>
               </>
             )}
             {plan.commit && (
               <>
                 <p>
-                  Author: {plan.commit.author.name} &lt;
+                  {t("Author:")} {plan.commit.author.name} &lt;
                   {plan.commit.author.email}&gt;
                   <br />
-                  Committer: {plan.commit.committer.name} &lt;
+                  {t("Committer:")} {plan.commit.committer.name} &lt;
                   {plan.commit.committer.email}&gt;
                 </p>
                 <label className="field">
-                  <span>Commit message</span>
+                  <span>{t("Commit message")}</span>
                   <textarea
                     className="input agent-git-message"
                     rows={4}
@@ -300,21 +329,28 @@ export function useAgentGitApproval() {
                   />
                 </label>
                 {plan.commit.finalNewlineAdded && (
-                  <p>Git adds a final newline; the preview includes it.</p>
+                  <p>
+                    {t("Git adds a final newline; the preview includes it.")}
+                  </p>
                 )}
-                <ul className="agent-git-files" aria-label="Staged changes">
+                <ul
+                  className="agent-git-files"
+                  aria-label={t("Staged changes")}
+                >
                   {plan.commit.changes.map((change) => (
                     <li key={change.relativePath}>
                       <strong>{change.relativePath}</strong>
                       <span>
                         {change.status === "D"
-                          ? "Delete"
+                          ? t("Delete")
                           : change.status === "A"
-                            ? "Add"
-                            : "Modify"}
+                            ? t("Add")
+                            : t("Modify")}
                       </span>
-                      <code title="Previous object">{change.oldObject}</code>
-                      <code title="Approved staged object">
+                      <code title={t("Previous object")}>
+                        {change.oldObject}
+                      </code>
+                      <code title={t("Approved staged object")}>
                         {change.newObject}
                       </code>
                     </li>
@@ -329,11 +365,13 @@ export function useAgentGitApproval() {
                     <strong>{file.relativePath}</strong>
                     <span>
                       {file.sha256
-                        ? `${file.byteLength.toLocaleString()} bytes`
-                        : "Deleted from disk"}
+                        ? t("{bytes} bytes", {
+                            bytes: file.byteLength.toLocaleString(),
+                          })
+                        : t("Deleted from disk")}
                     </span>
                     {file.sha256 && (
-                      <code title="SHA-256 of the approved disk version">
+                      <code title={t("SHA-256 of the approved disk version")}>
                         {file.sha256}
                       </code>
                     )}
@@ -344,26 +382,31 @@ export function useAgentGitApproval() {
             {plan.discard?.map((file) => (
               <section
                 key={file.relativePath}
-                aria-label={`Changes to discard in ${file.relativePath}`}
+                aria-label={t("Changes to discard in {path}", {
+                  path: file.relativePath,
+                })}
               >
                 <p>
                   <strong>{file.relativePath}</strong>
                   <br />
-                  Restore staged object: <code>{file.indexObject}</code>
+                  {t("Restore staged object:")} <code>{file.indexObject}</code>
                   <br />
-                  File mode: <code>{file.indexMode}</code>
+                  {t("File mode:")} <code>{file.indexMode}</code>
                 </p>
                 <textarea
                   className="agent-git-message"
-                  aria-label={`Working diff for ${file.relativePath}`}
+                  aria-label={t("Working diff for {path}", {
+                    path: file.relativePath,
+                  })}
                   readOnly
                   value={file.patch}
                 />
               </section>
             ))}
             <p>
-              Changes to these files or the repository state require a new
-              approval.
+              {t(
+                "Changes to these files or the repository state require a new approval.",
+              )}
             </p>
             {error && <p role="alert">{error}</p>}
           </div>
@@ -375,7 +418,7 @@ export function useAgentGitApproval() {
               disabled={busy}
               onClick={() => void decide(false)}
             >
-              Cancel
+              {t("Cancel")}
             </button>
             <button
               className="button button-primary"
@@ -384,18 +427,18 @@ export function useAgentGitApproval() {
               onClick={() => void decide(true)}
             >
               {plan.operation === "pull"
-                ? "Pull this branch"
+                ? t("Pull this branch")
                 : plan.operation === "discard"
-                  ? "Discard working changes"
+                  ? t("Discard working changes")
                   : plan.operation === "push"
-                    ? "Push this commit"
+                    ? t("Push this commit")
                     : plan.operation === "fetch"
-                      ? "Fetch this branch"
+                      ? t("Fetch this branch")
                       : plan.operation === "commit"
-                        ? "Create this commit"
+                        ? t("Create this commit")
                         : plan.operation === "stage"
-                          ? "Stage these files"
-                          : "Unstage these files"}
+                          ? t("Stage these files")
+                          : t("Unstage these files")}
             </button>
           </div>
         </div>

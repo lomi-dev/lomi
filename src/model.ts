@@ -1,5 +1,6 @@
 import type { PanelDescriptor } from "@lomi-dev/plugin-sdk";
 import { pathBasename as basename } from "./file-path.ts";
+import { msg, t } from "./i18n.ts";
 import { jsonState, pluginId } from "./plugins/manifest.ts";
 export type PluginPanel = PanelDescriptor;
 import { restoreBrowserUrl } from "./browser-url.ts";
@@ -125,7 +126,7 @@ export interface AndroidTab {
 }
 export const newAndroidTab = (
   deviceId: string | null = null,
-  title = "Android",
+  title: string = msg("Android"),
 ): AndroidTab => ({ type: "android", id: newId(), title, deviceId });
 export function androidTabs(session?: Session): AndroidTab[] {
   return (
@@ -179,7 +180,7 @@ export interface ThreadTab {
   customTitle?: string;
   threadId: string | null;
 }
-export const newThreadTab = (title = "New chat"): ThreadTab => ({
+export const newThreadTab = (title: string = msg("New chat")): ThreadTab => ({
   type: "thread",
   id: newId(),
   title,
@@ -217,7 +218,7 @@ export function updateThread(
 export const newBrowserTab = (url = "about:blank"): BrowserTab => ({
   type: "browser",
   id: newId(),
-  title: "Browser",
+  title: msg("Browser"),
   url: restoreBrowserUrl(url),
 });
 export type Tab =
@@ -229,7 +230,8 @@ export type Tab =
   | AndroidTab
   | ThreadTab
   | PluginPanel;
-export const tabTitle = (tab: Tab) => tab.customTitle ?? tab.title;
+// Default titles are stored in English and translated only for display.
+export const tabTitle = (tab: Tab) => tab.customTitle ?? t(tab.title);
 export type TabDropSide = "left" | "right" | "top" | "bottom";
 export type TabCloseAction =
   "close" | "others" | "left" | "right" | "clean" | "all";
@@ -288,16 +290,16 @@ export function maximumAgentCount(size: LayoutSize): number {
 export function newTab(
   cwd: string,
   profileId: string,
-  title = "Terminal",
+  title: string = msg("Terminal"),
   paneCount = 1,
   availableSize?: LayoutSize,
 ): TerminalTab {
   if (!Number.isSafeInteger(paneCount) || paneCount < 1)
-    throw new Error("Enter a whole number of terminals, at least 1.");
+    throw new Error(t("Enter a whole number of terminals, at least 1."));
   let rowCount = Math.ceil(paneCount / Math.ceil(Math.sqrt(paneCount)));
   if (availableSize !== undefined) {
     if (paneCount > maximumAgentCount(availableSize))
-      throw new Error("The terminals do not fit in the available space.");
+      throw new Error(t("The terminals do not fit in the available space."));
     const columns = Math.floor(
       (availableSize.width + SPLIT_DIVIDER_SIZE) /
         (MIN_PANE_WIDTH + SPLIT_DIVIDER_SIZE),
@@ -1329,7 +1331,9 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
     if (value == null) return newSession();
     else
       throw new Error(
-        "The saved session is corrupt or unsupported. The original file was preserved.",
+        t(
+          "The saved session is corrupt or unsupported. The original file was preserved.",
+        ),
       );
   const ids = new Set<string>();
   const id = (value: unknown) => {
@@ -1393,7 +1397,7 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
         !/^[a-f0-9]{32}$/.test(value.profileId)
       )
         throw new Error(
-          "Invalid isolated browser descriptor. The session was preserved.",
+          t("Invalid isolated browser descriptor. The session was preserved."),
         );
       automation = { generation: value.generation, profileId: value.profileId };
     }
@@ -1415,7 +1419,7 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
         !/^[a-f0-9]{32}$/.test(node.threadId))
     )
       throw new Error(
-        "Invalid saved chat descriptor. The session was preserved.",
+        t("Invalid saved chat descriptor. The session was preserved."),
       );
     return {
       type: "thread",
@@ -1430,7 +1434,7 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
   const android = (node: Record<string, unknown>): AndroidTab => {
     if (node.startMode !== undefined && node.startMode !== "manual")
       throw new Error(
-        "Invalid saved Android start mode. The session was preserved.",
+        t("Invalid saved Android start mode. The session was preserved."),
       );
     if (
       node.deviceId !== null &&
@@ -1440,7 +1444,7 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
         ))
     )
       throw new Error(
-        "Invalid saved Android device reference. The session was preserved.",
+        t("Invalid saved Android device reference. The session was preserved."),
       );
     return {
       type: "android",
@@ -1463,13 +1467,15 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
       (node.stateVersion as number) < 1
     )
       throw new Error(
-        "The saved plugin panel has an unsupported descriptor. The session was preserved.",
+        t(
+          "The saved plugin panel has an unsupported descriptor. The session was preserved.",
+        ),
       );
     jsonState(node.state);
     return {
       type: "plugin",
       id: id(node.id),
-      title: string(node.title, "Unavailable plugin view"),
+      title: string(node.title, msg("Unavailable plugin view")),
       ...(typeof node.customTitle === "string"
         ? { customTitle: node.customTitle }
         : {}),
@@ -1512,7 +1518,9 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
       };
     }
     if (node.type !== undefined && node.type !== "terminal")
-      throw new Error("Unknown saved panel type. The session was preserved.");
+      throw new Error(
+        t("Unknown saved panel type. The session was preserved."),
+      );
     return {
       type: "terminal",
       id: id(node.id),
@@ -1576,7 +1584,7 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
             }
             if (tab.type !== undefined && tab.type !== "terminal")
               throw new Error(
-                "Unknown saved tab type. The session was preserved.",
+                t("Unknown saved tab type. The session was preserved."),
               );
             const tree = layout(tab.layout, path);
             if (!tree) return null;

@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { t } from "./i18n";
 import { api, type GitCommitDetails, type GitFileDiff } from "./api";
 import type { Session } from "./model";
 
@@ -104,14 +105,16 @@ export function readAgentGit(
   if (!source)
     return Promise.reject(
       new Error(
-        "This agent Git view is no longer available. Ask the connected agent to open it again.",
+        t(
+          "This agent Git view is no longer available. Ask the connected agent to open it again.",
+        ),
       ),
     );
   const key = `${source.permitId}:${relative ?? ""}`;
   const pending = reads.get(key);
   if (pending) return pending;
   if (reads.size >= 64)
-    return Promise.reject(new Error("Too many pending Git reads."));
+    return Promise.reject(new Error(t("Too many pending Git reads.")));
   const read = queue.then(() =>
     api<GitViewBody>("agent_control_git_read", {
       permitId: source.permitId,
@@ -129,7 +132,7 @@ export function readAgentGit(
 }
 export function agentDiff(body: GitViewBody): GitFileDiff {
   if (body.kind !== "diff")
-    throw new Error("This Git view has different content.");
+    throw new Error(t("This Git view has different content."));
   const lines = body.patch.split("\n");
   const truncated = lines.length > 20000;
   return {
@@ -137,15 +140,17 @@ export function agentDiff(body: GitViewBody): GitFileDiff {
     truncated,
     notice:
       body.notice === "binary"
-        ? "Binary file: line-by-line changes are unavailable."
+        ? t("Binary file: line-by-line changes are unavailable.")
         : body.notice === "untracked"
-          ? "This file is untracked. Git does not include it in a working-tree diff."
+          ? t(
+              "This file is untracked. Git does not include it in a working-tree diff.",
+            )
           : null,
   };
 }
 export function agentCommit(body: GitViewBody): GitCommitDetails {
   if (body.kind !== "commit")
-    throw new Error("This Git view has different content.");
+    throw new Error(t("This Git view has different content."));
   return {
     commit: {
       id: body.commit,

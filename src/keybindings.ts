@@ -1,216 +1,221 @@
+import { msg, t } from "./i18n";
 import { keyNames, validShortcut } from "@lomi-dev/plugin-sdk/shortcuts";
 export { validShortcut } from "@lomi-dev/plugin-sdk/shortcuts";
 export const actions = [
   {
     id: "commandPicker",
-    label: "Show commands",
-    description: "Find and run a workspace or plugin command.",
-    group: "Workspace",
+    label: msg("Show commands"),
+    description: msg("Find and run a workspace or plugin command."),
+    group: msg("Workspace"),
     shortcut: "Ctrl+Shift+KeyP",
   },
   {
     id: "saveFile",
-    label: "Save file",
-    description: "Save the active editor file.",
-    group: "Editor",
+    label: msg("Save file"),
+    description: msg("Save the active editor file."),
+    group: msg("Editor"),
     shortcut: "Ctrl+KeyS",
   },
   {
     id: "findFile",
-    label: "Find in file",
-    description: "Find and replace text in the active editor.",
-    group: "Editor",
+    label: msg("Find in file"),
+    description: msg("Find and replace text in the active editor."),
+    group: msg("Editor"),
     shortcut: "Ctrl+KeyF",
   },
   {
     id: "goToLine",
-    label: "Go to line",
-    description: "Jump to a line in the active editor.",
-    group: "Editor",
+    label: msg("Go to line"),
+    description: msg("Jump to a line in the active editor."),
+    group: msg("Editor"),
     shortcut: "Ctrl+KeyG",
   },
   {
     id: "toggleWordWrap",
-    label: "Toggle word wrap",
-    description: "Wrap long lines in the active editor.",
-    group: "Editor",
+    label: msg("Toggle word wrap"),
+    description: msg("Wrap long lines in the active editor."),
+    group: msg("Editor"),
     shortcut: "Alt+KeyZ",
   },
   {
     id: "terminalOverview",
-    label: "Toggle terminal overview",
-    description: "Show terminal titles in place of their contents.",
-    group: "Terminals",
+    label: msg("Toggle terminal overview"),
+    description: msg("Show terminal titles in place of their contents."),
+    group: msg("Terminals"),
     shortcut: "Ctrl+Tab",
   },
   {
     id: "newTerminal",
-    label: "New terminal",
-    description: "Split the active panel side by side.",
-    group: "Terminals",
+    label: msg("New terminal"),
+    description: msg("Split the active panel side by side."),
+    group: msg("Terminals"),
     shortcut: "Ctrl+KeyD",
   },
   {
     id: "splitVertical",
-    label: "Split terminal vertically",
-    description: "Place a terminal below the active panel.",
-    group: "Terminals",
+    label: msg("Split terminal vertically"),
+    description: msg("Place a terminal below the active panel."),
+    group: msg("Terminals"),
     shortcut: "Ctrl+Shift+KeyD",
   },
   {
     id: "closeTerminal",
-    label: "Close terminal",
-    description: "Close the active panel.",
-    group: "Terminals",
+    label: msg("Close terminal"),
+    description: msg("Close the active panel."),
+    group: msg("Terminals"),
     shortcut: "Ctrl+KeyW",
   },
   {
     id: "searchTerminal",
-    label: "Find in terminal",
-    description: "Search the active terminal's output.",
-    group: "Terminals",
+    label: msg("Find in terminal"),
+    description: msg("Search the active terminal's output."),
+    group: msg("Terminals"),
     shortcut: "Ctrl+Shift+KeyF",
   },
   {
     id: "copyTerminal",
-    label: "Copy terminal selection",
-    description: "Copy selected terminal text.",
-    group: "Terminals",
+    label: msg("Copy terminal selection"),
+    description: msg("Copy selected terminal text."),
+    group: msg("Terminals"),
     shortcut: "Ctrl+Shift+KeyC",
   },
   {
     id: "pasteTerminal",
-    label: "Paste into terminal",
-    description: "Paste clipboard text or images into the terminal.",
-    group: "Terminals",
+    label: msg("Paste into terminal"),
+    description: msg("Paste clipboard text or images into the terminal."),
+    group: msg("Terminals"),
     shortcut: "Ctrl+Shift+KeyV",
   },
   {
     id: "commandInput",
-    label: "Command input",
-    description: "Show or hide the multiline command input.",
-    group: "Terminals",
+    label: msg("Command input"),
+    description: msg("Show or hide the multiline command input."),
+    group: msg("Terminals"),
     shortcut: "Ctrl+Shift+KeyI",
   },
   {
     id: "runCommand",
-    label: "Run command input",
-    description: "Run a command while the command input is focused.",
-    group: "Terminals",
+    label: msg("Run command input"),
+    description: msg("Run a command while the command input is focused."),
+    group: msg("Terminals"),
     shortcut: "Ctrl+Enter",
   },
   {
     id: "commandBlocks",
-    label: "Command blocks",
-    description: "Show or hide command history and output positions.",
-    group: "Terminals",
+    label: msg("Command blocks"),
+    description: msg("Show or hide command history and output positions."),
+    group: msg("Terminals"),
     shortcut: "Ctrl+Shift+KeyH",
   },
   {
     id: "changeEnvironment",
-    label: "Change terminal environment",
-    description: "Choose the shell or WSL distribution for the active tab.",
-    group: "Terminals",
+    label: msg("Change terminal environment"),
+    description: msg(
+      "Choose the shell or WSL distribution for the active tab.",
+    ),
+    group: msg("Terminals"),
     shortcut: "Ctrl+Shift+KeyL",
   },
   {
     id: "newTab",
-    label: "New tab",
-    description: "Open a tab with one terminal.",
-    group: "Tabs",
+    label: msg("New tab"),
+    description: msg("Open a tab with one terminal."),
+    group: msg("Tabs"),
     shortcut: "Ctrl+Shift+KeyT",
   },
   {
     id: "newChat",
-    label: "New chat",
-    description: "Open a chat thread tab.",
-    group: "Tabs",
+    label: msg("New chat"),
+    description: msg("Open a chat thread tab."),
+    group: msg("Tabs"),
     shortcut: "Ctrl+Shift+KeyN",
   },
   {
     id: "closeTab",
-    label: "Close tab",
-    description: "Close the active tab and all its terminals.",
-    group: "Tabs",
+    label: msg("Close tab"),
+    description: msg("Close the active tab and all its terminals."),
+    group: msg("Tabs"),
     shortcut: "Ctrl+Shift+KeyW",
   },
   {
     id: "nextTab",
-    label: "Next tab",
-    description: "Switch to the next tab in this workspace.",
-    group: "Tabs",
+    label: msg("Next tab"),
+    description: msg("Switch to the next tab in this workspace."),
+    group: msg("Tabs"),
     shortcut: "Ctrl+PageDown",
   },
   {
     id: "previousTab",
-    label: "Previous tab",
-    description: "Switch to the previous tab in this workspace.",
-    group: "Tabs",
+    label: msg("Previous tab"),
+    description: msg("Switch to the previous tab in this workspace."),
+    group: msg("Tabs"),
     shortcut: "Ctrl+PageUp",
   },
   {
     id: "toggleExplorer",
-    label: "Toggle file explorer",
-    description: "Show or hide the file explorer.",
-    group: "Workspace",
+    label: msg("Toggle file explorer"),
+    description: msg("Show or hide the file explorer."),
+    group: msg("Workspace"),
     shortcut: "Ctrl+Shift+KeyE",
   },
   {
     id: "toggleSourceControl",
-    label: "Toggle source control",
-    description: "Show or hide Source Control when Git is available.",
-    group: "Workspace",
+    label: msg("Toggle source control"),
+    description: msg("Show or hide Source Control when Git is available."),
+    group: msg("Workspace"),
     shortcut: "Ctrl+Shift+KeyG",
   },
   {
     id: "toggleWorkspaces",
-    label: "Toggle workspaces",
-    description: "Show or hide the workspace list for all folders.",
-    group: "Workspace",
+    label: msg("Toggle workspaces"),
+    description: msg("Show or hide the workspace list for all folders."),
+    group: msg("Workspace"),
     shortcut: null,
   },
   {
     id: "openSettings",
-    label: "Open settings",
-    description: "Open the Settings tab.",
-    group: "Workspace",
+    label: msg("Open settings"),
+    description: msg("Open the Settings tab."),
+    group: msg("Workspace"),
     shortcut: "Ctrl+Comma",
   },
   {
     id: "zoomIn",
-    label: "Zoom in",
-    description:
+    label: msg("Zoom in"),
+    description: msg(
       "Increase the size of the entire interface, including terminals and editors.",
-    group: "Workspace",
+    ),
+    group: msg("Workspace"),
     shortcut: "Ctrl+Equal",
   },
   {
     id: "zoomOut",
-    label: "Zoom out",
-    description:
+    label: msg("Zoom out"),
+    description: msg(
       "Decrease the size of the entire interface, including terminals and editors.",
-    group: "Workspace",
+    ),
+    group: msg("Workspace"),
     shortcut: "Ctrl+Minus",
   },
   {
     id: "resetZoom",
-    label: "Reset zoom",
-    description: "Restore the interface to its original size (100%).",
-    group: "Workspace",
+    label: msg("Reset zoom"),
+    description: msg("Restore the interface to its original size (100%)."),
+    group: msg("Workspace"),
     shortcut: "Ctrl+Digit0",
   },
   {
     id: "movePanel",
-    label: "Move active panel",
-    description: "Choose another panel and a docking side in this tab.",
-    group: "Workspace",
+    label: msg("Move active panel"),
+    description: msg("Choose another panel and a docking side in this tab."),
+    group: msg("Workspace"),
     shortcut: null,
   },
   {
     id: "dockTab",
-    label: "Dock current tab",
-    description: "Dock this tab into another terminal tab.",
-    group: "Workspace",
+    label: msg("Dock current tab"),
+    description: msg("Dock this tab into another terminal tab."),
+    group: msg("Workspace"),
     shortcut: null,
   },
 ] as const;
@@ -310,7 +315,7 @@ export function isZoomAction(
 }
 
 export function formatShortcut(shortcut: string | null): string {
-  if (!shortcut) return "Not set";
+  if (!shortcut) return t("Not set");
   return shortcut
     .split("+")
     .map((part) =>
@@ -334,9 +339,8 @@ export function bindingConflict(
   const other = Object.entries(bindings).find(
     ([key, value]) => key !== id && value === shortcut,
   )?.[0];
-  return other
-    ? (actions.find((action) => action.id === other)?.label ?? other)
-    : undefined;
+  const label = actions.find((action) => action.id === other)?.label;
+  return other ? (label ? t(label) : other) : undefined;
 }
 
 export function restoreKeybindings(
@@ -362,7 +366,9 @@ export function restoreKeybindings(
       typeof value.explorerOpenOnSingleClick !== "boolean")
   ) {
     throw new Error(
-      "The saved keybindings use an unsupported format. The file has been left intact.",
+      t(
+        "The saved keybindings use an unsupported format. The file has been left intact.",
+      ),
     );
   }
   const savedEntries = Object.entries(value.bindings);
@@ -371,7 +377,9 @@ export function restoreKeybindings(
     new TextEncoder().encode(JSON.stringify(value)).length > 256 * 1024
   )
     throw new Error(
-      "Keybindings exceed the extension settings limit. The file was preserved.",
+      t(
+        "Keybindings exceed the extension settings limit. The file was preserved.",
+      ),
     );
   for (const [key] of savedEntries) {
     if (!actions.some((action) => action.id === key) && !key.includes("."))
@@ -381,7 +389,7 @@ export function restoreKeybindings(
       (!actions.some((action) => action.id === key) &&
         !/^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+$/.test(key))
     )
-      throw new Error(`Invalid saved command ID: ${key}`);
+      throw new Error(t("Invalid saved command ID: {key}", { key }));
     const id = key as ActionId;
     const shortcut = (value.bindings as Record<string, unknown>)[id];
     if (
@@ -389,7 +397,10 @@ export function restoreKeybindings(
       (typeof shortcut !== "string" || !validShortcut(shortcut))
     )
       throw new Error(
-        `The saved shortcut for ${id} is invalid. The file has been left intact.`,
+        t(
+          "The saved shortcut for {id} is invalid. The file has been left intact.",
+          { id },
+        ),
       );
     result[id] = shortcut;
   }
@@ -430,13 +441,17 @@ export function restoreKeybindings(
     )
       result[id] = null;
   for (const [id] of Object.entries(result) as [ActionId, string | null][]) {
-    const label =
-      [...actions, ...contributions].find((action) => action.id === id)
-        ?.label ?? id;
+    const found = [...actions, ...contributions].find(
+      (action) => action.id === id,
+    );
+    const label = found ? t(found.label) : id;
     const conflict = bindingConflict(result, id, result[id]);
     if (conflict)
       throw new Error(
-        `The saved shortcuts for ${label} and ${conflict} conflict. The file has been left intact.`,
+        t(
+          "The saved shortcuts for {label} and {conflict} conflict. The file has been left intact.",
+          { label, conflict },
+        ),
       );
   }
   return result;

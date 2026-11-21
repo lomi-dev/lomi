@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api } from "./api";
+import { useT } from "./i18n";
 
 export interface AndroidManagementApproval {
   operationId: string;
@@ -49,6 +50,7 @@ export function AgentAndroidApproval({
   busy: boolean;
   run: (action: () => Promise<unknown>, message: string) => Promise<void>;
 }) {
+  const { t } = useT();
   const [accepted, setAccepted] = useState<string[]>([]);
   const [confirmation, setConfirmation] = useState("");
   const requiredConfirmation =
@@ -71,8 +73,10 @@ export function AgentAndroidApproval({
           confirmation: approve && erase ? confirmation : null,
         }),
       approve
-        ? "Android operation approved. Progress is available in Android settings."
-        : "Android operation denied.",
+        ? t(
+            "Android operation approved. Progress is available in Android settings.",
+          )
+        : t("Android operation denied."),
     );
   return (
     <article className="agent-control-request">
@@ -80,22 +84,26 @@ export function AgentAndroidApproval({
         {request.clientLabel} — {request.plan.target}
       </h3>
       <p className="settings-help">
-        Expires in {request.secondsRemaining} seconds. This approval applies
-        only to the plan shown here.
+        {t(
+          "Expires in {seconds} seconds. This approval applies only to the plan shown here.",
+          { seconds: request.secondsRemaining },
+        )}
       </p>
       {request.plan.downloads.length > 0 && (
         <>
           <p>
-            Download: {(request.plan.downloadBytes / 1024 ** 3).toFixed(2)} GiB.
-            Additional space is needed to unpack and install the components.
+            {t(
+              "Download: {size} GiB. Additional space is needed to unpack and install the components.",
+              { size: (request.plan.downloadBytes / 1024 ** 3).toFixed(2) },
+            )}
           </p>
           <ul>
             {request.plan.downloads.map((item) => (
               <li key={item.id}>
                 <strong>{item.name}</strong> — {item.revision},{" "}
-                {(item.bytes / 1024 ** 2).toFixed(1)} MiB
+                {t("{size} MiB", { size: (item.bytes / 1024 ** 2).toFixed(1) })}
                 <details>
-                  <summary>Download source and checksum</summary>
+                  <summary>{t("Download source and checksum")}</summary>
                   <p>{item.url}</p>
                   <code>{item.checksum}</code>
                 </details>
@@ -106,29 +114,31 @@ export function AgentAndroidApproval({
       )}
       {request.action?.hardware && (
         <dl>
-          <dt>System image</dt>
-          <dd>{request.action.image ?? "Keep the current image"}</dd>
-          <dt>Phone profile</dt>
+          <dt>{t("System image")}</dt>
+          <dd>{request.action.image ?? t("Keep the current image")}</dd>
+          <dt>{t("Phone profile")}</dt>
           <dd>{request.action.profile}</dd>
-          <dt>Memory</dt>
-          <dd>{request.action.hardware.ramMib} MiB</dd>
-          <dt>CPU cores</dt>
+          <dt>{t("Memory")}</dt>
+          <dd>{t("{size} MiB", { size: request.action.hardware.ramMib })}</dd>
+          <dt>{t("CPU cores")}</dt>
           <dd>{request.action.hardware.cpuCount}</dd>
-          <dt>Data partition</dt>
-          <dd>{request.action.hardware.dataGib} GiB</dd>
-          <dt>Graphics</dt>
+          <dt>{t("Data partition")}</dt>
+          <dd>{t("{size} GiB", { size: request.action.hardware.dataGib })}</dd>
+          <dt>{t("Graphics")}</dt>
           <dd>{request.action.hardware.gpu}</dd>
-          <dt>Boot</dt>
+          <dt>{t("Boot")}</dt>
           <dd>
-            {request.action.hardware.quickBoot ? "Quick boot" : "Cold boot"}
+            {request.action.hardware.quickBoot
+              ? t("Quick boot")
+              : t("Cold boot")}
           </dd>
         </dl>
       )}
       {request.licenses.map((license) => (
         <section className="android-license" key={license.digest}>
           <details>
-            <summary>{license.id} — provider terms</summary>
-            <pre tabIndex={0} aria-label={`${license.id} terms`}>
+            <summary>{t("{id} — provider terms", { id: license.id })}</summary>
+            <pre tabIndex={0} aria-label={t("{id} terms", { id: license.id })}>
               {license.text}
             </pre>
           </details>
@@ -145,22 +155,26 @@ export function AgentAndroidApproval({
                 )
               }
             />{" "}
-            I have read and accept these provider terms
+            {t("I have read and accept these provider terms")}
           </label>
         </section>
       ))}
       {request.action?.type === "restore_metadata" && request.action.reset && (
         <p className="settings-help">
-          Android preferences will return to their defaults. Device recovery
-          requires a valid backup and cannot reset the device registry.
+          {t(
+            "Android preferences will return to their defaults. Device recovery requires a valid backup and cannot reset the device registry.",
+          )}
         </p>
       )}
       {erase && (
         <label>
           {request.action?.type === "restore_metadata"
-            ? "Reset metadata"
-            : "Erase all data"}
-          : type “{requiredConfirmation}” to confirm
+            ? t("Reset metadata: type “{text}” to confirm", {
+                text: requiredConfirmation ?? "",
+              })
+            : t("Erase all data: type “{text}” to confirm", {
+                text: requiredConfirmation ?? "",
+              })}
           <input
             value={confirmation}
             disabled={busy}
@@ -176,7 +190,7 @@ export function AgentAndroidApproval({
           disabled={busy}
           onClick={() => void decide(false)}
         >
-          Deny Android operation
+          {t("Deny Android operation")}
         </button>
         <button
           className="button button-primary"
@@ -187,7 +201,7 @@ export function AgentAndroidApproval({
           }
           onClick={() => void decide(true)}
         >
-          Approve Android operation
+          {t("Approve Android operation")}
         </button>
       </div>
     </article>

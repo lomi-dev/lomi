@@ -4,6 +4,7 @@ import * as ReactDOMClient from "react-dom/client";
 import * as JSX from "react/jsx-runtime";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { api, native } from "../api";
+import { t } from "../i18n";
 import { PluginHost, emptyContext } from "./host";
 import type { PluginEntry } from "./host";
 import type { PluginManifest, PluginModule } from "@lomi-dev/plugin-sdk";
@@ -33,7 +34,7 @@ export const pluginHost = new PluginHost({
     signal.addEventListener("abort", remove, { once: true });
     if (signal.aborted) {
       remove();
-      throw new Error("Plugin activation was canceled.");
+      throw new Error(t("Plugin activation was canceled."));
     }
     try {
       await Promise.all(
@@ -57,19 +58,25 @@ export const pluginHost = new PluginHost({
                 else resolve();
               };
               const cancel = () =>
-                finish(new Error("Plugin activation was canceled."));
+                finish(new Error(t("Plugin activation was canceled.")));
               const timer = setTimeout(
-                () => finish(new Error(`Plugin stylesheet timed out: ${path}`)),
+                () =>
+                  finish(
+                    new Error(
+                      t("Plugin stylesheet timed out: {path}", { path }),
+                    ),
+                  ),
                 10000,
               );
               pending.add(cancel);
               link.onload = () => finish();
-              link.onerror = () => finish(new Error(`Cannot load ${path}`));
+              link.onerror = () =>
+                finish(new Error(t("Cannot load {path}", { path })));
               document.head.append(link);
             }),
         ),
       );
-      if (signal.aborted) throw new Error("Plugin activation was canceled.");
+      if (signal.aborted) throw new Error(t("Plugin activation was canceled."));
       for (const link of links) link.media = "all";
       return remove;
     } catch (error) {

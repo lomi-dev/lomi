@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { useT } from "./i18n";
 
 /** Shown after the first ⌘Q; native code quits on a second press within 2 s. */
 export function QuitHint() {
+  const { t } = useT();
   // Incremented per press so the countdown bar restarts its animation.
   const [shown, setShown] = useState(0);
   useEffect(() => {
@@ -19,12 +21,12 @@ export function QuitHint() {
   }, []);
   return shown ? (
     <div className="quit-hint" role="status" key={shown}>
-      <span>Hold</span>
+      <span>{t("Hold")}</span>
       <span className="keycaps" aria-label="Command Q">
         <kbd>⌘</kbd>
         <kbd>Q</kbd>
       </span>
-      <span>or press twice to quit</span>
+      <span>{t("or press twice to quit")}</span>
       <span className="quit-hint-countdown" aria-hidden="true" />
     </div>
   ) : null;

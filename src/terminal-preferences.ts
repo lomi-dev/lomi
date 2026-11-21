@@ -1,6 +1,7 @@
 import { parseLegacyTheme as parseTheme } from "./theme/format.ts";
 import type { ThemeTerminal } from "./theme/format.ts";
 import type { AppInfo } from "./model.ts";
+import { t } from "./i18n.ts";
 
 export const terminalBehaviorDefaults = {
   scrollback: 10_000,
@@ -67,7 +68,7 @@ export function restoreTerminalPreferences(
   if (value === null) return structuredClone(defaultTerminalPreferences);
   try {
     if (!value || typeof value !== "object" || Array.isArray(value))
-      throw new Error("Expected an object.");
+      throw new Error(t("Expected an object."));
     const data = value as Record<string, unknown>;
     if (
       data.version !== 1 ||
@@ -83,30 +84,30 @@ export function restoreTerminalPreferences(
           ].includes(key),
       )
     )
-      throw new Error("Unsupported format.");
+      throw new Error(t("Unsupported format."));
     if (
       data.windowsShell !== undefined &&
       data.windowsShell !== "powershell" &&
       data.windowsShell !== "cmd"
     )
-      throw new Error("Invalid Windows shell.");
+      throw new Error(t("Invalid Windows shell."));
     if (
       data.agentNotifications !== undefined &&
       typeof data.agentNotifications !== "boolean"
     )
-      throw new Error("Invalid agent notifications setting.");
+      throw new Error(t("Invalid agent notifications setting."));
     if (
       data.alwaysShowTitles !== undefined &&
       typeof data.alwaysShowTitles !== "boolean"
     )
-      throw new Error("Invalid terminal title visibility setting.");
+      throw new Error(t("Invalid terminal title visibility setting."));
     if (
       !data.appearance ||
       !data.behavior ||
       typeof data.behavior !== "object" ||
       Array.isArray(data.behavior)
     )
-      throw new Error("Missing terminal settings.");
+      throw new Error(t("Missing terminal settings."));
     const appearance = parseTheme({
       version: 1,
       name: "Terminal",
@@ -117,22 +118,23 @@ export function restoreTerminalPreferences(
       (appearance.fontFamily.length > 500 ||
         /[\x00-\x1f\x7f;{}<>]/.test(appearance.fontFamily))
     )
-      throw new Error("Invalid font family.");
+      throw new Error(t("Invalid font family."));
     if (
       appearance.cursorWidth !== undefined &&
       !Number.isInteger(appearance.cursorWidth)
     )
-      throw new Error("Cursor width must be a whole number.");
+      throw new Error(t("Cursor width must be a whole number."));
     for (const color of Object.values(appearance.colors ?? {}))
       if (!terminalColorPattern.test(color))
-        throw new Error("Use #RRGGBB or #RRGGBBAA colors.");
+        throw new Error(t("Use #RRGGBB or #RRGGBBAA colors."));
     const behavior = data.behavior as Record<string, unknown>;
     for (const key of Object.keys(behavior))
       if (!Object.hasOwn(terminalBehaviorDefaults, key))
-        throw new Error(`Unknown terminal setting: ${key}.`);
+        throw new Error(t("Unknown terminal setting: {key}.", { key }));
     for (const [key, fallback] of Object.entries(terminalBehaviorDefaults)) {
       const entry = behavior[key];
-      if (typeof entry !== typeof fallback) throw new Error(`Invalid ${key}.`);
+      if (typeof entry !== typeof fallback)
+        throw new Error(t("Invalid {key}.", { key }));
       if (typeof entry === "number") {
         const [min, max] =
           terminalBehaviorNumbers[key as keyof typeof terminalBehaviorNumbers];
@@ -143,14 +145,16 @@ export function restoreTerminalPreferences(
           (!["scrollSensitivity", "fastScrollSensitivity"].includes(key) &&
             !Number.isInteger(entry))
         )
-          throw new Error(`${key} must be between ${min} and ${max}.`);
+          throw new Error(
+            t("{key} must be between {min} and {max}.", { key, min, max }),
+          );
       }
     }
     if (
       (behavior.wordSeparator as string).length > 200 ||
       /[\x00-\x1f\x7f]/.test(behavior.wordSeparator as string)
     )
-      throw new Error("Invalid word separators.");
+      throw new Error(t("Invalid word separators."));
     return {
       appearance: structuredClone(appearance),
       behavior: { ...behavior } as TerminalPreferences["behavior"],
@@ -160,7 +164,10 @@ export function restoreTerminalPreferences(
     };
   } catch (error) {
     throw new Error(
-      `Invalid or unsupported terminal settings (${error instanceof Error ? error.message : String(error)}). The file has been left intact. Retry loading or reset defaults to replace it.`,
+      t(
+        "Invalid or unsupported terminal settings ({reason}). The file has been left intact. Retry loading or reset defaults to replace it.",
+        { reason: error instanceof Error ? error.message : String(error) },
+      ),
     );
   }
 }

@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import type { AndroidFrame } from "./frame";
 
 export interface AndroidRenderer {
@@ -24,7 +25,7 @@ export class AndroidCanvas implements AndroidRenderer {
 
   constructor(onError: (message: string) => void) {
     this.element.className = "android-screen";
-    this.element.setAttribute("aria-label", "Android phone screen");
+    this.element.setAttribute("aria-label", t("Android phone screen"));
     this.element.tabIndex = 0;
     const gl = this.element.getContext("webgl", {
       alpha: false,
@@ -57,7 +58,7 @@ export class AndroidCanvas implements AndroidRenderer {
         if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
           gl.deleteShader(shader);
           throw new Error(
-            "Android screen shader compilation failed. Reconnect the panel.",
+            t("Android screen shader compilation failed. Reconnect the panel."),
           );
         }
         gl.attachShader(program, shader);
@@ -113,7 +114,7 @@ export class AndroidCanvas implements AndroidRenderer {
     const { gl, element } = this;
     if (this.disposed || gl.isContextLost())
       throw new Error(
-        "Android graphics context was lost. Reconnect the panel.",
+        t("Android graphics context was lost. Reconnect the panel."),
       );
     if (!frame.width || !frame.height) {
       gl.clear(gl.COLOR_BUFFER_BIT);

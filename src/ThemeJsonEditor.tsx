@@ -12,6 +12,7 @@ import { codeEditorExtensions } from "./editor-extensions";
 import { useEditorPreferences } from "./EditorPreferencesProvider";
 import { useKeybindings } from "./KeybindingsProvider";
 import { actionForEvent } from "./keybindings";
+import { useT } from "./i18n";
 import { errorMessage } from "./api";
 import { themeAppliedEvent } from "./theme/runtime";
 import { IconButton } from "./ui";
@@ -29,6 +30,7 @@ export default function ThemeJsonEditor({
   onSave: () => void;
   onError: (message: string) => void;
 }) {
+  const { t } = useT();
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const { value: preferences } = useEditorPreferences();
@@ -53,7 +55,7 @@ export default function ThemeJsonEditor({
           appearance.of(darkTheme()),
           wrapping.of([]),
           EditorView.contentAttributes.of({
-            "aria-label": "Theme JSON",
+            "aria-label": t("Theme JSON"),
             spellcheck: "false",
             autocapitalize: "off",
             autocorrect: "off",
@@ -176,7 +178,7 @@ export default function ThemeJsonEditor({
         <span className="editor-path">theme.jsonc</span>
         <div className="editor-actions">
           <IconButton
-            title="Undo"
+            title={t("Undo")}
             disabled={disabled}
             onClick={() => {
               undo(view.current!);
@@ -186,7 +188,7 @@ export default function ThemeJsonEditor({
             <Undo2 size={15} />
           </IconButton>
           <IconButton
-            title="Redo"
+            title={t("Redo")}
             disabled={disabled}
             onClick={() => {
               redo(view.current!);
@@ -196,7 +198,7 @@ export default function ThemeJsonEditor({
             <Redo2 size={15} />
           </IconButton>
           <IconButton
-            title="Find in JSON"
+            title={t("Find in JSON")}
             onClick={() => openSearchPanel(view.current!)}
           >
             <Search size={15} />
@@ -207,7 +209,7 @@ export default function ThemeJsonEditor({
             disabled={disabled}
             onClick={format}
           >
-            Format JSON
+            {t("Format JSON")}
           </button>
         </div>
       </div>

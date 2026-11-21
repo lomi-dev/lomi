@@ -14,6 +14,7 @@ import {
   Smartphone,
   Terminal,
 } from "./icons";
+import { msg, useT } from "./i18n";
 import type { SettingsPageId } from "./settings-pages";
 import {
   highlightParts,
@@ -25,81 +26,81 @@ import "./settings-search.css";
 
 const groups = [
   {
-    label: "Personalize",
+    label: msg("Personalize"),
     pages: [
       {
         id: "general",
-        label: "General",
+        label: msg("General"),
         icon: Settings,
       },
       {
         id: "themes",
-        label: "Themes",
+        label: msg("Themes"),
         icon: Palette,
       },
       {
         id: "keybinds",
-        label: "Keybinds",
+        label: msg("Keybinds"),
         icon: Keyboard,
       },
       {
         id: "notifications",
-        label: "Notifications",
+        label: msg("Notifications"),
         icon: Bell,
       },
     ],
   },
   {
-    label: "Workspace",
+    label: msg("Workspace"),
     pages: [
       {
         id: "terminal",
-        label: "Terminal",
+        label: msg("Terminal"),
         icon: Terminal,
       },
       {
         id: "android",
-        label: "Android",
+        label: msg("Android"),
         icon: Smartphone,
       },
       {
         id: "plugins",
-        label: "Plugins",
+        label: msg("Plugins"),
         icon: Puzzle,
       },
     ],
   },
   {
-    label: "Chat AI",
+    label: msg("Chat AI"),
     pages: [
       {
         id: "chat-providers",
-        label: "Providers",
+        label: msg("Providers"),
         icon: MessageSquare,
       },
       {
         id: "chat-defaults",
-        label: "Defaults",
+        label: msg("Defaults"),
         icon: Layers,
       },
     ],
   },
   {
-    label: "Access",
+    label: msg("Access"),
     pages: [
       {
         id: "account",
-        label: "Account",
+        label: msg("Account"),
         icon: ShieldCheck,
       },
       {
         id: "remote",
-        label: "Remote",
+        label: msg("Remote"),
         icon: Globe,
       },
       {
         id: "agent-control",
-        label: "Agent control",
+        label: msg("Agent control"),
         icon: ShieldCheck,
       },
     ],
@@ -109,7 +110,7 @@ const groups = [
     pages: [
       {
         id: "about",
-        label: "About",
+        label: msg("About"),
         icon: Info,
       },
     ],
@@ -117,7 +118,7 @@ const groups = [
 ] as const;
 
 export function settingsPageLabel(id: SettingsPageId) {
-  return settingsPageLabels[id] ?? "Settings";
+  return settingsPageLabels[id] ?? msg("Settings");
 }
 
 const pageIcons = Object.fromEntries(
@@ -149,11 +150,12 @@ export default function SettingsNavigation({
   onSelect,
   onReveal,
 }: SettingsNavigationProps) {
+  const { t, locale } = useT();
   const navigation = useRef<HTMLElement>(null);
   const [query, setQuery] = useState("");
   const [activeResult, setActiveResult] = useState(0);
   const searching = query.trim() !== "";
-  const results = useMemo(() => searchSettings(query), [query]);
+  const results = useMemo(() => searchSettings(query), [query, locale]);
   const resultId = (index: number) => `settings-search-result-${index}`;
   const open = (entry: SettingsSearchEntry) => {
     if (entry.page === "remote" && !remoteAvailable) return;
@@ -183,14 +185,14 @@ export default function SettingsNavigation({
     <nav
       ref={navigation}
       className="settings-navigation"
-      aria-label="Settings pages"
+      aria-label={t("Settings pages")}
     >
       <label className="settings-nav-search">
         <Search size={14} aria-hidden="true" />
         <input
           type="search"
-          aria-label="Search settings"
-          placeholder="Search"
+          aria-label={t("Search settings")}
+          placeholder={t("Search")}
           value={query}
           role="combobox"
           aria-expanded={searching}
@@ -233,11 +235,11 @@ export default function SettingsNavigation({
           id="settings-search-results"
           className="settings-search-results"
           role="listbox"
-          aria-label="Search results"
+          aria-label={t("Search results")}
         >
           {results.length === 0 && (
             <p className="settings-search-empty" role="status">
-              No results for “{query.trim()}”
+              {t("No results for “{query}”", { query: query.trim() })}
             </p>
           )}
           {results.map((entry, index) => {
@@ -259,11 +261,11 @@ export default function SettingsNavigation({
                 <Icon size={16} aria-hidden="true" />
                 <span className="settings-search-text">
                   <span className="settings-search-label">
-                    <Highlighted text={entry.label} query={query} />
+                    <Highlighted text={t(entry.label)} query={query} />
                   </span>
                   <span className="settings-search-crumb">
-                    {settingsPageLabels[entry.page]}
-                    {entry.section && ` › ${entry.section}`}
+                    {t(settingsPageLabels[entry.page])}
+                    {entry.section && ` › ${t(entry.section)}`}
                   </span>
                 </span>
               </div>
@@ -274,7 +276,7 @@ export default function SettingsNavigation({
         groups.map((group) => (
           <Fragment key={group.label ?? "footer"}>
             {group.label && (
-              <div className="settings-nav-group-label">{group.label}</div>
+              <div className="settings-nav-group-label">{t(group.label)}</div>
             )}
             {group.pages.map(({ id, label, icon: Icon }) => (
               <button
@@ -316,7 +318,7 @@ export default function SettingsNavigation({
                 }}
               >
                 <Icon size={16} aria-hidden="true" />
-                <span className="settings-nav-label">{label}</span>
+                <span className="settings-nav-label">{t(label)}</span>
               </button>
             ))}
           </Fragment>

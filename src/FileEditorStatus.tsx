@@ -10,6 +10,7 @@ import type { EditorDocument } from "./editor-runtime";
 import { useKeybindings } from "./KeybindingsProvider";
 import { shortcutTitle } from "./keybindings";
 import { IconButton } from "./ui";
+import { useT } from "./i18n";
 
 const EditorStatusMenu = lazy(() => import("./EditorStatusMenu"));
 
@@ -18,6 +19,7 @@ export default function FileEditorStatus({
 }: {
   document: EditorDocument;
 }) {
+  const { t } = useT();
   const status = useSyncExternalStore(document.subscribe, document.getSnapshot);
   const { bindings } = useKeybindings();
   const [menu, setMenu] = useState<{
@@ -26,23 +28,36 @@ export default function FileEditorStatus({
   } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
   return (
-    <div className="editor-status" role="group" aria-label="File information">
+    <div
+      className="editor-status"
+      role="group"
+      aria-label={t("File information")}
+    >
       <span>
-        Ln {status.line}, Col {status.column}
+        {t("Ln {line}, Col {column}", {
+          line: status.line,
+          column: status.column,
+        })}
       </span>
-      {status.dirty && <span>Modified</span>}
-      {status.readOnly && <span>Read-only</span>}
+      {status.dirty && <span>{t("Modified")}</span>}
+      {status.readOnly && <span>{t("Read-only")}</span>}
       {status.large && (
-        <span title="Syntax highlighting, completion and wrapping are disabled for large files or very long lines.">
-          Large file mode
+        <span
+          title={t(
+            "Syntax highlighting, completion and wrapping are disabled for large files or very long lines.",
+          )}
+        >
+          {t("Large file mode")}
         </span>
       )}
       <span>{status.encoding}</span>
       <span>{status.lineEnding}</span>
       <button
         className="text-button"
-        title={`Change indentation settings (tab display size: ${status.tabSize})`}
-        aria-label="Change indentation settings"
+        title={t("Change indentation settings (tab display size: {size})", {
+          size: status.tabSize,
+        })}
+        aria-label={t("Change indentation settings")}
         aria-haspopup="dialog"
         aria-expanded={menu?.kind === "indentation"}
         onPointerDown={(event) => {
@@ -57,13 +72,15 @@ export default function FileEditorStatus({
           )
         }
       >
-        {status.insertSpaces ? "Spaces" : "Tabs"}:{" "}
-        {status.insertSpaces ? status.indentSize : status.tabSize}
+        {t("{kind}: {size}", {
+          kind: status.insertSpaces ? t("Spaces") : t("Tabs"),
+          size: status.insertSpaces ? status.indentSize : status.tabSize,
+        })}
       </button>
       <button
         className="text-button"
-        title="Change language mode"
-        aria-label="Change language mode"
+        title={t("Change language mode")}
+        aria-label={t("Change language mode")}
         aria-haspopup="dialog"
         aria-expanded={menu?.kind === "language"}
         onPointerDown={(event) => {
@@ -78,10 +95,10 @@ export default function FileEditorStatus({
           )
         }
       >
-        {status.language}
+        {status.language === "Plain text" ? t("Plain text") : status.language}
       </button>
       <IconButton
-        title={shortcutTitle("Toggle word wrap", bindings.toggleWordWrap)}
+        title={shortcutTitle(t("Toggle word wrap"), bindings.toggleWordWrap)}
         aria-pressed={status.wrapped}
         disabled={status.large}
         onClick={() => document.command("toggleWordWrap")}

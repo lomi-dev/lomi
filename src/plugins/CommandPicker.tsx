@@ -8,6 +8,7 @@ import { commandAvailable } from "./host";
 import { errorMessage } from "../api";
 import { Search } from "../icons";
 import Keycaps from "../Keycaps";
+import { useT } from "../i18n";
 export default function CommandPicker({
   onClose,
   onBuiltin,
@@ -19,6 +20,7 @@ export default function CommandPicker({
   onError: (error: string) => void;
   settingsActive?: boolean;
 }) {
+  const { t, tp } = useT();
   const [query, setQuery] = useState("");
   const search = useRef<HTMLInputElement>(null);
   const { actions, bindings } = useKeybindings();
@@ -69,9 +71,7 @@ export default function CommandPicker({
     if (["newTerminal", "splitVertical"].includes(id))
       return !!document.querySelector(".split-container");
     if (id === "toggleSourceControl")
-      return !!document.querySelector(
-        '[title^="Toggle Source Control"], [title^="Toggle source control"]',
-      );
+      return !!document.querySelector('[data-sidebar-toggle="git"]');
     return true;
   };
   const views = catalog.entries
@@ -82,18 +82,20 @@ export default function CommandPicker({
       })),
     )
     .filter(({ view }) =>
-      `Open ${view.title}`.toLowerCase().includes(query.toLowerCase()),
+      t("Open {title}", { title: view.title })
+        .toLowerCase()
+        .includes(query.toLowerCase()),
     );
   const commands = actions.filter(
     (action) =>
       action.id !== "commandPicker" &&
-      `${action.label} ${action.group}`
+      `${t(action.label)} ${t(action.group)}`
         .toLowerCase()
         .includes(query.toLowerCase()),
   );
   return (
     <Modal
-      title="Commands"
+      title={t("Commands")}
       className="command-picker"
       initialFocus={search}
       onClose={onClose}
@@ -103,8 +105,8 @@ export default function CommandPicker({
           <Search size={17} aria-hidden="true" />
           <input
             ref={search}
-            aria-label="Find command"
-            placeholder="Search commands…"
+            aria-label={t("Find command")}
+            placeholder={t("Search commands…")}
             autoFocus
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -113,7 +115,7 @@ export default function CommandPicker({
         <div className="dialog-content command-picker-list">
           {commands.length === 0 && views.length === 0 && (
             <p className="command-picker-empty" role="status">
-              No matching commands. Try another name.
+              {t("No matching commands. Try another name.")}
             </p>
           )}
           {commands.map((command) => {
@@ -144,8 +146,8 @@ export default function CommandPicker({
                   else onBuiltin(command.id);
                 }}
               >
-                <span>{command.label}</span>
-                <small>{command.group}</small>
+                <span>{t(command.label)}</span>
+                <small>{t(command.group)}</small>
                 <span aria-hidden="true">
                   <Keycaps binding={bindings[command.id]} />
                 </span>
@@ -166,7 +168,7 @@ export default function CommandPicker({
                   .catch((error) => onError(errorMessage(error)));
               }}
             >
-              <span>Open {view.title}</span>
+              <span>{t("Open {title}", { title: view.title })}</span>
               <small>
                 {entry.manifest!.name} · {view.placement}
               </small>
@@ -174,9 +176,16 @@ export default function CommandPicker({
           ))}
         </div>
         <footer className="command-picker-footer">
-          <span>{commands.length + views.length} results</span>
+          <span>
+            {tp(
+              commands.length + views.length,
+              "{count} result",
+              "{count} results",
+            )}
+          </span>
           <span aria-hidden="true">
-            <kbd>Tab</kbd> navigate <kbd>Enter</kbd> run <kbd>Esc</kbd> close
+            <kbd>Tab</kbd> {t("navigate")} <kbd>Enter</kbd> {t("run")}{" "}
+            <kbd>Esc</kbd> {t("close")}
           </span>
         </footer>
       </div>

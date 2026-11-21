@@ -1,6 +1,7 @@
 import "./settings-sections.css";
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "./api";
+import { msg, useT } from "./i18n";
 import type { ControlState, ControlWorkspace } from "./agent-control";
 
 export default function AgentControlPairing({
@@ -16,6 +17,7 @@ export default function AgentControlPairing({
   busy: boolean;
   run: (action: () => Promise<unknown>, message?: string) => Promise<void>;
 }) {
+  const { t } = useT();
   const [workspaceId, setWorkspaceId] = useState("");
   const [extraWorkspaceIds, setExtraWorkspaceIds] = useState<string[]>([]);
   const [readSettings, setReadSettings] = useState(false);
@@ -105,13 +107,13 @@ export default function AgentControlPairing({
   const workspacesAccessAdded = writeWorkspace || managePanels;
   const preferencesAccessAdded = readSettings || openSettings;
   const activePermissionGroups = [
-    ...(terminalAccessAdded ? ["Terminal"] : []),
-    ...(filesAccessAdded ? ["Files & editor"] : []),
-    ...(gitAccessAdded ? ["Git"] : []),
-    ...(browserAccessAdded ? ["Browser"] : []),
-    ...(androidAccessAdded ? ["Android"] : []),
-    ...(workspacesAccessAdded ? ["Workspaces & panels"] : []),
-    ...(preferencesAccessAdded ? ["Application preferences"] : []),
+    ...(terminalAccessAdded ? [msg("Terminal")] : []),
+    ...(filesAccessAdded ? [msg("Files & editor")] : []),
+    ...(gitAccessAdded ? [msg("Git")] : []),
+    ...(browserAccessAdded ? [msg("Browser")] : []),
+    ...(androidAccessAdded ? [msg("Android")] : []),
+    ...(workspacesAccessAdded ? [msg("Workspaces & panels")] : []),
+    ...(preferencesAccessAdded ? [msg("Application preferences")] : []),
   ];
   const grantedScopes = [
     ...new Set([
@@ -214,25 +216,30 @@ export default function AgentControlPairing({
       <header className="agent-pairing-header">
         <h3>{request.clientLabel}</h3>
         <p className="settings-help">
-          Expires in {request.secondsRemaining} seconds
+          {t("Expires in {seconds} seconds", {
+            seconds: request.secondsRemaining,
+          })}
         </p>
       </header>
       <div className="agent-pairing-identity">
         <p className="settings-help">
-          Match this request ID with the pairingRequestId returned by
-          lomi_status in your client before approving.
+          {t(
+            "Match this request ID with the pairingRequestId returned by lomi_status in your client before approving.",
+          )}
         </p>
         <p className="settings-help">
-          Request: <code>{request.id}</code>
+          {t("Request:")} <code>{request.id}</code>
         </p>
       </div>
       <div className="agent-pairing-details">
         <p className="settings-help">
-          Client certificate: <code>{request.certificateSha256}</code>
+          {t("Client certificate:")} <code>{request.certificateSha256}</code>
         </p>
       </div>
       <div className="agent-pairing-workspace">
-        <label htmlFor={`control-workspace-${request.id}`}>Workspace</label>
+        <label htmlFor={`control-workspace-${request.id}`}>
+          {t("Workspace")}
+        </label>
         <select
           id={`control-workspace-${request.id}`}
           value={workspaceId}
@@ -243,7 +250,7 @@ export default function AgentControlPairing({
           }}
           disabled={busy}
         >
-          <option value="">Choose a workspace</option>
+          <option value="">{t("Choose a workspace")}</option>
           {workspaces.map((w) => (
             <option key={w.id} value={w.id}>
               {w.projectName} / {w.name}
@@ -252,7 +259,7 @@ export default function AgentControlPairing({
         </select>
         {valid && (
           <p className="settings-help">
-            Project folder:{" "}
+            {t("Project folder:")}{" "}
             <code>
               {workspaces.find((w) => w.id === workspaceId)?.projectPath}
             </code>
@@ -260,7 +267,7 @@ export default function AgentControlPairing({
         )}
         {additionalWorkspaces.length > 0 && (
           <fieldset>
-            <legend>Other workspaces in this project</legend>
+            <legend>{t("Other workspaces in this project")}</legend>
             {additionalWorkspaces.map((workspace) => (
               <label key={workspace.id}>
                 <input
@@ -281,27 +288,32 @@ export default function AgentControlPairing({
               </label>
             ))}
             <p className="settings-help">
-              Only checked workspaces share this connection’s permissions.
+              {t(
+                "Only checked workspaces share this connection’s permissions.",
+              )}
             </p>
           </fieldset>
         )}
       </div>
       <div className="agent-permissions-heading">
-        <h4>Permissions</h4>
+        <h4>{t("Permissions")}</h4>
         <p className="settings-help">
-          Workspace names and layout are shared by default. Add only the access
-          this agent needs.
+          {t(
+            "Workspace names and layout are shared by default. Add only the access this agent needs.",
+          )}
         </p>
       </div>
       <div className="agent-permission-group">
         <div className="agent-permission-summary">
           <span className="disclosure-summary-content">
-            <span className="agent-permission-title">Terminal</span>
+            <span className="agent-permission-title">{t("Terminal")}</span>
             <span className="agent-permission-description">
-              Run commands in one approved shell.
+              {t("Run commands in one approved shell.")}
             </span>
             {terminalAccessAdded && (
-              <span className="agent-permission-selected">Access added</span>
+              <span className="agent-permission-selected">
+                {t("Access added")}
+              </span>
             )}
           </span>
         </div>
@@ -313,11 +325,11 @@ export default function AgentControlPairing({
               disabled={busy || !terminalProfiles.length}
               onChange={(event) => setExecuteTerminal(event.target.checked)}
             />{" "}
-            Allow terminal creation, command execution and output reads
+            {t("Allow terminal creation, command execution and output reads")}
           </label>
           {executeTerminal && (
             <label>
-              Approved terminal shell
+              {t("Approved terminal shell")}
               <select
                 value={terminalProfileId}
                 disabled={busy}
@@ -336,22 +348,25 @@ export default function AgentControlPairing({
             </label>
           )}
           <p className="settings-help">
-            Shell commands run with your user account permissions. The project
-            folder is a starting directory, not a sandbox. Only the selected
-            shell profile is approved. Its normal user configuration still
-            applies.
+            {t(
+              "Shell commands run with your user account permissions. The project folder is a starting directory, not a sandbox. Only the selected shell profile is approved. Its normal user configuration still applies.",
+            )}
           </p>
         </div>
       </div>
       <div className="agent-permission-group">
         <div className="agent-permission-summary">
           <span className="disclosure-summary-content">
-            <span className="agent-permission-title">Files & editor</span>
+            <span className="agent-permission-title">
+              {t("Files & editor")}
+            </span>
             <span className="agent-permission-description">
-              Access project files and editor buffers.
+              {t("Access project files and editor buffers.")}
             </span>
             {filesAccessAdded && (
-              <span className="agent-permission-selected">Access added</span>
+              <span className="agent-permission-selected">
+                {t("Access added")}
+              </span>
             )}
           </span>
         </div>
@@ -383,12 +398,12 @@ export default function AgentControlPairing({
                 }
               }}
             />
-            Allow reading project files
+            {t("Allow reading project files")}
           </label>
           <p className="settings-help">
-            Share text files on disk in this project. Known secret paths and
-            links are excluded. This permission does not read unsaved editor
-            buffers or allow changes.
+            {t(
+              "Share text files on disk in this project. Known secret paths and links are excluded. This permission does not read unsaved editor buffers or allow changes.",
+            )}
           </p>
           <label>
             <input
@@ -400,12 +415,12 @@ export default function AgentControlPairing({
                 if (!event.target.checked) setExportArtifacts(false);
               }}
             />
-            Allow creating project files and folders
+            {t("Allow creating project files and folders")}
           </label>
           <p className="settings-help">
-            Create empty files and folders inside this project. Existing names
-            are preserved. Editing and saving file contents require separate
-            permissions.
+            {t(
+              "Create empty files and folders inside this project. Existing names are preserved. Editing and saving file contents require separate permissions.",
+            )}
           </p>
           <label>
             <input
@@ -414,12 +429,12 @@ export default function AgentControlPairing({
               disabled={busy || !readFiles}
               onChange={(event) => setRenameFiles(event.target.checked)}
             />
-            Allow renaming and moving project files and folders
+            {t("Allow renaming and moving project files and folders")}
           </label>
           <p className="settings-help">
-            Move files and folders within this project after checking their disk
-            versions. Existing destinations are preserved. Open editors keep
-            unsaved text and undo history.
+            {t(
+              "Move files and folders within this project after checking their disk versions. Existing destinations are preserved. Open editors keep unsaved text and undo history.",
+            )}
           </p>
           <label>
             <input
@@ -428,12 +443,12 @@ export default function AgentControlPairing({
               disabled={busy || !readFiles}
               onChange={(event) => setTrashFiles(event.target.checked)}
             />
-            Allow moving project files and folders to Trash
+            {t("Allow moving project files and folders to Trash")}
           </label>
           <p className="settings-help">
-            Move approved project entries to the system Trash. Unsaved files
-            require your choice to save, discard or cancel. Interrupted moves
-            retain recovery data.
+            {t(
+              "Move approved project entries to the system Trash. Unsaved files require your choice to save, discard or cancel. Interrupted moves retain recovery data.",
+            )}
           </p>
           <label>
             <input
@@ -448,12 +463,12 @@ export default function AgentControlPairing({
                 }
               }}
             />
-            Allow reading unsaved editor buffers
+            {t("Allow reading unsaved editor buffers")}
           </label>
           <p className="settings-help">
-            Share text currently loaded in this workspace's editors, including
-            unsaved changes. Secret paths and links remain excluded. This does
-            not allow editing or saving.
+            {t(
+              "Share text currently loaded in this workspace's editors, including unsaved changes. Secret paths and links remain excluded. This does not allow editing or saving.",
+            )}
           </p>
           <label>
             <input
@@ -465,11 +480,12 @@ export default function AgentControlPairing({
                 if (!event.target.checked) setSaveFiles(false);
               }}
             />
-            Allow editing loaded buffers
+            {t("Allow editing loaded buffers")}
           </label>
           <p className="settings-help">
-            Allow changes to the shared editor text, with revision checks and
-            undo. Saving to disk requires a separate permission.
+            {t(
+              "Allow changes to the shared editor text, with revision checks and undo. Saving to disk requires a separate permission.",
+            )}
           </p>
           <label>
             <input
@@ -478,11 +494,12 @@ export default function AgentControlPairing({
               disabled={busy || !readFiles || !readBuffers || !writeBuffers}
               onChange={(event) => setSaveFiles(event.target.checked)}
             />
-            Allow saving editor files to disk
+            {t("Allow saving editor files to disk")}
           </label>
           <p className="settings-help">
-            Replace project files with the approved editor buffer after checking
-            buffer and disk revisions.
+            {t(
+              "Replace project files with the approved editor buffer after checking buffer and disk revisions.",
+            )}
           </p>
           <label>
             <input
@@ -491,12 +508,12 @@ export default function AgentControlPairing({
               disabled={busy || !readFiles}
               onChange={(event) => setImportFiles(event.target.checked)}
             />
-            Allow importing project files as artifacts
+            {t("Allow importing project files as artifacts")}
           </label>
           <p className="settings-help">
-            Make private copies of files up to 4 MiB, identified by their
-            content hash. Links and known secret paths are excluded. Upload and
-            export require separate permissions.
+            {t(
+              "Make private copies of files up to 4 MiB, identified by their content hash. Links and known secret paths are excluded. Upload and export require separate permissions.",
+            )}
           </p>
           <label>
             <input
@@ -505,12 +522,12 @@ export default function AgentControlPairing({
               disabled={busy || !readFiles || !createFiles}
               onChange={(event) => setExportArtifacts(event.target.checked)}
             />
-            Allow exporting artifacts to new project files
+            {t("Allow exporting artifacts to new project files")}
           </label>
           <p className="settings-help">
-            Save an accessible artifact of up to 4 MiB at an explicit project
-            path. Existing files are preserved. The original artifact
-            permissions still apply.
+            {t(
+              "Save an accessible artifact of up to 4 MiB at an explicit project path. Existing files are preserved. The original artifact permissions still apply.",
+            )}
           </p>
         </div>
       </div>
@@ -519,11 +536,14 @@ export default function AgentControlPairing({
           <span className="disclosure-summary-content">
             <span className="agent-permission-title">Git</span>
             <span className="agent-permission-description">
-              Read repository data or request approved changes. Requires project
-              file access in Files & editor.
+              {t(
+                "Read repository data or request approved changes. Requires project file access in Files & editor.",
+              )}
             </span>
             {gitAccessAdded && (
-              <span className="agent-permission-selected">Access added</span>
+              <span className="agent-permission-selected">
+                {t("Access added")}
+              </span>
             )}
           </span>
         </div>
@@ -544,11 +564,12 @@ export default function AgentControlPairing({
                 }
               }}
             />
-            Allow reading Git information in this project
+            {t("Allow reading Git information in this project")}
           </label>
           <p className="settings-help">
-            Share supported repository observations. This permission does not
-            allow Git changes, network access, hooks or external helpers.
+            {t(
+              "Share supported repository observations. This permission does not allow Git changes, network access, hooks or external helpers.",
+            )}
           </p>
           <label>
             <input
@@ -565,13 +586,14 @@ export default function AgentControlPairing({
                 }
               }}
             />
-            Allow requesting Git changes and executing configured Git code
+            {t(
+              "Allow requesting Git changes and executing configured Git code",
+            )}
           </label>
           <p className="settings-help">
-            Each Git change needs your approval in the main window for the exact
-            operation and repository state. Git hooks, helpers and filters can
-            run with your account’s access. Only grant this for repositories you
-            trust.
+            {t(
+              "Each Git change needs your approval in the main window for the exact operation and repository state. Git hooks, helpers and filters can run with your account’s access. Only grant this for repositories you trust.",
+            )}
           </p>
           <label>
             <input
@@ -580,12 +602,12 @@ export default function AgentControlPairing({
               disabled={busy || !readFiles || !readGit || !writeGit}
               onChange={(event) => setDiscardGit(event.target.checked)}
             />
-            Allow requesting discard of working Git changes
+            {t("Allow requesting discard of working Git changes")}
           </label>
           <p className="settings-help">
-            Each discard shows the exact working changes before approval. It
-            restores staged versions without saving the discarded bytes in Git
-            or Trash.
+            {t(
+              "Each discard shows the exact working changes before approval. It restores staged versions without saving the discarded bytes in Git or Trash.",
+            )}
           </p>
           <label>
             <input
@@ -600,13 +622,12 @@ export default function AgentControlPairing({
                 }
               }}
             />
-            Allow requesting contact with configured Git remotes
+            {t("Allow requesting contact with configured Git remotes")}
           </label>
           <p className="settings-help">
-            Fetch and pull requests show the remote and branch in the main
-            window before connecting. Configured transports and credential
-            helpers may run after approval. This permission does not allow
-            pushing commits.
+            {t(
+              "Fetch and pull requests show the remote and branch in the main window before connecting. Configured transports and credential helpers may run after approval. This permission does not allow pushing commits.",
+            )}
           </p>
           <label>
             <input
@@ -617,12 +638,12 @@ export default function AgentControlPairing({
               }
               onChange={(event) => setPullGit(event.target.checked)}
             />
-            Allow requesting Git pulls
+            {t("Allow requesting Git pulls")}
           </label>
           <p className="settings-help">
-            Each pull needs your approval for the exact incoming commit and
-            mode. Pull changes working files; rebase can rewrite local commit
-            history. Conflicts stay in the repository for you to resolve.
+            {t(
+              "Each pull needs your approval for the exact incoming commit and mode. Pull changes working files; rebase can rewrite local commit history. Conflicts stay in the repository for you to resolve.",
+            )}
           </p>
           <label>
             <input
@@ -633,25 +654,26 @@ export default function AgentControlPairing({
               }
               onChange={(event) => setPushGit(event.target.checked)}
             />
-            Allow requesting Git pushes
+            {t("Allow requesting Git pushes")}
           </label>
           <p className="settings-help">
-            Each push needs your approval for the exact remote branch and
-            commits. Push can publish repository content. Only creating a branch
-            or moving it forward is allowed; rewriting remote history is
-            excluded.
+            {t(
+              "Each push needs your approval for the exact remote branch and commits. Push can publish repository content. Only creating a branch or moving it forward is allowed; rewriting remote history is excluded.",
+            )}
           </p>
         </div>
       </div>
       <div className="agent-permission-group">
         <div className="agent-permission-summary">
           <span className="disclosure-summary-content">
-            <span className="agent-permission-title">Browser</span>
+            <span className="agent-permission-title">{t("Browser")}</span>
             <span className="agent-permission-description">
-              Navigate isolated browser panels and choose page access.
+              {t("Navigate isolated browser panels and choose page access.")}
             </span>
             {browserAccessAdded && (
-              <span className="agent-permission-selected">Access added</span>
+              <span className="agent-permission-selected">
+                {t("Access added")}
+              </span>
             )}
           </span>
         </div>
@@ -669,7 +691,7 @@ export default function AgentControlPairing({
                 }
               }}
             />{" "}
-            Allow opening and navigating isolated browser panels
+            {t("Allow opening and navigating isolated browser panels")}
           </label>
           <label>
             <input
@@ -684,7 +706,7 @@ export default function AgentControlPairing({
                 }
               }}
             />{" "}
-            Allow reading page text, form structure and browser logs
+            {t("Allow reading page text, form structure and browser logs")}
           </label>
           <label>
             <input
@@ -696,7 +718,7 @@ export default function AgentControlPairing({
                 if (!event.target.checked) setUploadBrowser(false);
               }}
             />{" "}
-            Allow clicking, typing and scrolling in pages
+            {t("Allow clicking, typing and scrolling in pages")}
           </label>
           <label>
             <input
@@ -705,7 +727,9 @@ export default function AgentControlPairing({
               disabled={busy || !navigateBrowser}
               onChange={(event) => setCaptureBrowser(event.target.checked)}
             />{" "}
-            Allow screenshots of pages, including embedded third-party frames
+            {t(
+              "Allow screenshots of pages, including embedded third-party frames",
+            )}
           </label>
           <label>
             <input
@@ -714,12 +738,12 @@ export default function AgentControlPairing({
               disabled={busy || !navigateBrowser || !readBrowser}
               onChange={(event) => setDownloadBrowser(event.target.checked)}
             />{" "}
-            Allow downloading page files as private artifacts
+            {t("Allow downloading page files as private artifacts")}
           </label>
           <p className="settings-help">
-            Fetch an explicit URL from the current page's origin, using its
-            browser session. Transfers are limited to 4 MiB and block redirects.
-            Export to a project file requires separate permission.
+            {t(
+              "Fetch an explicit URL from the current page's origin, using its browser session. Transfers are limited to 4 MiB and block redirects. Export to a project file requires separate permission.",
+            )}
           </p>
           <label>
             <input
@@ -730,17 +754,17 @@ export default function AgentControlPairing({
               }
               onChange={(event) => setUploadBrowser(event.target.checked)}
             />{" "}
-            Allow requesting file uploads to pages
+            {t("Allow requesting file uploads to pages")}
           </label>
           <p className="settings-help">
-            Each upload needs your approval of the destination, filename, size
-            and SHA-256 in Settings. Attaching the private copy lets the page
-            read and send its bytes immediately. Files are limited to 4 MiB.
+            {t(
+              "Each upload needs your approval of the destination, filename, size and SHA-256 in Settings. Attaching the private copy lets the page read and send its bytes immediately. Files are limited to 4 MiB.",
+            )}
           </p>
           {navigateBrowser && (
             <>
               <label htmlFor={`control-origins-${request.id}`}>
-                Allowed browser origins
+                {t("Allowed browser origins")}
               </label>
               <textarea
                 id={`control-origins-${request.id}`}
@@ -752,9 +776,9 @@ export default function AgentControlPairing({
                 spellCheck={false}
               />
               <p className="settings-help">
-                One exact origin per line, including its port. These panels use
-                separate browser data. Origin restrictions apply to page
-                navigation; pages can still request other network resources.
+                {t(
+                  "One exact origin per line, including its port. These panels use separate browser data. Origin restrictions apply to page navigation; pages can still request other network resources.",
+                )}
               </p>
             </>
           )}
@@ -765,11 +789,14 @@ export default function AgentControlPairing({
           <span className="disclosure-summary-content">
             <span className="agent-permission-title">Android</span>
             <span className="agent-permission-description">
-              Choose device access. APK imports require project file access in
-              Files & editor.
+              {t(
+                "Choose device access. APK imports require project file access in Files & editor.",
+              )}
             </span>
             {androidAccessAdded && (
-              <span className="agent-permission-selected">Access added</span>
+              <span className="agent-permission-selected">
+                {t("Access added")}
+              </span>
             )}
           </span>
         </div>
@@ -784,13 +811,12 @@ export default function AgentControlPairing({
                 if (!event.target.checked) setInstallApk(false);
               }}
             />
-            Allow importing APK files from this project
+            {t("Allow importing APK files from this project")}
           </label>
           <p className="settings-help">
-            Make private copies of APK files up to 512 MiB, identified by their
-            content hash. Links, paths outside the project and known secret
-            paths are denied. Installing a copy requires separate permission and
-            approval.
+            {t(
+              "Make private copies of APK files up to 512 MiB, identified by their content hash. Links, paths outside the project and known secret paths are denied. Installing a copy requires separate permission and approval.",
+            )}
           </p>
           <label>
             <input
@@ -799,11 +825,12 @@ export default function AgentControlPairing({
               disabled={busy || !importApk || !readAndroid || !controlAndroid}
               onChange={(event) => setInstallApk(event.target.checked)}
             />
-            Allow requesting APK installation on this Android device
+            {t("Allow requesting APK installation on this Android device")}
           </label>
           <p className="settings-help">
-            Each installation requires a separate decision here for the exact
-            file hash and running phone instance.
+            {t(
+              "Each installation requires a separate decision here for the exact file hash and running phone instance.",
+            )}
           </p>
           <label>
             <input
@@ -825,7 +852,7 @@ export default function AgentControlPairing({
                 }
               }}
             />{" "}
-            Allow reading selected Android device status
+            {t("Allow reading selected Android device status")}
           </label>
           {readAndroid && (
             <>
@@ -836,7 +863,9 @@ export default function AgentControlPairing({
                   disabled={busy}
                   onChange={(event) => setSetupAndroid(event.target.checked)}
                 />{" "}
-                Allow Android SDK setup, recovery and cache cleanup requests
+                {t(
+                  "Allow Android SDK setup, recovery and cache cleanup requests",
+                )}
               </label>
               <label>
                 <input
@@ -845,15 +874,15 @@ export default function AgentControlPairing({
                   disabled={busy}
                   onChange={(event) => setManageAndroid(event.target.checked)}
                 />{" "}
-                Allow creating devices and changing the selected device
+                {t("Allow creating devices and changing the selected device")}
               </label>
               <p className="settings-help">
-                Setup and device changes each require a separate approval here.
-                Provider licenses and erasing data always require your decision.
-                New devices become visible only to the client that created them.
+                {t(
+                  "Setup and device changes each require a separate approval here. Provider licenses and erasing data always require your decision. New devices become visible only to the client that created them.",
+                )}
               </p>
               <label htmlFor={`control-android-${request.id}`}>
-                Managed Android device
+                {t("Managed Android device")}
               </label>
               <select
                 id={`control-android-${request.id}`}
@@ -861,7 +890,7 @@ export default function AgentControlPairing({
                 disabled={busy}
                 onChange={(event) => setAndroidDevice(event.target.value)}
               >
-                <option value="">Choose a managed device</option>
+                <option value="">{t("Choose a managed device")}</option>
                 {androidDevices.map((device) => (
                   <option key={device.id} value={device.id}>
                     {device.name}
@@ -869,8 +898,9 @@ export default function AgentControlPairing({
                 ))}
               </select>
               <p className="settings-help">
-                Only this device's name and runtime status will be shared. This
-                permission does not start it or allow input.
+                {t(
+                  "Only this device's name and runtime status will be shared. This permission does not start it or allow input.",
+                )}
               </p>
               <label>
                 <input
@@ -889,11 +919,12 @@ export default function AgentControlPairing({
                     }
                   }}
                 />
-                Allow starting and stopping this Android device
+                {t("Allow starting and stopping this Android device")}
               </label>
               <p className="settings-help">
-                Start can boot a stopped phone. An already running phone remains
-                under its current control. Human actions take control back.
+                {t(
+                  "Start can boot a stopped phone. An already running phone remains under its current control. Human actions take control back.",
+                )}
               </p>
               <label>
                 <input
@@ -902,11 +933,12 @@ export default function AgentControlPairing({
                   disabled={busy || !controlAndroid}
                   onChange={(event) => setInteractAndroid(event.target.checked)}
                 />
-                Allow touch, keys and text in this Android device
+                {t("Allow touch, keys and text in this Android device")}
               </label>
               <p className="settings-help">
-                Input requires the selected phone panel in a focused Lomi
-                window. Take control returns input to you.
+                {t(
+                  "Input requires the selected phone panel in a focused Lomi window. Take control returns input to you.",
+                )}
               </p>
               <label>
                 <input
@@ -915,11 +947,12 @@ export default function AgentControlPairing({
                   disabled={busy || !controlAndroid}
                   onChange={(event) => setObserveAndroid(event.target.checked)}
                 />
-                Allow reading screen content in this Android device
+                {t("Allow reading screen content in this Android device")}
               </label>
               <p className="settings-help">
-                Share a limited UI hierarchy from the phone started by this
-                connection. Password and editable field values are omitted.
+                {t(
+                  "Share a limited UI hierarchy from the phone started by this connection. Password and editable field values are omitted.",
+                )}
               </p>
               <label>
                 <input
@@ -928,7 +961,7 @@ export default function AgentControlPairing({
                   disabled={busy || !controlAndroid}
                   onChange={(event) => setLaunchAndroid(event.target.checked)}
                 />
-                Allow launching approved Android apps
+                {t("Allow launching approved Android apps")}
               </label>
               <label>
                 <input
@@ -937,24 +970,24 @@ export default function AgentControlPairing({
                   disabled={busy || !controlAndroid}
                   onChange={(event) => setLogsAndroid(event.target.checked)}
                 />
-                Allow reading logs from approved Android apps
+                {t("Allow reading logs from approved Android apps")}
               </label>
               {(launchAndroid || logsAndroid) && (
                 <>
                   <label htmlFor={`control-packages-${request.id}`}>
-                    Allowed Android packages
+                    {t("Allowed Android packages")}
                   </label>
                   <textarea
                     id={`control-packages-${request.id}`}
                     value={androidPackages}
                     disabled={busy}
-                    placeholder="org.example.app"
+                    placeholder={t("org.example.app")}
                     onChange={(event) => setAndroidPackages(event.target.value)}
                   />
                   <p className="settings-help">
-                    Enter up to 16 exact package names, separated by spaces or
-                    newlines. Launch may open any exported activity in these
-                    apps. Logs can contain app data and personal information.
+                    {t(
+                      "Enter up to 16 exact package names, separated by spaces or newlines. Launch may open any exported activity in these apps. Logs can contain app data and personal information.",
+                    )}
                   </p>
                 </>
               )}
@@ -966,12 +999,12 @@ export default function AgentControlPairing({
                   disabled={busy || !controlAndroid}
                   onChange={(event) => setCaptureAndroid(event.target.checked)}
                 />
-                Allow screenshots of this Android device
+                {t("Allow screenshots of this Android device")}
               </label>
               <p className="settings-help">
-                Share the full phone screen, including visible text and fields,
-                as individually requested images. This permission does not grant
-                input.
+                {t(
+                  "Share the full phone screen, including visible text and fields, as individually requested images. This permission does not grant input.",
+                )}
               </p>
             </>
           )}
@@ -980,12 +1013,16 @@ export default function AgentControlPairing({
       <div className="agent-permission-group">
         <div className="agent-permission-summary">
           <span className="disclosure-summary-content">
-            <span className="agent-permission-title">Workspaces & panels</span>
+            <span className="agent-permission-title">
+              {t("Workspaces & panels")}
+            </span>
             <span className="agent-permission-description">
-              Manage workspaces, projects and their panels.
+              {t("Manage workspaces, projects and their panels.")}
             </span>
             {workspacesAccessAdded && (
-              <span className="agent-permission-selected">Access added</span>
+              <span className="agent-permission-selected">
+                {t("Access added")}
+              </span>
             )}
           </span>
         </div>
@@ -1005,7 +1042,7 @@ export default function AgentControlPairing({
                 }
               }}
             />{" "}
-            Allow workspace creation, renaming and selection
+            {t("Allow workspace creation, renaming and selection")}
           </label>
           <label>
             <input
@@ -1014,12 +1051,12 @@ export default function AgentControlPairing({
               disabled={busy || !writeWorkspace}
               onChange={(event) => setOpenProjects(event.target.checked)}
             />{" "}
-            Allow requesting access to new project folders
+            {t("Allow requesting access to new project folders")}
           </label>
           <p className="settings-help">
-            Each folder requires a separate approval here for its initial
-            workspace and this connection’s permissions. Opening starts with a
-            blank editor.
+            {t(
+              "Each folder requires a separate approval here for its initial workspace and this connection’s permissions. Opening starts with a blank editor.",
+            )}
           </p>
           <label>
             <input
@@ -1034,7 +1071,7 @@ export default function AgentControlPairing({
                 }
               }}
             />{" "}
-            Allow selecting and closing panels
+            {t("Allow selecting and closing panels")}
           </label>
           <label>
             <input
@@ -1043,11 +1080,12 @@ export default function AgentControlPairing({
               disabled={busy || !writeWorkspace}
               onChange={(event) => setMovePanels(event.target.checked)}
             />{" "}
-            Allow rearranging existing panels
+            {t("Allow rearranging existing panels")}
           </label>
           <p className="settings-help">
-            Requires workspace changes. Docking also requires selecting panels.
-            Existing terminal processes and editor buffers are preserved.
+            {t(
+              "Requires workspace changes. Docking also requires selecting panels. Existing terminal processes and editor buffers are preserved.",
+            )}
           </p>
           <label>
             <input
@@ -1059,12 +1097,12 @@ export default function AgentControlPairing({
                 if (!event.target.checked) setCloseProjects(false);
               }}
             />{" "}
-            Allow requesting workspace closure
+            {t("Allow requesting workspace closure")}
           </label>
           <p className="settings-help">
-            Closes approved views without deleting the project folder. Unsaved
-            files keep their save/discard/cancel dialog; protected, busy or
-            human-controlled terminal sessions are preserved.
+            {t(
+              "Closes approved views without deleting the project folder. Unsaved files keep their save/discard/cancel dialog; protected, busy or human-controlled terminal sessions are preserved.",
+            )}
           </p>
           <label>
             <input
@@ -1085,12 +1123,12 @@ export default function AgentControlPairing({
               }
               onChange={(event) => setCloseProjects(event.target.checked)}
             />{" "}
-            Allow requesting project closure
+            {t("Allow requesting project closure")}
           </label>
           <p className="settings-help">
-            Requires access to every workspace in this project. A new unapproved
-            workspace blocks closure. Closing preserves the project folder and
-            uses the same unsaved-file and protected-process checks.
+            {t(
+              "Requires access to every workspace in this project. A new unapproved workspace blocks closure. Closing preserves the project folder and uses the same unsaved-file and protected-process checks.",
+            )}
           </p>
         </div>
       </div>
@@ -1098,13 +1136,15 @@ export default function AgentControlPairing({
         <div className="agent-permission-summary">
           <span className="disclosure-summary-content">
             <span className="agent-permission-title">
-              Application preferences
+              {t("Application preferences")}
             </span>
             <span className="agent-permission-description">
-              Read or request changes to nonsecret preferences.
+              {t("Read or request changes to nonsecret preferences.")}
             </span>
             {preferencesAccessAdded && (
-              <span className="agent-permission-selected">Access added</span>
+              <span className="agent-permission-selected">
+                {t("Access added")}
+              </span>
             )}
           </span>
         </div>
@@ -1119,12 +1159,12 @@ export default function AgentControlPairing({
                 if (!e.target.checked) setWriteSettings(false);
               }}
             />{" "}
-            Allow reading nonsecret application preferences
+            {t("Allow reading nonsecret application preferences")}
           </label>
           <p className="settings-help">
-            Shares global editor defaults, terminal preferences, shortcut
-            bindings and theme selections. Conversation history, credentials and
-            plugin source are excluded.
+            {t(
+              "Shares global editor defaults, terminal preferences, shortcut bindings and theme selections. Conversation history, credentials and plugin source are excluded.",
+            )}
           </p>
           <label>
             <input
@@ -1133,13 +1173,12 @@ export default function AgentControlPairing({
               disabled={busy || !readSettings}
               onChange={(e) => setWriteSettings(e.target.checked)}
             />{" "}
-            Allow requesting application preference changes
+            {t("Allow requesting application preference changes")}
           </label>
           <p className="settings-help">
-            Requires preference read access. Each change shows its exact before
-            and after values in Settings for your approval. Supports editor
-            defaults, terminal preferences, keyboard shortcuts and built-in
-            color themes.
+            {t(
+              "Requires preference read access. Each change shows its exact before and after values in Settings for your approval. Supports editor defaults, terminal preferences, keyboard shortcuts and built-in color themes.",
+            )}
           </p>
           <label>
             <input
@@ -1148,20 +1187,23 @@ export default function AgentControlPairing({
               disabled={busy}
               onChange={(event) => setOpenSettings(event.target.checked)}
             />{" "}
-            Allow opening Settings sections
+            {t("Allow opening Settings sections")}
           </label>
           <p className="settings-help">
-            This may focus the Settings tab. Reading and changing preferences
-            require separate permissions.
+            {t(
+              "This may focus the Settings tab. Reading and changing preferences require separate permissions.",
+            )}
           </p>
         </div>
       </div>
       <footer className="agent-pairing-footer">
         <p className="settings-help">
-          Included by default: workspace metadata.
+          {t("Included by default: workspace metadata.")}
           {activePermissionGroups.length > 0
-            ? ` Additional access: ${activePermissionGroups.join(", ")}.`
-            : " No additional access selected."}
+            ? ` ${t("Additional access: {groups}.", {
+                groups: activePermissionGroups.map((g) => t(g)).join(", "),
+              })}`
+            : ` ${t("No additional access selected.")}`}
         </p>
         <div className="agent-control-actions">
           <button
@@ -1173,7 +1215,7 @@ export default function AgentControlPairing({
               )
             }
           >
-            Reject
+            {t("Reject")}
           </button>
           <button
             className="button button-primary"
@@ -1212,11 +1254,11 @@ export default function AgentControlPairing({
                       ? browserOrigins.split(/\s+/).filter(Boolean)
                       : [],
                   }),
-                "Session approved.",
+                t("Session approved."),
               )
             }
           >
-            Approve session
+            {t("Approve session")}
           </button>
         </div>
       </footer>

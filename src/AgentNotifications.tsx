@@ -5,6 +5,7 @@ import {
   requestPermission,
 } from "@tauri-apps/plugin-notification";
 import { api, errorMessage, native } from "./api";
+import { useT } from "./i18n";
 import {
   notificationContext,
   subscribeAgentNotifications,
@@ -25,6 +26,7 @@ export function useAgentNotifications(
   onError: (message: string) => void,
   onConfigured: (message: string) => void,
 ) {
+  const { t } = useT();
   const current = useRef({ session, onError });
   current.current = { session, onError };
   const [setup, setSetup] = useState<NotificationSetup>();
@@ -65,7 +67,9 @@ export function useAgentNotifications(
         .catch((error) => {
           if (alive)
             reportNotificationError(
-              `Could not save notification: ${errorMessage(error)}`,
+              t("Could not save notification: {error}", {
+                error: errorMessage(error),
+              }),
             );
         })
         .finally(() => pending.delete(key));
@@ -75,7 +79,7 @@ export function useAgentNotifications(
       if (inspecting || saving.current) return;
       if (document.querySelector("dialog[open]")) {
         current.current.onError(
-          "Close the current dialog before configuring agent notifications.",
+          t("Close the current dialog before configuring agent notifications."),
         );
         return;
       }
@@ -85,7 +89,9 @@ export function useAgentNotifications(
           if (!alive) return;
           if (document.querySelector("dialog[open]")) {
             current.current.onError(
-              "Close the current dialog and try configuring agent notifications again.",
+              t(
+                "Close the current dialog and try configuring agent notifications again.",
+              ),
             );
             return;
           }
@@ -131,8 +137,12 @@ export function useAgentNotifications(
       setSetup(undefined);
       onConfigured(
         granted
-          ? "Claude Code notifications are configured. Start a new Claude Code session to apply the hooks."
-          : "Claude Code hooks are configured, but notifications are blocked. Allow Lomi notifications in your system settings.",
+          ? t(
+              "Claude Code notifications are configured. Start a new Claude Code session to apply the hooks.",
+            )
+          : t(
+              "Claude Code hooks are configured, but notifications are blocked. Allow Lomi notifications in your system settings.",
+            ),
       );
     } catch (error) {
       setError(errorMessage(error));
@@ -146,7 +156,7 @@ export function useAgentNotifications(
   return {
     dialog: setup && (
       <Modal
-        title="Configure Claude Code notifications"
+        title={t("Configure Claude Code notifications")}
         descriptionId={descriptionId}
         initialFocus={cancel}
         className="cli-title-dialog"
@@ -160,20 +170,25 @@ export function useAgentNotifications(
             <div className="cli-title-description" id={descriptionId}>
               <p>
                 {setup.configured
-                  ? "Lomi notification hooks are already configured. You can check notification permission below."
-                  : "Add hooks that notify Lomi when Claude Code finishes responding or needs your input. They only send signals inside Lomi terminals."}
+                  ? t(
+                      "Lomi notification hooks are already configured. You can check notification permission below.",
+                    )
+                  : t(
+                      "Add hooks that notify Lomi when Claude Code finishes responding or needs your input. They only send signals inside Lomi terminals.",
+                    )}
               </p>
               <p>
                 <code>{setup.path}</code>
               </p>
               <p>
-                Existing settings and hooks are preserved. A backup is created
-                before changing the file.
+                {t(
+                  "Existing settings and hooks are preserved. A backup is created before changing the file.",
+                )}
               </p>
               <p>
-                This configures local Claude Code sessions using this file.
-                Start a new Claude Code session afterward. You can turn alerts
-                off in Settings → Notifications.
+                {t(
+                  "This configures local Claude Code sessions using this file. Start a new Claude Code session afterward. You can turn alerts off in Settings → Notifications.",
+                )}
               </p>
             </div>
             {error && (
@@ -190,7 +205,7 @@ export function useAgentNotifications(
               disabled={busy}
               onClick={() => setSetup(undefined)}
             >
-              Cancel
+              {t("Cancel")}
             </button>
             <button
               type="button"
@@ -199,12 +214,12 @@ export function useAgentNotifications(
               onClick={() => void save()}
             >
               {busy
-                ? "Configuring…"
+                ? t("Configuring…")
                 : reviewRequired
-                  ? "Review again"
+                  ? t("Review again")
                   : setup.configured
-                    ? "Check permission"
-                    : "Enable integration"}
+                    ? t("Check permission")
+                    : t("Enable integration")}
             </button>
           </div>
         </div>

@@ -9,6 +9,7 @@ import {
 } from "../model";
 import { api } from "../api";
 import { reportAppNotification } from "../app-notifications";
+import { t } from "../i18n";
 
 let retained: AndroidTab[] = [];
 let runtime: typeof import("./runtime") | undefined;
@@ -83,7 +84,7 @@ export async function openAndroidSettings(panelId: string) {
       ),
     );
   if (!workspace || handlers?.blocked())
-    throw new Error("The Android setup target is no longer available.");
+    throw new Error(t("The Android setup target is no longer available."));
   const context = await api<SetupContext>("android_prepare_setup", {
     workspaceId: workspace.id,
     panelId,
@@ -107,7 +108,9 @@ export async function receiveAndroidOpen(intent: OpenIntent) {
         target.workspaceId !== intent.context.workspaceId)
     )
       throw new Error(
-        "This setup request is no longer available. Open a new Android tab explicitly.",
+        t(
+          "This setup request is no longer available. Open a new Android tab explicitly.",
+        ),
       );
     const module = await androidRuntime();
     const { refreshAndroid, androidSnapshot } = await import("./state");
@@ -117,7 +120,7 @@ export async function receiveAndroidOpen(intent: OpenIntent) {
     );
     if (!device)
       throw new Error(
-        "This device is no longer available. Refresh Android settings.",
+        t("This device is no longer available. Refresh Android settings."),
       );
     const session = handlers?.session();
     if (
@@ -127,7 +130,9 @@ export async function receiveAndroidOpen(intent: OpenIntent) {
       Date.now() >= intent.deadlineMs
     )
       throw new Error(
-        "The workspace is unavailable or preparing to close. Retry from the main window.",
+        t(
+          "The workspace is unavailable or preparing to close. Retry from the main window.",
+        ),
       );
     const workspaceId = target?.workspaceId ?? active(session)?.workspace.id;
     const project = session.projects.find((project) =>
@@ -138,7 +143,9 @@ export async function receiveAndroidOpen(intent: OpenIntent) {
     );
     if (!project || !workspace)
       throw new Error(
-        "The requested workspace was closed. Choose a workspace in the main window, then explicitly open a new Android tab.",
+        t(
+          "The requested workspace was closed. Choose a workspace in the main window, then explicitly open a new Android tab.",
+        ),
       );
     const parent =
       target &&
@@ -149,13 +156,17 @@ export async function receiveAndroidOpen(intent: OpenIntent) {
       );
     if (target && !parent)
       throw new Error(
-        "The waiting Android panel was closed. Use Open in new tab to create another one.",
+        t(
+          "The waiting Android panel was closed. Use Open in new tab to create another one.",
+        ),
       );
     const previous =
       target && androidTabs(session).find((tab) => tab.id === target.panelId);
     if (previous?.deviceId && previous.deviceId !== device.id)
       throw new Error(
-        "This panel already uses another device. Use Open in new tab to keep both phones.",
+        t(
+          "This panel already uses another device. Use Open in new tab to keep both phones.",
+        ),
       );
     const added = target ? null : newAndroidTab(device.id, device.name);
     // Mark a requested restart before rendering so a first mount cannot race it.

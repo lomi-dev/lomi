@@ -1,3 +1,4 @@
+import { useT } from "./i18n";
 import { useLayoutEffect, useRef, type ReactNode } from "react";
 
 // Settings render as a modal sheet over the workbench. The element stays
@@ -12,6 +13,7 @@ export default function SettingsDialog({
   onClose: () => void;
   children: ReactNode;
 }) {
+  const { t } = useT();
   const dialog = useRef<HTMLDialogElement>(null);
   useLayoutEffect(() => {
     const element = dialog.current;
@@ -23,7 +25,7 @@ export default function SettingsDialog({
     <dialog
       ref={dialog}
       className="settings-dialog"
-      aria-label="Settings"
+      aria-label={t("Settings")}
       onCancel={(event) => {
         event.preventDefault();
         onClose();

@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { useT } from "./i18n";
 import type { SidebarSide } from "./model";
 import { themeAppliedEvent } from "./theme/runtime";
 
@@ -16,6 +17,7 @@ export default function Sidebar({
   children: ReactNode;
   onResize: (width: number) => void;
 }) {
+  const { t } = useT();
   const ref = useRef<HTMLElement>(null);
   const drag = useRef<{ x: number; width: number }>(undefined);
   const [measuredWidth, setMeasuredWidth] = useState(width);
@@ -73,7 +75,9 @@ export default function Sidebar({
         className="sidebar-divider"
         style={{ order: side === "left" ? 1 : 3 }}
         role="separator"
-        aria-label={side === "left" ? "Resize sidebar" : "Resize right sidebar"}
+        aria-label={
+          side === "left" ? t("Resize sidebar") : t("Resize right sidebar")
+        }
         aria-orientation="vertical"
         aria-valuenow={measuredWidth}
         aria-valuemin={minimumWidth}

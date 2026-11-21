@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import { useEffect, useRef, useState } from "react";
 import { errorMessage, windows } from "./api";
 import { isWindowsPath } from "./file-path";
@@ -191,7 +192,7 @@ export function useExplorerDrop(options: Options) {
                 : path.replace(/\/$/, "");
               const separator = normalized.lastIndexOf("/");
               if (separator < 0 || separator === normalized.length - 1) {
-                handlers.onError(`Cannot import path: ${path}`);
+                handlers.onError(t("Cannot import path: {path}", { path }));
                 continue;
               }
               try {

@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import { useEffect, useRef } from "react";
 import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
 import { canMergeTabs, splitGeometry, tabTitle } from "./model";
@@ -93,7 +94,7 @@ export function useTabDrag(props: Props) {
           ? tabTitle(tab)
           : typeof permission === "string"
             ? permission
-            : "This tab cannot be moved here.";
+            : t("This tab cannot be moved here.");
         indicator.className = allowed
           ? "tab-drop-marker"
           : "tab-merge-preview is-blocked";
@@ -165,10 +166,10 @@ export function useTabDrag(props: Props) {
       indicator.className = `tab-merge-preview${allowed ? "" : " is-blocked"}`;
       indicator.dataset.side = side;
       indicator.textContent = allowed
-        ? `Move ${source.title} here`
+        ? t("Move {title} here", { title: source.title })
         : typeof permission === "string"
           ? permission
-          : "Not enough room for these panels";
+          : t("Not enough room for these panels");
       const columns = side === "left" || side === "right";
       const before = side === "left" || side === "top";
       const geometry = splitGeometry(

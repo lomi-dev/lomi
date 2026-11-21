@@ -32,6 +32,7 @@ import { builtinViews } from "./plugins/builtins";
 import { listen } from "@tauri-apps/api/event";
 import PluginPanel from "./plugins/PluginPanel";
 import { useThemes } from "./ThemeProvider";
+import { t, tp, useT } from "./i18n";
 import { pluginHost, HostContext } from "./plugins/runtime";
 import { setPluginCloseHandler } from "./plugins/PluginsProvider";
 import { pluginPanels, updatePluginPanel, newId } from "./model";
@@ -254,7 +255,9 @@ function initialize() {
         saved.version !== 5
       ) {
         throw new Error(
-          "This session was saved in an unsupported format. The saved file has been left intact.",
+          t(
+            "This session was saved in an unsupported format. The saved file has been left intact.",
+          ),
         );
       }
       if (saved) restoreSession(saved, info);
@@ -268,6 +271,7 @@ function initialize() {
 const SettingsPanel = lazy(() => import("./SettingsPanel"));
 
 export default function Workbench() {
+  useT();
   const settings = useSettingsTab();
   const [sourceControlState] = useState(() => new SourceControlState());
   const closeGuard = useCloseGuard();
@@ -708,7 +712,7 @@ export default function Workbench() {
           fail(
             attempt,
             bindings.bindingError ??
-              "The local Host workspace bindings are unavailable.",
+              t("The local Host workspace bindings are unavailable."),
           );
           return;
         }
@@ -718,21 +722,23 @@ export default function Workbench() {
         if (!binding) {
           fail(
             attempt,
-            "The workspace has no authoritative local Host binding.",
+            t("The workspace has no authoritative local Host binding."),
           );
           return;
         }
         if (binding.state === "retired") {
           fail(
             attempt,
-            "This workspace was retired by the local Host. Its local project and drafts are preserved; reconnecting will not import it again.",
+            t(
+              "This workspace was retired by the local Host. Its local project and drafts are preserved; reconnecting will not import it again.",
+            ),
           );
           return;
         }
         if (binding.state === "pending") {
           fail(
             attempt,
-            "The local Host is still resolving this workspace binding.",
+            t("The local Host is still resolving this workspace binding."),
           );
           return;
         }
@@ -740,7 +746,9 @@ export default function Workbench() {
           if (binding.previousRootPath) {
             fail(
               attempt,
-              "The local Host no longer has this imported workspace. Its local project and drafts are preserved.",
+              t(
+                "The local Host no longer has this imported workspace. Its local project and drafts are preserved.",
+              ),
             );
             return;
           }
@@ -954,7 +962,10 @@ export default function Workbench() {
             };
             if (
               !(await closeGuard.confirm(new Set(files.map((f) => f.id)), [], {
-                description: `An agent requested moving “${trash.relativePath}” to Trash. Saving changes will require the agent to request Trash again for the saved version.`,
+                description: t(
+                  "An agent requested moving “{path}” to Trash. Saving changes will require the agent to request Trash again for the saved version.",
+                  { path: trash.relativePath },
+                ),
                 onDecision: approve,
                 isActive: async () => {
                   check();
@@ -1067,14 +1078,14 @@ export default function Workbench() {
     pluginHost.openView = async (viewType, value) => {
       const state = currentSession.current;
       const selection = state && active(state);
-      if (!state || !selection) throw new Error("Open a workspace first.");
+      if (!state || !selection) throw new Error(t("Open a workspace first."));
       const entry = pluginHost.catalog.entries.find((e) =>
         e.manifest?.contributes?.views?.some((v) => v.id === viewType),
       );
       const view = entry?.manifest?.contributes?.views?.find(
         (v) => v.id === viewType,
       );
-      if (!entry || !view) throw new Error("Unknown plugin view.");
+      if (!entry || !view) throw new Error(t("Unknown plugin view."));
       if (view.placement === "sidebar") {
         const existing = selection.workspace.pluginSidebars?.find(
           (p) => p.viewType === viewType,
@@ -1456,7 +1467,11 @@ export default function Workbench() {
       const latest = currentSession.current;
       if (latest)
         void saveSession(captureEditorPositions(latest)).catch((error) =>
-          setError(`Could not save the session: ${errorMessage(error)}`),
+          setError(
+            t("Could not save the session: {error}", {
+              error: errorMessage(error),
+            }),
+          ),
         );
     }, 400);
     autosaveTimer.current = timer;
@@ -1466,12 +1481,12 @@ export default function Workbench() {
   useEffect(() => {
     if (!restoreError) return;
     void reportAppNotification({
-      title: "Session recovery required",
+      title: t("Session recovery required"),
       body: restoreError,
       action: "recover-session",
     });
     return registerNotificationAction("recover-session", {
-      label: "Save current layout instead",
+      label: t("Save current layout instead"),
       run: async () => {
         const latest = currentSession.current;
         if (!latest || recoveringSession.current) return;
@@ -1528,7 +1543,11 @@ export default function Workbench() {
         await getCurrentWindow().destroy();
         destroyed = true;
       } catch (error) {
-        setError(`Could not close the window: ${errorMessage(error)}`);
+        setError(
+          t("Could not close the window: {error}", {
+            error: errorMessage(error),
+          }),
+        );
       } finally {
         if (!destroyed && release) {
           await release().catch((error) => setError(errorMessage(error)));
@@ -1669,7 +1688,7 @@ export default function Workbench() {
     if (!view || view.workspaceId !== workspaceId)
       return {
         kind: "pending" as const,
-        reason: "The shared workspace is still loading. Try again shortly.",
+        reason: t("The shared workspace is still loading. Try again shortly."),
       };
     const alias = view.aliases.find(
       (candidate) => candidate.desktopPaneId === paneId,
@@ -1677,13 +1696,17 @@ export default function Workbench() {
     if (!alias)
       return {
         kind: "pending" as const,
-        reason: "The shared terminal is still connecting. Try again shortly.",
+        reason: t(
+          "The shared terminal is still connecting. Try again shortly.",
+        ),
       };
     const location = sharedHostPaneLocation(view.state, alias.hostPaneId);
     if (!location)
       return {
         kind: "pending" as const,
-        reason: "The shared terminal layout is refreshing. Try again shortly.",
+        reason: t(
+          "The shared terminal layout is refreshing. Try again shortly.",
+        ),
       };
     return { kind: "host" as const, alias, location };
   };
@@ -1696,13 +1719,17 @@ export default function Workbench() {
     const source = sharedHostPaneOwnership(workspaceId, sourcePaneId);
     if (source.kind === "local") return true;
     if (source.kind === "pending") return source.reason;
-    if (sourcePaneId === targetPaneId) return "Choose a different terminal.";
+    if (sourcePaneId === targetPaneId) return t("Choose a different terminal.");
     if (side === "top" || side === "bottom")
-      return "Shared terminal moves currently support horizontal splits only.";
+      return t(
+        "Shared terminal moves currently support horizontal splits only.",
+      );
     const target = sharedHostPaneOwnership(workspaceId, targetPaneId);
     if (target.kind === "pending") return target.reason;
     if (target.kind !== "host")
-      return "Shared terminals can move only beside another shared terminal.";
+      return t(
+        "Shared terminals can move only beside another shared terminal.",
+      );
     return true;
   };
   const moveSharedHostPane = async (
@@ -1714,7 +1741,7 @@ export default function Workbench() {
   ) => {
     if (!sharedHostBackend)
       throw new Error(
-        "Shared terminal operations are unavailable in this build.",
+        t("Shared terminal operations are unavailable in this build."),
       );
     const gate = sharedHostPaneMoveGate(
       workspaceId,
@@ -1724,14 +1751,18 @@ export default function Workbench() {
     );
     if (gate !== true)
       throw new Error(
-        typeof gate === "string" ? gate : "This terminal move is unavailable.",
+        typeof gate === "string"
+          ? gate
+          : t("This terminal move is unavailable."),
       );
     if (side === "top" || side === "bottom")
       throw new Error(
-        "Shared terminal moves currently support horizontal splits only.",
+        t("Shared terminal moves currently support horizontal splits only."),
       );
     if (sharedHostMutation.current)
-      throw new Error("A shared workspace change is already being confirmed.");
+      throw new Error(
+        t("A shared workspace change is already being confirmed."),
+      );
     sharedHostMutation.current = workspaceId;
     sharedHostDeferredState.current = undefined;
     let latest: SharedHostWorkspaceState | undefined;
@@ -1747,12 +1778,12 @@ export default function Workbench() {
         (candidate) => candidate.desktopPaneId === targetPaneId,
       );
       if (!sourceAlias || !targetAlias)
-        throw new Error("The shared terminal move could not be resolved.");
+        throw new Error(t("The shared terminal move could not be resolved."));
       const source = sharedHostPaneLocation(initial, sourceAlias.hostPaneId);
       const target = sharedHostPaneLocation(initial, targetAlias.hostPaneId);
       if (!source || !target)
         throw new Error(
-          "The shared terminal layout changed. Try the move again.",
+          t("The shared terminal layout changed. Try the move again."),
         );
       const placement = side === "left" ? "before" : "after";
       const operationId = await sharedHostOperationId(
@@ -1823,7 +1854,9 @@ export default function Workbench() {
         throw (
           requestError ??
           new Error(
-            "The shared terminal move could not be confirmed. The layout was refreshed and the move was not retried.",
+            t(
+              "The shared terminal move could not be confirmed. The layout was refreshed and the move was not retried.",
+            ),
           )
         );
     } catch (error) {
@@ -1880,22 +1913,24 @@ export default function Workbench() {
   ) => {
     if (!sharedHostBackend)
       throw new Error(
-        "Shared terminal operations are unavailable in this build.",
+        t("Shared terminal operations are unavailable in this build."),
       );
     const view = sharedHostView.current;
     if (!view || view.workspaceId !== workspaceId)
       throw new Error(
-        "The shared workspace is still loading. Try again shortly.",
+        t("The shared workspace is still loading. Try again shortly."),
       );
     const tabAlias = view.aliases.find(
       (alias) => alias.desktopTabId === desktopTabId,
     );
     if (!tabAlias)
       throw new Error(
-        "The shared terminal tab is still connecting. Try again shortly.",
+        t("The shared terminal tab is still connecting. Try again shortly."),
       );
     if (sharedHostMutation.current)
-      throw new Error("A shared workspace change is already being confirmed.");
+      throw new Error(
+        t("A shared workspace change is already being confirmed."),
+      );
     sharedHostMutation.current = workspaceId;
     sharedHostDeferredState.current = undefined;
     let latest: SharedHostWorkspaceState | undefined;
@@ -1905,12 +1940,12 @@ export default function Workbench() {
       const initial = await sharedWorkspaceState(workspaceId);
       const tabLocation = sharedHostPaneLocation(initial, tabAlias.hostPaneId);
       if (!tabLocation)
-        throw new Error("The shared terminal tab no longer exists.");
+        throw new Error(t("The shared terminal tab no longer exists."));
       const currentTab = initial.tabs.find(
         (candidate) => candidate.tabId === tabLocation.tabId,
       );
       if (!currentTab)
-        throw new Error("The shared terminal tab no longer exists.");
+        throw new Error(t("The shared terminal tab no longer exists."));
       const operationId = await sharedHostOperationId(
         workspaceId,
         tabLocation.tabId,
@@ -1967,7 +2002,9 @@ export default function Workbench() {
         throw (
           requestError ??
           new Error(
-            "The shared tab rename could not be confirmed. The layout was refreshed and the rename was not retried.",
+            t(
+              "The shared tab rename could not be confirmed. The layout was refreshed and the rename was not retried.",
+            ),
           )
         );
     } catch (error) {
@@ -2026,7 +2063,7 @@ export default function Workbench() {
         info?.platform !== "windows" && tab.type === "terminal"
           ? tab.profileId
           : defaultProfileId,
-        `Terminal ${workspace.tabs.length + 1}`,
+        t("Terminal {number}", { number: workspace.tabs.length + 1 }),
       );
       const addedPane = panes(added.layout)[0];
       if (sharedHostBackend && addedPane)
@@ -2063,7 +2100,7 @@ export default function Workbench() {
     const profile = info.profiles.find((profile) => profile.id === profileId);
     if (!profile) {
       setError(
-        "Choose an installed terminal environment before launching agents.",
+        t("Choose an installed terminal environment before launching agents."),
       );
       return;
     }
@@ -2075,18 +2112,22 @@ export default function Workbench() {
   };
   const launchAgents = async (cli: CliAgent, count: number) => {
     if (!agentsTarget || !Number.isSafeInteger(count) || count < 1)
-      throw new Error("Choose a CLI and a positive number of terminals.");
+      throw new Error(t("Choose a CLI and a positive number of terminals."));
     const { workspaceId, profile, cwd } = agentsTarget;
     const state = currentSession.current;
     const target = state?.projects
       .flatMap((project) => project.workspaces)
       .find((workspace) => workspace.id === workspaceId);
-    if (!target) throw new Error("The selected workspace was closed.");
+    if (!target) throw new Error(t("The selected workspace was closed."));
     const size = measureAgentLayoutSize(terminalStage.current);
     const maximum = maximumAgentCount(size);
     if (count > maximum)
       throw new Error(
-        `Only ${maximum} ${maximum === 1 ? "agent fits" : "agents fit"} in the current window.`,
+        tp(
+          maximum,
+          "Only {count} agent fits in the current window.",
+          "Only {count} agents fit in the current window.",
+        ),
       );
     const added = newTab(cwd, profile.id, cliNames[cli], count, size);
     const runtimes = panes(added.layout).map((pane) =>
@@ -2105,7 +2146,11 @@ export default function Workbench() {
     const failures = results.filter((result) => result.status === "rejected");
     if (failures.length)
       setError(
-        `${failures.length} of ${count} agents could not start. ${errorMessage(failures[0].reason)}`,
+        t("{failed} of {count} agents could not start. {error}", {
+          failed: failures.length,
+          count,
+          error: errorMessage(failures[0].reason),
+        }),
       );
   };
   const closeTab = async (id: string, action: TabCloseAction = "close") => {
@@ -2326,7 +2371,7 @@ export default function Workbench() {
                   (t) => t.type === "terminal" && t.id !== tab.id,
                 )?.id;
           if (!target || tab.type === "diff" || tab.type === "commit") {
-            setError("There is no compatible docking target.");
+            setError(t("There is no compatible docking target."));
             break;
           }
           setDocking({ mode: action, target, side: "right" });
@@ -2570,8 +2615,10 @@ export default function Workbench() {
         </header>
         <main className="empty-message">
           <Terminal size={28} />
-          <h1>Your development workspace</h1>
-          <p>Open the desktop app to use local projects and terminals.</p>
+          <h1>{t("Your development workspace")}</h1>
+          <p>
+            {t("Open the desktop app to use local projects and terminals.")}
+          </p>
         </main>
       </div>
     );
@@ -2596,8 +2643,10 @@ export default function Workbench() {
           <h1>Lomi</h1>
           <p>
             {error
-              ? "Could not restore your workspace. See Notifications for details."
-              : "Restoring your workspace…"}
+              ? t(
+                  "Could not restore your workspace. See Notifications for details.",
+                )
+              : t("Restoring your workspace…")}
           </p>
           {error && (
             <button
@@ -2607,7 +2656,7 @@ export default function Workbench() {
                 window.location.reload();
               }}
             >
-              Try again
+              {t("Try again")}
             </button>
           )}
         </main>
@@ -2759,10 +2808,10 @@ export default function Workbench() {
         defaultPath: selected?.project.path ?? info.home,
         title:
           intent === "workspace"
-            ? "Choose workspace folder"
+            ? t("Choose workspace folder")
             : intent === "file"
-              ? "Choose a folder for your new file"
-              : "Open local folder",
+              ? t("Choose a folder for your new file")
+              : t("Open local folder"),
       });
       if (!path) return;
       if (intent === "workspace") {
@@ -2773,7 +2822,7 @@ export default function Workbench() {
           )?.workspaces.length ?? 0;
         setDialog({
           type: "name",
-          title: "New workspace",
+          title: t("New workspace"),
           initial: `${basename(normalized)}${count ? ` ${count + 1}` : ""}`,
           submit: (name) =>
             change((state) => {
@@ -2830,7 +2879,7 @@ export default function Workbench() {
       <Suspense
         fallback={
           <div className="empty-message" role="status">
-            Opening settings…
+            {t("Opening settings…")}
           </div>
         }
       >
@@ -2844,8 +2893,8 @@ export default function Workbench() {
             sharedHostBackend
               ? undefined
               : native
-                ? "Remote sharing requires the shared-host build."
-                : "Remote sharing requires the Lomi desktop app."
+                ? t("Remote sharing requires the shared-host build.")
+                : t("Remote sharing requires the Lomi desktop app.")
           }
         />
       </Suspense>
@@ -2861,8 +2910,11 @@ export default function Workbench() {
   const deleteWorkspace = (workspace: Workspace) => {
     setDialog({
       type: "confirm",
-      title: "Delete workspace",
-      text: `Delete “${workspace.name}” and close all of its tabs? Files in its folder will remain on disk.`,
+      title: t("Delete workspace"),
+      text: t(
+        "Delete “{name}” and close all of its tabs? Files in its folder will remain on disk.",
+        { name: workspace.name },
+      ),
       submit: async () => {
         const current = () =>
           currentSession.current?.projects
@@ -2917,7 +2969,7 @@ export default function Workbench() {
       key="workspaces"
       side={workspaceSide}
       width={session[workspaceWidthKey]}
-      label="Workspaces"
+      label={t("Workspaces")}
       onResize={(width) =>
         change((state) => ({ ...state, [workspaceWidthKey]: width }))
       }
@@ -2953,7 +3005,7 @@ export default function Workbench() {
         onRename={(workspace) =>
           setDialog({
             type: "name",
-            title: "Rename workspace",
+            title: t("Rename workspace"),
             initial: workspace.name,
             submit: (name) =>
               change((state) =>
@@ -2974,7 +3026,7 @@ export default function Workbench() {
         panel="workspaces"
         side={workspaceSide}
         active={sidebarOpen("workspaces")}
-        title={shortcutTitle("Toggle workspaces", bindings.toggleWorkspaces)}
+        title={shortcutTitle(t("Toggle workspaces"), bindings.toggleWorkspaces)}
         onToggle={() => change((state) => toggleSidebar(state, "workspaces"))}
         onMove={(side) =>
           change((state) => moveSidebar(state, "workspaces", side))
@@ -3185,7 +3237,9 @@ export default function Workbench() {
       })
     ) {
       setPaneNotice(
-        "No room for another terminal in this direction. Enlarge the window, hide the sidebar, or resize the panels.",
+        t(
+          "No room for another terminal in this direction. Enlarge the window, hide the sidebar, or resize the panels.",
+        ),
       );
       return;
     }
@@ -3269,7 +3323,7 @@ export default function Workbench() {
     ) {
       setDialog({
         type: "environment",
-        title: "Restart terminal",
+        title: t("Restart terminal"),
         profiles: info.profiles,
         selected: "",
         submit: (profileId) =>
@@ -3305,7 +3359,7 @@ export default function Workbench() {
     if (tab.type !== "terminal") return;
     setDialog({
       type: "environment",
-      title: "Change terminal environment",
+      title: t("Change terminal environment"),
       profiles: info.profiles,
       selected: tab.profileId,
       submit: async (profileId) => {
@@ -3412,7 +3466,7 @@ export default function Workbench() {
     operation: FileOperation,
   ): Promise<boolean> => {
     if (fileOperationBusy.current)
-      throw new Error("Another file operation is in progress.");
+      throw new Error(t("Another file operation is in progress."));
     fileOperationBusy.current = true;
     let resume: (() => void) | undefined;
     try {
@@ -3578,7 +3632,7 @@ export default function Workbench() {
                 onSelect: settings.select,
                 onClose: closeSettings,
               }}
-              newTabTitle={shortcutTitle("New tab", bindings.newTab)}
+              newTabTitle={shortcutTitle(t("New tab"), bindings.newTab)}
               onNew={() => addTab()}
               onNewAgents={openAgents}
               onNewChat={addChat}
@@ -3630,7 +3684,7 @@ export default function Workbench() {
                       pane.type === "terminal" && !isAgentTerminal(pane.id),
                   );
                 return containsSharedTerminal
-                  ? "Shared terminal tab order cannot currently be changed."
+                  ? t("Shared terminal tab order cannot currently be changed.")
                   : true;
               }}
               canMerge={(id, targetId, side) => {
@@ -3675,16 +3729,20 @@ export default function Workbench() {
                   targetHostTab?.layout.kind !== "pane" ||
                   targetHostTab.layout.pane.paneId !== targetAlias.hostPaneId
                 )
-                  return "Shared tabs can merge only as one horizontal split between single-pane shared tabs.";
+                  return t(
+                    "Shared tabs can merge only as one horizontal split between single-pane shared tabs.",
+                  );
                 const element = terminalLayout.current;
                 if (!element)
-                  return "The shared terminal layout is still loading.";
+                  return t("The shared terminal layout is still loading.");
                 const proposed = mergeTabs(workspace, id, targetId, side, {
                   width: element.clientWidth,
                   height: element.clientHeight,
                 });
                 return proposed === workspace
-                  ? "This shared terminal move does not fit a horizontal split."
+                  ? t(
+                      "This shared terminal move does not fit a horizontal split.",
+                    )
                   : true;
               }}
               onMove={(id, beforeId) => {
@@ -3700,7 +3758,7 @@ export default function Workbench() {
                   );
                 if (containsSharedTerminal) {
                   setError(
-                    "Shared terminal tab order cannot currently be changed.",
+                    t("Shared terminal tab order cannot currently be changed."),
                   );
                   return;
                 }
@@ -3752,7 +3810,9 @@ export default function Workbench() {
                     targetHostTab.layout.pane.paneId !== targetAlias.hostPaneId
                   ) {
                     setError(
-                      "Shared tabs can merge only as one horizontal split between single-pane shared tabs.",
+                      t(
+                        "Shared tabs can merge only as one horizontal split between single-pane shared tabs.",
+                      ),
                     );
                     return;
                   }
@@ -3788,7 +3848,7 @@ export default function Workbench() {
               onRename={(candidate) =>
                 setDialog({
                   type: "name",
-                  title: "Rename tab",
+                  title: t("Rename tab"),
                   initial: tabTitle(candidate),
                   submit: (title) => {
                     const shared =
@@ -3846,7 +3906,9 @@ export default function Workbench() {
                   key={panel}
                   side={side}
                   width={session[widthKey]}
-                  label={panel === "files" ? "Explorer" : "Source Control"}
+                  label={
+                    panel === "files" ? t("Explorer") : t("Source Control")
+                  }
                   onResize={(width) =>
                     change((state) => ({ ...state, [widthKey]: width }))
                   }
@@ -3899,7 +3961,7 @@ export default function Workbench() {
                       onPull={async (root, rebase) => {
                         if (fileOperationBusy.current)
                           throw new Error(
-                            "Wait for the current file operation to finish.",
+                            t("Wait for the current file operation to finish."),
                           );
                         fileOperationBusy.current = true;
                         let resume: (() => void) | undefined;
@@ -3920,7 +3982,7 @@ export default function Workbench() {
                       onDiscard={async (root, change) => {
                         if (fileOperationBusy.current)
                           throw new Error(
-                            "Wait for the current file operation to finish.",
+                            t("Wait for the current file operation to finish."),
                           );
                         fileOperationBusy.current = true;
                         let resume: (() => void) | undefined;
@@ -3937,7 +3999,9 @@ export default function Workbench() {
                             })
                           )
                             throw new Error(
-                              "Save or discard unsaved editor changes before discarding Git changes.",
+                              t(
+                                "Save or discard unsaved editor changes before discarding Git changes.",
+                              ),
                             );
                           const result = await api<FileChange>("git_discard", {
                             root,
@@ -3984,7 +4048,9 @@ export default function Workbench() {
                   onError={setError}
                 />
               ) : tab.type === "android" ? (
-                <Suspense fallback={<div role="status">Loading Android…</div>}>
+                <Suspense
+                  fallback={<div role="status">{t("Loading Android…")}</div>}
+                >
                   <builtinViews.android
                     key={tab.id}
                     tab={tab}
@@ -3994,7 +4060,9 @@ export default function Workbench() {
               ) : tab.type === "thread" ? (
                 // The merge target for tab drops; a chat tab splits into panels like terminals.
                 <div className="terminal-layout" ref={terminalLayout}>
-                  <Suspense fallback={<div role="status">Loading chat…</div>}>
+                  <Suspense
+                    fallback={<div role="status">{t("Loading chat…")}</div>}
+                  >
                     <builtinViews.thread
                       key={tab.id}
                       tab={tab}
@@ -4026,7 +4094,7 @@ export default function Workbench() {
                 <Suspense
                   fallback={
                     <div className="empty-message" role="status">
-                      Loading editor…
+                      {t("Loading editor…")}
                     </div>
                   }
                 >
@@ -4113,7 +4181,9 @@ export default function Workbench() {
                         if (moved === selected.workspace) return false;
                         if (source.kind !== "host") return true;
                         if (destination.type !== "tab")
-                          return "Shared terminals cannot move to a new tab yet.";
+                          return t(
+                            "Shared terminals cannot move to a new tab yet.",
+                          );
                         const destinationTab = selected.workspace.tabs.find(
                           (candidate) => candidate.id === destination.tabId,
                         );
@@ -4134,7 +4204,9 @@ export default function Workbench() {
                           targetHostTab.layout.pane.paneId !==
                             targetAlias.hostPaneId
                         )
-                          return "Shared terminals can move only into a single-pane shared tab.";
+                          return t(
+                            "Shared terminals can move only into a single-pane shared tab.",
+                          );
                         const targetAfterMove = moved.tabs.find(
                           (candidate) => candidate.id === destination.tabId,
                         );
@@ -4143,7 +4215,9 @@ export default function Workbench() {
                           targetAfterMove.layout.type !== "split" ||
                           targetAfterMove.layout.axis !== "horizontal"
                         )
-                          return "This shared terminal move does not fit a horizontal split.";
+                          return t(
+                            "This shared terminal move does not fit a horizontal split.",
+                          );
                         return true;
                       },
                       canMove: (id, targetId, side) =>
@@ -4167,7 +4241,9 @@ export default function Workbench() {
                         if (source.kind === "host") {
                           if (destination.type !== "tab") {
                             setError(
-                              "Shared terminals cannot move to a new tab yet.",
+                              t(
+                                "Shared terminals cannot move to a new tab yet.",
+                              ),
                             );
                             return;
                           }
@@ -4192,7 +4268,9 @@ export default function Workbench() {
                               targetAlias.hostPaneId
                           ) {
                             setError(
-                              "Shared terminals can move only into a single-pane shared tab.",
+                              t(
+                                "Shared terminals can move only into a single-pane shared tab.",
+                              ),
                             );
                             return;
                           }
@@ -4354,11 +4432,11 @@ export default function Workbench() {
                   title={
                     panel === "files"
                       ? shortcutTitle(
-                          "Toggle file explorer",
+                          t("Toggle file explorer"),
                           bindings.toggleExplorer,
                         )
                       : shortcutTitle(
-                          "Toggle source control",
+                          t("Toggle source control"),
                           bindings.toggleSourceControl,
                         )
                   }
@@ -4373,10 +4451,14 @@ export default function Workbench() {
                     <>
                       <GitBranch size={12} />
                       {git.repositories.length === 0
-                        ? "Source Control"
+                        ? t("Source Control")
                         : git.repositories.length === 1
                           ? git.repositories[0].branch
-                          : `${git.repositories.length} repositories`}
+                          : tp(
+                              git.repositories.length,
+                              "{count} repository",
+                              "{count} repositories",
+                            )}
                       {totalGitChanges > 0 && (
                         <span className="count-badge">{totalGitChanges}</span>
                       )}
@@ -4393,7 +4475,7 @@ export default function Workbench() {
                 panel="terminalOverview"
                 side={session.terminalOverviewSide}
                 title={shortcutTitle(
-                  "Toggle terminal overview",
+                  t("Toggle terminal overview"),
                   bindings.terminalOverview,
                 )}
                 active={tab.type === "terminal" && terminalOverview}
@@ -4417,7 +4499,7 @@ export default function Workbench() {
                 >
                   <span className="remote-workspace-status-label">
                     {sharedWorkspaceStreamStatus.message ??
-                      "Workspace connection lost · reconnecting…"}
+                      t("Workspace connection lost · reconnecting…")}
                   </span>
                 </span>
               )}
@@ -4429,7 +4511,7 @@ export default function Workbench() {
                 connectionMessage={
                   remoteWorkspace.message ??
                   remoteWorkspaces.state?.message ??
-                  "Shared by the local host"
+                  t("Shared by the local host")
                 }
                 busy={!!remoteWorkspaces.busy}
                 error={remoteWorkspaces.error}
@@ -4448,8 +4530,8 @@ export default function Workbench() {
             <Modal
               title={
                 docking.mode === "movePanel"
-                  ? "Move active panel"
-                  : "Dock current tab"
+                  ? t("Move active panel")
+                  : t("Dock current tab")
               }
               onClose={() => setDocking(null)}
             >
@@ -4485,7 +4567,7 @@ export default function Workbench() {
                         setError(
                           typeof gate === "string"
                             ? gate
-                            : "This shared terminal move is unavailable.",
+                            : t("This shared terminal move is unavailable."),
                         );
                         return;
                       }
@@ -4534,7 +4616,9 @@ export default function Workbench() {
                           targetAlias.hostPaneId
                       ) {
                         setError(
-                          "Shared tabs can merge only as one horizontal split between single-pane shared tabs.",
+                          t(
+                            "Shared tabs can merge only as one horizontal split between single-pane shared tabs.",
+                          ),
                         );
                         return;
                       }
@@ -4547,7 +4631,9 @@ export default function Workbench() {
                       );
                       if (proposed === workspace) {
                         setError(
-                          "The requested docking operation does not fit this layout.",
+                          t(
+                            "The requested docking operation does not fit this layout.",
+                          ),
                         );
                         return;
                       }
@@ -4594,7 +4680,9 @@ export default function Workbench() {
                         : workspace;
                   if (next === workspace) {
                     setError(
-                      "The requested docking operation does not fit this layout.",
+                      t(
+                        "The requested docking operation does not fit this layout.",
+                      ),
                     );
                     return;
                   }
@@ -4607,9 +4695,9 @@ export default function Workbench() {
               >
                 <div className="dialog-content">
                   <label>
-                    Target
+                    {t("Target")}
                     <Select
-                      aria-label="Docking target"
+                      aria-label={t("Docking target")}
                       value={docking.target}
                       onChange={(target) => setDocking({ ...docking, target })}
                       options={
@@ -4631,16 +4719,19 @@ export default function Workbench() {
                     />
                   </label>
                   <label>
-                    Position
+                    {t("Position")}
                     <Select
-                      aria-label="Docking position"
+                      aria-label={t("Docking position")}
                       value={docking.side}
                       onChange={(side) =>
                         setDocking({ ...docking, side: side as TabDropSide })
                       }
-                      options={["left", "right", "top", "bottom"].map(
-                        (value) => ({ value, label: value }),
-                      )}
+                      options={[
+                        { value: "left", label: t("Left") },
+                        { value: "right", label: t("Right") },
+                        { value: "top", label: t("Top") },
+                        { value: "bottom", label: t("Bottom") },
+                      ]}
                     />
                   </label>
                 </div>
@@ -4650,10 +4741,10 @@ export default function Workbench() {
                     className="button"
                     onClick={() => setDocking(null)}
                   >
-                    Cancel
+                    {t("Cancel")}
                   </button>
                   <button className="button button-primary" type="submit">
-                    Dock
+                    {t("Dock")}
                   </button>
                 </div>
               </form>
@@ -4690,7 +4781,7 @@ export default function Workbench() {
           {stoppingForClose && (
             <Modal
               protectTheme
-              title="Preparing to close"
+              title={t("Preparing to close")}
               className="close-progress-dialog"
               descriptionId={closeDescriptionId}
               initialFocus={cancelCloseButton}
@@ -4705,13 +4796,17 @@ export default function Workbench() {
                   <div id={closeDescriptionId}>
                     <p>
                       {stoppingForClose === "cancelling"
-                        ? "Cancelling close. Waiting for current operations to finish."
-                        : "Finishing pending operations before closing."}
+                        ? t(
+                            "Cancelling close. Waiting for current operations to finish.",
+                          )
+                        : t("Finishing pending operations before closing.")}
                     </p>
                     <p className="close-progress-hint">
                       {stoppingForClose === "cancelling"
-                        ? "Stopped phones will stay stopped."
-                        : "Android phones will stop safely and keep their data."}
+                        ? t("Stopped phones will stay stopped.")
+                        : t(
+                            "Android phones will stop safely and keep their data.",
+                          )}
                     </p>
                   </div>
                 </div>
@@ -4724,8 +4819,8 @@ export default function Workbench() {
                     onClick={requestCancelClose}
                   >
                     {stoppingForClose === "cancelling"
-                      ? "Cancelling…"
-                      : "Cancel closing"}
+                      ? t("Cancelling…")
+                      : t("Cancel closing")}
                   </button>
                 </div>
               </div>
@@ -4746,6 +4841,7 @@ function AppDialog({
   dialog: Dialog;
   onClose: () => void;
 }) {
+  useT();
   const nameInput = useRef<HTMLInputElement>(null);
   const confirmButton = useRef<HTMLButtonElement>(null);
   const [value, setValue] = useState(
@@ -4778,7 +4874,7 @@ function AppDialog({
         <div className="dialog-layout">
           <div className="dialog-content">
             <pre className="file-preview">
-              {dialog.content || "(empty file)"}
+              {dialog.content || t("(empty file)")}
             </pre>
           </div>
         </div>
@@ -4804,7 +4900,7 @@ function AppDialog({
           <div className="dialog-content">
             {dialog.type === "name" ? (
               <label>
-                Name
+                {t("Name")}
                 <input
                   ref={nameInput}
                   value={value}
@@ -4815,10 +4911,10 @@ function AppDialog({
             ) : dialog.type === "environment" ? (
               <>
                 <label>
-                  Terminal environment
+                  {t("Terminal environment")}
                   <Select
                     autoFocus
-                    aria-label="Terminal environment"
+                    aria-label={t("Terminal environment")}
                     value={value}
                     onChange={setValue}
                     options={[
@@ -4828,7 +4924,7 @@ function AppDialog({
                         ? [
                             {
                               value: dialog.selected,
-                              label: "Unavailable environment",
+                              label: t("Unavailable environment"),
                               disabled: true,
                             },
                           ]
@@ -4837,14 +4933,15 @@ function AppDialog({
                         value: profile.id,
                         label: profile.distro
                           ? profile.name
-                          : `Local · ${profile.name}`,
+                          : t("Local · {name}", { name: profile.name }),
                       })),
                     ]}
                   />
                 </label>
                 <p>
-                  Changing the environment restarts all terminals in this tab in
-                  the project folder.
+                  {t(
+                    "Changing the environment restarts all terminals in this tab in the project folder.",
+                  )}
                 </p>
               </>
             ) : (
@@ -4853,7 +4950,7 @@ function AppDialog({
           </div>
           <div className="dialog-actions">
             <button type="button" className="button" onClick={onClose}>
-              Cancel
+              {t("Cancel")}
             </button>
             <button
               ref={confirmButton}
@@ -4866,10 +4963,10 @@ function AppDialog({
               }
             >
               {dialog.type === "name"
-                ? "Save"
+                ? t("Save")
                 : dialog.type === "environment"
-                  ? "Restart terminals"
-                  : "Continue"}
+                  ? t("Restart terminals")
+                  : t("Continue")}
             </button>
           </div>
         </form>

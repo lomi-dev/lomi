@@ -1,4 +1,5 @@
 import { useId } from "react";
+import { useT } from "../i18n";
 import { ChevronRight, Smartphone } from "../icons";
 import { deviceStatusLabels } from "./device-status";
 import { imageTitle } from "./settings-model";
@@ -17,6 +18,7 @@ export default function PhonePicker({
   onChoose: (id: string) => void;
   onManage: () => void;
 }) {
+  const { t } = useT();
   const devices = snapshot.devices?.devices ?? [];
   const id = useId();
   return (
@@ -27,19 +29,28 @@ export default function PhonePicker({
         </span>
         <div className="android-state-copy">
           <h2>
-            {devices.length ? "Choose a phone" : "Create your first phone"}
+            {devices.length
+              ? t("Choose a phone")
+              : t("Create your first phone")}
           </h2>
           <p>
             {missing
-              ? "This phone is unavailable. Choose another one or manage your devices in Settings."
+              ? t(
+                  "This phone is unavailable. Choose another one or manage your devices in Settings.",
+                )
               : devices.length
-                ? "Open a phone to use its apps and data here."
-                : "Set up a virtual phone in Android settings to get started."}
+                ? t("Open a phone to use its apps and data here.")
+                : t(
+                    "Set up a virtual phone in Android settings to get started.",
+                  )}
           </p>
         </div>
       </header>
       {!!devices.length && (
-        <ul className="android-phone-choices" aria-label="Available phones">
+        <ul
+          className="android-phone-choices"
+          aria-label={t("Available phones")}
+        >
           {devices.map((device) => {
             const phase =
               snapshot.statuses.find((status) => status.deviceId === device.id)
@@ -48,7 +59,7 @@ export default function PhonePicker({
               <li key={device.id}>
                 <button
                   className="android-phone-choice"
-                  aria-label={`Open ${device.name}`}
+                  aria-label={t("Open {name}", { name: device.name })}
                   aria-describedby={`${id}-${device.id} ${id}-${device.id}-status`}
                   disabled={disabled || phase === "stopping"}
                   onClick={() => onChoose(device.id)}
@@ -67,7 +78,7 @@ export default function PhonePicker({
                         className={`android-status-dot${phase === "running" ? " is-running" : ""}`}
                         aria-hidden="true"
                       />
-                      {deviceStatusLabels[phase]}
+                      {t(deviceStatusLabels[phase])}
                     </span>
                   </span>
                   <ChevronRight
@@ -87,7 +98,7 @@ export default function PhonePicker({
           disabled={disabled}
           onClick={onManage}
         >
-          {devices.length ? "Manage devices" : "Create a phone"}
+          {devices.length ? t("Manage devices") : t("Create a phone")}
         </button>
       </div>
     </div>

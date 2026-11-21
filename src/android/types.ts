@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 export interface Preferences {
   version: 1;
   revision: number;
@@ -162,7 +163,7 @@ function record(value: unknown, keys: string[]): Record<string, unknown> {
     keys.some((key) => !(key in value))
   )
     throw new Error(
-      "Unsupported Android metadata. The existing file has been preserved.",
+      t("Unsupported Android metadata. The existing file has been preserved."),
     );
   return value as Record<string, unknown>;
 }
@@ -180,7 +181,9 @@ function version(value: Record<string, unknown>) {
     !integer(value.revision, 0, Number.MAX_SAFE_INTEGER)
   )
     throw new Error(
-      "Unsupported Android metadata version or revision. Open recovery in Android settings.",
+      t(
+        "Unsupported Android metadata version or revision. Open recovery in Android settings.",
+      ),
     );
 }
 export function parsePreferences(value: unknown): Preferences {
@@ -192,7 +195,7 @@ export function parsePreferences(value: unknown): Preferences {
       !uuid.test(data.defaultDeviceId))
   )
     throw new Error(
-      "Invalid default Android device. The file has been preserved.",
+      t("Invalid default Android device. The file has been preserved."),
     );
   return data as unknown as Preferences;
 }
@@ -247,7 +250,7 @@ export function parseDevice(value: unknown): Device {
     !integer(hardware.dataGib, 2, 128)
   )
     throw new Error(
-      "Invalid Android device configuration. No changes were saved.",
+      t("Invalid Android device configuration. No changes were saved."),
     );
   return data as unknown as Device;
 }
@@ -256,12 +259,12 @@ export function parseDevices(value: unknown): Devices {
   version(data);
   if (!Array.isArray(data.devices))
     throw new Error(
-      "Invalid Android devices file. Open recovery in Android settings.",
+      t("Invalid Android devices file. Open recovery in Android settings."),
     );
   const devices = data.devices.map(parseDevice);
   if (new Set(devices.map((device) => device.id)).size !== devices.length)
     throw new Error(
-      "Duplicate Android device ID. The file has been preserved.",
+      t("Duplicate Android device ID. The file has been preserved."),
     );
   return { version: 1, revision: data.revision as number, devices };
 }

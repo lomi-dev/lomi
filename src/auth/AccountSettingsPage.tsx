@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { api, errorMessage, native } from "../api";
+import { useT } from "../i18n";
 import { ExternalLink, Github } from "../icons";
 import {
   SettingRow,
@@ -21,6 +22,7 @@ type AuthCommand =
   | "auth_open_account_portal";
 
 export default function AccountSettingsPage() {
+  const { t } = useT();
   const [state, setState] = useState<AuthState | null>(
     native ? null : unavailableState,
   );
@@ -142,7 +144,7 @@ export default function AccountSettingsPage() {
       disabled={busy}
       onClick={() => void run("auth_refresh_state")}
     >
-      {status === "storage-locked" ? "Retry access" : "Retry connection"}
+      {status === "storage-locked" ? t("Retry access") : t("Retry connection")}
     </button>
   );
 
@@ -154,7 +156,7 @@ export default function AccountSettingsPage() {
         onClick={() => void run("auth_open_account_portal")}
       >
         <ExternalLink size={14} aria-hidden="true" />
-        Manage account
+        {t("Manage account")}
       </button>
       {canSignOut && (
         <button
@@ -162,17 +164,18 @@ export default function AccountSettingsPage() {
           disabled={busy}
           onClick={() => void run("auth_sign_out")}
         >
-          Sign out of this device
+          {t("Sign out of this device")}
         </button>
       )}
     </div>
   );
-  const accountAccessDescription =
-    "Manage sessions in your browser. Signing out leaves your projects, files, and AI connections on this device.";
+  const accountAccessDescription = t(
+    "Manage sessions in your browser. Signing out leaves your projects, files, and AI connections on this device.",
+  );
 
   return (
     <SettingsPage
-      title="Account"
+      title={t("Account")}
       busy={busy || !ready}
       className="account-settings"
     >
@@ -201,47 +204,50 @@ export default function AccountSettingsPage() {
       )}
       {!native && (
         <SettingsNotice>
-          Account sign-in is available in the desktop app.
+          {t("Account sign-in is available in the desktop app.")}
         </SettingsNotice>
       )}
       {native && status === "unavailable" && !state?.message && (
         <SettingsNotice>
-          Account sign-in is not available in this version.
+          {t("Account sign-in is not available in this version.")}
         </SettingsNotice>
       )}
       {status === "offline" && (
         <SettingsNotice tone="warning" action={retryAction}>
-          Your account could not be checked. Online services will resume after a
-          successful connection. Your local work is unaffected.
+          {t(
+            "Your account could not be checked. Online services will resume after a successful connection. Your local work is unaffected.",
+          )}
         </SettingsNotice>
       )}
       {status === "storage-locked" && (
         <SettingsNotice tone="warning" role="status" action={retryAction}>
-          Unlock your system credential store and retry access. To replace the
-          saved sign-in, choose Sign out of this device. To sign in only until
-          Lomi closes, turn off Remember me on this device.
+          {t(
+            "Unlock your system credential store and retry access. To replace the saved sign-in, choose Sign out of this device. To sign in only until Lomi closes, turn off Remember me on this device.",
+          )}
         </SettingsNotice>
       )}
       {status === "error" && !state?.message && !error && (
         <SettingsNotice tone="warning" action={retryAction}>
-          Your account could not be checked. Retry the connection to restore
-          account access. Your local work is unaffected.
+          {t(
+            "Your account could not be checked. Retry the connection to restore account access. Your local work is unaffected.",
+          )}
         </SettingsNotice>
       )}
       {state?.remoteRevocationConfirmed === false && !hasAccount && (
         <SettingsNotice tone="warning" role="status">
-          {status === "signed-out" && "Signed out on this device. "}
-          The server could not confirm that its session was revoked. You can
-          remove it from your account in a browser.
+          {status === "signed-out" && t("Signed out on this device.") + " "}
+          {t(
+            "The server could not confirm that its session was revoked. You can remove it from your account in a browser.",
+          )}
         </SettingsNotice>
       )}
       {state?.user && (
         <SettingsSection
-          title="Your account"
+          title={t("Your account")}
           description={accountAccessDescription}
           actions={accountActions}
         >
-          <SettingRow label="Name">
+          <SettingRow label={t("Name")}>
             <span className="setting-value">{state.user.displayName}</span>
           </SettingRow>
           {state.user.githubLogin && (
@@ -249,32 +255,37 @@ export default function AccountSettingsPage() {
               <span className="setting-value">@{state.user.githubLogin}</span>
             </SettingRow>
           )}
-          <SettingRow label="Email">
+          <SettingRow label={t("Email")}>
             <span className="setting-value account-email">
               {state.user.email}
             </span>
           </SettingRow>
           {state.storage === "session" && (
             <SettingRow
-              label="Storage"
-              description="You will need to sign in again after closing Lomi."
+              label={t("Storage")}
+              description={t(
+                "You will need to sign in again after closing Lomi.",
+              )}
             >
-              <span className="setting-value">This session only</span>
+              <span className="setting-value">{t("This session only")}</span>
             </SettingRow>
           )}
         </SettingsSection>
       )}
       {attempt && status === "authorizing" && (
         <SettingsSection
-          title="Finish signing in"
-          description="Approve sign-in in your browser. Lomi will finish automatically when you return here."
+          title={t("Finish signing in")}
+          description={t(
+            "Approve sign-in in your browser. Lomi will finish automatically when you return here.",
+          )}
         >
           <div className="account-verification">
-            <p role="status">Waiting for browser approval.</p>
+            <p role="status">{t("Waiting for browser approval.")}</p>
             {expiryText && (
               <p>
-                Sign-in request expires at{" "}
-                <time dateTime={attempt.expiresAt}>{expiryText}</time>.
+                {t("Sign-in request expires at {time}.", {
+                  time: expiryText,
+                })}
               </p>
             )}
             <div className="account-actions">
@@ -286,7 +297,7 @@ export default function AccountSettingsPage() {
                 }
               >
                 <ExternalLink size={14} aria-hidden="true" />
-                Open browser again
+                {t("Open browser again")}
               </button>
               <button
                 className="button"
@@ -295,7 +306,7 @@ export default function AccountSettingsPage() {
                   void run("auth_cancel_login", { attemptId: attempt.id })
                 }
               >
-                Cancel sign-in
+                {t("Cancel sign-in")}
               </button>
             </div>
           </div>
@@ -303,8 +314,10 @@ export default function AccountSettingsPage() {
       )}
       {canLogin && (
         <SettingsSection
-          title="Sign in with GitHub"
-          description="Connect your GitHub identity to Lomi. Signing in does not grant access to your private repositories."
+          title={t("Sign in with GitHub")}
+          description={t(
+            "Connect your GitHub identity to Lomi. Signing in does not grant access to your private repositories.",
+          )}
         >
           <div className="account-actions">
             <button
@@ -319,16 +332,20 @@ export default function AccountSettingsPage() {
               }
             >
               <Github size={15} aria-hidden="true" />
-              Sign in with GitHub
+              {t("Sign in with GitHub")}
             </button>
           </div>
           <SettingRow
-            label="Remember me on this device"
+            label={t("Remember me on this device")}
             htmlFor="account-remember"
             description={
               remember
-                ? "Store your session in the system credential store when available; otherwise sign in only until Lomi closes."
-                : "Keep your session only until Lomi closes. Nothing is saved to the credential store."
+                ? t(
+                    "Store your session in the system credential store when available; otherwise sign in only until Lomi closes.",
+                  )
+                : t(
+                    "Keep your session only until Lomi closes. Nothing is saved to the credential store.",
+                  )
             }
             descriptionId="account-storage-description"
           >
@@ -347,7 +364,7 @@ export default function AccountSettingsPage() {
       )}
       {!state?.user && accountActions && (
         <SettingsSection
-          title="Account access"
+          title={t("Account access")}
           description={accountAccessDescription}
         >
           {accountActions}

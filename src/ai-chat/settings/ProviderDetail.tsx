@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from "react";
 import { api, errorMessage } from "../../api";
+import { tp, useT } from "../../i18n";
 import { ChevronLeft, Copy, Plus, RefreshCw, Trash2, X } from "../../icons";
 import { SettingRow, SettingsSection } from "../../settings-ui";
 import { Modal } from "../../ui";
@@ -65,7 +66,11 @@ export function useProbe(input: {
       setState({
         busy: false,
         ok: true,
-        message: `Connected · ${result.models.length} ${result.models.length === 1 ? "model" : "models"} available`,
+        message: tp(
+          result.models.length,
+          "Connected · {count} model available",
+          "Connected · {count} models available",
+        ),
       });
       return result.models;
     } catch (cause) {
@@ -82,6 +87,7 @@ export function HeadersEditor({
   headers: Header[];
   onChange: (headers: Header[]) => void;
 }) {
+  const { t } = useT();
   const edit = (index: number, patch: Partial<Header>) =>
     onChange(
       headers.map((item, at) => (at === index ? { ...item, ...patch } : item)),
@@ -91,22 +97,22 @@ export function HeadersEditor({
       {headers.map((header, index) => (
         <div className="prov-header-row" key={index}>
           <input
-            aria-label="Header name"
-            placeholder="Name"
+            aria-label={t("Header name")}
+            placeholder={t("Name")}
             value={header.name}
             onChange={(event) => edit(index, { name: event.target.value })}
           />
           <input
-            aria-label="Header value"
-            placeholder="Value"
+            aria-label={t("Header value")}
+            placeholder={t("Value")}
             value={header.value}
             onChange={(event) => edit(index, { value: event.target.value })}
           />
           <button
             type="button"
             className="icon-button"
-            title="Remove header"
-            aria-label="Remove header"
+            title={t("Remove header")}
+            aria-label={t("Remove header")}
             onClick={() => onChange(headers.filter((_, at) => at !== index))}
           >
             <X size={14} aria-hidden="true" />
@@ -121,10 +127,10 @@ export function HeadersEditor({
           onClick={() => onChange([...headers, { name: "", value: "" }])}
         >
           <Plus size={14} aria-hidden="true" />
-          Add header
+          {t("Add header")}
         </button>
         <small className="prov-hint">
-          Headers are stored unencrypted. Never put secrets here.
+          {t("Headers are stored unencrypted. Never put secrets here.")}
         </small>
       </div>
     </div>
@@ -167,11 +173,12 @@ function DetailHead({
   ctx: ProviderContext;
   onBack: () => void;
 }) {
+  const { t } = useT();
   return (
     <>
       <button type="button" className="prov-back" onClick={onBack}>
         <ChevronLeft size={14} aria-hidden="true" />
-        Providers
+        {t("Providers")}
       </button>
       <header className="prov-hero">
         <span className="prov-tile-icon prov-tile-icon-large">
@@ -194,7 +201,7 @@ function DetailHead({
           type="checkbox"
           role="switch"
           className="settings-switch"
-          aria-label={`Enable ${entry.label}`}
+          aria-label={t("Enable {name}", { name: entry.label })}
           checked={entry.enabled}
           disabled={ctx.busy}
           onChange={(event) => toggleProvider(ctx, entry, event.target.checked)}
@@ -215,6 +222,7 @@ function RemoveRow({
   onConfirm: () => Promise<unknown>;
   busy: boolean;
 }) {
+  const { t } = useT();
   const [open, setOpen] = useState(false);
   return (
     <div className="prov-remove">
@@ -225,7 +233,7 @@ function RemoveRow({
         onClick={() => setOpen(true)}
       >
         <Trash2 size={14} aria-hidden="true" />
-        Remove provider
+        {t("Remove provider")}
       </button>
       {open && (
         <Modal
@@ -245,7 +253,7 @@ function RemoveRow({
                 disabled={busy}
                 onClick={() => setOpen(false)}
               >
-                Cancel
+                {t("Cancel")}
               </button>
               <button
                 type="button"
@@ -253,7 +261,7 @@ function RemoveRow({
                 disabled={busy}
                 onClick={() => void onConfirm().then(() => setOpen(false))}
               >
-                Remove provider
+                {t("Remove provider")}
               </button>
             </div>
           </div>
@@ -279,6 +287,7 @@ function CliDetail({
   ctx: ProviderContext;
   onBack: () => void;
 }) {
+  const { t } = useT();
   const cli = entry.cli!;
   const status = entry.cliStatus;
   const [label, setLabel] = useState(entry.label);
@@ -319,7 +328,7 @@ function CliDetail({
     setChecking(false);
   };
   const command = loginCommands[cli] ?? `${cli} login`;
-  const mono = (value: string | null | undefined, fallback = "Unknown") => (
+  const mono = (value: string | null | undefined, fallback = t("Unknown")) => (
     <code className="prov-value" title={value || undefined}>
       {value || fallback}
     </code>
@@ -327,8 +336,8 @@ function CliDetail({
   return (
     <>
       <DetailHead entry={entry} ctx={ctx} onBack={onBack} />
-      <SettingsSection title="General">
-        <SettingRow label="Display name" htmlFor={labelId}>
+      <SettingsSection title={t("General")}>
+        <SettingRow label={t("Display name")} htmlFor={labelId}>
           <input
             id={labelId}
             value={label}
@@ -342,23 +351,25 @@ function CliDetail({
           />
         </SettingRow>
       </SettingsSection>
-      <SettingsSection title="Account">
+      <SettingsSection title={t("Account")}>
         <SettingRow
-          label="Status"
+          label={t("Status")}
           description={
             status?.signedIn === false
-              ? "Run in a terminal, then refresh."
+              ? t("Run in a terminal, then refresh.")
               : status?.error || undefined
           }
         >
           <span>
             {!status
-              ? "Checking…"
+              ? t("Checking…")
               : status.signedIn
-                ? `Signed in${status.plan ? ` · ${status.plan}` : ""}`
+                ? status.plan
+                  ? t("Signed in · {plan}", { plan: status.plan })
+                  : t("Signed in")
                 : status.signedIn === false
-                  ? "Not signed in"
-                  : "Unknown"}
+                  ? t("Not signed in")
+                  : t("Unknown")}
           </span>
           <button
             type="button"
@@ -367,11 +378,11 @@ function CliDetail({
             onClick={() => void refresh()}
           >
             <RefreshCw size={14} aria-hidden="true" />
-            Refresh
+            {t("Refresh")}
           </button>
         </SettingRow>
         {status?.signedIn === false && (
-          <SettingRow label="Login command">
+          <SettingRow label={t("Login command")}>
             <code className="prov-value">{command}</code>
             <button
               type="button"
@@ -387,7 +398,7 @@ function CliDetail({
               }
             >
               <Copy size={14} aria-hidden="true" />
-              {copied ? "Copied" : "Copy"}
+              {copied ? t("Copied") : t("Copy")}
             </button>
           </SettingRow>
         )}
@@ -405,21 +416,24 @@ function CliDetail({
           disabled={ctx.busy}
         />
       )}
-      <SettingsSection title="Runtime">
+      <SettingsSection title={t("Runtime")}>
         <dl className="prov-facts">
           <dt>CLI</dt>
           <dd>{cliNames[cli]}</dd>
-          <dt>Version</dt>
+          <dt>{t("Version")}</dt>
           <dd>{mono(status?.version)}</dd>
-          <dt>Binary</dt>
+          <dt>{t("Binary")}</dt>
           <dd>
-            {mono(status?.binaryPath, status ? "Not found" : "Checking…")}
+            {mono(status?.binaryPath, status ? t("Not found") : t("Checking…"))}
           </dd>
         </dl>
       </SettingsSection>
       <RemoveRow
-        title="Remove provider?"
-        description={`Remove ${entry.label} from Chat AI. The CLI and its login stay installed, and it will not be added again automatically.`}
+        title={t("Remove provider?")}
+        description={t(
+          "Remove {name} from Chat AI. The CLI and its login stay installed, and it will not be added again automatically.",
+          { name: entry.label },
+        )}
         busy={ctx.busy}
         onConfirm={async () => {
           const done = await ctx.run("ai_provider_remove", {
@@ -442,6 +456,7 @@ export function ApiDetail({
   ctx: ProviderContext;
   onBack: () => void;
 }) {
+  const { t } = useT();
   const provider = entry.api!;
   const [label, setLabel] = useState(provider.label);
   const [baseUrl, setBaseUrl] = useState(provider.baseUrl);
@@ -498,8 +513,8 @@ export function ApiDetail({
   return (
     <>
       <DetailHead entry={entry} ctx={ctx} onBack={onBack} />
-      <SettingsSection title="General">
-        <SettingRow label="Display name" htmlFor={ids[0]}>
+      <SettingsSection title={t("General")}>
+        <SettingRow label={t("Display name")} htmlFor={ids[0]}>
           <input
             id={ids[0]}
             value={label}
@@ -508,8 +523,8 @@ export function ApiDetail({
           />
         </SettingRow>
       </SettingsSection>
-      <SettingsSection title="Connection">
-        <SettingRow label="Base URL" htmlFor={ids[1]} stacked>
+      <SettingsSection title={t("Connection")}>
+        <SettingRow label={t("Base URL")} htmlFor={ids[1]} stacked>
           <input
             id={ids[1]}
             className="prov-mono"
@@ -520,12 +535,12 @@ export function ApiDetail({
           />
         </SettingRow>
         <SettingRow
-          label="API key"
+          label={t("API key")}
           htmlFor={ids[2]}
           description={
             provider.apiKeySet && !replacing
-              ? "Stored in the system key store"
-              : "Write-only. Saved to the system key store."
+              ? t("Stored in the system key store")
+              : t("Write-only. Saved to the system key store.")
           }
           stacked={!provider.apiKeySet || replacing}
         >
@@ -537,7 +552,7 @@ export function ApiDetail({
                 disabled={ctx.busy}
                 onClick={() => setReplacing(true)}
               >
-                Replace
+                {t("Replace")}
               </button>
               <button
                 type="button"
@@ -545,7 +560,7 @@ export function ApiDetail({
                 disabled={ctx.busy}
                 onClick={() => void setKey(null)}
               >
-                Remove
+                {t("Remove")}
               </button>
             </div>
           ) : (
@@ -557,8 +572,8 @@ export function ApiDetail({
                 spellCheck={false}
                 placeholder={
                   provider.kind === "openai-compatible"
-                    ? "Optional"
-                    : "Paste an API key"
+                    ? t("Optional")
+                    : t("Paste an API key")
                 }
                 value={apiKey}
                 onChange={(event) => setApiKey(event.target.value)}
@@ -569,7 +584,7 @@ export function ApiDetail({
                 disabled={ctx.busy || !apiKey}
                 onClick={() => void setKey(apiKey)}
               >
-                Save key
+                {t("Save key")}
               </button>
               {replacing && (
                 <button
@@ -580,18 +595,18 @@ export function ApiDetail({
                     setApiKey("");
                   }}
                 >
-                  Cancel
+                  {t("Cancel")}
                 </button>
               )}
             </div>
           )}
         </SettingRow>
-        <SettingRow label="Headers" stacked>
+        <SettingRow label={t("Headers")} stacked>
           <HeadersEditor headers={headers} onChange={setHeaders} />
         </SettingRow>
         <SettingRow
-          label="Test connection"
-          description={test.message || "Requests the model list."}
+          label={t("Test connection")}
+          description={test.message || t("Requests the model list.")}
         >
           <button
             type="button"
@@ -599,7 +614,7 @@ export function ApiDetail({
             disabled={test.busy}
             onClick={() => void test.probe()}
           >
-            {test.busy ? "Testing…" : "Test connection"}
+            {test.busy ? t("Testing…") : t("Test connection")}
           </button>
         </SettingRow>
       </SettingsSection>
@@ -621,7 +636,7 @@ export function ApiDetail({
               setModels(provider.models);
             }}
           >
-            Discard
+            {t("Discard")}
           </button>
           <button
             type="button"
@@ -629,13 +644,16 @@ export function ApiDetail({
             disabled={ctx.busy || !label.trim() || !baseUrl.trim()}
             onClick={save}
           >
-            Save changes
+            {t("Save changes")}
           </button>
         </div>
       )}
       <RemoveRow
-        title="Remove provider?"
-        description={`Remove ${provider.label} and its stored API key. Existing threads keep their messages.`}
+        title={t("Remove provider?")}
+        description={t(
+          "Remove {name} and its stored API key. Existing threads keep their messages.",
+          { name: provider.label },
+        )}
         busy={ctx.busy}
         onConfirm={async () => {
           const done = await ctx.run("ai_provider_remove", {

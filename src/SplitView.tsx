@@ -34,6 +34,7 @@ import PluginPanel from "./plugins/PluginPanel";
 import type { Json } from "@lomi-dev/plugin-sdk";
 import DockviewLayout from "./DockviewLayout";
 import { usePaneDrag } from "./pane-drag";
+import { useT } from "./i18n";
 import type { PaneTabDropOptions } from "./pane-drag";
 import type { SharedHostTerminalBinding } from "./shared-host";
 
@@ -68,6 +69,7 @@ export default function SplitView({
   onKeepActivePane,
   ...props
 }: Props & { onKeepActivePane: () => void }) {
+  const { t, tp } = useT();
   const root = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<LayoutSize>();
   const [maximizedPaneId, setMaximizedPaneId] = useState<string | null>(null);
@@ -188,7 +190,9 @@ export default function SplitView({
                 ) : layout.type === "android" ? (
                   <div key={layout.id} className="split-child">
                     <Suspense
-                      fallback={<div role="status">Loading Android…</div>}
+                      fallback={
+                        <div role="status">{t("Loading Android…")}</div>
+                      }
                     >
                       <builtinViews.android
                         tab={layout}
@@ -200,7 +204,9 @@ export default function SplitView({
                   </div>
                 ) : layout.type === "thread" ? (
                   <div key={layout.id} className="split-child">
-                    <Suspense fallback={<div role="status">Loading chat…</div>}>
+                    <Suspense
+                      fallback={<div role="status">{t("Loading chat…")}</div>}
+                    >
                       <builtinViews.thread
                         tab={layout}
                         projectPath={props.projectPath}
@@ -237,7 +243,7 @@ export default function SplitView({
                     <Suspense
                       fallback={
                         <div className="empty-message" role="status">
-                          Loading editor…
+                          {t("Loading editor…")}
                         </div>
                       }
                     >
@@ -274,23 +280,34 @@ export default function SplitView({
           </>
         ) : (
           <div className="layout-recovery" role="status">
-            <h2>This panel layout needs more space</h2>
+            <h2>{t("This panel layout needs more space")}</h2>
             <p>
-              This tab has {layoutPanes(props.layout).length} panels. Each panel
-              needs at least {MIN_PANE_WIDTH} × {MIN_PANE_HEIGHT} pixels (chat
-              panels {MIN_THREAD_WIDTH} × {MIN_THREAD_HEIGHT}). Enlarge the
-              window or hide the sidebar to show them.
+              {tp(
+                layoutPanes(props.layout).length,
+                "This tab has {count} panel. Each panel needs at least {width} × {height} pixels (chat panels {threadWidth} × {threadHeight}). Enlarge the window or hide the sidebar to show it.",
+                "This tab has {count} panels. Each panel needs at least {width} × {height} pixels (chat panels {threadWidth} × {threadHeight}). Enlarge the window or hide the sidebar to show them.",
+                {
+                  width: MIN_PANE_WIDTH,
+                  height: MIN_PANE_HEIGHT,
+                  threadWidth: MIN_THREAD_WIDTH,
+                  threadHeight: MIN_THREAD_HEIGHT,
+                },
+              )}
             </p>
             <p>
-              Your layout is preserved. Existing shells keep running; saved
-              terminals will start when the layout fits.
+              {t(
+                "Your layout is preserved. Existing shells keep running; saved terminals will start when the layout fits.",
+              )}
             </p>
             <button className="button" onClick={onKeepActivePane}>
-              Keep only the active panel
+              {t("Keep only the active panel")}
             </button>
             <p className="muted">
-              This closes the other {layoutPanes(props.layout).length - 1}{" "}
-              panels in this tab.
+              {tp(
+                layoutPanes(props.layout).length - 1,
+                "This closes the other panel in this tab.",
+                "This closes the other {count} panels in this tab.",
+              )}
             </p>
           </div>
         ))}
@@ -307,6 +324,7 @@ function Divider({
   bounds: LayoutBounds;
   onResize: Props["onResize"];
 }) {
+  const { t } = useT();
   const horizontal = layout.axis === "horizontal";
   const geometry = splitGeometry(layout, bounds);
   const resize = (ratio: number) =>
@@ -334,7 +352,7 @@ function Divider({
       }
       role="separator"
       aria-label={
-        horizontal ? "Resize terminal columns" : "Resize terminal rows"
+        horizontal ? t("Resize terminal columns") : t("Resize terminal rows")
       }
       aria-orientation={horizontal ? "vertical" : "horizontal"}
       aria-valuemin={Math.round(geometry.minRatio * 100)}

@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { useT } from "./i18n";
 import { SettingsSection } from "./settings-ui";
 import type { ControlState } from "./agent-control";
 
@@ -14,31 +15,38 @@ export function AgentBrowserUploadApproval({
   busy: boolean;
   run: (action: () => Promise<unknown>, message: string) => Promise<void>;
 }) {
+  const { t } = useT();
   if (!requests.length) return null;
   return (
-    <SettingsSection title="Browser upload requests" grouped={false}>
+    <SettingsSection title={t("Browser upload requests")} grouped={false}>
       {requests.map((request) => (
         <article className="agent-control-request" key={request.operationId}>
           <h3>
-            {request.clientLabel} — Upload {request.fileName}
+            {t("{client} — Upload {file}", {
+              client: request.clientLabel,
+              file: request.fileName,
+            })}
           </h3>
           <dl>
-            <dt>Destination origin</dt>
+            <dt>{t("Destination origin")}</dt>
             <dd>
               <code>{request.target.origin}</code>
             </dd>
-            <dt>Document</dt>
+            <dt>{t("Document")}</dt>
             <dd>
               <code>{request.target.documentUrl}</code>
             </dd>
-            <dt>File input</dt>
+            <dt>{t("File input")}</dt>
             <dd>
-              {request.target.label || "Unlabelled input"} (
+              {request.target.label || t("Unlabelled input")} (
               {request.target.frameId} / {request.elementRef})
             </dd>
-            <dt>Private copy</dt>
+            <dt>{t("Private copy")}</dt>
             <dd>
-              {request.fileName} ({request.byteLength.toLocaleString()} bytes)
+              {t("{file} ({bytes} bytes)", {
+                file: request.fileName,
+                bytes: request.byteLength.toLocaleString(),
+              })}
             </dd>
             <dt>SHA-256</dt>
             <dd>
@@ -46,10 +54,10 @@ export function AgentBrowserUploadApproval({
             </dd>
           </dl>
           <p className="settings-help">
-            The page can read and send these bytes immediately. This approves
-            one attachment to this input. Page text is untrusted. The request
-            expires in {request.secondsRemaining} seconds; navigation or a
-            replaced snapshot invalidates it sooner.
+            {t(
+              "The page can read and send these bytes immediately. This approves one attachment to this input. Page text is untrusted. The request expires in {seconds} seconds; navigation or a replaced snapshot invalidates it sooner.",
+              { seconds: request.secondsRemaining },
+            )}
           </p>
           <div className="agent-control-actions">
             <button
@@ -62,11 +70,11 @@ export function AgentBrowserUploadApproval({
                       operationId: request.operationId,
                       approve: false,
                     }),
-                  "File upload denied.",
+                  t("File upload denied."),
                 )
               }
             >
-              Deny upload
+              {t("Deny upload")}
             </button>
             <button
               className="button button-primary"
@@ -78,11 +86,11 @@ export function AgentBrowserUploadApproval({
                       operationId: request.operationId,
                       approve: true,
                     }),
-                  "File upload processed. Check its operation result.",
+                  t("File upload processed. Check its operation result."),
                 )
               }
             >
-              Upload this file
+              {t("Upload this file")}
             </button>
           </div>
         </article>

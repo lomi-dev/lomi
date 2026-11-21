@@ -18,6 +18,7 @@ import { api, errorMessage } from "./api";
 import { basename } from "./model";
 import { parentPath } from "./file-path";
 import { IconButton } from "./ui";
+import { useT } from "./i18n";
 
 export interface SearchMatch {
   relative: string;
@@ -48,6 +49,7 @@ export default function ProjectSearch({
   onScope: (relative: string) => void;
   onOpenFile: (relative: string, match: SearchMatch) => void;
 }) {
+  const { t, tp } = useT();
   const input = useRef<HTMLInputElement>(null);
   const resultList = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState("");
@@ -130,17 +132,17 @@ export default function ProjectSearch({
   return (
     <div className="sidebar-panel project-search" hidden={hidden}>
       <header className="sidebar-heading">
-        <span>SEARCH</span>
+        <span>{t("SEARCH")}</span>
         <div>
           <IconButton
-            title="Refresh search"
+            title={t("Refresh search")}
             disabled={!query || composing}
             onClick={refresh}
           >
             <RefreshCw size={14} />
           </IconButton>
           <IconButton
-            title="Clear search results"
+            title={t("Clear search results")}
             disabled={!query}
             onClick={() => {
               setQuery("");
@@ -150,7 +152,9 @@ export default function ProjectSearch({
             <ListX size={14} />
           </IconButton>
           <IconButton
-            title={allCollapsed ? "Expand all results" : "Collapse all results"}
+            title={
+              allCollapsed ? t("Expand all results") : t("Collapse all results")
+            }
             disabled={!groups.size || busy}
             onClick={() =>
               setCollapsed(allCollapsed ? new Set() : new Set(groups.keys()))
@@ -162,7 +166,7 @@ export default function ProjectSearch({
               <ChevronsDownUp size={14} />
             )}
           </IconButton>
-          <IconButton title="Back to Explorer" onClick={onClose}>
+          <IconButton title={t("Back to Explorer")} onClick={onClose}>
             <ArrowLeft size={14} />
           </IconButton>
         </div>
@@ -177,9 +181,9 @@ export default function ProjectSearch({
         <div className="project-search-input">
           <input
             ref={input}
-            aria-label="Search in files"
-            title="Search saved file contents"
-            placeholder="Search"
+            aria-label={t("Search in files")}
+            title={t("Search saved file contents")}
+            placeholder={t("Search")}
             value={query}
             spellCheck={false}
             autoComplete="off"
@@ -209,9 +213,9 @@ export default function ProjectSearch({
           <div className="project-search-options">
             {(
               [
-                ["caseSensitive", "Match case", CaseSensitive],
-                ["wholeWord", "Match whole word", WholeWord],
-                ["regex", "Use regular expression", Regex],
+                ["caseSensitive", t("Match case"), CaseSensitive],
+                ["wholeWord", t("Match whole word"), WholeWord],
+                ["regex", t("Use regular expression"), Regex],
               ] as const
             ).map(([key, title, Icon]) => (
               <IconButton
@@ -230,7 +234,7 @@ export default function ProjectSearch({
             <>
               <span title={`${root}/${relative}`}>{relative}</span>
               <IconButton
-                title="Search entire project"
+                title={t("Search entire project")}
                 onClick={() => onScope("")}
               >
                 <X size={12} />
@@ -238,7 +242,7 @@ export default function ProjectSearch({
             </>
           )}
           <IconButton
-            title="Toggle search details"
+            title={t("Toggle search details")}
             aria-expanded={filtersOpen}
             className={`icon-button search-details-toggle${options.include || options.exclude || options.includeIgnored ? " is-active" : ""}`}
             onClick={() => setFiltersOpen(!filtersOpen)}
@@ -249,10 +253,12 @@ export default function ProjectSearch({
         {filtersOpen && (
           <div className="project-search-filters">
             <label>
-              Files to include
+              {t("Files to include")}
               <input
-                placeholder="e.g. *.ts, src/**"
-                title="Comma-separated glob patterns, relative to the project. Use ./ to anchor a path."
+                placeholder={t("e.g. *.ts, src/**")}
+                title={t(
+                  "Comma-separated glob patterns, relative to the project. Use ./ to anchor a path.",
+                )}
                 value={options.include}
                 spellCheck={false}
                 onChange={(event) =>
@@ -261,10 +267,12 @@ export default function ProjectSearch({
               />
             </label>
             <label>
-              Files to exclude
+              {t("Files to exclude")}
               <input
-                placeholder="e.g. dist, **/*.test.ts"
-                title="Comma-separated glob patterns, relative to the project."
+                placeholder={t("e.g. dist, **/*.test.ts")}
+                title={t(
+                  "Comma-separated glob patterns, relative to the project.",
+                )}
                 value={options.exclude}
                 spellCheck={false}
                 onChange={(event) =>
@@ -283,7 +291,7 @@ export default function ProjectSearch({
                   })
                 }
               />
-              Include ignored files
+              {t("Include ignored files")}
             </label>
           </div>
         )}
@@ -291,7 +299,7 @@ export default function ProjectSearch({
       <div
         ref={resultList}
         className="project-search-results"
-        aria-label="Search results"
+        aria-label={t("Search results")}
         aria-busy={busy}
         onKeyDown={(event) => {
           if (
@@ -357,7 +365,7 @@ export default function ProjectSearch({
       >
         {(busy || (!!query && results?.matches.length === 0)) && (
           <p className="tree-message" role="status">
-            {busy ? "Searching…" : `No results for “${query}”.`}
+            {busy ? t("Searching…") : t("No results for “{query}”.", { query })}
           </p>
         )}
         {error && (
@@ -373,7 +381,12 @@ export default function ProjectSearch({
                 type="button"
                 className="search-file-heading"
                 title={path}
-                aria-label={`${path}, ${matches.length} ${matches.length === 1 ? "result" : "results"}`}
+                aria-label={tp(
+                  matches.length,
+                  "{path}, {count} result",
+                  "{path}, {count} results",
+                  { path },
+                )}
                 aria-expanded={!collapsed.has(path)}
                 disabled={busy}
                 onClick={() => toggleGroup(path)}
@@ -400,7 +413,11 @@ export default function ProjectSearch({
                       type="button"
                       className={`search-match${selected === key ? " is-selected" : ""}`}
                       title={`${path}:${match.line}:${match.column}\n${match.preview}`}
-                      aria-label={`${path}, line ${match.line}, column ${match.column}`}
+                      aria-label={t("{path}, line {line}, column {column}", {
+                        path,
+                        line: match.line,
+                        column: match.column,
+                      })}
                       aria-current={selected === key ? "true" : undefined}
                       disabled={busy}
                       onClick={() => {

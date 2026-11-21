@@ -10,6 +10,7 @@ import {
 import { basename } from "./model";
 import type { Project } from "./model";
 import { Menu } from "./ui";
+import { useT } from "./i18n";
 
 export default function ProjectSwitcher({
   projects,
@@ -28,6 +29,7 @@ export default function ProjectSwitcher({
   onSelect: (path: string) => void;
   onSource: (kind: SourceKind) => void;
 }) {
+  const { t } = useT();
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const focusLast = useRef(false);
@@ -50,7 +52,7 @@ export default function ProjectSwitcher({
         aria-haspopup="menu"
         aria-expanded={expanded}
         aria-controls={expanded ? menuId : undefined}
-        title={project?.path ?? "Open recent project"}
+        title={project?.path ?? t("Open recent project")}
         onClick={() => {
           focusLast.current = false;
           onToggle();
@@ -67,7 +69,9 @@ export default function ProjectSwitcher({
         ) : (
           <MenuIcon size={13} aria-hidden="true" />
         )}
-        <span>{project ? basename(project.path) : "Open recent project"}</span>
+        <span>
+          {project ? basename(project.path) : t("Open recent project")}
+        </span>
         <ChevronDown
           className="switcher-chevron"
           size={11}
@@ -80,7 +84,7 @@ export default function ProjectSwitcher({
             ref={menu}
             id={menuId}
             role="menu"
-            aria-label="Projects"
+            aria-label={t("Projects")}
             onKeyDown={(event) => {
               if (event.key === "Escape") {
                 event.preventDefault();
@@ -118,11 +122,11 @@ export default function ProjectSwitcher({
           >
             {projects.length > 0 && (
               <>
-                <div className="menu-label">Recent projects</div>
+                <div className="menu-label">{t("Recent projects")}</div>
                 <div
                   className="recent-projects"
                   role="group"
-                  aria-label="Recent projects"
+                  aria-label={t("Recent projects")}
                 >
                   {projects.map((candidate) => (
                     <button
@@ -156,7 +160,7 @@ export default function ProjectSwitcher({
                 <div className="menu-divider" role="separator" />
               </>
             )}
-            <div className="menu-label">Open project</div>
+            <div className="menu-label">{t("Open project")}</div>
             <SourceItems
               onSource={(kind) => {
                 trigger.current?.focus();
@@ -172,6 +176,7 @@ export default function ProjectSwitcher({
 
 // Mounted only while the menu is open, so GitHub is checked on demand.
 function SourceItems({ onSource }: { onSource: (kind: SourceKind) => void }) {
+  const { t } = useT();
   const github = useGithubStatus();
   return SOURCES.map(({ kind, label, Icon }) => {
     const unavailable = kind === "github" && !github?.available;
@@ -189,7 +194,7 @@ function SourceItems({ onSource }: { onSource: (kind: SourceKind) => void }) {
         }}
       >
         <Icon size={14} />
-        <span>{label}…</span>
+        <span>{t(label)}…</span>
       </button>
     );
   });

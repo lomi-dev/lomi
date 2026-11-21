@@ -1,3 +1,4 @@
+import { msg, t } from "./i18n";
 import { actions as keybindingActions } from "./keybindings";
 import type { SettingsPageId } from "./settings-pages";
 
@@ -12,19 +13,19 @@ export interface SettingsSearchEntry {
 }
 
 export const settingsPageLabels: Record<SettingsPageId, string> = {
-  general: "General",
-  themes: "Themes",
-  keybinds: "Keybinds",
-  notifications: "Notifications",
-  terminal: "Terminal",
-  android: "Android",
-  plugins: "Plugins",
-  "chat-providers": "Providers",
-  "chat-defaults": "Defaults",
-  account: "Account",
-  remote: "Remote",
-  "agent-control": "Agent control",
-  about: "About",
+  general: msg("General"),
+  themes: msg("Themes"),
+  keybinds: msg("Keybinds"),
+  notifications: msg("Notifications"),
+  terminal: msg("Terminal"),
+  android: msg("Android"),
+  plugins: msg("Plugins"),
+  "chat-providers": msg("Providers"),
+  "chat-defaults": msg("Defaults"),
+  account: msg("Account"),
+  remote: msg("Remote"),
+  "agent-control": msg("Agent control"),
+  about: msg("About"),
 };
 
 type Row = [
@@ -60,23 +61,23 @@ function build(
 
 const general = build("general", "general, preferences, basics", [
   [
-    "Workflow",
+    msg("Workflow"),
     "mode, cli first, chat first, terminal, ai chat",
     [
       [
-        "Start with",
-        "Terminals or chat up front.",
+        msg("Start with"),
+        msg("Terminals or chat up front."),
         "cli first, chat first, default tab",
       ],
     ],
   ],
   [
-    "Projects",
+    msg("Projects"),
     "new project, clone, folder",
     [
       [
-        "Default location",
-        "Where new and cloned projects go.",
+        msg("Default location"),
+        msg("Where new and cloned projects go."),
         "parent folder, path, directory",
       ],
     ],
@@ -88,39 +89,51 @@ const themes = build(
   "appearance, look, color, theme, icons, customize",
   [
     [
-      "Appearance",
+      msg("Appearance"),
       "look",
       [
         [
-          "Color mode",
-          "System, light or dark appearance.",
+          msg("Color mode"),
+          msg("System, light or dark appearance."),
           "dark mode, light mode, appearance, night, system theme, brightness",
         ],
       ],
     ],
     [
-      "Theme library",
+      msg("Theme library"),
       "themes, vs code, icons",
       [
-        ["Colors", "Color themes.", "color theme, palette"],
-        ["File icons", "File icon themes.", "icon theme, explorer icons"],
+        [msg("Colors"), msg("Color themes."), "color theme, palette"],
         [
-          "Interface icons",
-          "Interface icon themes.",
+          msg("File icons"),
+          msg("File icon themes."),
+          "icon theme, explorer icons",
+        ],
+        [
+          msg("Interface icons"),
+          msg("Interface icon themes."),
           "product icons, ui icons",
         ],
-        ["Create theme", "Create your own theme.", "new theme, custom theme"],
         [
-          "Import VS Code…",
-          "Import a VS Code theme.",
+          msg("Create theme"),
+          msg("Create your own theme."),
+          "new theme, custom theme",
+        ],
+        [
+          msg("Import VS Code…"),
+          msg("Import a VS Code theme."),
           "vscode, visual studio code, extension",
         ],
-        ["Import folder…", "Import themes from a folder."],
-        ["Manage themes", "Create or import themes.", "ellipsis, menu"],
-        ["Search themes", undefined, "filter themes"],
-        ["Export to VS Code", undefined, "vsix, share theme"],
-        ["Duplicate theme", undefined, "copy theme, clone"],
-        ["Open theme folder", undefined, "reveal in finder, files"],
+        [msg("Import folder…"), msg("Import themes from a folder.")],
+        [
+          msg("Manage themes"),
+          msg("Create or import themes."),
+          "ellipsis, menu",
+        ],
+        [msg("Search themes"), undefined, "filter themes"],
+        [msg("Export to VS Code"), undefined, "vsix, share theme"],
+        [msg("Duplicate theme"), undefined, "copy theme, clone"],
+        [msg("Open theme folder"), undefined, "reveal in finder, files"],
       ],
     ],
   ],
@@ -131,16 +144,16 @@ const keybinds = build(
   "shortcut, hotkey, keyboard, keys, bindings",
   [
     [
-      "Actions",
+      msg("Actions"),
       "shortcut, hotkey, keyboard",
       [
         [
-          "Add keybinding",
-          "Assign a shortcut to an action.",
+          msg("Add keybinding"),
+          msg("Assign a shortcut to an action."),
           "new shortcut, hotkey, assign",
         ],
-        ["Search keybindings", undefined, "find shortcut"],
-        ["Reset to defaults", undefined, "restore shortcuts"],
+        [msg("Search keybindings"), undefined, "find shortcut"],
+        [msg("Reset to defaults"), undefined, "restore shortcuts"],
       ],
     ],
     ...[...new Set(keybindingActions.map((action) => action.group))].map(
@@ -157,17 +170,19 @@ const keybinds = build(
       ],
     ),
     [
-      "Interaction",
+      msg("Interaction"),
       "mouse, pointer, click",
       [
         [
-          "Focus follows pointer",
-          "Typing, paste and shortcuts go to the panel under the mouse.",
+          msg("Focus follows pointer"),
+          msg("Typing, paste and shortcuts go to the panel under the mouse."),
           "hover focus, mouse focus, panel focus, sloppy focus",
         ],
         [
-          "Open with one click",
-          "One click opens after a brief pause; a double click selects without opening.",
+          msg("Open with one click"),
+          msg(
+            "One click opens after a brief pause; a double click selects without opening.",
+          ),
           "single click, double click, explorer, open files",
         ],
       ],
@@ -180,28 +195,30 @@ const notifications = build(
   "alerts, notify, push, inbox, sound",
   [
     [
-      "On this computer",
+      msg("On this computer"),
       "desktop, system notifications",
       [
         [
-          "Notify when tasks finish",
-          "Show system notifications when tasks finish.",
+          msg("Notify when tasks finish"),
+          msg("Show system notifications when tasks finish."),
           "desktop notification, alert, completion, done",
         ],
         [
-          "Only when the main Lomi window is inactive",
+          msg("Only when the main Lomi window is inactive"),
           undefined,
           "background, focus, window inactive",
         ],
       ],
     ],
     [
-      "On my phones",
+      msg("On my phones"),
       "mobile, push",
       [
         [
-          "Push notifications on my phones",
-          "Send completion notifications from this computer to your phones.",
+          msg("Push notifications on my phones"),
+          msg(
+            "Send completion notifications from this computer to your phones.",
+          ),
           "mobile, ios, android, push, remote",
         ],
       ],
@@ -214,74 +231,78 @@ const android = build(
   "emulator, avd, phone, device, virtual device, sdk, adb, mobile",
   [
     [
-      "Your phones",
+      msg("Your phones"),
       "emulator, avd, device, virtual device",
       [
         [
-          "Create device",
-          "Create a new Android phone.",
+          msg("Create device"),
+          msg("Create a new Android phone."),
           "new phone, new emulator, avd, virtual device, add phone",
         ],
-        ["Android version", undefined, "api level, system image, os version"],
         [
-          "Phone profile",
-          "Screen size and density.",
+          msg("Android version"),
+          undefined,
+          "api level, system image, os version",
+        ],
+        [
+          msg("Phone profile"),
+          msg("Screen size and density."),
           "device model, pixel, resolution",
         ],
         [
-          "Advanced settings",
+          msg("Advanced settings"),
           undefined,
           "graphics, gpu, cold boot, audio, camera",
         ],
         [
-          "Enable Lomi text input",
-          "Installs the Lomi keyboard in this phone.",
+          msg("Enable Lomi text input"),
+          msg("Installs the Lomi keyboard in this phone."),
           "keyboard, ime, typing",
         ],
       ],
     ],
     [
-      "Android versions",
+      msg("Android versions"),
       "system images, downloads",
       [
         [
-          "Available to download",
+          msg("Available to download"),
           undefined,
           "install image, system image, api level",
         ],
-        ["Remove image", undefined, "delete android version, uninstall"],
-        ["Filter Android version", undefined, "api level"],
-        ["Filter included apps", undefined, "google play, google apis"],
+        [msg("Remove image"), undefined, "delete android version, uninstall"],
+        [msg("Filter Android version"), undefined, "api level"],
+        [msg("Filter included apps"), undefined, "google play, google apis"],
       ],
     ],
     [
-      "Android tools",
+      msg("Android tools"),
       "sdk, adb, emulator, tools",
       [
         [
-          "Hardware acceleration available",
+          msg("Hardware acceleration available"),
           undefined,
           "hax, hvf, whpx, kvm, virtualization, gpu",
         ],
         [
-          "Managed SDK",
-          "Android SDK managed by Lomi.",
+          msg("Managed SDK"),
+          msg("Android SDK managed by Lomi."),
           "sdk, platform tools, adb, download, cmdline tools",
         ],
-        ["Repair tools", undefined, "fix sdk, reinstall"],
-        ["Roll back", undefined, "previous sdk, undo update"],
+        [msg("Repair tools"), undefined, "fix sdk, reinstall"],
+        [msg("Roll back"), undefined, "previous sdk, undo update"],
       ],
     ],
-    ["Repair Android versions", "fix image", [["Repair image"]]],
+    [msg("Repair Android versions"), "fix image", [[msg("Repair image")]]],
     [
-      "Storage and troubleshooting",
+      msg("Storage and troubleshooting"),
       "repair, cleanup, diagnostics, reset",
       [
-        ["Repair interrupted operation", undefined, "fix, recover"],
-        ["Clean temporary files", undefined, "cache, free space, disk"],
-        ["Export diagnostics", undefined, "logs, debug, support"],
-        ["Restore backup", undefined, "recover preferences"],
-        ["Reset preferences", undefined, "defaults, clear"],
+        [msg("Repair interrupted operation"), undefined, "fix, recover"],
+        [msg("Clean temporary files"), undefined, "cache, free space, disk"],
+        [msg("Export diagnostics"), undefined, "logs, debug, support"],
+        [msg("Restore backup"), undefined, "recover preferences"],
+        [msg("Reset preferences"), undefined, "defaults, clear"],
       ],
     ],
   ],
@@ -289,21 +310,21 @@ const android = build(
 
 const plugins = build("plugins", "extensions, add-ons, marketplace, install", [
   [
-    "Installed plugins",
+    msg("Installed plugins"),
     "extensions, enable, disable, uninstall",
     [
       [
-        "Import plugin",
-        "Install a plugin from a folder.",
+        msg("Import plugin"),
+        msg("Install a plugin from a folder."),
         "install plugin, add extension, load, package",
       ],
-      ["Search plugins", undefined, "find extension"],
-      ["Plugin categories", undefined, "filter by type"],
-      ["Plugin status", undefined, "enabled, disabled, filter"],
-      ["Enable plugin", undefined, "trust plugin, turn on, toggle"],
-      ["Uninstall plugin", undefined, "remove extension, delete"],
-      ["Restart Lomi", undefined, "reload plugin"],
-      ["Plugin ID", undefined, "details, source, trust, runtime"],
+      [msg("Search plugins"), undefined, "find extension"],
+      [msg("Plugin categories"), undefined, "filter by type"],
+      [msg("Plugin status"), undefined, "enabled, disabled, filter"],
+      [msg("Enable plugin"), undefined, "trust plugin, turn on, toggle"],
+      [msg("Uninstall plugin"), undefined, "remove extension, delete"],
+      [msg("Restart Lomi"), undefined, "reload plugin"],
+      [msg("Plugin ID"), undefined, "details, source, trust, runtime"],
     ],
   ],
 ]);
@@ -313,58 +334,58 @@ const account = build(
   "login, sign in, sign out, github, profile, session, user",
   [
     [
-      "Your account",
+      msg("Your account"),
       "profile, name, email",
       [
-        ["Name", undefined, "profile"],
-        ["GitHub", undefined, "username, identity"],
-        ["Email", undefined, "address"],
+        [msg("Name"), undefined, "profile"],
+        [msg("GitHub"), undefined, "username, identity"],
+        [msg("Email"), undefined, "address"],
         [
-          "Storage",
-          "You will need to sign in again after closing Lomi.",
+          msg("Storage"),
+          msg("You will need to sign in again after closing Lomi."),
           "session, credential store",
         ],
       ],
     ],
     [
-      "Sign in with GitHub",
+      msg("Sign in with GitHub"),
       "login, oauth, github",
       [
         [
-          "Sign in with GitHub",
-          "Connect your GitHub identity to Lomi.",
+          msg("Sign in with GitHub"),
+          msg("Connect your GitHub identity to Lomi."),
           "login, log in, oauth, authenticate",
         ],
         [
-          "Remember me on this device",
+          msg("Remember me on this device"),
           undefined,
           "stay signed in, keep session, credential store, keychain",
         ],
       ],
     ],
     [
-      "Finish signing in",
+      msg("Finish signing in"),
       "browser approval",
       [
-        ["Open browser again", undefined, "login, approve"],
-        ["Cancel sign-in", undefined, "abort login"],
+        [msg("Open browser again"), undefined, "login, approve"],
+        [msg("Cancel sign-in"), undefined, "abort login"],
       ],
     ],
     [
-      "Account access",
+      msg("Account access"),
       "sessions, sign out, logout",
       [
         [
-          "Manage account",
-          "Manage sessions in your browser.",
+          msg("Manage account"),
+          msg("Manage sessions in your browser."),
           "portal, profile, subscription, billing",
         ],
         [
-          "Sign out of this device",
+          msg("Sign out of this device"),
           undefined,
           "log out, logout, disconnect, sign off",
         ],
-        ["Retry connection", undefined, "reconnect, offline"],
+        [msg("Retry connection"), undefined, "reconnect, offline"],
       ],
     ],
   ],
@@ -375,39 +396,39 @@ const remote = build(
   "host, share, relay, collaborate, workspace sharing, online",
   [
     [
-      "Connect to a shared workspace",
+      msg("Connect to a shared workspace"),
       "join, guest",
       [
         [
-          "Choose an online host",
-          "Request approval and open an existing workspace.",
+          msg("Choose an online host"),
+          msg("Request approval and open an existing workspace."),
           "join workspace, guest, connect host",
         ],
       ],
     ],
     [
-      "Host account",
+      msg("Host account"),
       "sign in, host login",
       [
-        ["Sign in to the host", undefined, "login, publish, relay"],
-        ["Sign-in status", undefined, "host login state"],
-        ["Sign out of the host", undefined, "logout"],
-        ["Open verification page", undefined, "device code, approve"],
+        [msg("Sign in to the host"), undefined, "login, publish, relay"],
+        [msg("Sign-in status"), undefined, "host login state"],
+        [msg("Sign out of the host"), undefined, "logout"],
+        [msg("Open verification page"), undefined, "device code, approve"],
       ],
     ],
-    ["Workspace access", "share, stop sharing", []],
-    ["Shared workspaces", "shared by the local host", []],
+    [msg("Workspace access"), "share, stop sharing", []],
+    [msg("Shared workspaces"), "shared by the local host", []],
     [
-      "Background sessions",
+      msg("Background sessions"),
       "keep running, quit, tray",
       [
-        ["Host sharing", undefined, "status"],
+        [msg("Host sharing"), undefined, "status"],
         [
-          "Keep Lomi running",
-          "Closing a Lomi window keeps host-owned terminals running.",
+          msg("Keep Lomi running"),
+          msg("Closing a Lomi window keeps host-owned terminals running."),
           "background, quit, close window, show workspace",
         ],
-        ["Quit Lomi", undefined, "exit, close app"],
+        [msg("Quit Lomi"), undefined, "exit, close app"],
       ],
     ],
   ],
@@ -418,37 +439,37 @@ const agentControl = build(
   "mcp, agent, claude code, codex, gemini cli, cursor, automation, yolo, sessions",
   [
     [
-      "Connect an agent",
+      msg("Connect an agent"),
       "mcp, claude code, codex, gemini cli, coding agent",
       [
         [
-          "Choose your agent",
+          msg("Choose your agent"),
           undefined,
           "claude code, codex, gemini, cursor, opencode, cli, mcp client",
         ],
-        ["Search agents", undefined, "find client"],
-        ["Back to agents", undefined, "all clients"],
+        [msg("Search agents"), undefined, "find client"],
+        [msg("Back to agents"), undefined, "all clients"],
         [
-          "Lomi connection",
-          "Add Lomi to a coding agent.",
+          msg("Lomi connection"),
+          msg("Add Lomi to a coding agent."),
           "mcp, install, setup, configure",
         ],
-        ["Connection setup", undefined, "add lomi, mcp config"],
+        [msg("Connection setup"), undefined, "add lomi, mcp config"],
         [
-          "Set up all eligible clients",
+          msg("Set up all eligible clients"),
           undefined,
           "add lomi to every client, install everywhere",
         ],
-        ["Setup details", undefined, "configuration path, revision"],
+        [msg("Setup details"), undefined, "configuration path, revision"],
       ],
       "connect",
     ],
     [
-      "Local connection",
+      msg("Local connection"),
       "server, mcp",
       [
         [
-          "Connection server",
+          msg("Connection server"),
           undefined,
           "mcp server, start server, turn off server, enable, port",
         ],
@@ -456,34 +477,34 @@ const agentControl = build(
       "sessions",
     ],
     [
-      "New session requests",
+      msg("New session requests"),
       "approve, reject, pending",
-      [["Review requests", undefined, "approve session, pending"]],
+      [[msg("Review requests"), undefined, "approve session, pending"]],
       "sessions",
     ],
     [
-      "Active sessions",
+      msg("Active sessions"),
       "connected agents",
       [
         [
-          "Stop all access",
-          "Ends every session and rejects pending requests.",
+          msg("Stop all access"),
+          msg("Ends every session and rejects pending requests."),
           "disconnect agents, revoke, kill sessions",
         ],
       ],
       "sessions",
     ],
-    ["Terminal input requests", "approve, prompt", [], "sessions"],
-    ["Preference change requests", "approve", [], "sessions"],
-    ["Project folder requests", "open project", [], "sessions"],
-    ["Android setup and device requests", "emulator", [], "sessions"],
-    ["APK installation requests", "install apk", [], "sessions"],
+    [msg("Terminal input requests"), "approve, prompt", [], "sessions"],
+    [msg("Preference change requests"), "approve", [], "sessions"],
+    [msg("Project folder requests"), "open project", [], "sessions"],
+    [msg("Android setup and device requests"), "emulator", [], "sessions"],
+    [msg("APK installation requests"), "install apk", [], "sessions"],
     [
-      "Server preferences",
+      msg("Server preferences"),
       "startup, autostart",
       [
         [
-          "Start MCP server when Lomi opens",
+          msg("Start MCP server when Lomi opens"),
           undefined,
           "autostart, launch, startup, on open, mcp server",
         ],
@@ -491,24 +512,24 @@ const agentControl = build(
       "preferences",
     ],
     [
-      "Automatic approvals (YOLO)",
+      msg("Automatic approvals (YOLO)"),
       "yolo, auto approve",
       [
         [
-          "Automatically approve requests (YOLO)",
-          "Approves requests from all local clients without asking.",
+          msg("Automatically approve requests (YOLO)"),
+          msg("Approves requests from all local clients without asking."),
           "yolo mode, auto approve, skip permissions, trust agents, unattended",
         ],
       ],
       "preferences",
     ],
     [
-      "Manual configuration",
+      msg("Manual configuration"),
       "mcp config, json",
       [
         [
-          "Copy configuration",
-          "MCP configuration for this server.",
+          msg("Copy configuration"),
+          msg("MCP configuration for this server."),
           "mcp json, config, clipboard, claude code, codex",
         ],
       ],
@@ -522,42 +543,42 @@ const about = build(
   "update, version, license, build, help, support, docs",
   [
     [
-      "Application",
+      msg("Application"),
       "version, license",
       [
-        ["Version", undefined, "update, release, build number"],
+        [msg("Version"), undefined, "update, release, build number"],
         [
-          "Check for updates",
-          "Look for a newer version of Lomi.",
+          msg("Check for updates"),
+          msg("Look for a newer version of Lomi."),
           "update, upgrade, new version, release",
         ],
-        ["License", undefined, "apache, open source, legal"],
+        [msg("License"), undefined, "apache, open source, legal"],
       ],
     ],
     [
-      "Resources",
+      msg("Resources"),
       "links, help",
       [
         [
-          "Source code",
+          msg("Source code"),
           "lomi-dev/lomi",
           "github, repository, repo, view on github",
         ],
-        ["Website", "lomi.dev", "open website, homepage, site"],
-        ["Documentation", "docs.lomi.dev", "docs, manual, help, guide"],
+        [msg("Website"), "lomi.dev", "open website, homepage, site"],
+        [msg("Documentation"), "docs.lomi.dev", "docs, manual, help, guide"],
         [
-          "Feedback",
-          "Report a bug or suggest an improvement.",
+          msg("Feedback"),
+          msg("Report a bug or suggest an improvement."),
           "report an issue, bug, feature request, support",
         ],
       ],
     ],
     [
-      "Build details",
+      msg("Build details"),
       "platform, architecture",
       [
-        ["Build", undefined, "platform, arch, version"],
-        ["Bundle ID", undefined, "identifier"],
+        [msg("Build"), undefined, "platform, arch, version"],
+        [msg("Bundle ID"), undefined, "identifier"],
       ],
     ],
   ],
@@ -568,127 +589,131 @@ const terminal = build(
   "shell, console, command line, tty, font, cursor, colors",
   [
     [
-      "Font",
+      msg("Font"),
       "typeface, monospace",
       [
         [
-          "Terminal font",
-          "Used by every terminal.",
+          msg("Terminal font"),
+          msg("Used by every terminal."),
           "typeface, jetbrains mono, monospace, theme default, custom font",
         ],
-        ["Font size", undefined, "text size, zoom, bigger, smaller"],
+        [msg("Font size"), undefined, "text size, zoom, bigger, smaller"],
         [
-          "Font family",
-          "An installed font. Separate fallbacks with commas.",
+          msg("Font family"),
+          msg("An installed font. Separate fallbacks with commas."),
           "typeface, custom font, fallback",
         ],
-        ["Cursor style", undefined, "bar, block, underline, caret"],
+        [msg("Cursor style"), undefined, "bar, block, underline, caret"],
         [
-          "Always show terminal titles",
-          "Otherwise hold Control to reveal titles.",
+          msg("Always show terminal titles"),
+          msg("Otherwise hold Control to reveal titles."),
           "tab title, header, label",
         ],
       ],
     ],
     [
-      "Text",
+      msg("Text"),
       "typography",
       [
-        ["Font weight", undefined, "bold, thin, light, normal"],
-        ["Bold font weight", undefined, "heavier text"],
-        ["Line height", undefined, "spacing, leading"],
-        ["Letter spacing", undefined, "tracking, kerning"],
+        [msg("Font weight"), undefined, "bold, thin, light, normal"],
+        [msg("Bold font weight"), undefined, "heavier text"],
+        [msg("Line height"), undefined, "spacing, leading"],
+        [msg("Letter spacing"), undefined, "tracking, kerning"],
       ],
     ],
     [
-      "Cursor",
+      msg("Cursor"),
       "caret",
       [
-        ["Inactive cursor", undefined, "unfocused cursor, outline"],
-        ["Blink cursor", undefined, "blinking, flash, caret"],
-        ["Cursor width", "Bar cursor only.", "caret thickness"],
+        [msg("Inactive cursor"), undefined, "unfocused cursor, outline"],
+        [msg("Blink cursor"), undefined, "blinking, flash, caret"],
+        [msg("Cursor width"), msg("Bar cursor only."), "caret thickness"],
       ],
     ],
     [
-      "Scrolling",
+      msg("Scrolling"),
       "history, buffer",
       [
         [
-          "Scrollback lines",
-          "Up to 100,000. Lowering it drops older output.",
+          msg("Scrollback lines"),
+          msg("Up to 100,000. Lowering it drops older output."),
           "history, buffer, scroll history, memory",
         ],
-        ["Scroll speed", undefined, "sensitivity, mouse wheel"],
-        ["Fast scroll speed (Alt)", undefined, "sensitivity, option"],
+        [msg("Scroll speed"), undefined, "sensitivity, mouse wheel"],
+        [msg("Fast scroll speed (Alt)"), undefined, "sensitivity, option"],
         [
-          "Scroll animation time",
-          "0 disables animation; up to 1,000 ms.",
+          msg("Scroll animation time"),
+          msg("0 disables animation; up to 1,000 ms."),
           "smooth scrolling, duration",
         ],
-        ["Scroll to bottom on input", undefined, "follow output, autoscroll"],
         [
-          "Keep cleared screen in scrollback",
+          msg("Scroll to bottom on input"),
+          undefined,
+          "follow output, autoscroll",
+        ],
+        [
+          msg("Keep cleared screen in scrollback"),
           undefined,
           "clear, erase display",
         ],
       ],
     ],
     [
-      "Input",
+      msg("Input"),
       "keyboard, mouse, shell",
       [
         [
-          "Default shell",
-          "Applies to new terminals.",
+          msg("Default shell"),
+          msg("Applies to new terminals."),
           "powershell, cmd, windows shell",
         ],
         [
-          "Tab width",
-          "Spaces per tab stop in terminal output.",
+          msg("Tab width"),
+          msg("Spaces per tab stop in terminal output."),
           "tab stop, indentation",
         ],
-        ["Alt-click moves cursor", undefined, "mouse, option click"],
-        ["Right-click selects a word", undefined, "context menu, mouse"],
+        [msg("Alt-click moves cursor"), undefined, "mouse, option click"],
+        [msg("Right-click selects a word"), undefined, "context menu, mouse"],
         [
-          "Use Option as Meta (macOS)",
+          msg("Use Option as Meta (macOS)"),
           undefined,
           "alt key, escape sequences, emacs",
         ],
         [
-          "Option-click forces selection (macOS)",
+          msg("Option-click forces selection (macOS)"),
           undefined,
           "mouse reporting, vim",
         ],
         [
-          "Word separators",
-          "Characters that end a word on double-click.",
+          msg("Word separators"),
+          msg("Characters that end a word on double-click."),
           "double click, selection, delimiters",
         ],
       ],
     ],
     [
-      "Rendering",
+      msg("Rendering"),
       "display, accessibility, gpu",
       [
         [
-          "Minimum contrast ratio",
-          "1 keeps exact colors; up to 21.",
+          msg("Minimum contrast ratio"),
+          msg("1 keeps exact colors; up to 21."),
           "accessibility, readability, wcag",
         ],
-        ["Use bright colors for bold text", undefined, "bold, ansi"],
+        [msg("Use bright colors for bold text"), undefined, "bold, ansi"],
         [
-          "Screen reader support",
+          msg("Screen reader support"),
           undefined,
           "accessibility, a11y, voiceover, nvda",
         ],
         [
-          "Draw continuous box and block characters",
-          "Accelerated renderer only.",
+          msg("Draw continuous box and block characters"),
+          msg("Accelerated renderer only."),
           "custom glyphs, box drawing, webgl",
         ],
         [
-          "Rescale overlapping characters",
-          "Accelerated renderer only.",
+          msg("Rescale overlapping characters"),
+          msg("Accelerated renderer only."),
           "glyphs, webgl, ligatures",
         ],
       ],
@@ -701,23 +726,25 @@ const chatProviders = build(
   "chat ai, models, llm, openai, anthropic, claude, codex, api key",
   [
     [
-      "Providers",
+      msg("Providers"),
       "chat ai, accounts, cli, api",
       [
         [
-          "Add provider",
-          "Add an API provider; installed CLIs are detected automatically.",
+          msg("Add provider"),
+          msg(
+            "Add an API provider; installed CLIs are detected automatically.",
+          ),
           "new provider, connect",
         ],
         [
-          "API key",
-          "Stored in the system key store.",
+          msg("API key"),
+          msg("Stored in the system key store."),
           "secret, token, credential",
         ],
-        ["Base URL", undefined, "endpoint, host, openai compatible"],
-        ["Models", undefined, "fetch models, add model"],
-        ["Test connection", undefined, "probe, verify api"],
-        ["Remove provider", undefined, "delete"],
+        [msg("Base URL"), undefined, "endpoint, host, openai compatible"],
+        [msg("Models"), undefined, "fetch models, add model"],
+        [msg("Test connection"), undefined, "probe, verify api"],
+        [msg("Remove provider"), undefined, "delete"],
       ],
     ],
   ],
@@ -728,46 +755,52 @@ const chatDefaults = build(
   "chat ai, defaults, new threads, send key, system prompt, tokens",
   [
     [
-      "New threads",
+      msg("New threads"),
       "model, permissions, workspace",
       [
         [
-          "Model",
-          "Default model for new threads.",
+          msg("Model"),
+          msg("Default model for new threads."),
           "default model, provider, effort, reasoning",
         ],
         [
-          "Fallback model",
-          "Used when the default model's provider is unavailable.",
+          msg("Fallback model"),
+          msg("Used when the default model's provider is unavailable."),
           "fallback, backup",
         ],
         [
-          "Permissions",
-          "What CLI agents may do in new threads.",
+          msg("Permissions"),
+          msg("What CLI agents may do in new threads."),
           "read only, edit files, full access, sandbox",
         ],
         [
-          "Workspace",
-          "Where new threads start.",
+          msg("Workspace"),
+          msg("Where new threads start."),
           "project folder, private folder, cwd",
         ],
       ],
     ],
     [
-      "Composer",
+      msg("Composer"),
       "send",
-      [["Send message with", "Enter or Cmd+Enter.", "send key, shortcut"]],
+      [
+        [
+          msg("Send message with"),
+          msg("Enter or Cmd+Enter."),
+          "send key, shortcut",
+        ],
+      ],
     ],
     [
-      "Responses",
+      msg("Responses"),
       "instructions, tokens",
       [
         [
-          "System instructions",
-          "Sent to API providers and Claude Code.",
+          msg("System instructions"),
+          msg("Sent to API providers and Claude Code."),
           "system prompt",
         ],
-        ["Max output tokens", undefined, "max tokens, limit, length"],
+        [msg("Max output tokens"), undefined, "max tokens, limit, length"],
       ],
     ],
   ],
@@ -795,12 +828,13 @@ function scoreEntry(
   entry: SettingsSearchEntry,
   terms: string[],
   query: string,
+  tr: (text: string) => string,
 ) {
-  const label = fold(entry.label);
-  const section = fold(entry.section ?? "");
-  const pageLabel = fold(settingsPageLabels[entry.page]);
+  const label = fold(tr(entry.label));
+  const section = fold(entry.section ? tr(entry.section) : "");
+  const pageLabel = fold(tr(settingsPageLabels[entry.page]));
   const keywords = fold((entry.keywords ?? []).join(" "));
-  const description = fold(entry.description ?? "");
+  const description = fold(entry.description ? tr(entry.description) : "");
   const haystack = `${label} ${section} ${pageLabel} ${keywords} ${description}`;
   if (!terms.every((term) => haystack.includes(term))) return 0;
   let score = 1;
@@ -833,7 +867,11 @@ export function searchSettings(
     .map((entry, order) => ({
       entry,
       order,
-      score: scoreEntry(entry, terms, query),
+      // Matches the translated text as well as the English source text.
+      score: Math.max(
+        scoreEntry(entry, terms, query, (text) => text),
+        scoreEntry(entry, terms, query, t),
+      ),
     }))
     .filter((hit) => hit.score > 0)
     .sort((a, b) => b.score - a.score || a.order - b.order)
@@ -868,45 +906,52 @@ export function findRevealTarget(
   entry: SettingsSearchEntry,
   loose: boolean,
 ): HTMLElement | null {
-  const label = normalize(entry.label);
+  const names = (text?: string) =>
+    text ? [normalize(t(text)), normalize(text)] : [];
+  const label = names(entry.label);
   const all = <T extends Element>(selector: string) =>
     Array.from(root.querySelectorAll<T>(selector)).filter(visible);
-  if (!entry.section && label === normalize(settingsPageLabels[entry.page]))
+  if (
+    !entry.section &&
+    label.includes(normalize(settingsPageLabels[entry.page]))
+  )
     return root.querySelector<HTMLElement>("h1");
   const sectionHeading = (title?: string) =>
-    all<HTMLElement>("h2").find(
-      (heading) =>
-        normalize(heading.firstChild?.textContent) === normalize(title),
+    all<HTMLElement>("h2").find((heading) =>
+      names(title).includes(normalize(heading.firstChild?.textContent)),
     );
   const header = (heading?: HTMLElement) =>
     heading?.closest<HTMLElement>(".settings-section-heading") ??
     heading ??
     null;
-  const row = all<HTMLElement>(".setting-row").find(
-    (item) =>
+  const row = all<HTMLElement>(".setting-row").find((item) =>
+    label.includes(
       normalize(
         item.querySelector(".setting-label")?.firstElementChild?.textContent,
-      ) === label,
+      ),
+    ),
   );
   if (row) return row;
   const heading = header(sectionHeading(entry.label));
   if (heading) return heading;
   const exact = all<HTMLElement>(clickable).find(
     (item) =>
-      normalize(item.textContent) === label ||
-      normalize(item.getAttribute("aria-label")) === label,
+      label.includes(normalize(item.textContent)) ||
+      label.includes(normalize(item.getAttribute("aria-label"))),
   );
   if (exact) return exact;
   if (!loose) return null;
   return (
     all<HTMLElement>(`h1, h2, ${clickable}`).find((item) =>
-      normalize(item.textContent).includes(label),
+      label.some((name) => normalize(item.textContent).includes(name)),
     ) ??
     header(sectionHeading(entry.section)) ??
     // Unassigned keybinding actions have no row; point at the way to add one.
     (entry.page === "keybinds"
       ? all<HTMLElement>("button").find((item) =>
-          normalize(item.textContent).includes("add keybinding"),
+          names("Add keybinding").some((name) =>
+            normalize(item.textContent).includes(name),
+          ),
         )
       : undefined) ??
     root.querySelector<HTMLElement>("h1")

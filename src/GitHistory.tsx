@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { GitCommitHorizontal, History } from "./icons";
 import { api, errorMessage } from "./api";
 import type { GitCommitSummary, GitHistoryPage } from "./api";
+import { useT } from "./i18n";
 
 export default function GitHistory({
   root,
@@ -12,6 +13,7 @@ export default function GitHistory({
   path?: string;
   onOpenCommit: (commit: GitCommitSummary) => void;
 }) {
+  const { t } = useT();
   const [history, setHistory] = useState<GitHistoryPage>();
   const [request, setRequest] = useState<{
     skip: number;
@@ -49,11 +51,13 @@ export default function GitHistory({
   return (
     <div className="git-history">
       <div className="git-history-heading">
-        <span title={path}>{path || "All branches"}</span>
-        {history && <span>{history.commits.length} loaded</span>}
+        <span title={path}>{path || t("All branches")}</span>
+        {history && (
+          <span>{t("{count} loaded", { count: history.commits.length })}</span>
+        )}
       </div>
       <div className="git-history-scroll">
-        <ol className="git-history-list" aria-label="Commit history">
+        <ol className="git-history-list" aria-label={t("Commit history")}>
           {history?.commits.map((commit) => (
             <li key={commit.id}>
               <button
@@ -65,7 +69,7 @@ export default function GitHistory({
                 <GitCommitHorizontal size={15} />
                 <span className="git-history-entry-content">
                   <span className="git-history-subject">
-                    {commit.subject || "(no subject)"}
+                    {commit.subject || t("(no subject)")}
                   </span>
                   <span className="git-history-author">
                     {commit.authorName}
@@ -86,7 +90,7 @@ export default function GitHistory({
         </ol>
         {busy && (
           <p className="sidebar-empty" role="status">
-            Loading commits…
+            {t("Loading commits…")}
           </p>
         )}
         {error && (
@@ -97,15 +101,15 @@ export default function GitHistory({
               className="button"
               onClick={() => load({ ...request })}
             >
-              Retry
+              {t("Retry")}
             </button>
           </div>
         )}
         {!busy && !error && history && !history.commits.length && (
           <div className="git-clean">
             <History size={22} />
-            <p>No commits yet.</p>
-            <span>Your commit history will appear here.</span>
+            <p>{t("No commits yet.")}</p>
+            <span>{t("Your commit history will appear here.")}</span>
           </div>
         )}
         {!busy && !error && history?.hasMore && (
@@ -116,7 +120,7 @@ export default function GitHistory({
               load({ skip: history.commits.length, tips: history.tips })
             }
           >
-            Load more commits
+            {t("Load more commits")}
           </button>
         )}
       </div>

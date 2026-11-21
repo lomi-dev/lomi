@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { errorMessage, getInfo } from "./api";
 import { FolderOpen, MessageSquare, Terminal } from "./icons";
+import { locales, msg, setLocale, useT, type Locale } from "./i18n";
+import Select from "./Select";
 import { setWorkMode, workMode, type WorkMode } from "./onboarding-state";
 import { rememberedParent, rememberParent } from "./project-sources";
 import {
@@ -14,19 +16,20 @@ import {
 const MODES = [
   {
     value: "cli",
-    label: "CLI first",
-    text: "New projects open with a terminal.",
+    label: msg("CLI first"),
+    text: msg("New projects open with a terminal."),
     Icon: Terminal,
   },
   {
     value: "chat",
-    label: "Chat first",
-    text: "New projects open with an AI chat.",
+    label: msg("Chat first"),
+    text: msg("New projects open with an AI chat."),
     Icon: MessageSquare,
   },
 ] as const;
 
 export default function GeneralSettingsPage() {
+  const { t, locale } = useT();
   const [mode, setMode] = useState(workMode);
   const [parent, setParent] = useState(rememberedParent);
   const [home, setHome] = useState("");
@@ -46,7 +49,7 @@ export default function GeneralSettingsPage() {
   const chooseMode = (value: WorkMode) => {
     setWorkMode(value);
     setMode(value);
-    setStatus("Workflow saved");
+    setStatus(t("Workflow saved"));
   };
 
   const chooseParent = async () => {
@@ -56,29 +59,32 @@ export default function GeneralSettingsPage() {
         directory: true,
         multiple: false,
         defaultPath: parent ?? (home || undefined),
-        title: "Default location for new projects",
+        title: t("Default location for new projects"),
       });
       if (typeof picked !== "string") return;
       rememberParent(picked);
       setParent(picked);
-      setStatus("Location saved");
+      setStatus(t("Location saved"));
     } catch (reason) {
       setError(errorMessage(reason));
     }
   };
 
   return (
-    <SettingsPage title="General" status={status}>
+    <SettingsPage title={t("General")} status={status}>
       {error && <SettingsNotice tone="error">{error}</SettingsNotice>}
+
       <SettingsSection
-        title="Workflow"
-        description="Choose what Lomi puts in front. Both stay one click away."
+        title={t("Workflow")}
+        description={t(
+          "Choose what Lomi puts in front. Both stay one click away.",
+        )}
         grouped={false}
       >
         <div
           className="general-mode-options"
           role="radiogroup"
-          aria-label="Start with"
+          aria-label={t("Start with")}
         >
           {MODES.map(({ value, label, text, Icon }) => (
             <label key={value} data-mode={value}>
@@ -93,8 +99,8 @@ export default function GeneralSettingsPage() {
                 <Icon size={18} />
               </span>
               <span className="general-mode-copy">
-                <strong>{label}</strong>
-                <small>{text}</small>
+                <strong>{t(label)}</strong>
+                <small>{t(text)}</small>
               </span>
               <span className="general-mode-radio" aria-hidden="true" />
             </label>
@@ -102,10 +108,12 @@ export default function GeneralSettingsPage() {
         </div>
       </SettingsSection>
 
-      <SettingsSection title="Projects">
+      <SettingsSection title={t("Projects")}>
         <SettingRow
-          label="Default location"
-          description="New and cloned projects are created here. You can still change it per project."
+          label={t("Default location")}
+          description={t(
+            "New and cloned projects are created here. You can still change it per project.",
+          )}
         >
           <button
             type="button"
@@ -114,8 +122,28 @@ export default function GeneralSettingsPage() {
             onClick={() => void chooseParent()}
           >
             <FolderOpen size={14} aria-hidden="true" />
-            <span>{parent ?? (home ? `${home} (home)` : "Home folder")}</span>
+            <span>
+              {parent ??
+                (home ? t("{home} (home)", { home }) : t("Home folder"))}
+            </span>
           </button>
+        </SettingRow>
+      </SettingsSection>
+
+      <SettingsSection title={t("Language")}>
+        <SettingRow
+          label={t("Interface language")}
+          description={t("Lomi follows your system language on first launch.")}
+        >
+          <Select
+            aria-label={t("Interface language")}
+            value={locale}
+            onChange={(value) => void setLocale(value as Locale)}
+            options={Object.entries(locales).map(([value, label]) => ({
+              value,
+              label,
+            }))}
+          />
         </SettingRow>
       </SettingsSection>
     </SettingsPage>

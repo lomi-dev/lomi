@@ -1,3 +1,4 @@
+import { t } from "./i18n.ts";
 export interface EditorPreferences {
   tabSize: number;
   insertSpaces: boolean;
@@ -23,6 +24,8 @@ export function restoreEditorPreferences(value: unknown): EditorPreferences {
       return { tabSize: data.tabSize, insertSpaces: data.insertSpaces };
   }
   throw new Error(
-    "Invalid or unsupported editor settings. The file has been left intact. Retry loading or reset defaults to replace it.",
+    t(
+      "Invalid or unsupported editor settings. The file has been left intact. Retry loading or reset defaults to replace it.",
+    ),
   );
 }

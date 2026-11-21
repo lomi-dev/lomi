@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { api, errorMessage, native } from "./api";
+import { msg, useT } from "./i18n";
 import { CliAgentIcon } from "./CliAgentIcon";
 import { ArrowLeft, Check, ChevronRight, RefreshCw, Search } from "./icons";
 import type { TitleProcess } from "./terminal-runtime";
@@ -18,17 +19,17 @@ interface McpClient {
 }
 
 function clientStatus(client: McpClient) {
-  if (client.configured) return "Configured";
-  if (client.manualReason) return "Manual setup";
-  if (client.error) return "Setup unavailable";
-  return "Not configured";
+  if (client.configured) return msg("Configured");
+  if (client.manualReason) return msg("Manual setup");
+  if (client.error) return msg("Setup unavailable");
+  return msg("Not configured");
 }
 
 function rowStatus(client: McpClient) {
-  if (client.configured) return "Configured";
-  if (client.manualReason) return "Manual setup";
-  if (client.error) return "Setup unavailable";
-  return "Set up";
+  if (client.configured) return msg("Configured");
+  if (client.manualReason) return msg("Manual setup");
+  if (client.error) return msg("Setup unavailable");
+  return msg("Set up");
 }
 
 export function McpClientsSettings({
@@ -48,6 +49,7 @@ export function McpClientsSettings({
   onStartServer: () => Promise<void>;
   onInstalled: () => Promise<void> | void;
 }) {
+  const { t, tp } = useT();
   const [clients, setClients] = useState<McpClient[]>([]);
   const [selectedCli, setSelectedCli] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -180,8 +182,14 @@ export function McpClientsSettings({
         const names = installed.join(", ");
         setStatus(
           yoloMode
-            ? `Lomi MCP was added to ${names}. Restart ${names} to connect; YOLO mode will approve its Lomi session automatically.`
-            : `Lomi MCP was added to ${names}. Restart ${names}, then approve its session in Sessions.`,
+            ? t(
+                "Lomi MCP was added to {names}. Restart {names} to connect; YOLO mode will approve its Lomi session automatically.",
+                { names },
+              )
+            : t(
+                "Lomi MCP was added to {names}. Restart {names}, then approve its session in Sessions.",
+                { names },
+              ),
         );
       }
       setError(failures.join("\n"));
@@ -193,7 +201,7 @@ export function McpClientsSettings({
     }
   };
 
-  const selectedStatus = selected ? clientStatus(selected) : "";
+  const selectedStatus = selected ? t(clientStatus(selected)) : "";
   return (
     <section
       aria-labelledby={selected ? "mcp-setup-heading" : "mcp-clients-heading"}
@@ -203,7 +211,7 @@ export function McpClientsSettings({
         <div className="agent-client-chooser">
           <div className="agent-control-section-heading">
             <div>
-              <h2 id="mcp-clients-heading">Choose your agent</h2>
+              <h2 id="mcp-clients-heading">{t("Choose your agent")}</h2>
             </div>
             <div className="agent-client-heading-actions">
               {clients.length > 0 && (
@@ -214,14 +222,16 @@ export function McpClientsSettings({
                   onClick={() => void install(eligible)}
                 >
                   {busy
-                    ? "Setting up…"
-                    : `Set up all eligible clients (${eligible.length})`}
+                    ? t("Setting up…")
+                    : t("Set up all eligible clients ({count})", {
+                        count: eligible.length,
+                      })}
                 </button>
               )}
               <button
                 type="button"
                 className="icon-button agent-client-refresh"
-                aria-label="Refresh"
+                aria-label={t("Refresh")}
                 disabled={!native || busy || loading}
                 onClick={() => void refresh()}
               >
@@ -232,12 +242,14 @@ export function McpClientsSettings({
 
           {!native && (
             <SettingsNotice>
-              Client setup is available in the Lomi desktop app.
+              {t("Client setup is available in the Lomi desktop app.")}
             </SettingsNotice>
           )}
           {loadError && (
             <SettingsNotice tone="error">
-              Could not check installed clients: {loadError}
+              {t("Could not check installed clients: {error}", {
+                error: loadError,
+              })}
             </SettingsNotice>
           )}
           {error && <SettingsNotice tone="error">{error}</SettingsNotice>}
@@ -245,14 +257,15 @@ export function McpClientsSettings({
 
           {loading && !clients.length ? (
             <p className="settings-help" role="status">
-              Checking installed clients…
+              {t("Checking installed clients…")}
             </p>
           ) : !clients.length ? (
             !loadError &&
             native && (
               <p className="settings-empty">
-                No supported CLI clients were found in your shell. Install a
-                CLI, then refresh.
+                {t(
+                  "No supported CLI clients were found in your shell. Install a CLI, then refresh.",
+                )}
               </p>
             )
           ) : (
@@ -263,7 +276,7 @@ export function McpClientsSettings({
                     className="agent-client-visually-hidden"
                     htmlFor="mcp-client-search"
                   >
-                    Search agents
+                    {t("Search agents")}
                   </label>
                   <div className="agent-client-search-field">
                     <Search aria-hidden="true" />
@@ -271,8 +284,8 @@ export function McpClientsSettings({
                       ref={searchInput}
                       id="mcp-client-search"
                       type="search"
-                      aria-label="Search agents"
-                      placeholder="Search agents"
+                      aria-label={t("Search agents")}
+                      placeholder={t("Search agents")}
                       value={search}
                       disabled={busy || loading}
                       onChange={(event) => setSearch(event.currentTarget.value)}
@@ -286,16 +299,23 @@ export function McpClientsSettings({
                   aria-atomic="true"
                 >
                   {search.trim()
-                    ? `${matchingClients.length} ${matchingClients.length === 1 ? "result" : "results"}`
-                    : `${clients.length} ${clients.length === 1 ? "agent" : "agents"}`}
+                    ? tp(
+                        matchingClients.length,
+                        "{count} result",
+                        "{count} results",
+                      )
+                    : tp(clients.length, "{count} agent", "{count} agents")}
                 </span>
               </div>
 
               {matchingClients.length ? (
-                <ul className="agent-client-list" aria-label="Coding agents">
+                <ul
+                  className="agent-client-list"
+                  aria-label={t("Coding agents")}
+                >
                   {matchingClients.map((client) => {
                     const descriptionId = `mcp-client-status-${client.cli}`;
-                    const detail = rowStatus(client);
+                    const detail = t(rowStatus(client));
                     return (
                       <li key={client.cli}>
                         <button
@@ -357,13 +377,15 @@ export function McpClientsSettings({
                 </ul>
               ) : (
                 <div className="agent-client-empty-search">
-                  <p>No agents match “{search.trim()}”.</p>
+                  <p>
+                    {t("No agents match “{query}”.", { query: search.trim() })}
+                  </p>
                   <button
                     type="button"
                     className="button"
                     onClick={() => setSearch("")}
                   >
-                    Clear search
+                    {t("Clear search")}
                   </button>
                 </div>
               )}
@@ -385,12 +407,12 @@ export function McpClientsSettings({
               }}
             >
               <ArrowLeft size={16} aria-hidden="true" />
-              Back to agents
+              {t("Back to agents")}
             </button>
             <button
               type="button"
               className="icon-button agent-client-refresh"
-              aria-label="Refresh"
+              aria-label={t("Refresh")}
               disabled={!native || busy || loading}
               onClick={() => void refresh()}
             >
@@ -408,19 +430,26 @@ export function McpClientsSettings({
           </header>
 
           <SettingsSection
-            title="Lomi connection"
+            title={t("Lomi connection")}
             className="agent-setup-connection"
           >
             <SettingRow
-              label="Connection setup"
+              label={t("Connection setup")}
               description={
                 selected.configured
-                  ? `The Lomi connection is saved in ${selected.name} settings.`
+                  ? t("The Lomi connection is saved in {name} settings.", {
+                      name: selected.name,
+                    })
                   : selected.manualReason
                     ? selected.manualReason
                     : selected.error
-                      ? "Automatic setup is unavailable until the issue below is resolved."
-                      : `Adds Lomi to ${selected.name} for all projects and starts the local server.`
+                      ? t(
+                          "Automatic setup is unavailable until the issue below is resolved.",
+                        )
+                      : t(
+                          "Adds Lomi to {name} for all projects and starts the local server.",
+                          { name: selected.name },
+                        )
               }
             >
               <span
@@ -440,7 +469,9 @@ export function McpClientsSettings({
             </SettingRow>
             {loadError && (
               <SettingsNotice tone="error">
-                Could not check installed clients: {loadError}
+                {t("Could not check installed clients: {error}", {
+                  error: loadError,
+                })}
               </SettingsNotice>
             )}
             {error && <SettingsNotice tone="error">{error}</SettingsNotice>}
@@ -453,11 +484,13 @@ export function McpClientsSettings({
             )}
             {selected.configured && (
               <SettingRow
-                label="Connection server"
+                label={t("Connection server")}
                 description={
                   serverEnabled
-                    ? "The server can accept connection requests. Manage connected agents in Sessions."
-                    : "Start the local server before restarting your agent."
+                    ? t(
+                        "The server can accept connection requests. Manage connected agents in Sessions.",
+                      )
+                    : t("Start the local server before restarting your agent.")
                 }
               >
                 <span className="agent-setup-server-status" role="status">
@@ -473,7 +506,7 @@ export function McpClientsSettings({
                       void onStartServer();
                     }}
                   >
-                    Start server
+                    {t("Start server")}
                   </button>
                 )}
               </SettingRow>
@@ -481,12 +514,18 @@ export function McpClientsSettings({
             {selected.configured ? (
               <p className="settings-help" role="status">
                 {yoloMode
-                  ? "Next: restart the agent. YOLO mode approves its Lomi session automatically."
-                  : "Next: restart the agent, then approve its Lomi session in Sessions."}
+                  ? t(
+                      "Next: restart the agent. YOLO mode approves its Lomi session automatically.",
+                    )
+                  : t(
+                      "Next: restart the agent, then approve its Lomi session in Sessions.",
+                    )}
               </p>
             ) : selected.manualReason ? (
               <p className="settings-help">
-                Open Preferences → Manual configuration to connect this client.
+                {t(
+                  "Open Preferences → Manual configuration to connect this client.",
+                )}
               </p>
             ) : (
               <div className="agent-setup-client-controls">
@@ -494,25 +533,29 @@ export function McpClientsSettings({
                   type="button"
                   className="button button-primary"
                   disabled={busy || loading || Boolean(selected.error)}
-                  aria-label={`Install Lomi MCP for ${selected.name}`}
+                  aria-label={t("Install Lomi MCP for {name}", {
+                    name: selected.name,
+                  })}
                   onClick={() => void install([selected])}
                 >
-                  {busy ? "Setting up…" : `Add Lomi to ${selected.name}`}
+                  {busy
+                    ? t("Setting up…")
+                    : t("Add Lomi to {name}", { name: selected.name })}
                 </button>
                 <p className="settings-help">
-                  Your existing configuration is backed up.
+                  {t("Your existing configuration is backed up.")}
                 </p>
               </div>
             )}
           </SettingsSection>
 
-          <SettingsSection title="Setup details">
+          <SettingsSection title={t("Setup details")}>
             <div className="agent-control-details-content">
               <dl>
-                <dt>Configuration path</dt>
-                <dd>{selected.path || "Not reported"}</dd>
-                <dt>Revision</dt>
-                <dd>{selected.revision ?? "Not tracked"}</dd>
+                <dt>{t("Configuration path")}</dt>
+                <dd>{selected.path || t("Not reported")}</dd>
+                <dt>{t("Revision")}</dt>
+                <dd>{selected.revision ?? t("Not tracked")}</dd>
               </dl>
             </div>
           </SettingsSection>

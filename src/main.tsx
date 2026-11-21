@@ -2,6 +2,7 @@ import { lazy, StrictMode, Suspense, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { readRemoteV2ViewReference } from "../../remote-web/src/remote-v2-view-reference";
 import { initializeAppearance } from "./theme/runtime";
+import { initializeLocale, t, useT } from "./i18n";
 import { api, macOS, native } from "./api";
 import { trackRemoteActivity } from "./remote-activity";
 import { SettingsNotice } from "./settings-ui";
@@ -35,6 +36,7 @@ const initialTarget = remoteV2View
   : undefined;
 
 function RemoteV2ViewEntry() {
+  useT();
   const [capability, setCapability] = useState<
     "loading" | "available" | "unavailable"
   >(native ? "loading" : "unavailable");
@@ -62,11 +64,13 @@ function RemoteV2ViewEntry() {
   }, []);
 
   if (capability === "loading")
-    return <SettingsNotice>Checking remote workspace support…</SettingsNotice>;
+    return (
+      <SettingsNotice>{t("Checking remote workspace support…")}</SettingsNotice>
+    );
   if (capability === "unavailable")
     return (
       <SettingsNotice>
-        Remote is disabled in this version of Lomi.
+        {t("Remote is disabled in this version of Lomi.")}
       </SettingsNotice>
     );
   return (
@@ -78,13 +82,18 @@ function RemoteV2ViewEntry() {
   );
 }
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <Suspense
-      fallback={<main className="empty-message">Opening workspace…</main>}
-    >
-      {remoteV2View ? <RemoteV2ViewEntry /> : <App />}
-      {native && macOS && !remoteV2View && <QuitHint />}
-    </Suspense>
-  </StrictMode>,
+// The dictionary must be ready before the first paint to avoid an English flash.
+void initializeLocale().then(() =>
+  createRoot(document.getElementById("root")!).render(
+    <StrictMode>
+      <Suspense
+        fallback={
+          <main className="empty-message">{t("Opening workspace…")}</main>
+        }
+      >
+        {remoteV2View ? <RemoteV2ViewEntry /> : <App />}
+        {native && macOS && !remoteV2View && <QuitHint />}
+      </Suspense>
+    </StrictMode>,
+  ),
 );

@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import { useT } from "../../i18n";
 import { ArrowDown, ArrowUp, Plus, RefreshCw, Star, X } from "../../icons";
 import { SettingsSection } from "../../settings-ui";
 import type { ModelEntry } from "../types";
@@ -20,6 +21,7 @@ export default function ModelsSection({
   refreshing?: boolean;
   disabled?: boolean;
 }) {
+  const { t } = useT();
   const [filter, setFilter] = useState("");
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState("");
@@ -56,15 +58,15 @@ export default function ModelsSection({
   };
   return (
     <SettingsSection
-      title="Models"
+      title={t("Models")}
       className="prov-models-section"
       actions={
         onRefresh && (
           <button
             type="button"
             className="icon-button"
-            title="Refresh models"
-            aria-label="Refresh models"
+            title={t("Refresh models")}
+            aria-label={t("Refresh models")}
             disabled={disabled || refreshing}
             data-spinning={refreshing || undefined}
             onClick={onRefresh}
@@ -77,8 +79,8 @@ export default function ModelsSection({
       <div className="prov-models-toolbar">
         <input
           type="search"
-          aria-label="Filter models"
-          placeholder="Filter models"
+          aria-label={t("Filter models")}
+          placeholder={t("Filter models")}
           value={filter}
           onChange={(event) => setFilter(event.target.value)}
         />
@@ -90,10 +92,13 @@ export default function ModelsSection({
             onChange(models.map((model) => ({ ...model, enabled: !allOn })))
           }
         >
-          {allOn ? "Disable all" : "Enable all"}
+          {allOn ? t("Disable all") : t("Enable all")}
         </button>
         <span className="prov-models-count">
-          {enabledCount}/{models.length} enabled
+          {t("{enabled}/{total} enabled", {
+            enabled: enabledCount,
+            total: models.length,
+          })}
         </span>
         <button
           type="button"
@@ -102,7 +107,7 @@ export default function ModelsSection({
           onClick={() => setAdding(true)}
         >
           <Plus size={14} aria-hidden="true" />
-          Custom model
+          {t("Custom model")}
         </button>
       </div>
       {adding && (
@@ -117,7 +122,7 @@ export default function ModelsSection({
             id={draftId}
             autoFocus
             className="prov-mono"
-            aria-label="Model id"
+            aria-label={t("Model id")}
             placeholder="model-id"
             maxLength={256}
             spellCheck={false}
@@ -131,12 +136,12 @@ export default function ModelsSection({
             }}
           />
           <button type="submit" className="button" disabled={!draft.trim()}>
-            Add
+            {t("Add")}
           </button>
           <button
             type="button"
             className="icon-button"
-            aria-label="Cancel"
+            aria-label={t("Cancel")}
             onClick={() => {
               setAdding(false);
               setDraft("");
@@ -149,11 +154,11 @@ export default function ModelsSection({
       {visible.length === 0 ? (
         <p className="prov-models-empty">
           {models.length === 0
-            ? "No models yet. Refresh or add a custom model."
-            : "No models match the filter."}
+            ? t("No models yet. Refresh or add a custom model.")
+            : t("No models match the filter.")}
         </p>
       ) : (
-        <ul className="prov-models-list" aria-label="Models">
+        <ul className="prov-models-list" aria-label={t("Models")}>
           {visible.map((model) => {
             const index = models.indexOf(model);
             const label = labels?.get(model.id);
@@ -163,8 +168,8 @@ export default function ModelsSection({
                   type="button"
                   className="prov-star"
                   aria-pressed={model.favorite}
-                  title={model.favorite ? "Unfavorite" : "Favorite"}
-                  aria-label={`Favorite ${model.id}`}
+                  title={model.favorite ? t("Unfavorite") : t("Favorite")}
+                  aria-label={t("Favorite {model}", { model: model.id })}
                   disabled={disabled}
                   onClick={() => patch(model.id, { favorite: !model.favorite })}
                 >
@@ -174,7 +179,7 @@ export default function ModelsSection({
                   {label && label !== model.id && <span>{label}</span>}
                   <code>{model.id}</code>
                   {model.source === "manual" && (
-                    <span className="prov-model-tag">custom</span>
+                    <span className="prov-model-tag">{t("custom")}</span>
                   )}
                 </span>
                 <span className="prov-model-actions">
@@ -182,8 +187,8 @@ export default function ModelsSection({
                     <button
                       type="button"
                       className="icon-button"
-                      title="Remove"
-                      aria-label={`Remove ${model.id}`}
+                      title={t("Remove")}
+                      aria-label={t("Remove {model}", { model: model.id })}
                       disabled={disabled}
                       onClick={() =>
                         onChange(models.filter((item) => item !== model))
@@ -195,7 +200,7 @@ export default function ModelsSection({
                   <button
                     type="button"
                     className="icon-button"
-                    aria-label={`Move ${model.id} up`}
+                    aria-label={t("Move {model} up", { model: model.id })}
                     disabled={disabled || !!query || index === 0}
                     onClick={() => move(index, -1)}
                   >
@@ -204,7 +209,7 @@ export default function ModelsSection({
                   <button
                     type="button"
                     className="icon-button"
-                    aria-label={`Move ${model.id} down`}
+                    aria-label={t("Move {model} down", { model: model.id })}
                     disabled={
                       disabled || !!query || index === models.length - 1
                     }
@@ -217,7 +222,7 @@ export default function ModelsSection({
                   type="checkbox"
                   role="switch"
                   className="settings-switch"
-                  aria-label={`Enable ${model.id}`}
+                  aria-label={t("Enable {model}", { model: model.id })}
                   checked={model.enabled}
                   disabled={disabled}
                   onChange={(event) =>

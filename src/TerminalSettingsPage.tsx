@@ -10,6 +10,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import Select from "./Select";
 import { RotateCcw } from "./icons";
 import { errorMessage, windows } from "./api";
+import { msg, t, useT } from "./i18n";
 import { useTerminalPreferences } from "./TerminalPreferencesProvider";
 import {
   defaultTerminalPreferences,
@@ -34,61 +35,68 @@ function fontChoice(fontFamily?: string): FontChoice {
 }
 
 const labels: Record<string, string> = {
-  alwaysShowTitles: "Always show terminal titles",
-  windowsShell: "Default shell",
-  powershell: "PowerShell",
-  cmd: "CMD",
-  fontSize: "Font size",
-  fontWeight: "Font weight",
-  fontWeightBold: "Bold font weight",
-  lineHeight: "Line height",
-  letterSpacing: "Letter spacing",
-  cursorStyle: "Cursor style",
-  cursorInactiveStyle: "Inactive cursor",
-  cursorBlink: "Blink cursor",
-  cursorWidth: "Cursor width",
-  minimumContrastRatio: "Minimum contrast ratio",
-  drawBoldTextInBrightColors: "Use bright colors for bold text",
-  background: "Background",
-  foreground: "Text",
-  cursor: "Cursor",
-  cursorAccent: "Text under cursor",
-  selectionBackground: "Selection background",
-  selectionForeground: "Selection text",
-  selectionInactiveBackground: "Inactive selection",
-  searchMatchBackground: "Search match",
-  searchActiveMatchBackground: "Active search match",
-  searchMatchBorder: "Search border",
-  searchActiveMatchBorder: "Active search border",
-  scrollback: "Scrollback lines",
-  scrollSensitivity: "Scroll speed",
-  fastScrollSensitivity: "Fast scroll speed (Alt)",
-  smoothScrollDuration: "Scroll animation time",
-  tabStopWidth: "Tab width",
-  scrollOnUserInput: "Scroll to bottom on input",
-  scrollOnEraseInDisplay: "Keep cleared screen in scrollback",
-  altClickMovesCursor: "Alt-click moves cursor",
-  rightClickSelectsWord: "Right-click selects a word",
-  macOptionIsMeta: "Use Option as Meta (macOS)",
-  macOptionClickForcesSelection: "Option-click forces selection (macOS)",
-  screenReaderMode: "Screen reader support",
-  customGlyphs: "Draw continuous box and block characters",
-  rescaleOverlappingGlyphs: "Rescale overlapping characters",
-  wordSeparator: "Word separators",
+  alwaysShowTitles: msg("Always show terminal titles"),
+  windowsShell: msg("Default shell"),
+  powershell: msg("PowerShell"),
+  cmd: msg("CMD"),
+  fontSize: msg("Font size"),
+  fontWeight: msg("Font weight"),
+  fontWeightBold: msg("Bold font weight"),
+  lineHeight: msg("Line height"),
+  letterSpacing: msg("Letter spacing"),
+  cursorStyle: msg("Cursor style"),
+  cursorInactiveStyle: msg("Inactive cursor"),
+  cursorBlink: msg("Blink cursor"),
+  cursorWidth: msg("Cursor width"),
+  minimumContrastRatio: msg("Minimum contrast ratio"),
+  drawBoldTextInBrightColors: msg("Use bright colors for bold text"),
+  background: msg("Background"),
+  foreground: msg("Text"),
+  cursor: msg("Cursor"),
+  cursorAccent: msg("Text under cursor"),
+  selectionBackground: msg("Selection background"),
+  selectionForeground: msg("Selection text"),
+  selectionInactiveBackground: msg("Inactive selection"),
+  searchMatchBackground: msg("Search match"),
+  searchActiveMatchBackground: msg("Active search match"),
+  searchMatchBorder: msg("Search border"),
+  searchActiveMatchBorder: msg("Active search border"),
+  scrollback: msg("Scrollback lines"),
+  scrollSensitivity: msg("Scroll speed"),
+  fastScrollSensitivity: msg("Fast scroll speed (Alt)"),
+  smoothScrollDuration: msg("Scroll animation time"),
+  tabStopWidth: msg("Tab width"),
+  scrollOnUserInput: msg("Scroll to bottom on input"),
+  scrollOnEraseInDisplay: msg("Keep cleared screen in scrollback"),
+  altClickMovesCursor: msg("Alt-click moves cursor"),
+  rightClickSelectsWord: msg("Right-click selects a word"),
+  macOptionIsMeta: msg("Use Option as Meta (macOS)"),
+  macOptionClickForcesSelection: msg("Option-click forces selection (macOS)"),
+  screenReaderMode: msg("Screen reader support"),
+  customGlyphs: msg("Draw continuous box and block characters"),
+  rescaleOverlappingGlyphs: msg("Rescale overlapping characters"),
+  wordSeparator: msg("Word separators"),
+  bar: msg("Bar"),
+  block: msg("Block"),
+  underline: msg("Underline"),
+  outline: msg("Outline"),
+  none: msg("None"),
+  normal: msg("Normal"),
+  bold: msg("Bold"),
 };
 const help: Record<string, string> = {
-  alwaysShowTitles: "Otherwise hold Control to reveal titles.",
-  windowsShell: "Applies to new terminals.",
-  cursorWidth: "Bar cursor only.",
-  minimumContrastRatio: "1 keeps exact colors.",
-  scrollback: "Lowering it drops older output.",
-  smoothScrollDuration: "0 turns animation off.",
-  wordSeparator: "Characters that end a word on double-click.",
-  customGlyphs: "Accelerated renderer only.",
-  rescaleOverlappingGlyphs: "Accelerated renderer only.",
+  alwaysShowTitles: msg("Otherwise hold Control to reveal titles."),
+  windowsShell: msg("Applies to new terminals."),
+  cursorWidth: msg("Bar cursor only."),
+  minimumContrastRatio: msg("1 keeps exact colors."),
+  scrollback: msg("Lowering it drops older output."),
+  smoothScrollDuration: msg("0 turns animation off."),
+  wordSeparator: msg("Characters that end a word on double-click."),
+  customGlyphs: msg("Accelerated renderer only."),
+  rescaleOverlappingGlyphs: msg("Accelerated renderer only."),
 };
 export const labelFor = (key: string) =>
-  labels[key] ??
+  (labels[key] && t(labels[key])) ||
   key
     .replace(/([A-Z])/g, " $1")
     .replace(/^./, (letter) => letter.toUpperCase());
@@ -97,9 +105,9 @@ const units: Record<string, string> = {
   lineHeight: "×",
   letterSpacing: "px",
   cursorWidth: "px",
-  scrollback: "lines",
+  scrollback: msg("lines"),
   smoothScrollDuration: "ms",
-  tabStopWidth: "spaces",
+  tabStopWidth: msg("spaces"),
   scrollSensitivity: "×",
   fastScrollSensitivity: "×",
 };
@@ -125,15 +133,17 @@ function Control({
   change: (value: string | number | boolean) => void;
   unit?: string;
 }) {
+  useT();
   const [text, setText] = useState(String(value));
   useEffect(() => setText(String(value)), [value, disabled]);
   const label = labelFor(name);
   unit ??= range ? units[name] : undefined;
+  if (unit) unit = t(unit);
   const id = `terminal-setting-${name}`;
   const resetLabel =
     resetKind === "theme"
-      ? `Restore theme default for ${label}`
-      : `Restore default behavior for ${label}`;
+      ? t("Restore theme default for {label}", { label })
+      : t("Restore default behavior for {label}", { label });
   const field = (
     <input
       id={id}
@@ -222,12 +232,13 @@ function Control({
 }
 
 function Setting(props: Parameters<typeof Control>[0]) {
+  useT();
   const id = `terminal-setting-${props.name}`;
   return (
     <SettingRow
       label={labelFor(props.name)}
       htmlFor={id}
-      description={help[props.name]}
+      description={help[props.name] && t(help[props.name])}
       descriptionId={`${id}-help`}
     >
       <Control {...props} />
@@ -238,6 +249,7 @@ function Setting(props: Parameters<typeof Control>[0]) {
 export type ColorKey = (typeof terminalColors)[number];
 
 export default function TerminalSettingsPage() {
+  const { t } = useT();
   const preferences = useTerminalPreferences();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -421,7 +433,7 @@ export default function TerminalSettingsPage() {
 
   return (
     <SettingsPage
-      title="Terminal"
+      title={t("Terminal")}
       className="terminal-settings-page"
       busy={!preferences.ready || busy}
     >
@@ -439,7 +451,7 @@ export default function TerminalSettingsPage() {
                     void preferences.reload();
                   }}
                 >
-                  Retry loading
+                  {t("Retry loading")}
                 </button>
                 <button
                   className="text-button"
@@ -453,12 +465,12 @@ export default function TerminalSettingsPage() {
                     });
                   }}
                 >
-                  Reset to defaults
+                  {t("Reset to defaults")}
                 </button>
               </>
             ) : (
               <button className="text-button" onClick={() => setError("")}>
-                Dismiss
+                {t("Dismiss")}
               </button>
             )
           }
@@ -467,11 +479,11 @@ export default function TerminalSettingsPage() {
         </SettingsNotice>
       )}
 
-      <SettingsSection title="Font">
+      <SettingsSection title={t("Font")}>
         <SettingRow
-          label="Terminal font"
+          label={t("Terminal font")}
           htmlFor="terminal-setting-font"
-          description="Used by every terminal."
+          description={t("Used by every terminal.")}
         >
           <Select
             id="terminal-setting-font"
@@ -479,9 +491,9 @@ export default function TerminalSettingsPage() {
             disabled={disabled}
             onChange={(value) => void changeFontChoice(value)}
             options={[
-              { value: "theme", label: "Theme default" },
+              { value: "theme", label: t("Theme default") },
               { value: "jetbrains", label: "JetBrains Mono" },
-              { value: "custom", label: "Custom font…" },
+              { value: "custom", label: t("Custom font…") },
             ]}
           />
           <Control
@@ -502,17 +514,19 @@ export default function TerminalSettingsPage() {
         </SettingRow>
         {fontMode === "custom" && (
           <SettingRow
-            label="Font family"
+            label={t("Font family")}
             htmlFor="terminal-setting-font-family"
-            description="An installed font. Separate fallbacks with commas."
+            description={t(
+              "An installed font. Separate fallbacks with commas.",
+            )}
             descriptionId="terminal-setting-font-family-help"
           >
             {fontFamilyOverride !== undefined && (
               <button
                 type="button"
                 className="icon-button"
-                aria-label="Restore theme default for Font family"
-                title="Restore theme default"
+                aria-label={t("Restore theme default for Font family")}
+                title={t("Restore theme default")}
                 disabled={disabled}
                 onClick={resetFont}
               >
@@ -526,7 +540,7 @@ export default function TerminalSettingsPage() {
               disabled={disabled}
               aria-describedby="terminal-setting-font-family-help"
               maxLength={500}
-              placeholder="e.g. Iosevka"
+              placeholder={t("e.g. Iosevka")}
               spellCheck={false}
               autoComplete="off"
               onChange={(event) => setFontDraft(event.target.value)}
@@ -545,7 +559,7 @@ export default function TerminalSettingsPage() {
           <div
             className="terminal-preview"
             role="img"
-            aria-label="Live preview of the terminal font and colors"
+            aria-label={t("Live preview of the terminal font and colors")}
             style={previewStyle}
           >
             <div>
@@ -671,7 +685,7 @@ export default function TerminalSettingsPage() {
         />
       </SettingsSection>
 
-      <SettingsSection title="Text">
+      <SettingsSection title={t("Text")}>
         {(
           [
             "fontWeight",
@@ -681,12 +695,12 @@ export default function TerminalSettingsPage() {
           ] as const
         ).map(appearanceSetting)}
       </SettingsSection>
-      <SettingsSection title="Cursor">
+      <SettingsSection title={t("Cursor")}>
         {(["cursorInactiveStyle", "cursorBlink", "cursorWidth"] as const).map(
           appearanceSetting,
         )}
       </SettingsSection>
-      <SettingsSection title="Scrolling">
+      <SettingsSection title={t("Scrolling")}>
         {(
           [
             "scrollback",
@@ -698,7 +712,7 @@ export default function TerminalSettingsPage() {
           ] as const
         ).map(behaviorSetting)}
       </SettingsSection>
-      <SettingsSection title="Input">
+      <SettingsSection title={t("Input")}>
         {windows && (
           <Setting
             name="windowsShell"
@@ -734,7 +748,7 @@ export default function TerminalSettingsPage() {
           ] as const
         ).map(behaviorSetting)}
       </SettingsSection>
-      <SettingsSection title="Rendering">
+      <SettingsSection title={t("Rendering")}>
         {(["minimumContrastRatio", "drawBoldTextInBrightColors"] as const).map(
           appearanceSetting,
         )}

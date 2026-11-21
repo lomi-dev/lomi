@@ -3,6 +3,7 @@ import type { ComponentType } from "react";
 import "../thread.css";
 import "./providers-settings.css";
 import { macOS } from "../../api";
+import { msg, t, useT } from "../../i18n";
 import { Eye, Folder, Gauge, Lock, Pencil, ShieldAlert, X } from "../../icons";
 import Select from "../../Select";
 import {
@@ -38,15 +39,25 @@ type Icon = ComponentType<{
 }>;
 
 const PERMISSIONS: { value: Permissions; label: string; icon: Icon }[] = [
-  { value: "read-only", label: "Read only", icon: Eye },
-  { value: "edit", label: "Edit files", icon: Pencil },
-  { value: "full", label: "Full access", icon: ShieldAlert },
+  { value: "read-only", label: msg("Read only"), icon: Eye },
+  { value: "edit", label: msg("Edit files"), icon: Pencil },
+  { value: "full", label: msg("Full access"), icon: ShieldAlert },
 ];
 const WORKSPACES: { value: Workspace; label: string; icon: Icon }[] = [
-  { value: "project", label: "Project folder", icon: Folder },
-  { value: "private", label: "Private folder", icon: Lock },
+  { value: "project", label: msg("Project folder"), icon: Folder },
+  { value: "private", label: msg("Private folder"), icon: Lock },
 ];
-const effortLabel = (id: string) => id.charAt(0).toUpperCase() + id.slice(1);
+const EFFORT_LABELS: Record<string, string> = {
+  minimal: msg("Minimal"),
+  low: msg("Low"),
+  medium: msg("Medium"),
+  high: msg("High"),
+  max: msg("Max"),
+};
+const effortLabel = (id: string) =>
+  Object.hasOwn(EFFORT_LABELS, id)
+    ? t(EFFORT_LABELS[id])
+    : id.charAt(0).toUpperCase() + id.slice(1);
 
 /** Reasoning efforts the CLI reports for a model; empty for API providers. */
 function useEfforts(entry: ProviderEntry | undefined, model: string) {
@@ -82,6 +93,7 @@ function IconSelect<T extends string>({
   disabled: boolean;
   onChange: (value: T) => void;
 }) {
+  const { t } = useT();
   const Current = options.find((option) => option.value === value)?.icon;
   return (
     <div className="defaults-select">
@@ -92,7 +104,10 @@ function IconSelect<T extends string>({
         id={id}
         value={value}
         disabled={disabled}
-        options={options}
+        options={options.map((option) => ({
+          ...option,
+          label: t(option.label),
+        }))}
         onChange={(next) => onChange(next as T)}
       />
     </div>
@@ -100,6 +115,7 @@ function IconSelect<T extends string>({
 }
 
 export default function DefaultsSettingsPage() {
+  const { t } = useT();
   const { entries, settings, error, busy, run } = useChatProviders();
   const [confirmFull, setConfirmFull] = useState(false);
   const [instructions, setInstructions] = useState("");
@@ -162,13 +178,16 @@ export default function DefaultsSettingsPage() {
   const off = !settings || busy;
   return (
     <SettingsPage
-      title="Defaults"
+      title={t("Defaults")}
       busy={busy}
-      status={!settings && !error ? "Loading…" : undefined}
+      status={!settings && !error ? t("Loading…") : undefined}
     >
       {error && <SettingsNotice tone="error">{error}</SettingsNotice>}
-      <SettingsSection title="New threads" className="defaults-section">
-        <SettingRow label="Model" description="Default model for new threads.">
+      <SettingsSection title={t("New threads")} className="defaults-section">
+        <SettingRow
+          label={t("Model")}
+          description={t("Default model for new threads.")}
+        >
           <div className="defaults-controls">
             <div
               onPointerDownCapture={() => (touched.current = true)}
@@ -186,7 +205,7 @@ export default function DefaultsSettingsPage() {
                 <Gauge className="defaults-select-icon" size={15} aria-hidden />
                 <Select
                   id={ids.effort}
-                  aria-label="Reasoning effort"
+                  aria-label={t("Reasoning effort")}
                   value={
                     efforts.includes(defaults?.effort ?? "")
                       ? (defaults?.effort ?? "")
@@ -194,7 +213,7 @@ export default function DefaultsSettingsPage() {
                   }
                   disabled={off}
                   options={[
-                    { value: "", label: "Default" },
+                    { value: "", label: t("Default") },
                     ...efforts.map((id) => ({
                       value: id,
                       label: effortLabel(id),
@@ -207,8 +226,10 @@ export default function DefaultsSettingsPage() {
           </div>
         </SettingRow>
         <SettingRow
-          label="Fallback model"
-          description="Used when the default model's provider is unavailable."
+          label={t("Fallback model")}
+          description={t(
+            "Used when the default model's provider is unavailable.",
+          )}
         >
           <div className="defaults-controls">
             {fallbackEntry ? (
@@ -225,8 +246,8 @@ export default function DefaultsSettingsPage() {
                 <button
                   type="button"
                   className="icon-button"
-                  title="Remove fallback"
-                  aria-label="Remove fallback"
+                  title={t("Remove fallback")}
+                  aria-label={t("Remove fallback")}
                   disabled={off}
                   onClick={() => void save({ fallback: null })}
                 >
@@ -264,15 +285,15 @@ export default function DefaultsSettingsPage() {
                   });
                 }}
               >
-                None
+                {t("None")}
               </button>
             )}
           </div>
         </SettingRow>
         <SettingRow
-          label="Permissions"
+          label={t("Permissions")}
           htmlFor={ids.permissions}
-          description="What CLI agents may do in new threads."
+          description={t("What CLI agents may do in new threads.")}
         >
           <IconSelect
             id={ids.permissions}
@@ -287,9 +308,9 @@ export default function DefaultsSettingsPage() {
           />
         </SettingRow>
         <SettingRow
-          label="Workspace"
+          label={t("Workspace")}
           htmlFor={ids.workspace}
-          description="Where new threads start."
+          description={t("Where new threads start.")}
         >
           <IconSelect
             id={ids.workspace}
@@ -300,18 +321,18 @@ export default function DefaultsSettingsPage() {
           />
         </SettingRow>
       </SettingsSection>
-      <SettingsSection title="Composer">
+      <SettingsSection title={t("Composer")}>
         <SettingRow
-          label="Send message with"
+          label={t("Send message with")}
           htmlFor={ids.key}
-          description="The other key inserts a new line."
+          description={t("The other key inserts a new line.")}
         >
           <Select
             id={ids.key}
             value={behavior?.sendKey ?? "enter"}
             disabled={off}
             options={[
-              { value: "enter", label: "Enter" },
+              { value: "enter", label: t("Enter") },
               { value: "mod-enter", label: mod },
             ]}
             onChange={(value) =>
@@ -320,11 +341,11 @@ export default function DefaultsSettingsPage() {
           />
         </SettingRow>
       </SettingsSection>
-      <SettingsSection title="Responses">
+      <SettingsSection title={t("Responses")}>
         <SettingRow
-          label="System instructions"
+          label={t("System instructions")}
           htmlFor={ids.instructions}
-          description="Sent to API providers and Claude Code."
+          description={t("Sent to API providers and Claude Code.")}
           stacked
         >
           <textarea
@@ -341,12 +362,12 @@ export default function DefaultsSettingsPage() {
           />
         </SettingRow>
         <SettingRow
-          label="Max output tokens"
+          label={t("Max output tokens")}
           htmlFor={ids.tokens}
           description={
             tokensOk
-              ? "Leave empty for the provider default."
-              : "Enter a whole number from 1 to 1,000,000."
+              ? t("Leave empty for the provider default.")
+              : t("Enter a whole number from 1 to 1,000,000.")
           }
         >
           <input
@@ -354,7 +375,7 @@ export default function DefaultsSettingsPage() {
             type="number"
             min={1}
             max={1000000}
-            placeholder="Default"
+            placeholder={t("Default")}
             value={tokens}
             disabled={!settings}
             aria-invalid={!tokensOk}
@@ -368,7 +389,7 @@ export default function DefaultsSettingsPage() {
       </SettingsSection>
       {confirmFull && (
         <Modal
-          title="Allow full access?"
+          title={t("Allow full access?")}
           tone="danger"
           closeDisabled={busy}
           onClose={() => setConfirmFull(false)}
@@ -376,8 +397,9 @@ export default function DefaultsSettingsPage() {
           <div className="dialog-form dialog-layout">
             <div className="dialog-content">
               <p>
-                New CLI threads will be able to run any command and edit files
-                without asking you first. Use this only for projects you trust.
+                {t(
+                  "New CLI threads will be able to run any command and edit files without asking you first. Use this only for projects you trust.",
+                )}
               </p>
             </div>
             <div className="dialog-actions">
@@ -386,7 +408,7 @@ export default function DefaultsSettingsPage() {
                 className="button"
                 onClick={() => setConfirmFull(false)}
               >
-                Cancel
+                {t("Cancel")}
               </button>
               <button
                 type="button"
@@ -398,7 +420,7 @@ export default function DefaultsSettingsPage() {
                   )
                 }
               >
-                Allow full access
+                {t("Allow full access")}
               </button>
             </div>
           </div>

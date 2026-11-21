@@ -9,8 +9,10 @@ import {
 } from "./terminal-runtime";
 import { errorMessage } from "./api";
 import { Modal } from "./ui";
+import { useT } from "./i18n";
 
 export function useCloseGuard() {
+  const { t, tp } = useT();
   const editor = useEditorCloseGuard();
   const checking = useRef(false);
   const resolve = useRef<(close: boolean) => void>(undefined);
@@ -36,14 +38,18 @@ export function useCloseGuard() {
         try {
           const count = await terminalsWithProcesses(terminalIds);
           if (count)
-            message = `${count === 1 ? "This terminal has" : `${count} terminals have`} running processes.`;
+            message = tp(
+              count,
+              "This terminal has running processes.",
+              "{count} terminals have running processes.",
+            );
         } catch (error) {
           message = errorMessage(error);
         }
         if (message) {
           message += application
-            ? " Quitting will stop active agents and terminal processes. Are you sure you want to quit?"
-            : " Closing will stop work in the final views of these runs and end any terminal sessions. Close anyway?";
+            ? ` ${t("Quitting will stop active agents and terminal processes. Are you sure you want to quit?")}`
+            : ` ${t("Closing will stop work in the final views of these runs and end any terminal sessions. Close anyway?")}`;
           const approved = await new Promise<boolean>((finish) => {
             resolve.current = finish;
             setRequest({ message, application });
@@ -77,7 +83,9 @@ export function useCloseGuard() {
             protectTheme
             tone="warning"
             title={
-              request.application ? "Quit Lomi?" : "Close running processes?"
+              request.application
+                ? t("Quit Lomi?")
+                : t("Close running processes?")
             }
             descriptionId={descriptionId}
             initialFocus={request.application ? cancelButton : confirmButton}
@@ -94,7 +102,7 @@ export function useCloseGuard() {
                   className="button"
                   onClick={() => finish(false)}
                 >
-                  Cancel
+                  {t("Cancel")}
                 </button>
                 <button
                   ref={confirmButton}
@@ -102,7 +110,7 @@ export function useCloseGuard() {
                   className="button button-primary button-danger"
                   onClick={() => finish(true)}
                 >
-                  {request.application ? "Quit anyway" : "Close anyway"}
+                  {request.application ? t("Quit anyway") : t("Close anyway")}
                 </button>
               </div>
             </div>
@@ -112,19 +120,21 @@ export function useCloseGuard() {
           <Modal
             protectTheme
             tone="danger"
-            title="Views could not be closed"
+            title={t("Views could not be closed")}
             onClose={() => setCloseError("")}
           >
             <div className="dialog-form dialog-layout">
               <div className="dialog-content">
                 <p>{closeError}</p>
                 <p>
-                  The views remain open. Resolve the error and retry closing.
+                  {t(
+                    "The views remain open. Resolve the error and retry closing.",
+                  )}
                 </p>
               </div>
               <div className="dialog-actions">
                 <button className="button" onClick={() => setCloseError("")}>
-                  Keep open
+                  {t("Keep open")}
                 </button>
               </div>
             </div>

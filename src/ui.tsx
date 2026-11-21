@@ -4,6 +4,7 @@ import { ChevronRight, CircleAlert, Minus, Square, X } from "./icons";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { errorMessage, macOS, native } from "./api";
 import { useProtectedTheme } from "./useProtectedTheme";
+import { t, useT } from "./i18n";
 
 export function DisclosureSummary({ children }: { children: ReactNode }) {
   return (
@@ -41,6 +42,7 @@ export function WindowControls({
 }: {
   onError: (message: string) => void;
 }) {
+  useT();
   if (native && macOS) return null;
   const act = (action: "minimize" | "toggleMaximize" | "close") => {
     if (native)
@@ -51,21 +53,21 @@ export function WindowControls({
   return (
     <div className="window-controls">
       <IconButton
-        title="Minimize window"
+        title={t("Minimize window")}
         disabled={!native}
         onClick={() => act("minimize")}
       >
         <Minus size={14} iconId="chrome-minimize" />
       </IconButton>
       <IconButton
-        title="Maximize or restore window"
+        title={t("Maximize or restore window")}
         disabled={!native}
         onClick={() => act("toggleMaximize")}
       >
         <Square size={12} iconId="chrome-maximize" />
       </IconButton>
       <IconButton
-        title="Close window"
+        title={t("Close window")}
         disabled={!native}
         onClick={() => act("close")}
       >
@@ -100,6 +102,7 @@ export function Modal({
   protectTheme?: boolean;
   closeDisabled?: boolean;
 }) {
+  useT();
   useProtectedTheme(protectTheme);
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -137,7 +140,7 @@ export function Modal({
           <h2 id={titleId}>{title}</h2>
           <IconButton
             className="icon-button modal-close"
-            title="Close dialog"
+            title={t("Close dialog")}
             disabled={closeDisabled}
             onClick={onClose}
           >

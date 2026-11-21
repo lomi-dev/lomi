@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useT } from "../../i18n";
 import { ChevronRight, Plus, MessageSquare, RefreshCw } from "../../icons";
 import {
   SettingsNotice,
@@ -15,6 +16,7 @@ import ProviderDetail, {
 import "./providers-settings.css";
 
 export default function ProvidersSettingsPage() {
+  const { t, tp } = useT();
   const { entries, settings, error, busy, run, refreshStatus, detect } =
     useChatProviders();
   const [scanStatus, setScanStatus] = useState<string>();
@@ -22,10 +24,14 @@ export default function ProvidersSettingsPage() {
     const count = await detect();
     setScanStatus(
       count
-        ? `Found ${count} new CLI ${count === 1 ? "provider" : "providers"}`
-        : "No new CLI providers found",
+        ? tp(
+            count,
+            "Found {count} new CLI provider",
+            "Found {count} new CLI providers",
+          )
+        : t("No new CLI providers found"),
     );
-  }, [detect]);
+  }, [detect, t, tp]);
   const [selected, setSelected] = useState<string>();
   const [adding, setAdding] = useState(false);
   useEffect(() => {
@@ -49,14 +55,14 @@ export default function ProvidersSettingsPage() {
       onClick={() => setAdding(true)}
     >
       <Plus size={14} aria-hidden="true" />
-      Add provider
+      {t("Add provider")}
     </button>
   );
   return (
     <SettingsPage
-      title="Providers"
+      title={t("Providers")}
       busy={!ctx || ctx.busy}
-      status={!ctx && !error ? "Loading…" : scanStatus}
+      status={!ctx && !error ? t("Loading…") : scanStatus}
       contentClassName="prov-page"
     >
       {error && !adding && (
@@ -67,25 +73,26 @@ export default function ProvidersSettingsPage() {
           <span className="prov-empty-icon">
             <MessageSquare size={20} aria-hidden="true" />
           </span>
-          <h3>No providers yet</h3>
+          <h3>{t("No providers yet")}</h3>
           <p>
-            Installed CLIs appear here automatically. Add an API to use a hosted
-            model.
+            {t(
+              "Installed CLIs appear here automatically. Add an API to use a hosted model.",
+            )}
           </p>
           {addButton}
         </div>
       )}
       {ctx && entries.length > 0 && !active && (
         <SettingsSection
-          title="Providers"
+          title={t("Providers")}
           count={entries.length}
           actions={
             <>
               <button
                 type="button"
                 className="icon-button"
-                title="Rescan installed CLIs"
-                aria-label="Rescan installed CLIs"
+                title={t("Rescan installed CLIs")}
+                aria-label={t("Rescan installed CLIs")}
                 disabled={ctx.busy}
                 onClick={() => void scan()}
               >
@@ -95,7 +102,7 @@ export default function ProvidersSettingsPage() {
             </>
           }
         >
-          <ul className="prov-list" aria-label="Providers">
+          <ul className="prov-list" aria-label={t("Providers")}>
             {entries.map((entry) => (
               <li
                 key={entry.instanceId}
@@ -126,7 +133,7 @@ export default function ProvidersSettingsPage() {
                   type="checkbox"
                   role="switch"
                   className="settings-switch"
-                  aria-label={`Enable ${entry.label}`}
+                  aria-label={t("Enable {name}", { name: entry.label })}
                   checked={entry.enabled}
                   disabled={ctx.busy}
                   onChange={(event) =>

@@ -9,6 +9,7 @@ import {
   SettingsSection,
 } from "./settings-ui";
 import { license, version } from "../package.json";
+import { useT } from "./i18n";
 
 interface AboutInfo {
   platform: string;
@@ -44,6 +45,7 @@ export default function AboutSettingsPage({
   onError: (error: string) => void;
   onClearError: () => void;
 }) {
+  const { t } = useT();
   const [info, setInfo] = useState<AboutInfo | null>(null);
   const [metadataReady, setMetadataReady] = useState(!native);
 
@@ -76,20 +78,20 @@ export default function AboutSettingsPage({
   };
 
   const unavailable = !metadataReady
-    ? "Loading…"
+    ? t("Loading…")
     : native
-      ? "Unavailable"
-      : "Unavailable in browser preview";
+      ? t("Unavailable")
+      : t("Unavailable in browser preview");
   const build = info
     ? `${platformName(info.platform)} · ${info.arch} · v${info.version}`
     : unavailable;
   const bundleId = info?.identifier ?? unavailable;
 
   return (
-    <SettingsPage title="About">
+    <SettingsPage title={t("About")}>
       {error && <SettingsNotice tone="error">{error}</SettingsNotice>}
-      <SettingsSection title="Application">
-        <SettingRow label="Version">
+      <SettingsSection title={t("Application")}>
+        <SettingRow label={t("Version")}>
           <span className="setting-value">{info?.version ?? version}</span>
           <button
             className="button"
@@ -101,55 +103,55 @@ export default function AboutSettingsPage({
               );
             }}
           >
-            Check for updates
+            {t("Check for updates")}
           </button>
         </SettingRow>
-        <SettingRow label="License">
+        <SettingRow label={t("License")}>
           <span className="setting-value">
             {license === "Apache-2.0" ? "Apache 2.0" : license}
           </span>
         </SettingRow>
       </SettingsSection>
-      <SettingsSection title="Resources">
-        <SettingRow label="Source code" description="lomi-dev/lomi">
+      <SettingsSection title={t("Resources")}>
+        <SettingRow label={t("Source code")} description="lomi-dev/lomi">
           <button
             className="button"
             onClick={() => openExternal(repositoryUrl)}
           >
             <Github size={14} aria-hidden="true" />
-            View on GitHub
+            {t("View on GitHub")}
           </button>
         </SettingRow>
-        <SettingRow label="Website" description="lomi.dev">
+        <SettingRow label={t("Website")} description="lomi.dev">
           <button className="button" onClick={() => openExternal(websiteUrl)}>
             <Globe size={14} aria-hidden="true" />
-            Open website
+            {t("Open website")}
           </button>
         </SettingRow>
-        <SettingRow label="Documentation" description="docs.lomi.dev">
+        <SettingRow label={t("Documentation")} description="docs.lomi.dev">
           <button
             className="button"
             onClick={() => openExternal(documentationUrl)}
           >
             <ExternalLink size={14} aria-hidden="true" />
-            Open documentation
+            {t("Open documentation")}
           </button>
         </SettingRow>
         <SettingRow
-          label="Feedback"
-          description="Report a bug or suggest an improvement."
+          label={t("Feedback")}
+          description={t("Report a bug or suggest an improvement.")}
         >
           <button className="button" onClick={() => openExternal(issueUrl)}>
             <ExternalLink size={14} aria-hidden="true" />
-            Report an issue
+            {t("Report an issue")}
           </button>
         </SettingRow>
       </SettingsSection>
-      <SettingsSection title="Build details">
-        <SettingRow label="Build">
+      <SettingsSection title={t("Build details")}>
+        <SettingRow label={t("Build")}>
           <span className="setting-value">{build}</span>
         </SettingRow>
-        <SettingRow label="Bundle ID">
+        <SettingRow label={t("Bundle ID")}>
           <span className="setting-value">{bundleId}</span>
         </SettingRow>
       </SettingsSection>

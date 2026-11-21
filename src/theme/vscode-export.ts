@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import baseline from "./baseline.css?inline";
 import applicationStyles from "../styles.css?inline";
 import {
@@ -32,7 +33,11 @@ async function sample(
     const palettes = await terminalPresets();
     const palette = palettes[values.terminal.preset];
     if (!palette)
-      throw new Error(`Unknown terminal preset: ${values.terminal.preset}`);
+      throw new Error(
+        t("Unknown terminal preset: {preset}", {
+          preset: values.terminal.preset,
+        }),
+      );
     values.terminal.colors = { ...palette, ...values.terminal.colors };
   }
   // Resolve CSS colors in an isolated document without changing either application's theme or user preferences.
@@ -74,16 +79,23 @@ async function sample(
               if (error) reject(error);
               else resolve();
             };
-            const cancel = () => finish(new Error("Theme export cancelled."));
+            const cancel = () =>
+              finish(new Error(t("Theme export cancelled.")));
             const timer = setTimeout(
               () =>
-                finish(new Error(`Cannot export: loading ${path} timed out.`)),
+                finish(
+                  new Error(
+                    t("Cannot export: loading {path} timed out.", { path }),
+                  ),
+                ),
               10000,
             );
             cancelLoads.add(cancel);
             link.onload = () => finish();
             link.onerror = () =>
-              finish(new Error(`Cannot export: loading ${path} failed.`));
+              finish(
+                new Error(t("Cannot export: loading {path} failed.", { path })),
+              );
             doc.head.append(link);
           }),
       ),

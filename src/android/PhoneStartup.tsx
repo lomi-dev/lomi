@@ -1,10 +1,15 @@
 import { Check, Smartphone } from "../icons";
+import { msg, useT } from "../i18n";
 
-const steps = ["Prepare phone", "Start Android", "Connect screen"];
+const steps = [
+  msg("Prepare phone"),
+  msg("Start Android"),
+  msg("Connect screen"),
+];
 const descriptions = [
-  "Preparing the phone to start Android.",
-  "Android is starting. The first start can take a little longer.",
-  "Android is ready. Connecting to its screen.",
+  msg("Preparing the phone to start Android."),
+  msg("Android is starting. The first start can take a little longer."),
+  msg("Android is ready. Connecting to its screen."),
 ];
 
 export default function PhoneStartup({
@@ -16,6 +21,7 @@ export default function PhoneStartup({
   stopping: boolean;
   onCancel: () => void;
 }) {
+  const { t } = useT();
   return (
     <div className="android-panel-state android-startup">
       <header className="android-state-heading" role="status">
@@ -24,16 +30,16 @@ export default function PhoneStartup({
           <span className="android-startup-spinner" />
         </span>
         <div className="android-state-copy">
-          <h2>{stopping ? "Stopping phone…" : "Starting phone…"}</h2>
+          <h2>{stopping ? t("Stopping phone…") : t("Starting phone…")}</h2>
           <p>
             {stopping
-              ? "Saving phone data and closing Android safely."
-              : descriptions[step]}
+              ? t("Saving phone data and closing Android safely.")
+              : t(descriptions[step])}
           </p>
         </div>
       </header>
       {!stopping && (
-        <ol className="android-startup-steps" aria-label="Phone startup">
+        <ol className="android-startup-steps" aria-label={t("Phone startup")}>
           {steps.map((label, index) => (
             <li
               key={label}
@@ -43,14 +49,14 @@ export default function PhoneStartup({
               <span className="android-startup-step" aria-hidden="true">
                 {index < step ? <Check size={12} /> : index + 1}
               </span>
-              {label}
+              {t(label)}
             </li>
           ))}
         </ol>
       )}
       <div className="android-state-actions">
         <button className="button" disabled={stopping} onClick={onCancel}>
-          {stopping ? "Stopping…" : "Cancel start"}
+          {stopping ? t("Stopping…") : t("Cancel start")}
         </button>
       </div>
     </div>

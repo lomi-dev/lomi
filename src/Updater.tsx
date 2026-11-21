@@ -6,6 +6,7 @@ import { Update } from "@tauri-apps/plugin-updater";
 import { api, errorMessage, native } from "./api";
 import { Modal } from "./ui";
 import type { ReleaseClosePreparation } from "./application-close";
+import { useT } from "./i18n";
 
 const releases = "https://github.com/lomi-dev/lomi/releases/latest";
 type Status =
@@ -22,6 +23,7 @@ export function useUpdater(
   ready: boolean,
   beforeInstall: () => Promise<ReleaseClosePreparation | null>,
 ) {
+  const { t } = useT();
   const [status, setStatus] = useState<Status>("idle");
   const [open, setOpen] = useState(false);
   const [update, setUpdate] = useState<Update | null>(null);
@@ -127,7 +129,10 @@ export function useUpdater(
       setError(
         downloaded.current
           ? errorMessage(error)
-          : `Could not download or verify the update: ${errorMessage(error)}. Try again or use GitHub Releases.`,
+          : t(
+              "Could not download or verify the update: {error}. Try again or use GitHub Releases.",
+              { error: errorMessage(error) },
+            ),
       );
       setStatus("error");
     } finally {
@@ -159,7 +164,7 @@ export function useUpdater(
     busy,
     dialog: open && (
       <Modal
-        title="Software update"
+        title={t("Software update")}
         className="updater-dialog"
         onClose={close}
         closeDisabled={busy.current}
@@ -174,15 +179,15 @@ export function useUpdater(
             {error && (
               <p role="alert">
                 {installed.current
-                  ? "The update is installed. Restart Lomi to finish. "
-                  : "Update failed: "}
+                  ? t("The update is installed. Restart Lomi to finish.")
+                  : t("Update failed:")}{" "}
                 {error}
               </p>
             )}
             {update?.body && <pre className="update-notes">{update.body}</pre>}
             {instruction && update && (
               <>
-                <p>Update Lomi outside the app:</p>
+                <p>{t("Update Lomi outside the app:")}</p>
                 <pre className="update-instruction">{instruction}</pre>
                 <button
                   className="button"
@@ -192,39 +197,41 @@ export function useUpdater(
                       .catch((error) => setError(errorMessage(error)));
                   }}
                 >
-                  {copied ? "Copied" : "Copy instructions"}
+                  {copied ? t("Copied") : t("Copy instructions")}
                 </button>
               </>
             )}
             {update && !instruction && !working && (
               <p>
-                The update will restart Lomi and end terminal sessions. You can
-                save unsaved files before installation.
+                {t(
+                  "The update will restart Lomi and end terminal sessions. You can save unsaved files before installation.",
+                )}
               </p>
             )}
             <div role="status">
-              {status === "checking" && "Checking for updates…"}
-              {status === "idle" && "Lomi is up to date."}
+              {status === "checking" && t("Checking for updates…")}
+              {status === "idle" && t("Lomi is up to date.")}
               {status === "downloading" && (
                 <>
-                  Downloading update…{" "}
+                  {t("Downloading update…")}{" "}
                   {progress === undefined ? "" : `${progress}%`}
                   <progress
-                    aria-label="Download progress"
+                    aria-label={t("Download progress")}
                     max={100}
                     value={progress}
                   />
                 </>
               )}
-              {status === "preparing" && "Preparing to close the workspace…"}
-              {status === "installing" && "Installing update…"}
-              {status === "installed" && "Update installed. Restarting Lomi…"}
+              {status === "preparing" && t("Preparing to close the workspace…")}
+              {status === "installing" && t("Installing update…")}
+              {status === "installed" &&
+                t("Update installed. Restarting Lomi…")}
             </div>
           </div>
           <div className="dialog-actions">
             {!working && (
               <button className="button" onClick={close}>
-                {update && !instruction ? "Later" : "Close"}
+                {update && !instruction ? t("Later") : t("Close")}
               </button>
             )}
             {!working &&
@@ -238,7 +245,7 @@ export function useUpdater(
                     )
                   }
                 >
-                  GitHub Releases
+                  {t("GitHub Releases")}
                 </button>
               )}
             {!working && update && !instruction && (
@@ -246,7 +253,7 @@ export function useUpdater(
                 className="button button-primary"
                 onClick={() => void install()}
               >
-                {installed.current ? "Restart now" : "Update now"}
+                {installed.current ? t("Restart now") : t("Update now")}
               </button>
             )}
             {status === "error" && !update && (
@@ -254,7 +261,7 @@ export function useUpdater(
                 className="button button-primary"
                 onClick={() => void runCheck(true)}
               >
-                Try again
+                {t("Try again")}
               </button>
             )}
           </div>

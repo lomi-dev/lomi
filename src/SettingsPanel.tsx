@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import { X } from "./icons";
+import { useT } from "./i18n";
 import SettingsNavigation, { settingsPageLabel } from "./SettingsNavigation";
 import AboutSettingsPage from "./AboutSettingsPage";
 import GeneralSettingsPage from "./GeneralSettingsPage";
@@ -41,7 +42,8 @@ const AgentControlSettingsPage = lazy(
 );
 
 function SettingsLoading({ title }: { title: string }) {
-  return <SettingsPage title={title} status="Loading…" />;
+  const { t } = useT();
+  return <SettingsPage title={title} status={t("Loading…")} />;
 }
 
 export interface SettingsPanelProps {
@@ -58,9 +60,12 @@ export default function SettingsPanel({
   requestedPage,
   requestRevision,
   remoteAvailable,
-  remoteDisabledReason = "Remote is disabled in this version of Lomi.",
+  remoteDisabledReason,
   onClose,
 }: SettingsPanelProps) {
+  const { t } = useT();
+  const disabledReason =
+    remoteDisabledReason ?? t("Remote is disabled in this version of Lomi.");
   const [page, setPage] = useState<SettingsPageId>(
     requestedPage ?? defaultSettingsPage,
   );
@@ -110,23 +115,23 @@ export default function SettingsPanel({
           page={page}
           requestRevision={requestRevision}
           remoteAvailable={remoteAvailable}
-          remoteDisabledReason={remoteDisabledReason}
+          remoteDisabledReason={disabledReason}
           onSelect={setPage}
           onReveal={reveal}
         />
         <div className="settings-main">
           <header className="settings-topbar">
             <p className="settings-breadcrumb">
-              <span>Settings</span>
+              <span>{t("Settings")}</span>
               <span aria-hidden="true">/</span>
-              <span aria-current="page">{settingsPageLabel(page)}</span>
+              <span aria-current="page">{t(settingsPageLabel(page))}</span>
             </p>
             {onClose && (
               <button
                 type="button"
                 className="icon-button settings-close"
-                aria-label="Close settings"
-                title="Close settings"
+                aria-label={t("Close settings")}
+                title={t("Close settings")}
                 onClick={onClose}
               >
                 <X size={16} aria-hidden="true" />
@@ -134,34 +139,34 @@ export default function SettingsPanel({
             )}
           </header>
           {page === "notifications" ? (
-            <Suspense fallback={<SettingsLoading title="Notifications" />}>
+            <Suspense fallback={<SettingsLoading title={t("Notifications")} />}>
               <NotificationSettingsPage />
             </Suspense>
           ) : page === "remote" ? (
-            <Suspense fallback={<SettingsLoading title="Remote" />}>
+            <Suspense fallback={<SettingsLoading title={t("Remote")} />}>
               <RemoteSettingsPage
                 available={remoteAvailable}
-                disabledReason={remoteDisabledReason}
+                disabledReason={disabledReason}
               />
             </Suspense>
           ) : page === "account" ? (
-            <Suspense fallback={<SettingsLoading title="Account" />}>
+            <Suspense fallback={<SettingsLoading title={t("Account")} />}>
               <AccountSettingsPage />
             </Suspense>
           ) : page === "agent-control" ? (
-            <Suspense fallback={<SettingsLoading title="Agent control" />}>
+            <Suspense fallback={<SettingsLoading title={t("Agent control")} />}>
               <AgentControlSettingsPage active={active} />
             </Suspense>
           ) : page === "android" ? (
-            <Suspense fallback={<SettingsLoading title="Android" />}>
+            <Suspense fallback={<SettingsLoading title={t("Android")} />}>
               <AndroidSettingsPage />
             </Suspense>
           ) : page === "chat-providers" ? (
-            <Suspense fallback={<SettingsLoading title="Providers" />}>
+            <Suspense fallback={<SettingsLoading title={t("Providers")} />}>
               <ProvidersSettingsPage />
             </Suspense>
           ) : page === "chat-defaults" ? (
-            <Suspense fallback={<SettingsLoading title="Defaults" />}>
+            <Suspense fallback={<SettingsLoading title={t("Defaults")} />}>
               <DefaultsSettingsPage />
             </Suspense>
           ) : page === "about" ? (
@@ -171,7 +176,7 @@ export default function SettingsPanel({
               onClearError={() => setError("")}
             />
           ) : page === "plugins" ? (
-            <Suspense fallback={<SettingsLoading title="Plugins" />}>
+            <Suspense fallback={<SettingsLoading title={t("Plugins")} />}>
               <PluginsPage />
             </Suspense>
           ) : page === "general" ? (
@@ -179,7 +184,7 @@ export default function SettingsPanel({
           ) : page === "terminal" ? (
             <TerminalSettingsPage />
           ) : page === "themes" ? (
-            <Suspense fallback={<SettingsLoading title="Themes" />}>
+            <Suspense fallback={<SettingsLoading title={t("Themes")} />}>
               <ThemesPage />
             </Suspense>
           ) : (

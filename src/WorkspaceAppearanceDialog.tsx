@@ -4,6 +4,7 @@ import {
   sanitizeWorkspaceAppearance,
   type WorkspaceAppearance,
 } from "./workspace-appearance";
+import { useT } from "./i18n";
 import { Modal } from "./ui";
 import WorkspaceAvatar, { workspaceIconOptions } from "./WorkspaceAvatar";
 
@@ -27,12 +28,13 @@ export default function WorkspaceAppearanceDialog({
   onSave: (appearance?: WorkspaceAppearance) => void;
   onClose: () => void;
 }) {
+  const { t } = useT();
   const [appearance, setAppearance] = useState<WorkspaceAppearance>(
     workspace.appearance ?? {},
   );
   return (
     <Modal
-      title="Customize workspace"
+      title={t("Customize workspace")}
       onClose={onClose}
       className="workspace-appearance-dialog"
     >
@@ -49,18 +51,18 @@ export default function WorkspaceAppearanceDialog({
             <WorkspaceAvatar appearance={appearance} />
             <div>
               <strong>{workspace.name}</strong>
-              <p>Give this workspace its own identity.</p>
+              <p>{t("Give this workspace its own identity.")}</p>
             </div>
           </div>
           <fieldset className="workspace-appearance-field">
-            <legend>Icon</legend>
+            <legend>{t("Icon")}</legend>
             <div className="workspace-icon-options">
               {workspaceIconOptions.map(({ id, label, Icon }) => (
                 <button
                   type="button"
                   key={id}
-                  title={label}
-                  aria-label={`${label} icon`}
+                  title={t(label)}
+                  aria-label={t("{label} icon", { label: t(label) })}
                   aria-pressed={
                     !appearance.image && (appearance.icon || "layers") === id
                   }
@@ -77,13 +79,13 @@ export default function WorkspaceAppearanceDialog({
             </div>
           </fieldset>
           <fieldset className="workspace-appearance-field">
-            <legend>Color</legend>
+            <legend>{t("Color")}</legend>
             <div className="workspace-color-options">
               {colors.map((color) => (
                 <button
                   type="button"
                   key={color}
-                  aria-label={`Use color ${color}`}
+                  aria-label={t("Use color {color}", { color })}
                   aria-pressed={appearance.color === color}
                   style={{ backgroundColor: color }}
                   onClick={() =>
@@ -100,13 +102,13 @@ export default function WorkspaceAppearanceDialog({
             className="button workspace-appearance-reset"
             onClick={() => setAppearance({})}
           >
-            Reset
+            {t("Reset")}
           </button>
           <button type="button" className="button" onClick={onClose}>
-            Cancel
+            {t("Cancel")}
           </button>
           <button type="submit" className="button button-primary">
-            Save
+            {t("Save")}
           </button>
         </div>
       </form>

@@ -1,3 +1,5 @@
+import { t } from "../i18n";
+
 export type AuthStatus =
   | "unavailable"
   | "signed-out"
@@ -62,20 +64,20 @@ export function newestAuthState(
 export function authStatusLabel(status: AuthStatus): string {
   switch (status) {
     case "unavailable":
-      return "Unavailable";
+      return t("Unavailable");
     case "signed-out":
-      return "Signed out";
+      return t("Signed out");
     case "authorizing":
-      return "Waiting for browser";
+      return t("Waiting for browser");
     case "checking":
-      return "Checking account…";
+      return t("Checking account…");
     case "signed-in":
-      return "Signed in";
+      return t("Signed in");
     case "offline":
-      return "Connection unavailable";
+      return t("Connection unavailable");
     case "storage-locked":
-      return "Credential store locked";
+      return t("Credential store locked");
     case "error":
-      return "Needs attention";
+      return t("Needs attention");
   }
 }

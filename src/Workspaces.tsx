@@ -42,6 +42,7 @@ import {
 import { summarizeWorkspaceAgents } from "./workspace-summary";
 import { CliAgentIcon } from "./CliAgentIcon";
 import { cliNames } from "./cli-agents";
+import { msg, t, tp, useT } from "./i18n";
 import type { CliAgent } from "./cli-agents";
 import { cliTerminalDisplayTitle } from "./cli-terminal-title";
 import type { AgentUsageEntry } from "./agent-usage";
@@ -61,10 +62,15 @@ const tabItems = (tab: Tab): Array<Tab | LayoutPane> =>
   tab.type === "terminal" ? layoutPanes(tab.layout) : [tab];
 
 const cliActivityLabels: Record<CliActivity, string> = {
-  working: "Working",
-  attention: "Needs input",
-  error: "CLI error or usage limit reached",
+  working: msg("Working"),
+  attention: msg("Needs input"),
+  error: msg("CLI error or usage limit reached"),
 };
+const activityLabel = (activity: CliActivity) => t(cliActivityLabels[activity]);
+const agentLabel = (cli: CliAgent, count: number) =>
+  tp(count, "{cli} · {count} agent", "{cli} · {count} agents", {
+    cli: cliNames[cli],
+  });
 
 function toggleExpanded(current: Set<string>, id: string) {
   const next = new Set(current);
@@ -130,6 +136,7 @@ export default function Workspaces({
   ) => void;
   onDelete: (workspace: Workspace) => void;
 }) {
+  const { t, tp } = useT();
   const [menu, setMenu] = useState<{ id: string; x: number; y: number }>();
   const [customizing, setCustomizing] = useState<Workspace>();
   const [sharingId, setSharingId] = useState<string>();
@@ -223,9 +230,9 @@ export default function Workspaces({
   return (
     <div className="sidebar-panel workspace-panel">
       <div className="sidebar-heading">
-        <span>Workspaces</span>
+        <span>{t("Workspaces")}</span>
         <IconButton
-          title="Add project"
+          title={t("Add project")}
           aria-haspopup="menu"
           aria-expanded={!!sources}
           onClick={(event) => {
@@ -269,11 +276,11 @@ export default function Workspaces({
             className="button"
             onClick={() => void remote.acknowledgeUncertaintyWarning(warning)}
           >
-            Acknowledge
+            {t("Acknowledge")}
           </button>
         </div>
       ))}
-      <nav className="workspace-list" aria-label="Workspace list">
+      <nav className="workspace-list" aria-label={t("Workspace list")}>
         {projects.flatMap((project) =>
           project.workspaces.map((workspace) => {
             const summary = summarizeWorkspaceAgents(workspace, agents);
@@ -299,27 +306,30 @@ export default function Workspaces({
               extraAgents.map(({ cli }) => activityFor(workspaceItems, cli)),
             );
             const extraAgentsLabel = extraAgents
-              .map(
-                ({ cli, count }) =>
-                  `${cliNames[cli]} · ${count} ${count === 1 ? "agent" : "agents"}`,
-              )
+              .map(({ cli, count }) => agentLabel(cli, count))
               .join(", ");
             const metadata =
               repository?.branch ||
               (repository?.count
-                ? `${repository.count} ${repository.count === 1 ? "repository" : "repositories"}`
+                ? tp(
+                    repository.count,
+                    "{count} repository",
+                    "{count} repositories",
+                  )
                 : !repository || repository.loading
-                  ? "Loading repositories…"
+                  ? t("Loading repositories…")
                   : repository.error
-                    ? "Repositories unavailable"
+                    ? t("Repositories unavailable")
                     : repository.limited
-                      ? "Repository scan incomplete"
+                      ? t("Repository scan incomplete")
                       : "");
             const metadataTitle = [
-              repository?.loading ? "Refreshing repositories…" : undefined,
+              repository?.loading ? t("Refreshing repositories…") : undefined,
               repository?.error,
               repository?.limited
-                ? "Repository discovery reached its limit. Showing discovered repositories."
+                ? t(
+                    "Repository discovery reached its limit. Showing discovered repositories.",
+                  )
                 : undefined,
               metadata,
             ]
@@ -341,7 +351,7 @@ export default function Workspaces({
                       workspace.id === activeWorkspaceId ? "true" : undefined
                     }
                     title={`${workspace.name}\n${project.path}`}
-                    aria-label={`${workspace.name} ${project.path} ${metadata}${shared ? " Shared remotely" : ""}${hasUnread ? " Unread terminal notifications" : ""}`}
+                    aria-label={`${workspace.name} ${project.path} ${metadata}${shared ? ` ${t("Shared remotely")}` : ""}${hasUnread ? ` ${t("Unread terminal notifications")}` : ""}`}
                     aria-description={metadataTitle}
                     onClick={() => onSelect(project.path, workspace.id)}
                     aria-haspopup="menu"
@@ -376,11 +386,11 @@ export default function Workspaces({
                       {shared && (
                         <span
                           className="workspace-remote-status"
-                          title="Shared remotely"
+                          title={t("Shared remotely")}
                         >
                           <Globe size={12} aria-hidden="true" />
                           <span className="workspace-visually-hidden">
-                            Shared remotely
+                            {t("Shared remotely")}
                           </span>
                         </span>
                       )}
@@ -401,7 +411,7 @@ export default function Workspaces({
                   </button>
                   <IconButton
                     className="icon-button workspace-menu-trigger"
-                    title={`Actions for ${workspace.name}`}
+                    title={t("Actions for {name}", { name: workspace.name })}
                     aria-haspopup="menu"
                     aria-expanded={menu?.id === workspace.id}
                     onClick={(event) =>
@@ -414,13 +424,15 @@ export default function Workspaces({
                     {summary.total > 0 && (
                       <div
                         className="workspace-agent-list"
-                        aria-label={`Agents in ${workspace.name}`}
+                        aria-label={t("Agents in {name}", {
+                          name: workspace.name,
+                        })}
                       >
                         {summary.groups.slice(0, 2).map(({ cli, count }) => {
                           const activity = activityFor(workspaceItems, cli);
-                          const label = `${cliNames[cli]} · ${count} ${count === 1 ? "agent" : "agents"}`;
+                          const label = agentLabel(cli, count);
                           const status = activity
-                            ? cliActivityLabels[activity]
+                            ? activityLabel(activity)
                             : undefined;
                           return (
                             <span
@@ -445,10 +457,10 @@ export default function Workspaces({
                             aria-label={extraAgentsLabel}
                             aria-description={
                               extraActivity
-                                ? cliActivityLabels[extraActivity]
+                                ? activityLabel(extraActivity)
                                 : undefined
                             }
-                            title={`${extraAgentsLabel}${extraActivity ? ` · ${cliActivityLabels[extraActivity]}` : ""}`}
+                            title={`${extraAgentsLabel}${extraActivity ? ` · ${activityLabel(extraActivity)}` : ""}`}
                           >
                             +{extraAgents.length}
                             {extraActivity && (
@@ -462,7 +474,15 @@ export default function Workspaces({
                     )}
                     <IconButton
                       className="icon-button workspace-tabs-toggle"
-                      title={`${expanded.has(workspace.id) ? "Collapse" : "Expand"} items in ${workspace.name}`}
+                      title={
+                        expanded.has(workspace.id)
+                          ? t("Collapse items in {name}", {
+                              name: workspace.name,
+                            })
+                          : t("Expand items in {name}", {
+                              name: workspace.name,
+                            })
+                      }
                       aria-expanded={expanded.has(workspace.id)}
                       aria-controls={`workspace-items-${workspace.id}`}
                       onClick={() =>
@@ -478,7 +498,9 @@ export default function Workspaces({
                 <ul
                   id={`workspace-items-${workspace.id}`}
                   className="workspace-item-list"
-                  aria-label={`Open items in ${workspace.name}`}
+                  aria-label={t("Open items in {name}", {
+                    name: workspace.name,
+                  })}
                   hidden={!expanded.has(workspace.id)}
                 >
                   {expanded.has(workspace.id) &&
@@ -534,25 +556,27 @@ export default function Workspaces({
             );
           }),
         )}
-        {count === 0 && <p className="workspace-empty">No projects yet</p>}
+        {count === 0 && (
+          <p className="workspace-empty">{t("No projects yet")}</p>
+        )}
       </nav>
       {menu && workspace && (
         <ContextMenu
           x={menu.x}
           y={menu.y}
-          label="Workspace actions"
+          label={t("Workspace actions")}
           actions={[
-            { label: "Rename workspace", run: () => onRename(workspace) },
+            { label: t("Rename workspace"), run: () => onRename(workspace) },
             remote
               ? {
                   label: menuShared
-                    ? "Stop sharing remotely"
-                    : "Share remotely",
+                    ? t("Stop sharing remotely")
+                    : t("Share remotely"),
                   disabled:
                     !(menuShared ? remote.available : sharingAvailable) ||
                     !!remote.busy,
                   description: remote.busy
-                    ? "A sharing change is in progress."
+                    ? t("A sharing change is in progress.")
                     : menuShared
                       ? remote.available
                         ? undefined
@@ -561,7 +585,9 @@ export default function Workspaces({
                         ? undefined
                         : remote.error ||
                           remote.disabledReason ||
-                          "Remote sharing is unavailable until host status loads.",
+                          t(
+                            "Remote sharing is unavailable until host status loads.",
+                          ),
                   run: () => {
                     if (!(menuShared ? remote.available : sharingAvailable))
                       return;
@@ -571,11 +597,11 @@ export default function Workspaces({
                 }
               : null,
             {
-              label: "Customize workspace…",
+              label: t("Customize workspace…"),
               run: () => setCustomizing(workspace),
             },
             {
-              label: "Delete workspace…",
+              label: t("Delete workspace…"),
               danger: true,
               run: () => onDelete(workspace),
             },
@@ -611,12 +637,13 @@ export default function Workspaces({
 }
 
 function WorkspaceNotificationDot() {
+  const { t } = useT();
   return (
     <span
       className="workspace-notification-dot"
       role="img"
-      aria-label="Unread terminal notifications"
-      title="Unread terminal notifications"
+      aria-label={t("Unread terminal notifications")}
+      title={t("Unread terminal notifications")}
     />
   );
 }
@@ -638,11 +665,12 @@ function WorkspaceCliIcon({
   cli: CliAgent;
   activity?: CliActivity | null;
 }) {
+  useT();
   return (
     <span
       className="workspace-cli-icon"
       data-activity={activity ?? undefined}
-      title={`${cliNames[cli]}${activity ? ` · ${cliActivityLabels[activity]}` : ""}`}
+      title={`${cliNames[cli]}${activity ? ` · ${activityLabel(activity)}` : ""}`}
       aria-hidden="true"
     >
       <CliAgentIcon cli={cli} />
@@ -711,6 +739,7 @@ function WorkspaceOpenItem({
   onSelect: () => void;
   onReveal: () => void;
 }) {
+  const { t } = useT();
   const runtime = useSyncExternalStore(subscribeTerminalLifecycle, () =>
     item.type === "terminal" ? runningTerminal(item.id) : undefined,
   );
@@ -724,7 +753,7 @@ function WorkspaceOpenItem({
           snapshot?.title,
           snapshot?.foregroundProgram,
           agent,
-        ) ?? `Terminal ${(terminalIndex ?? 0) + 1}`)
+        ) ?? t("Terminal {number}", { number: (terminalIndex ?? 0) + 1 }))
       : tabTitle(item);
   const ownerTabTitle = tabTitle(ownerTab);
   const detail =
@@ -736,8 +765,8 @@ function WorkspaceOpenItem({
           ? item.url
           : title;
   const description = [
-    `In tab ${ownerTabTitle}`,
-    activity ? cliActivityLabels[activity] : undefined,
+    t("In tab {title}", { title: ownerTabTitle }),
+    activity ? activityLabel(activity) : undefined,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -750,7 +779,7 @@ function WorkspaceOpenItem({
         aria-description={description}
         data-workspace-pane-id={item.id}
         data-owner-tab-id={ownerTab.id}
-        title={`${title}${title === detail ? "" : `\n${detail}`}\nTab: ${ownerTabTitle}`}
+        title={`${title}${title === detail ? "" : `\n${detail}`}\n${t("Tab: {title}", { title: ownerTabTitle })}`}
         onClick={onSelect}
         onDoubleClick={onReveal}
       >
@@ -779,13 +808,14 @@ function StartRemoteSharingDialog({
   onConfirm: () => Promise<void>;
   onClose: () => void;
 }) {
+  const { t } = useT();
   const cancel = useRef<HTMLButtonElement>(null);
   const descriptionId = useId();
   const [attempted, setAttempted] = useState(false);
   return (
     <Modal
       className="remote-sharing-dialog"
-      title="Share workspace remotely?"
+      title={t("Share workspace remotely?")}
       role="alertdialog"
       tone="warning"
       protectTheme
@@ -797,17 +827,11 @@ function StartRemoteSharingDialog({
       <div className="dialog-form dialog-layout" aria-busy={busy}>
         <div className="dialog-content">
           <p id={descriptionId}>
-            Share “{workspace.name}” with approved desktop, browser, and mobile
-            windows signed in to this account? They can request access to this
-            workspace’s shared terminal tree and project files. After you
-            approve a request, they can view files, create files and folders,
-            rename or remove entries, inspect Git status, diffs and history,
-            stage changes, commit, fetch, fast-forward pull, and push. They can
-            also create, control, resize, and close shared terminals. Editor
-            buffers, browser panes, plugins, and AI-controlled terminals stay
-            private. Sharing does not start a shell; choose Create terminal to
-            start one.
-            {!signedIn && " Sign in to use remote sharing."}
+            {t(
+              "Share “{name}” with approved desktop, browser, and mobile windows signed in to this account? They can request access to this workspace’s shared terminal tree and project files. After you approve a request, they can view files, create files and folders, rename or remove entries, inspect Git status, diffs and history, stage changes, commit, fetch, fast-forward pull, and push. They can also create, control, resize, and close shared terminals. Editor buffers, browser panes, plugins, and AI-controlled terminals stay private. Sharing does not start a shell; choose Create terminal to start one.",
+              { name: workspace.name },
+            )}
+            {!signedIn && ` ${t("Sign in to use remote sharing.")}`}
           </p>
           {attempted && error && <p role="alert">{error}</p>}
         </div>
@@ -819,7 +843,7 @@ function StartRemoteSharingDialog({
             disabled={busy}
             onClick={onClose}
           >
-            Cancel
+            {t("Cancel")}
           </button>
           <button
             type="button"
@@ -831,7 +855,7 @@ function StartRemoteSharingDialog({
               void onConfirm();
             }}
           >
-            {busy ? "Sharing…" : "Share remotely"}
+            {busy ? t("Sharing…") : t("Share remotely")}
           </button>
         </div>
       </div>

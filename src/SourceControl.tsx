@@ -21,6 +21,7 @@ import GitHistory from "./GitHistory";
 import ContextMenu from "./ContextMenu";
 import { useGitFileActions } from "./GitFileActions";
 import { IconButton, Modal } from "./ui";
+import { msg, useT } from "./i18n";
 
 export default function SourceControl({
   projectRoot,
@@ -51,6 +52,7 @@ export default function SourceControl({
   onDiscard: (root: string, change: GitChange) => Promise<void>;
   onError: (message: string) => void;
 }) {
+  const { t } = useT();
   useSyncExternalStore(state.subscribe, state.snapshot);
   const [scanDetails, setScanDetails] = useState(false);
   const changesId = useId();
@@ -60,7 +62,9 @@ export default function SourceControl({
   const scanAction = (errors.length > 0 || limited) && (
     <IconButton
       title={
-        errors.length ? "Repository scan errors" : "Repository scan details"
+        errors.length
+          ? t("Repository scan errors")
+          : t("Repository scan details")
       }
       onClick={() => setScanDetails(true)}
     >
@@ -92,7 +96,7 @@ export default function SourceControl({
         <>
           {scanDetails && (
             <Modal
-              title="Repository scan"
+              title={t("Repository scan")}
               onClose={() => setScanDetails(false)}
             >
               <div className="dialog-form dialog-layout">
@@ -104,15 +108,16 @@ export default function SourceControl({
                   ))}
                   {errors.length > 0 && (
                     <p>
-                      Some repositories could not be refreshed. Previously
-                      loaded statuses are kept until the next successful
-                      refresh.
+                      {t(
+                        "Some repositories could not be refreshed. Previously loaded statuses are kept until the next successful refresh.",
+                      )}
                     </p>
                   )}
                   {limited && (
                     <p>
-                      Only part of this folder was scanned. Open a more specific
-                      project folder to see other repositories.
+                      {t(
+                        "Only part of this folder was scanned. Open a more specific project folder to see other repositories.",
+                      )}
                     </p>
                   )}
                 </div>
@@ -122,7 +127,7 @@ export default function SourceControl({
                     className="button"
                     onClick={() => setScanDetails(false)}
                   >
-                    Close
+                    {t("Close")}
                   </button>
                   <button
                     type="button"
@@ -132,7 +137,7 @@ export default function SourceControl({
                       onRefresh();
                     }}
                   >
-                    Retry repository scan
+                    {t("Retry repository scan")}
                   </button>
                 </div>
               </div>
@@ -141,15 +146,15 @@ export default function SourceControl({
         </>
       )}
       {repositories.length > 1 && (
-        <nav className="source-repositories" aria-label="Repositories">
-          <div className="source-repositories-heading">REPOSITORIES</div>
+        <nav className="source-repositories" aria-label={t("Repositories")}>
+          <div className="source-repositories-heading">{t("REPOSITORIES")}</div>
           <button
             type="button"
             className="source-repository"
             aria-current={!active ? "page" : undefined}
             onClick={() => setSelectedRoot(null)}
           >
-            <span>All repositories</span>
+            <span>{t("All repositories")}</span>
             <span className="git-count">{repositories.length}</span>
           </button>
           {repositories.map((repository) => (
@@ -175,10 +180,13 @@ export default function SourceControl({
       {!active && repositories.length > 1 ? (
         <div className="source-all">
           <header className="source-heading">
-            <span>All changes</span>
+            <span>{t("All changes")}</span>
             <div className="source-heading-actions">
               {scanAction}
-              <IconButton title="Refresh source control" onClick={onRefresh}>
+              <IconButton
+                title={t("Refresh source control")}
+                onClick={onRefresh}
+              >
                 <RefreshCw size={14} />
               </IconButton>
             </div>
@@ -187,7 +195,7 @@ export default function SourceControl({
             {changedRepositories.length === 0 && (
               <div className="git-clean">
                 <Check size={20} />
-                <p>No changes.</p>
+                <p>{t("No changes.")}</p>
               </div>
             )}
             {changedRepositories.map((repository, index) => {
@@ -211,7 +219,11 @@ export default function SourceControl({
                         changesCollapsed: !collapsed,
                       })
                     }
-                    title={`${collapsed ? "Expand" : "Collapse"} ${label(repository.root)}`}
+                    title={
+                      collapsed
+                        ? t("Expand {name}", { name: label(repository.root) })
+                        : t("Collapse {name}", { name: label(repository.root) })
+                    }
                   >
                     {collapsed ? (
                       <ChevronRight size={13} aria-hidden="true" />
@@ -240,7 +252,11 @@ export default function SourceControl({
                           key={`${change.path}:${staged}`}
                           type="button"
                           className="source-all-file"
-                          title={`${staged ? "Staged" : "Working"}: ${change.path}`}
+                          title={
+                            staged
+                              ? t("Staged: {path}", { path: change.path })
+                              : t("Working: {path}", { path: change.path })
+                          }
                           onClick={() =>
                             onDiff(repository.root, change.path, staged)
                           }
@@ -249,7 +265,9 @@ export default function SourceControl({
                             {code}
                           </span>
                           <span>{change.path}</span>
-                          {staged && <span className="git-count">staged</span>}
+                          {staged && (
+                            <span className="git-count">{t("staged")}</span>
+                          )}
                         </button>
                       ));
                     })}
@@ -304,6 +322,7 @@ function RepositoryControl({
   onDiscard: (change: GitChange) => Promise<void>;
   onError: (message: string) => void;
 }) {
+  const { t } = useT();
   const root = status?.root ?? "";
   const { busy, message, remoteStatus, historyRevision } =
     state.repository(root);
@@ -341,23 +360,23 @@ function RepositoryControl({
   const fetch = (remote?: string) =>
     run(async () => {
       await api("git_fetch", { root: status!.root, remote });
-      setRemoteStatus("Fetch complete.");
-    }, "Fetching…");
+      setRemoteStatus(t("Fetch complete."));
+    }, t("Fetching…"));
   const pull = (rebase = false) =>
     run(
       async () => {
         await onPull(rebase);
         setRemoteStatus(
-          rebase ? "Pull with rebase complete." : "Pull complete.",
+          rebase ? t("Pull with rebase complete.") : t("Pull complete."),
         );
       },
-      rebase ? "Pulling with rebase…" : "Pulling…",
+      rebase ? t("Pulling with rebase…") : t("Pulling…"),
     );
   const push = (remote?: string, force = false) =>
     run(async () => {
       await api("git_push", { root: status!.root, remote, force });
-      setRemoteStatus("Push complete.");
-    }, "Pushing…");
+      setRemoteStatus(t("Push complete."));
+    }, t("Pushing…"));
   const chooseRemote = (action: "fetch" | "push") =>
     run(async () => {
       const remotes = await api<string[]>("git_remotes", {
@@ -365,11 +384,13 @@ function RepositoryControl({
       });
       if (!remotes.length)
         throw new Error(
-          "No Git remote is configured. Add a remote in a terminal, then try again.",
+          t(
+            "No Git remote is configured. Add a remote in a terminal, then try again.",
+          ),
         );
       setRemoteMenu({ ...remoteMenu!, choice: { action, remotes } });
       setRemoteStatus("");
-    }, "Loading remotes…");
+    }, t("Loading remotes…"));
   const stage = (changes: GitChange[], stage: boolean) =>
     run(() =>
       api("git_stage", {
@@ -404,13 +425,13 @@ function RepositoryControl({
     return (
       <div className="sidebar-panel">
         <header className="sidebar-heading">
-          <span>Source control</span>
+          <span>{t("Source control")}</span>
           {scanAction}
         </header>
         <p className="sidebar-empty" role={loading ? "status" : undefined}>
           {loading
-            ? "Checking for a Git repository…"
-            : "No Git repository was found in this project."}
+            ? t("Checking for a Git repository…")
+            : t("No Git repository was found in this project.")}
         </p>
       </div>
     );
@@ -422,124 +443,137 @@ function RepositoryControl({
   );
   const tracked = unstaged.filter((change) => change.worktree !== "?");
   const untracked = unstaged.filter((change) => change.worktree === "?");
-  const group = (name: string, changes: GitChange[], isStaged: boolean) => (
-    <section className="git-group" aria-label={`${name} changes`}>
-      <header>
-        <button
-          type="button"
-          className="git-group-toggle"
-          aria-expanded={!collapsed[name]}
-          aria-controls={`${groupId}-${name}`}
-          onClick={() =>
-            setCollapsed((current) => ({ ...current, [name]: !current[name] }))
-          }
+  const group = (name: string, changes: GitChange[], isStaged: boolean) => {
+    const groupLabel = isStaged
+      ? t("Staged changes")
+      : name === "Tracked"
+        ? t("Tracked changes")
+        : t("Untracked changes");
+    const stageLabel = isStaged
+      ? t("Unstage staged changes")
+      : name === "Tracked"
+        ? t("Stage tracked changes")
+        : t("Stage untracked changes");
+    return (
+      <section className="git-group" aria-label={groupLabel}>
+        <header>
+          <button
+            type="button"
+            className="git-group-toggle"
+            aria-expanded={!collapsed[name]}
+            aria-controls={`${groupId}-${name}`}
+            onClick={() =>
+              setCollapsed((current) => ({
+                ...current,
+                [name]: !current[name],
+              }))
+            }
+          >
+            {collapsed[name] ? (
+              <ChevronRight size={12} />
+            ) : (
+              <ChevronDown size={12} />
+            )}
+            <span>{t(name)}</span>
+            <span className="git-count">{changes.length}</span>
+          </button>
+          <label className="git-stage-toggle">
+            <input
+              type="checkbox"
+              aria-label={stageLabel}
+              title={stageLabel}
+              checked={isStaged}
+              disabled={busy}
+              onChange={() => void stage(changes, !isStaged)}
+            />
+          </label>
+        </header>
+        <ul
+          className="git-file-list"
+          id={`${groupId}-${name}`}
+          hidden={collapsed[name]}
         >
-          {collapsed[name] ? (
-            <ChevronRight size={12} />
-          ) : (
-            <ChevronDown size={12} />
-          )}
-          <span>{name}</span>
-          <span className="git-count">{changes.length}</span>
-        </button>
-        <label className="git-stage-toggle">
-          <input
-            type="checkbox"
-            aria-label={
-              isStaged
-                ? "Unstage staged changes"
-                : `Stage ${name.toLowerCase()} changes`
-            }
-            title={
-              isStaged
-                ? "Unstage staged changes"
-                : `Stage ${name.toLowerCase()} changes`
-            }
-            checked={isStaged}
-            disabled={busy}
-            onChange={() => void stage(changes, !isStaged)}
-          />
-        </label>
-      </header>
-      <ul
-        className="git-file-list"
-        id={`${groupId}-${name}`}
-        hidden={collapsed[name]}
-      >
-        {changes.map((change) => {
-          const separator = change.path.lastIndexOf("/");
-          const filename = change.path.slice(separator + 1);
-          const directory =
-            separator < 0 ? "" : change.path.slice(0, separator);
-          const code = isStaged ? change.index : change.worktree;
-          const StatusIcon = ["A", "?"].includes(code)
-            ? SquarePlus
-            : code === "D"
-              ? SquareMinus
-              : ["R", "C"].includes(code)
-                ? SquareArrowRight
-                : SquareDot;
-          const action = `${isStaged ? "Unstage" : "Stage"} ${change.path}`;
-          const file = {
-            path: change.path,
-            change,
-            staged: isStaged,
-            deleted:
-              change.worktree === "D" ||
-              (change.index === "D" && change.worktree === " "),
-          };
-          return (
-            <li
-              className="git-file"
-              key={change.path}
-              onContextMenu={(event) => actions.onContext(event, file)}
-              onKeyDown={(event) => actions.onKey(event, file)}
-            >
-              <button
-                type="button"
-                className="git-file-open"
-                aria-label={`View ${isStaged ? "staged " : ""}diff for ${change.path}`}
-                title={
-                  change.originalPath
-                    ? `${change.originalPath} → ${change.path}`
-                    : change.path
-                }
-                onClick={() => onDiff(change.path, isStaged)}
+          {changes.map((change) => {
+            const separator = change.path.lastIndexOf("/");
+            const filename = change.path.slice(separator + 1);
+            const directory =
+              separator < 0 ? "" : change.path.slice(0, separator);
+            const code = isStaged ? change.index : change.worktree;
+            const StatusIcon = ["A", "?"].includes(code)
+              ? SquarePlus
+              : code === "D"
+                ? SquareMinus
+                : ["R", "C"].includes(code)
+                  ? SquareArrowRight
+                  : SquareDot;
+            const action = isStaged
+              ? t("Unstage {path}", { path: change.path })
+              : t("Stage {path}", { path: change.path });
+            const file = {
+              path: change.path,
+              change,
+              staged: isStaged,
+              deleted:
+                change.worktree === "D" ||
+                (change.index === "D" && change.worktree === " "),
+            };
+            return (
+              <li
+                className="git-file"
+                key={change.path}
+                onContextMenu={(event) => actions.onContext(event, file)}
+                onKeyDown={(event) => actions.onKey(event, file)}
               >
-                <StatusIcon
-                  size={13}
-                  className="git-file-icon"
-                  data-status={code}
-                />
-                <span className="git-file-label">
-                  <span className="git-file-name">{filename}</span>
-                  {directory && (
-                    <span className="git-file-directory">{directory}</span>
-                  )}
-                </span>
-              </button>
-              <label className="git-stage-toggle" title={action}>
-                <input
-                  type="checkbox"
-                  aria-label={action}
-                  checked={isStaged}
-                  disabled={busy}
-                  onChange={() => void stage([change], !isStaged)}
-                />
-              </label>
-            </li>
-          );
-        })}
-      </ul>
-    </section>
-  );
+                <button
+                  type="button"
+                  className="git-file-open"
+                  aria-label={
+                    isStaged
+                      ? t("View staged diff for {path}", { path: change.path })
+                      : t("View diff for {path}", { path: change.path })
+                  }
+                  title={
+                    change.originalPath
+                      ? `${change.originalPath} → ${change.path}`
+                      : change.path
+                  }
+                  onClick={() => onDiff(change.path, isStaged)}
+                >
+                  <StatusIcon
+                    size={13}
+                    className="git-file-icon"
+                    data-status={code}
+                  />
+                  <span className="git-file-label">
+                    <span className="git-file-name">{filename}</span>
+                    {directory && (
+                      <span className="git-file-directory">{directory}</span>
+                    )}
+                  </span>
+                </button>
+                <label className="git-stage-toggle" title={action}>
+                  <input
+                    type="checkbox"
+                    aria-label={action}
+                    checked={isStaged}
+                    disabled={busy}
+                    onChange={() => void stage([change], !isStaged)}
+                  />
+                </label>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+    );
+  };
   return (
     <div className="source-repository-control">
       <header className="source-heading">
         <div
           className="source-pages"
           role="tablist"
-          aria-label="Source control pages"
+          aria-label={t("Source control pages")}
         >
           {(["changes", "history"] as const).map((name, index) => (
             <button
@@ -573,11 +607,11 @@ function RepositoryControl({
             >
               {name === "changes" ? (
                 <>
-                  Changes{" "}
+                  {t("Changes")}{" "}
                   <span className="git-count">({status.changes.length})</span>
                 </>
               ) : (
-                "History"
+                t("History")
               )}
             </button>
           ))}
@@ -585,7 +619,7 @@ function RepositoryControl({
         <div className="source-heading-actions">
           {scanAction}
           <IconButton
-            title="Refresh source control"
+            title={t("Refresh source control")}
             disabled={busy}
             onClick={() => {
               onRefresh();
@@ -603,7 +637,7 @@ function RepositoryControl({
           ref={remoteTrigger}
           type="button"
           className="button git-remote-trigger"
-          title="Git remote actions"
+          title={t("Git remote actions")}
           aria-haspopup="menu"
           aria-expanded={!!remoteMenu}
           disabled={busy}
@@ -617,7 +651,7 @@ function RepositoryControl({
           }}
         >
           <span>
-            <RefreshCw size={12} /> Fetch
+            <RefreshCw size={12} /> {t("Fetch")}
           </span>
           <span className="git-remote-chevron">
             <ChevronDown size={12} />
@@ -631,9 +665,9 @@ function RepositoryControl({
           label={
             remoteMenu.choice
               ? remoteMenu.choice.action === "fetch"
-                ? "Fetch from"
-                : "Push to"
-              : "Git remote actions"
+                ? t("Fetch from")
+                : t("Push to")
+              : t("Git remote actions")
           }
           onClose={closeRemoteMenu}
           actions={
@@ -647,32 +681,32 @@ function RepositoryControl({
                 }))
               : [
                   {
-                    label: "Fetch",
+                    label: t("Fetch"),
                     run: () => void fetch(),
                   },
                   {
-                    label: "Fetch from",
+                    label: t("Fetch from"),
                     run: () => void chooseRemote("fetch"),
                   },
                   {
-                    label: "Pull",
+                    label: t("Pull"),
                     run: () => void pull(),
                   },
                   {
-                    label: "Pull (Rebase)",
+                    label: t("Pull (Rebase)"),
                     run: () => void pull(true),
                   },
                   null,
                   {
-                    label: "Push",
+                    label: t("Push"),
                     run: () => void push(),
                   },
                   {
-                    label: "Push to",
+                    label: t("Push to"),
                     run: () => void chooseRemote("push"),
                   },
                   {
-                    label: "Force push",
+                    label: t("Force push"),
                     danger: true,
                     run: () => setForcePush(true),
                   },
@@ -683,16 +717,16 @@ function RepositoryControl({
       {forcePush && (
         <Modal
           protectTheme
-          title="Force push"
+          title={t("Force push")}
           tone="warning"
           onClose={() => setForcePush(false)}
         >
           <div className="dialog-form dialog-layout">
             <div className="dialog-content">
               <p>
-                Replace the remote branch history with your local commits? The
-                push is rejected if the remote branch changed since your last
-                fetch.
+                {t(
+                  "Replace the remote branch history with your local commits? The push is rejected if the remote branch changed since your last fetch.",
+                )}
               </p>
             </div>
             <div className="dialog-actions">
@@ -701,7 +735,7 @@ function RepositoryControl({
                 className="button"
                 onClick={() => setForcePush(false)}
               >
-                Cancel
+                {t("Cancel")}
               </button>
               <button
                 type="button"
@@ -712,7 +746,7 @@ function RepositoryControl({
                   void push(undefined, true);
                 }}
               >
-                Force Push
+                {t("Force Push")}
               </button>
             </div>
           </div>
@@ -745,15 +779,15 @@ function RepositoryControl({
         >
           <div className="git-toolbar">
             <span>
-              <FileDiff size={13} /> Working tree
+              <FileDiff size={13} /> {t("Working tree")}
             </span>
             <button
               type="button"
               className="button git-stage-all"
               aria-label={
                 unstaged.length || !staged.length
-                  ? "Stage all changes"
-                  : "Unstage all changes"
+                  ? t("Stage all changes")
+                  : t("Unstage all changes")
               }
               disabled={busy || !status.changes.length}
               onClick={() =>
@@ -763,18 +797,20 @@ function RepositoryControl({
                 )
               }
             >
-              {unstaged.length || !staged.length ? "Stage all" : "Unstage all"}
+              {unstaged.length || !staged.length
+                ? t("Stage all")
+                : t("Unstage all")}
             </button>
           </div>
           <div className="git-groups">
-            {!!staged.length && group("Staged", staged, true)}
-            {!!tracked.length && group("Tracked", tracked, false)}
-            {!!untracked.length && group("Untracked", untracked, false)}
+            {!!staged.length && group(msg("Staged"), staged, true)}
+            {!!tracked.length && group(msg("Tracked"), tracked, false)}
+            {!!untracked.length && group(msg("Untracked"), untracked, false)}
             {!status.changes.length && (
               <div className="git-clean">
                 <Check size={20} />
-                <p>Working tree clean.</p>
-                <span>No changes to commit.</span>
+                <p>{t("Working tree clean.")}</p>
+                <span>{t("No changes to commit.")}</span>
               </div>
             )}
           </div>
@@ -783,7 +819,9 @@ function RepositoryControl({
               <GitBranch size={13} />
               <span>{status.branch}</span>
             </div>
-            <span className="git-staged-count">{staged.length} staged</span>
+            <span className="git-staged-count">
+              {t("{count} staged", { count: staged.length })}
+            </span>
           </div>
           <form
             className="commit-form"
@@ -797,8 +835,8 @@ function RepositoryControl({
             }}
           >
             <textarea
-              aria-label="Commit message"
-              placeholder="Enter commit message"
+              aria-label={t("Commit message")}
+              placeholder={t("Enter commit message")}
               value={message}
               onChange={(event) => onMessageChange(event.target.value)}
               readOnly={busy}
@@ -808,11 +846,11 @@ function RepositoryControl({
               <button
                 type="submit"
                 className="button commit-button"
-                aria-label="Commit staged changes"
+                aria-label={t("Commit staged changes")}
                 disabled={busy || !message.trim() || !staged.length}
               >
                 <Check size={13} />
-                {busy ? "Working…" : "Commit staged"}
+                {busy ? t("Working…") : t("Commit staged")}
               </button>
             </div>
           </form>

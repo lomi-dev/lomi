@@ -10,17 +10,19 @@ import { IconButton, Modal } from "../ui";
 import { SettingsNotice, SettingsPage, SettingsSection } from "../settings-ui";
 import { usePlugins } from "./PluginsProvider";
 import type { PluginEntry } from "./host";
+import { msg, useT } from "../i18n";
 interface Finished {
   token: string;
   approved: boolean;
   error?: string | null;
 }
 const categories = [
-  { value: "views", label: "Views" },
-  { value: "commands", label: "Commands" },
-  { value: "fills", label: "Interface" },
+  { value: "views", label: msg("Views") },
+  { value: "commands", label: msg("Commands") },
+  { value: "fills", label: msg("Interface") },
 ] as const;
 export default function PluginsPage() {
+  const { t } = useT();
   const plugins = usePlugins(),
     themes = useThemes();
   const [busy, setBusy] = useState(false),
@@ -43,7 +45,9 @@ export default function PluginsPage() {
     if (!result.approved)
       setError(
         result.error ??
-          "The operation was canceled. The plugin and its views remain available.",
+          t(
+            "The operation was canceled. The plugin and its views remain available.",
+          ),
       );
     void plugins.reload();
   };
@@ -139,7 +143,7 @@ export default function PluginsPage() {
           const path = await open({
             directory: true,
             multiple: false,
-            title: "Import plugin package",
+            title: t("Import plugin package"),
           });
           if (typeof path === "string") {
             await api("import_plugin", { path });
@@ -149,19 +153,20 @@ export default function PluginsPage() {
       }
     >
       <Download size={15} aria-hidden="true" />
-      Import plugin
+      {t("Import plugin")}
     </button>
   );
   return (
     <SettingsPage
-      title="Plugins"
+      title={t("Plugins")}
       className="plugins-page catalog-page"
       contentClassName="catalog-content"
     >
       {plugins.catalog.safeMode && (
         <SettingsNotice tone="warning" role="status">
-          Safe startup: third-party code is skipped. Disable the faulty plugin,
-          then restart normally.
+          {t(
+            "Safe startup: third-party code is skipped. Disable the faulty plugin, then restart normally.",
+          )}
         </SettingsNotice>
       )}
       {(error || plugins.error) && (
@@ -169,20 +174,20 @@ export default function PluginsPage() {
           <p>{error || plugins.error}</p>
           {plugins.error && (
             <p className="settings-help">
-              To recover, close Lomi, rename plugins/installed.json to
-              installed.backup.json, restart with --safe-mode and reimport your
-              packages.
+              {t(
+                "To recover, close Lomi, rename plugins/installed.json to installed.backup.json, restart with --safe-mode and reimport your packages.",
+              )}
             </p>
           )}
         </SettingsNotice>
       )}
       {pending && (
         <SettingsNotice role="status">
-          Resolve unsaved plugin views in the workspace window to finish.
+          {t("Resolve unsaved plugin views in the workspace window to finish.")}
         </SettingsNotice>
       )}
       <SettingsSection
-        title="Installed plugins"
+        title={t("Installed plugins")}
         grouped={false}
         actions={importButton}
       >
@@ -192,14 +197,14 @@ export default function PluginsPage() {
             <input
               ref={searchInput}
               type="search"
-              aria-label="Search plugins"
-              placeholder="Search plugins…"
+              aria-label={t("Search plugins")}
+              placeholder={t("Search plugins…")}
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
             {search && (
               <IconButton
-                title="Clear search"
+                title={t("Clear search")}
                 onClick={() => {
                   setSearch("");
                   searchInput.current?.focus();
@@ -210,20 +215,26 @@ export default function PluginsPage() {
             )}
           </div>
           <Select
-            aria-label="Plugin categories"
+            aria-label={t("Plugin categories")}
             value={category}
             onChange={setCategory}
-            options={[{ value: "all", label: "All types" }, ...categories]}
+            options={[
+              { value: "all", label: t("All types") },
+              ...categories.map(({ value, label }) => ({
+                value,
+                label: t(label),
+              })),
+            ]}
           />
           <Select
-            aria-label="Plugin status"
+            aria-label={t("Plugin status")}
             value={filter}
             onChange={setFilter}
             options={[
-              { value: "all", label: "All plugins" },
-              { value: "enabled", label: "Enabled" },
-              { value: "disabled", label: "Disabled" },
-              { value: "attention", label: "Needs attention" },
+              { value: "all", label: t("All plugins") },
+              { value: "enabled", label: t("Enabled") },
+              { value: "disabled", label: t("Disabled") },
+              { value: "attention", label: t("Needs attention") },
             ]}
           />
         </div>
@@ -234,16 +245,18 @@ export default function PluginsPage() {
                 {installed.length ? <Search size={20} /> : <Puzzle size={20} />}
               </span>
               <h3>
-                {installed.length ? "No matching plugins" : "No plugins yet"}
+                {installed.length
+                  ? t("No matching plugins")
+                  : t("No plugins yet")}
               </h3>
               <p>
                 {installed.length
-                  ? "Try a different search or reset your filters."
-                  : "Import a local plugin package to get started."}
+                  ? t("Try a different search or reset your filters.")
+                  : t("Import a local plugin package to get started.")}
               </p>
               {installed.length ? (
                 <button className="text-button" onClick={clearFilters}>
-                  Clear filters
+                  {t("Clear filters")}
                 </button>
               ) : (
                 importButton
@@ -254,19 +267,19 @@ export default function PluginsPage() {
               const name = entry.manifest?.name ?? entry.id;
               const problem = entry.error || entry.status?.error;
               const state = problem
-                ? "Needs attention"
+                ? t("Needs attention")
                 : entry.restartRequired
-                  ? "Restart required"
+                  ? t("Restart required")
                   : entry.enabled && plugins.catalog.safeMode
-                    ? "Paused in safe startup"
+                    ? t("Paused in safe startup")
                     : entry.enabled
-                      ? "Enabled"
-                      : "Disabled";
+                      ? t("Enabled")
+                      : t("Disabled");
               const types = categories
                 .filter(
                   ({ value }) => entry.manifest?.contributes?.[value]?.length,
                 )
-                .map(({ label }) => label)
+                .map(({ label }) => t(label))
                 .join(" · ");
               return (
                 <article
@@ -283,7 +296,7 @@ export default function PluginsPage() {
                       <span>
                         {entry.manifest?.version
                           ? `v${entry.manifest.version}`
-                          : "Unknown version"}
+                          : t("Unknown version")}
                       </span>
                       {types && <span className="plugin-type">{types}</span>}
                     </div>
@@ -303,13 +316,13 @@ export default function PluginsPage() {
                   </span>
                   <div className="plugin-actions">
                     <IconButton
-                      title={`Details for ${name}`}
+                      title={t("Details for {name}", { name })}
                       onClick={() => setDetails(entry)}
                     >
                       <Info size={15} />
                     </IconButton>
                     <IconButton
-                      title={`Uninstall ${name}`}
+                      title={t("Uninstall {name}", { name })}
                       className="icon-button plugin-uninstall"
                       disabled={busy || !!pending}
                       onClick={() =>
@@ -328,7 +341,7 @@ export default function PluginsPage() {
                       type="checkbox"
                       role="switch"
                       className="settings-switch"
-                      aria-label={`Enable ${name}`}
+                      aria-label={t("Enable {name}", { name })}
                       checked={entry.enabled}
                       disabled={busy || !!pending || !!entry.error}
                       onChange={() =>
@@ -356,11 +369,13 @@ export default function PluginsPage() {
                             void run(() => api("request_plugin_restart"))
                           }
                         >
-                          Restart Lomi
+                          {t("Restart Lomi")}
                         </button>
                       }
                     >
-                      Restart to load the new code. Running terminals will end.
+                      {t(
+                        "Restart to load the new code. Running terminals will end.",
+                      )}
                     </SettingsNotice>
                   )}
                 </article>
@@ -377,30 +392,30 @@ export default function PluginsPage() {
         >
           <div className="dialog-form dialog-layout">
             <dl className="plugin-details">
-              <dt>Plugin ID</dt>
+              <dt>{t("Plugin ID")}</dt>
               <dd>{details.id}</dd>
-              <dt>Source</dt>
+              <dt>{t("Source")}</dt>
               <dd>{details.source}</dd>
               {details.manifest?.entry && (
                 <>
-                  <dt>Trust</dt>
+                  <dt>{t("Trust")}</dt>
                   <dd>
                     {details.trustedRevision === details.revision
-                      ? "Trusted revision"
-                      : "Not trusted"}
+                      ? t("Trusted revision")
+                      : t("Not trusted")}
                   </dd>
                 </>
               )}
               {details.status && (
                 <>
-                  <dt>Runtime</dt>
+                  <dt>{t("Runtime")}</dt>
                   <dd>{details.status.phase}</dd>
                 </>
               )}
             </dl>
             <div className="dialog-actions">
               <button className="button" onClick={() => setDetails(null)}>
-                Close
+                {t("Close")}
               </button>
             </div>
           </div>
@@ -409,7 +424,9 @@ export default function PluginsPage() {
       {trust && (
         <Modal
           protectTheme
-          title={`Enable ${trust.manifest?.name ?? trust.id}?`}
+          title={t("Enable {name}?", {
+            name: trust.manifest?.name ?? trust.id,
+          })}
           tone="warning"
           closeDisabled={busy}
           onClose={() => {
@@ -422,11 +439,12 @@ export default function PluginsPage() {
                 {trust.id} · {trust.manifest?.version} · {trust.source}
               </p>
               <p>
-                This plugin runs unsandboxed with the same access as Lomi,
-                including your files and terminals. Enable only code you trust.
+                {t(
+                  "This plugin runs unsandboxed with the same access as Lomi, including your files and terminals. Enable only code you trust.",
+                )}
               </p>
               <p className="settings-help">
-                Approval covers this version only.
+                {t("Approval covers this version only.")}
               </p>
             </div>
             <div className="dialog-actions">
@@ -435,7 +453,7 @@ export default function PluginsPage() {
                 disabled={busy}
                 onClick={() => setTrust(null)}
               >
-                Cancel
+                {t("Cancel")}
               </button>
               <button
                 className="button button-primary"
@@ -450,7 +468,7 @@ export default function PluginsPage() {
                   })
                 }
               >
-                Trust and enable
+                {t("Trust and enable")}
               </button>
             </div>
           </div>
@@ -459,7 +477,7 @@ export default function PluginsPage() {
       {fallback && (
         <Modal
           protectTheme
-          title="Replace the active theme?"
+          title={t("Replace the active theme?")}
           tone="warning"
           closeDisabled={busy}
           onClose={() => {
@@ -469,8 +487,9 @@ export default function PluginsPage() {
           <div className="dialog-form dialog-layout">
             <div className="dialog-content">
               <p>
-                This package provides the active theme. Lomi switches to its
-                default theme first.
+                {t(
+                  "This package provides the active theme. Lomi switches to its default theme first.",
+                )}
               </p>
             </div>
             <div className="dialog-actions">
@@ -479,7 +498,7 @@ export default function PluginsPage() {
                 disabled={busy}
                 onClick={() => setFallback(null)}
               >
-                Cancel
+                {t("Cancel")}
               </button>
               <button
                 className="button button-primary"
@@ -492,7 +511,7 @@ export default function PluginsPage() {
                   })
                 }
               >
-                Switch to Lomi and uninstall
+                {t("Switch to Lomi and uninstall")}
               </button>
             </div>
           </div>

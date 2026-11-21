@@ -5,6 +5,7 @@ import {
   requestPermission,
 } from "@tauri-apps/plugin-notification";
 import { api, getInfo, native } from "../api";
+import { t, useT } from "../i18n";
 import { SettingRow, SettingsNotice, SettingsSection } from "../settings-ui";
 import type { AuthState } from "./model";
 
@@ -59,35 +60,57 @@ function message(reason: unknown, phone = false): string {
   switch (code) {
     case "REVISION_CONFLICT":
     case "BINDING_CHANGED":
-      return "Settings changed on another device. The current state has been refreshed; try again.";
+      return t(
+        "Settings changed on another device. The current state has been refreshed; try again.",
+      );
     case "TOKEN_BINDING_CONFLICT":
-      return "This phone is linked to another active account. Disable its previous binding first.";
+      return t(
+        "This phone is linked to another active account. Disable its previous binding first.",
+      );
     case "FEATURE_DISABLED":
-      return "Phone notifications are not available in this environment yet.";
+      return t(
+        "Phone notifications are not available in this environment yet.",
+      );
     case "UPDATE_REQUIRED":
-      return "Update Lomi to use phone notifications.";
+      return t("Update Lomi to use phone notifications.");
     case "NOT_FOUND":
       return phone
-        ? "The server could not find the phone notification settings. It may need an update to support phone notifications. Try again after the service is updated."
-        : "Notification settings could not be found. Restart Lomi and try again.";
+        ? t(
+            "The server could not find the phone notification settings. It may need an update to support phone notifications. Try again after the service is updated.",
+          )
+        : t(
+            "Notification settings could not be found. Restart Lomi and try again.",
+          );
     case "SERVICE_UNAVAILABLE":
-      return "The notification service is temporarily unavailable. Try again later.";
+      return t(
+        "The notification service is temporarily unavailable. Try again later.",
+      );
     case "TRANSPORT_UNKNOWN":
-      return "Could not reach the notification service. Check your connection and try again.";
+      return t(
+        "Could not reach the notification service. Check your connection and try again.",
+      );
     case "INVALID_RESPONSE":
-      return "The notification service returned an unexpected response. Update Lomi and try again; if this continues, the service may need an update.";
+      return t(
+        "The notification service returned an unexpected response. Update Lomi and try again; if this continues, the service may need an update.",
+      );
     case "STORAGE_UNAVAILABLE":
-      return "Lomi could not access notification preferences on this computer. Restart Lomi and try again.";
+      return t(
+        "Lomi could not access notification preferences on this computer. Restart Lomi and try again.",
+      );
     case "ACCOUNT_UNAVAILABLE":
     case "ACCESS_EXPIRED":
-      return "Your account connection needs attention. Check your Lomi account and sign in again if needed.";
+      return t(
+        "Your account connection needs attention. Check your Lomi account and sign in again if needed.",
+      );
     case "RATE_LIMITED":
-      return "Too many requests. Wait a moment and try again.";
+      return t("Too many requests. Wait a moment and try again.");
     case "SESSION_REQUIRED":
     case "AUTHORITY_CHANGED":
-      return "Check your account connection before continuing.";
+      return t("Check your account connection before continuing.");
     default:
-      return "Could not update notification settings. Check your connection and try again.";
+      return t(
+        "Could not update notification settings. Check your connection and try again.",
+      );
   }
 }
 
@@ -208,6 +231,7 @@ export default function NotificationSettings({
 }: {
   auth: AuthState | null;
 }) {
+  useT();
   const accountId = auth?.user?.id ?? null;
   const [remoteEnabled, setRemoteEnabled] = useState(false);
   useEffect(() => {
@@ -268,7 +292,9 @@ export default function NotificationSettings({
     );
     if (!granted)
       local.setError(
-        "Notifications are blocked. Check notification permissions in your system settings.",
+        t(
+          "Notifications are blocked. Check notification permissions in your system settings.",
+        ),
       );
     return granted;
   };
@@ -335,12 +361,12 @@ export default function NotificationSettings({
   return (
     <>
       <SettingsSection
-        title="On this computer"
-        description="Show system notifications when tasks finish."
+        title={t("On this computer")}
+        description={t("Show system notifications when tasks finish.")}
       >
         <Toggle
           id="completion-desktop-enabled"
-          label="Notify when tasks finish"
+          label={t("Notify when tasks finish")}
           checked={preference?.enabled ?? false}
           disabled={!canLocal || localBusy}
           change={(enabled) =>
@@ -349,7 +375,7 @@ export default function NotificationSettings({
         />
         <Toggle
           id="completion-desktop-background"
-          label="Only when the main Lomi window is inactive"
+          label={t("Only when the main Lomi window is inactive")}
           checked={preference?.backgroundOnly ?? true}
           disabled={!canLocal || localBusy}
           change={(backgroundOnly) =>
@@ -358,12 +384,12 @@ export default function NotificationSettings({
         />
         {!qualified && (
           <SettingsNotice>
-            Sign in to Lomi to enable completion notifications.
+            {t("Sign in to Lomi to enable completion notifications.")}
           </SettingsNotice>
         )}
         {local.state?.permissionStatus === "denied" && !local.error && (
           <SettingsNotice role="status">
-            Notifications are blocked in system settings.
+            {t("Notifications are blocked in system settings.")}
           </SettingsNotice>
         )}
         {local.error && (
@@ -373,14 +399,18 @@ export default function NotificationSettings({
         )}
       </SettingsSection>
       <SettingsSection
-        title="On my phones"
-        description="Send completion notifications from this computer to your phones."
+        title={t("On my phones")}
+        description={t(
+          "Send completion notifications from this computer to your phones.",
+        )}
       >
         <Toggle
           id="completion-push-enabled"
-          label="Push notifications on my phones"
+          label={t("Push notifications on my phones")}
           description={
-            !remoteEnabled ? "Phone notifications require Remote." : undefined
+            !remoteEnabled
+              ? t("Phone notifications require Remote.")
+              : undefined
           }
           checked={
             !!push.state?.preferences.enabled && !!currentSource?.enabled
@@ -395,30 +425,38 @@ export default function NotificationSettings({
         />
         {!remoteEnabled && (
           <SettingsNotice role="status">
-            Remote is disabled. Notifications on this computer remain available.
+            {t(
+              "Remote is disabled. Notifications on this computer remain available.",
+            )}
           </SettingsNotice>
         )}
         {remoteEnabled && !onlineAccount && (
           <SettingsNotice>
             {auth?.status === "offline" && qualified
-              ? "Reconnect your Lomi account to manage phone notifications."
+              ? t("Reconnect your Lomi account to manage phone notifications.")
               : auth?.status === "checking"
-                ? "Checking your Lomi account before loading phone settings…"
+                ? t("Checking your Lomi account before loading phone settings…")
                 : auth?.user
-                  ? "Check your Lomi account connection to manage phone notifications."
-                  : "Sign in to Lomi to manage phone notifications."}
+                  ? t(
+                      "Check your Lomi account connection to manage phone notifications.",
+                    )
+                  : t("Sign in to Lomi to manage phone notifications.")}
           </SettingsNotice>
         )}
         {remoteEnabled && onlineAccount && !pushError && !canCloud && (
           <SettingsNotice role="status">
             {push.loading
-              ? "Loading phone notification settings…"
-              : "Phone notification settings are unavailable. Try again later."}
+              ? t("Loading phone notification settings…")
+              : t(
+                  "Phone notification settings are unavailable. Try again later.",
+                )}
           </SettingsNotice>
         )}
         {canCloud && !push.state?.featureEnabled && (
           <SettingsNotice>
-            Phone notifications are not available in this environment yet.
+            {t(
+              "Phone notifications are not available in this environment yet.",
+            )}
           </SettingsNotice>
         )}
         {canCloud &&
@@ -427,7 +465,7 @@ export default function NotificationSettings({
             (phone) => !phone.retired && phone.enabled,
           ) && (
             <SettingsNotice>
-              Enable receiving in the Lomi app on your phone.
+              {t("Enable receiving in the Lomi app on your phone.")}
             </SettingsNotice>
           )}
         {remoteEnabled && onlineAccount && pushError && (

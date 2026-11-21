@@ -14,6 +14,7 @@ import {
   Search,
 } from "./icons";
 import { Modal } from "./ui";
+import { currentLocale, msg, t, useT } from "./i18n";
 import "./project-sources.css";
 
 export type SourceKind = "new" | "local" | "url" | "github";
@@ -56,38 +57,38 @@ export const SOURCES: {
 }[] = [
   {
     kind: "new",
-    label: "New project",
-    text: "Start a new Git repository from a name",
+    label: msg("New project"),
+    text: msg("Start a new Git repository from a name"),
     Icon: FolderGit2,
   },
   {
     kind: "local",
-    label: "Local folder",
-    text: "Browse a folder on disk",
+    label: msg("Local folder"),
+    text: msg("Browse a folder on disk"),
     Icon: FolderPlus,
   },
   {
     kind: "url",
-    label: "Git URL",
-    text: "Clone from a remote URL",
+    label: msg("Git URL"),
+    text: msg("Clone from a remote URL"),
     Icon: Link,
   },
   {
     kind: "github",
-    label: "GitHub repository",
-    text: "Clone GitHub owner/repo",
+    label: msg("GitHub repository"),
+    text: msg("Clone GitHub owner/repo"),
     Icon: GithubMark,
   },
 ];
 
 export const githubHint = (status: GithubStatus | null) =>
   !status
-    ? "Checking GitHub…"
+    ? t("Checking GitHub…")
     : status.available
-      ? `Signed in as ${status.login}`
+      ? t("Signed in as {login}", { login: String(status.login) })
       : status.reason === "missing"
-        ? "Install the GitHub CLI (gh) to list your repositories"
-        : "Run gh auth login in a terminal to connect GitHub";
+        ? t("Install the GitHub CLI (gh) to list your repositories")
+        : t("Run gh auth login in a terminal to connect GitHub");
 
 let statusRequest: Promise<GithubStatus> | null = null;
 // One in-flight check shared by Welcome, the project menu and the dialog; each
@@ -124,6 +125,7 @@ export function AddProjectButton({
   className?: string;
   onSource: (kind: SourceKind) => void;
 }) {
+  const { t } = useT();
   const button = useRef<HTMLButtonElement>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   return (
@@ -142,7 +144,7 @@ export function AddProjectButton({
         }}
       >
         <Plus size={15} aria-hidden="true" />
-        Add project
+        {t("Add project")}
         <ChevronDown size={14} aria-hidden="true" />
       </button>
       {menu && (
@@ -173,21 +175,22 @@ export function ProjectSourcesMenu({
   onSource: (kind: SourceKind) => void;
   onClose: () => void;
 }) {
+  const { t } = useT();
   const github = useGithubStatus();
   return (
     <ContextMenu
       x={x}
       y={y}
       align={align}
-      label="Add project"
+      label={t("Add project")}
       className="project-sources-menu"
       showDescriptions
       trigger={trigger}
       actions={SOURCES.map(({ kind, label, text, Icon }) => {
         const unavailable = kind === "github" && !github?.available;
         return {
-          label,
-          description: unavailable ? githubHint(github) : text,
+          label: t(label),
+          description: unavailable ? githubHint(github) : t(text),
           icon: <Icon size={15} />,
           disabled: unavailable,
           run: () => onSource(kind),
@@ -232,17 +235,19 @@ function relative(date?: string | null) {
   if (!date) return "";
   const days = Math.round((Date.parse(date) - Date.now()) / 86_400_000);
   if (Number.isNaN(days)) return "";
-  const format = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
-  if (days > -1) return "today";
+  const format = new Intl.RelativeTimeFormat(currentLocale(), {
+    numeric: "auto",
+  });
+  if (days > -1) return t("today");
   if (days > -30) return format.format(days, "day");
   if (days > -365) return format.format(Math.round(days / 30), "month");
   return format.format(Math.round(days / 365), "year");
 }
 
 const TITLES: Record<Exclude<SourceKind, "local">, string> = {
-  new: "New project",
-  url: "Clone from Git URL",
-  github: "Clone from GitHub",
+  new: msg("New project"),
+  url: msg("Clone from Git URL"),
+  github: msg("Clone from GitHub"),
 };
 
 export default function OpenProjectDialog({
@@ -258,6 +263,7 @@ export default function OpenProjectDialog({
   onOpen: (path: string) => void;
   onClose: () => void;
 }) {
+  const { t } = useT();
   const [parent, setParent] = useState(
     () =>
       rememberedParent() ?? (currentProject ? parentOf(currentProject) : home),
@@ -321,7 +327,7 @@ export default function OpenProjectDialog({
       directory: true,
       multiple: false,
       defaultPath: parent,
-      title: "Choose where to put the project",
+      title: t("Choose where to put the project"),
     });
     if (typeof picked === "string") setParent(picked);
   };
@@ -361,7 +367,7 @@ export default function OpenProjectDialog({
 
   return (
     <Modal
-      title={TITLES[kind]}
+      title={t(TITLES[kind])}
       className="project-source-dialog"
       onClose={close}
       initialFocus={first}
@@ -376,7 +382,7 @@ export default function OpenProjectDialog({
         <div className="dialog-content project-source-content">
           {kind === "url" && (
             <label>
-              Repository URL
+              {t("Repository URL")}
               <input
                 ref={first}
                 value={url}
@@ -394,24 +400,20 @@ export default function OpenProjectDialog({
             (!status ? (
               <p className="project-source-status" role="status">
                 <span className="project-source-spinner" aria-hidden="true" />
-                Checking GitHub…
+                {t("Checking GitHub…")}
               </p>
             ) : !status.available ? (
               <div className="project-source-empty">
                 <GithubMark size={22} />
-                <strong>GitHub is not connected</strong>
+                <strong>{t("GitHub is not connected")}</strong>
                 <p>
-                  {status.reason === "missing" ? (
-                    <>
-                      Install the <code>gh</code> CLI, then run{" "}
-                      <code>gh auth login</code> in a terminal.
-                    </>
-                  ) : (
-                    <>
-                      Run <code>gh auth login</code> in a terminal, then open
-                      this dialog again.
-                    </>
-                  )}
+                  {status.reason === "missing"
+                    ? t(
+                        "Install the gh CLI, then run gh auth login in a terminal.",
+                      )
+                    : t(
+                        "Run gh auth login in a terminal, then open this dialog again.",
+                      )}
                 </p>
               </div>
             ) : (
@@ -420,11 +422,14 @@ export default function OpenProjectDialog({
                   <Search size={14} aria-hidden="true" />
                   <input
                     ref={first}
-                    aria-label="Search or type owner/repo"
+                    aria-label={t("Search or type owner/repo")}
                     autoFocus
                     value={query}
                     disabled={busy}
-                    placeholder={`Search ${status.login}’s repositories or type owner/repo`}
+                    placeholder={t(
+                      "Search {login}’s repositories or type owner/repo",
+                      { login: String(status.login) },
+                    )}
                     spellCheck={false}
                     autoCapitalize="off"
                     onChange={(event) => {
@@ -436,7 +441,7 @@ export default function OpenProjectDialog({
                 <div
                   className="project-source-repos"
                   role="listbox"
-                  aria-label="Your repositories"
+                  aria-label={t("Your repositories")}
                   aria-busy={repos === null && !reposError}
                 >
                   {reposError ? (
@@ -447,13 +452,13 @@ export default function OpenProjectDialog({
                         className="project-source-spinner"
                         aria-hidden="true"
                       />
-                      Loading your repositories…
+                      {t("Loading your repositories…")}
                     </p>
                   ) : filtered.length === 0 ? (
                     <p className="project-source-status">
                       {typedRepo
-                        ? `Clone ${typedRepo} directly.`
-                        : "No repositories match."}
+                        ? t("Clone {repo} directly.", { repo: typedRepo })
+                        : t("No repositories match.")}
                     </p>
                   ) : (
                     filtered.map((item) => (
@@ -470,7 +475,7 @@ export default function OpenProjectDialog({
                           <strong>
                             {item.fullName}
                             {item.private && (
-                              <Lock size={11} aria-label="Private" />
+                              <Lock size={11} aria-label={t("Private")} />
                             )}
                           </strong>
                           {item.description && (
@@ -490,12 +495,12 @@ export default function OpenProjectDialog({
           {(kind !== "github" || status?.available) && (
             <div className="project-source-fields">
               <label>
-                {kind === "new" ? "Project name" : "Folder name"}
+                {kind === "new" ? t("Project name") : t("Folder name")}
                 <input
                   ref={kind === "new" ? first : undefined}
                   value={nameEdited || kind === "new" ? name : suggested}
                   disabled={busy}
-                  placeholder={kind === "new" ? "my-app" : "repository"}
+                  placeholder={kind === "new" ? "my-app" : t("repository")}
                   spellCheck={false}
                   autoCapitalize="off"
                   maxLength={255}
@@ -506,7 +511,7 @@ export default function OpenProjectDialog({
                 />
               </label>
               <div className="project-source-location">
-                <span>Location</span>
+                <span>{t("Location")}</span>
                 <button
                   type="button"
                   className="project-source-path"
@@ -524,7 +529,7 @@ export default function OpenProjectDialog({
                       </b>
                     )}
                   </span>
-                  <em>Change</em>
+                  <em>{t("Change")}</em>
                 </button>
               </div>
             </div>
@@ -533,23 +538,25 @@ export default function OpenProjectDialog({
           {busy && kind !== "new" && (
             <p className="project-source-status" role="status">
               <span className="project-source-spinner" aria-hidden="true" />
-              Cloning{kind === "github" && chosenRepo ? ` ${chosenRepo}` : ""}…
+              {kind === "github" && chosenRepo
+                ? t("Cloning {repo}…", { repo: chosenRepo })
+                : t("Cloning…")}
             </p>
           )}
           {error && <p role="alert">{error}</p>}
         </div>
         <div className="dialog-actions">
           <button type="button" className="button" onClick={close}>
-            {busy && kind !== "new" ? "Cancel clone" : "Cancel"}
+            {busy && kind !== "new" ? t("Cancel clone") : t("Cancel")}
           </button>
           <button className="button button-primary" disabled={!ready}>
             {kind === "new"
               ? busy
-                ? "Creating…"
-                : "Create project"
+                ? t("Creating…")
+                : t("Create project")
               : busy
-                ? "Cloning…"
-                : "Clone"}
+                ? t("Cloning…")
+                : t("Clone")}
           </button>
         </div>
       </form>

@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 export type IconKind = "file" | "product";
 export interface IconDefinition {
   iconPath?: string;
@@ -313,9 +314,9 @@ export async function prepareIcons(
         if (error) reject(error);
         else resolve(face!);
       };
-      const cancel = () => finish(new Error("Icon loading was canceled."));
+      const cancel = () => finish(new Error(t("Icon loading was canceled.")));
       const timer = setTimeout(
-        () => finish(new Error("Icon font loading timed out.")),
+        () => finish(new Error(t("Icon font loading timed out."))),
         10000,
       );
       signal?.addEventListener("abort", cancel, { once: true });
@@ -346,10 +347,13 @@ export async function prepareIcons(
         await abortable(face.load());
       } catch (error) {
         throw new Error(
-          `Cannot load icon font "${font.id}": ${error instanceof Error ? error.message : String(error)}`,
+          t("Cannot load icon font {id}: {detail}", {
+            id: font.id,
+            detail: error instanceof Error ? error.message : String(error),
+          }),
         );
       }
-      if (signal?.aborted) throw new Error("Icon loading was canceled.");
+      if (signal?.aborted) throw new Error(t("Icon loading was canceled."));
       document.fonts.add(face);
       fonts[font.id] = family;
     }

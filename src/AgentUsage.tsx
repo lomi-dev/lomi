@@ -9,6 +9,7 @@ import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { CircleAlert } from "lucide-react";
 import { api, native } from "./api";
+import { t, tp, useT } from "./i18n";
 import { CliAgentIcon } from "./CliAgentIcon";
 import {
   agentUsageTargetBatches,
@@ -110,61 +111,67 @@ function entryStatus(
   failed: boolean,
   now: number,
 ) {
-  if (!entry) return failed ? "Refresh failed" : "Checking";
+  if (!entry) return failed ? t("Refresh failed") : t("Checking");
   if (failed)
     return hasUsageValues(entry)
-      ? "Refresh failed · showing saved values"
-      : "Refresh failed";
+      ? t("Refresh failed · showing saved values")
+      : t("Refresh failed");
   switch (entry.status) {
     case "ready": {
       if (!hasUsageValues(entry))
         return entry.updatedAt === null
-          ? "Not checked yet"
-          : "No quotas available";
+          ? t("Not checked yet")
+          : t("No quotas available");
       const stale =
         entry.updatedAt === null ||
         !Number.isFinite(entry.updatedAt) ||
         now - entry.updatedAt > staleAfterMs;
-      return stale ? "Out of date · showing saved values" : "Current";
+      return stale ? t("Out of date · showing saved values") : t("Current");
     }
     case "keychain-access-required":
-      return "Keychain access needed";
+      return t("Keychain access needed");
     case "unauthenticated":
-      return "Account not connected";
+      return t("Account not connected");
     case "unsupported":
-      return "Usage unavailable";
+      return t("Usage unavailable");
     case "error":
       return hasUsageValues(entry)
-        ? "Could not refresh · showing saved values"
-        : "Could not refresh usage";
+        ? t("Could not refresh · showing saved values")
+        : t("Could not refresh usage");
     case "rate-limited":
       return hasUsageValues(entry)
-        ? "Rate limited · showing saved values"
-        : "Rate limited";
+        ? t("Rate limited · showing saved values")
+        : t("Rate limited");
   }
 }
 
 function entryDescription(entry: AgentUsageEntry | null) {
-  if (!entry) return "Checking this agent's account usage.";
+  if (!entry) return t("Checking this agent's account usage.");
   switch (entry.status) {
     case "ready":
       return entry.windows.length
         ? ""
-        : "No quota windows are currently available.";
+        : t("No quota windows are currently available.");
     case "keychain-access-required":
-      return "Allow Lomi to read Cursor’s saved account from macOS Keychain.";
+      return t(
+        "Allow Lomi to read Cursor’s saved account from macOS Keychain.",
+      );
     case "unauthenticated":
-      return "Sign in to this CLI account to view usage.";
+      return t("Sign in to this CLI account to view usage.");
     case "unsupported":
-      return "Account usage is unavailable in this CLI mode.";
+      return t("Account usage is unavailable in this CLI mode.");
     case "error":
       return hasUsageValues(entry)
-        ? "The latest check failed. The last successful values are shown below."
-        : "The account usage check failed.";
+        ? t(
+            "The latest check failed. The last successful values are shown below.",
+          )
+        : t("The account usage check failed.");
     case "rate-limited":
       return hasUsageValues(entry)
-        ? "The account limited this check. The last successful values are shown below."
-        : "The account is temporarily limiting usage checks.";
+        ? t(
+            "The account limited this check. The last successful values are shown below.",
+          )
+        : t("The account is temporarily limiting usage checks.");
   }
 }
 
@@ -320,7 +327,9 @@ export function useAgentUsage() {
       if (isCurrent())
         setAuthorizationError({
           target,
-          message: "The Keychain access request could not finish. Try again.",
+          message: t(
+            "The Keychain access request could not finish. Try again.",
+          ),
         });
     } finally {
       authorization.current = null;
@@ -418,6 +427,7 @@ function AgentUsageBar({
   onAuthorize: (target: AgentUsageTarget) => Promise<void>;
   onOpen: () => void;
 }) {
+  useT();
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const agentList = useRef<HTMLDivElement>(null);
@@ -457,13 +467,21 @@ function AgentUsageBar({
           .filter((reason): reason is string => Boolean(reason)),
       ),
     ];
-    const otherStatuses = statuses.filter((status) => status !== "Current");
+    const otherStatuses = statuses.filter((status) => status !== t("Current"));
     const status =
       remainingPercent === null
         ? statuses.join(", ")
-        : `${formatPercent(remainingPercent)} remaining${stale ? ", stale data" : ""}${otherStatuses.length ? `; ${otherStatuses.join(", ")}` : ""}`;
+        : `${
+            stale
+              ? t("{percent} remaining, stale data", {
+                  percent: formatPercent(remainingPercent),
+                })
+              : t("{percent} remaining", {
+                  percent: formatPercent(remainingPercent),
+                })
+          }${otherStatuses.length ? `; ${otherStatuses.join(", ")}` : ""}`;
     const tone = worst ? windowTone(worst.window) : "unknown";
-    const summary = `${cliNames[cli]} · ${status}${remainingPercent === null && reasons.length ? ` · ${reasons.join("; ")}` : ""}`;
+    const summary = `${t("{cli} · {status}", { cli: cliNames[cli], status })}${remainingPercent === null && reasons.length ? ` · ${reasons.join("; ")}` : ""}`;
 
     return [
       {
@@ -473,15 +491,23 @@ function AgentUsageBar({
         status,
         tone,
         summary,
-        title: `${summary} · ${providerTargets.length} active session${providerTargets.length === 1 ? "" : "s"}`,
+        title: tp(
+          providerTargets.length,
+          "{summary} · {count} active session",
+          "{summary} · {count} active sessions",
+          { summary },
+        ),
       },
     ];
   });
   const count = targets.length;
-  const title = `${providers.map(({ title }) => title).join("; ")}. Open account usage details.`;
-  const label = `CLI account usage. ${providers
-    .map(({ summary }) => summary)
-    .join("; ")}. Activate to open account usage details.`;
+  const title = t("{summaries}. Open account usage details.", {
+    summaries: providers.map(({ title }) => title).join("; "),
+  });
+  const label = t(
+    "CLI account usage. {summaries}. Activate to open account usage details.",
+    { summaries: providers.map(({ summary }) => summary).join("; ") },
+  );
 
   const close = useCallback((restoreFocus: boolean) => {
     setOpen(false);
@@ -615,7 +641,7 @@ function AgentUsageBar({
             ref={menu}
             className="menu agent-usage-menu"
             role="menu"
-            aria-label="CLI account usage"
+            aria-label={t("CLI account usage")}
             style={position}
             onContextMenu={(event) => event.preventDefault()}
             onKeyDown={(event) => {
@@ -683,13 +709,13 @@ function AgentUsageBar({
             }}
           >
             <div className="agent-usage-menu-heading" role="presentation">
-              <strong>Account usage</strong>
+              <strong>{t("Account usage")}</strong>
             </div>
             <div
               ref={agentList}
               className="agent-usage-list"
               role="region"
-              aria-label="Usage details by agent"
+              aria-label={t("Usage details by agent")}
               tabIndex={0}
             >
               {groups.map(({ target, entry }, index) => {
@@ -701,7 +727,10 @@ function AgentUsageBar({
                   <section
                     className="agent-usage-agent"
                     role="group"
-                    aria-label={`${cliNames[target.process.cli]} usage ${index + 1}`}
+                    aria-label={t("{cli} usage {index}", {
+                      cli: cliNames[target.process.cli],
+                      index: index + 1,
+                    })}
                     key={`${target.id}:${target.process.cli}:${target.process.pid}`}
                   >
                     <div className="agent-usage-agent-heading">
@@ -752,16 +781,17 @@ function AgentUsageBar({
                             }
                           >
                             {authorizing && sameProcess(authorizing, entry)
-                              ? "Waiting for macOS…"
-                              : "Allow Keychain access…"}
+                              ? t("Waiting for macOS…")
+                              : t("Allow Keychain access…")}
                           </button>
                           <p className="agent-usage-description">
-                            Choose Always Allow in the macOS dialog for future
-                            checks.
+                            {t(
+                              "Choose Always Allow in the macOS dialog for future checks.",
+                            )}
                           </p>
                           <p className="agent-usage-description" role="status">
                             {authorizing && sameProcess(authorizing, entry)
-                              ? "Waiting for macOS…"
+                              ? t("Waiting for macOS…")
                               : authorizationError &&
                                   sameProcess(authorizationError.target, entry)
                                 ? authorizationError.message
@@ -782,15 +812,17 @@ function AgentUsageBar({
                     ) : !description && !message ? (
                       <p className="agent-usage-no-windows">
                         {entry
-                          ? "No quota windows to show."
-                          : "Usage data is loading."}
+                          ? t("No quota windows to show.")
+                          : t("Usage data is loading.")}
                       </p>
                     ) : null}
                     {entry?.retryAt !== null &&
                       entry?.retryAt !== undefined && (
                         <p className="agent-usage-retry">
-                          Try again after{" "}
-                          {formatReset(entry.retryAt) ?? "the next check"}.
+                          {t("Try again after {time}.", {
+                            time:
+                              formatReset(entry.retryAt) ?? t("the next check"),
+                          })}
                         </p>
                       )}
                   </section>
@@ -832,6 +864,7 @@ function UsageWindow({
   window: AgentUsageWindow;
   now: number;
 }) {
+  const { t } = useT();
   const remaining = validRemainingPercent(window.remainingPercent)
     ? window.remainingPercent
     : null;
@@ -840,28 +873,35 @@ function UsageWindow({
   const reset = formatReset(window.resetsAt);
   const countdown = formatCountdown(window.resetsAt, now);
   const pace = remaining === null ? null : paceRemaining(window, now);
-  const label = window.label || "Quota window";
+  const label = window.label || t("Quota window");
   const amount =
     used && limit
-      ? `${used} used / ${limit}`
+      ? t("{used} used / {limit}", { used, limit })
       : used
-        ? `${used} used`
+        ? t("{used} used", { used })
         : limit
-          ? `Limit ${limit}`
+          ? t("Limit {limit}", { limit })
           : null;
 
   return (
     <div
       className="agent-usage-window"
       data-tone={windowTone(window)}
-      title={[amount, reset ? `Resets ${reset}` : "Reset time unavailable"]
+      title={[
+        amount,
+        reset
+          ? t("Resets {time}", { time: reset })
+          : t("Reset time unavailable"),
+      ]
         .filter(Boolean)
         .join(" · ")}
     >
       <div className="agent-usage-window-heading">
         <span className="agent-usage-window-label">{label}</span>
         <span className="agent-usage-window-reset">
-          {countdown ? `resets in ${countdown}` : "reset unknown"}
+          {countdown
+            ? t("resets in {time}", { time: countdown })
+            : t("reset unknown")}
         </span>
       </div>
       <div className="agent-usage-window-body">
@@ -871,14 +911,21 @@ function UsageWindow({
         <div
           className="agent-usage-meter"
           role={remaining === null ? undefined : "meter"}
-          aria-label={`${label} quota`}
+          aria-label={t("{label} quota", { label })}
           aria-valuemin={remaining === null ? undefined : 0}
           aria-valuemax={remaining === null ? undefined : 100}
           aria-valuenow={remaining ?? undefined}
           aria-valuetext={
             remaining === null
               ? undefined
-              : `${formatPercent(remaining)} remaining${reset ? `, resets ${reset}` : ""}`
+              : reset
+                ? t("{percent} remaining, resets {time}", {
+                    percent: formatPercent(remaining),
+                    time: reset,
+                  })
+                : t("{percent} remaining", {
+                    percent: formatPercent(remaining),
+                  })
           }
         >
           <span className="agent-usage-meter-cells">
@@ -893,7 +940,7 @@ function UsageWindow({
             <span
               className="agent-usage-meter-pace"
               style={{ left: `${pace}%` }}
-              title="Even pace for the time left in this window"
+              title={t("Even pace for the time left in this window")}
             />
           )}
         </div>

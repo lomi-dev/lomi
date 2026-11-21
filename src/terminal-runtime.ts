@@ -1,4 +1,5 @@
 import type { CliAgent } from "./cli-agents";
+import { t } from "./i18n";
 import { Channel } from "@tauri-apps/api/core";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -480,7 +481,7 @@ export class TerminalRuntime {
       this.update({
         searchResult: resultCount
           ? `${resultIndex + 1} / ${resultCount}`
-          : "No matches",
+          : t("No matches"),
       }),
     );
   }
@@ -563,7 +564,7 @@ export class TerminalRuntime {
             () =>
               reject(
                 new Error(
-                  "Terminal input is still pending. The shell may be busy.",
+                  t("Terminal input is still pending. The shell may be busy."),
                 ),
               ),
             500,
@@ -916,10 +917,12 @@ export class TerminalRuntime {
     // xterm can parse and acknowledge output before attach reuses this startPromise.
     await this.start();
     if (this.snapshot.status === "error")
-      throw new Error(this.snapshot.error ?? "Terminal could not start.");
+      throw new Error(this.snapshot.error ?? t("Terminal could not start."));
     if (this.hostBinding && this.snapshot.status !== "running")
       throw new Error(
-        "The shared host terminal is unavailable. Restart it explicitly to create a new shell.",
+        t(
+          "The shared host terminal is unavailable. Restart it explicitly to create a new shell.",
+        ),
       );
   }
 
@@ -1244,8 +1247,9 @@ export class TerminalRuntime {
       this.loseSharedHostLease();
       this.update({
         status: "error",
-        error:
+        error: t(
           "The shared terminal connection was lost. Reopen the terminal to reconnect.",
+        ),
       });
       return;
     }
@@ -1258,8 +1262,9 @@ export class TerminalRuntime {
         this.hostPendingFrameBytes = 0;
         this.update({
           status: "error",
-          error:
+          error: t(
             "The shared terminal snapshot arrived too quickly. Reopen the terminal to retry.",
+          ),
         });
         return;
       }
@@ -1285,7 +1290,9 @@ export class TerminalRuntime {
           : "invalid terminal stream";
       this.update({
         status: "error",
-        error: `The shared terminal needs to be reopened (${reason}).`,
+        error: t("The shared terminal needs to be reopened ({reason}).", {
+          reason,
+        }),
       });
     }
   }
@@ -1503,7 +1510,7 @@ export class TerminalRuntime {
     const terminal = this.hostTerminal;
     const lease = this.hostLease;
     if (!terminal || !lease || !this.hostFocused)
-      throw new Error("Focus this terminal window to send input.");
+      throw new Error(t("Focus this terminal window to send input."));
     const encoder = new TextEncoder();
     let bytes = new Uint8Array(0);
     let text = "";
@@ -1544,7 +1551,9 @@ export class TerminalRuntime {
       // require a fresh lease instead of sending these bytes again.
       void this.releaseSharedHostControl();
       throw new Error(
-        "The shared terminal input could not be confirmed and was not retried. Reopen the terminal before sending more.",
+        t(
+          "The shared terminal input could not be confirmed and was not retried. Reopen the terminal before sending more.",
+        ),
       );
     }
   }
@@ -1590,9 +1599,13 @@ export class TerminalRuntime {
     this.terminal.write("", () => {
       this.finishBlock(this.exitCode ?? undefined);
       this.update({ status: "exited" });
-      this.terminal.writeln(
-        `\r\n\x1b[2mSession ended${this.exitCode === null ? "" : ` (exit ${this.exitCode})`}. Use Restart to open a new shell.\x1b[0m`,
-      );
+      const ended =
+        this.exitCode == null
+          ? t("Session ended. Use Restart to open a new shell.")
+          : t("Session ended (exit {code}). Use Restart to open a new shell.", {
+              code: this.exitCode,
+            });
+      this.terminal.writeln(`\r\n\x1b[2m${ended}\x1b[0m`);
     });
   }
 
@@ -1660,7 +1673,7 @@ export class TerminalRuntime {
   execute(command: string) {
     if (!command.trim()) return;
     if (command.length > 1_048_576) {
-      reportError("The command input exceeds 1 MiB.");
+      reportError(t("The command input exceeds 1 MiB."));
       return;
     }
     this.nextCommand = command;
@@ -1757,7 +1770,7 @@ export class TerminalRuntime {
       if (previous) this.searchAddon.findPrevious(query, options);
       else this.searchAddon.findNext(query, options);
     } catch {
-      this.update({ searchResult: "Invalid expression" });
+      this.update({ searchResult: t("Invalid expression") });
     }
   }
 

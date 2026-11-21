@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { useT } from "../i18n";
 import type { CliAgent } from "../cli-agents";
 import { Check, ChevronDown } from "../icons";
 import { ProviderIcon } from "../ProviderIcon";
@@ -106,6 +107,7 @@ export default function ProviderModelPicker({
   onChange: (choice: Choice) => void;
   disabled: boolean;
 }) {
+  const { t } = useT();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const groups = useModelGroups(entries);
@@ -149,7 +151,7 @@ export default function ProviderModelPicker({
       >
         {entry && <ProviderIcon kind={entry.kind} cli={entry.cli} />}
         <span className="thread-picker-label">
-          {current?.label || value.model || "Choose a model"}
+          {current?.label || value.model || t("Choose a model")}
         </span>
         <ChevronDown size={13} aria-hidden="true" />
       </button>
@@ -159,8 +161,8 @@ export default function ProviderModelPicker({
             className="thread-picker-search"
             type="search"
             autoFocus
-            aria-label="Search models"
-            placeholder="Search models"
+            aria-label={t("Search models")}
+            placeholder={t("Search models")}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
@@ -178,7 +180,7 @@ export default function ProviderModelPicker({
           <div className="thread-picker-groups">
             {visible.length === 0 && (
               <p className="thread-picker-empty">
-                {needle ? "No models match." : "No models available."}
+                {needle ? t("No models match.") : t("No models available.")}
               </p>
             )}
             {visible.map(({ item, models }) => (

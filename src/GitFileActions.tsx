@@ -6,6 +6,7 @@ import type { GitChange, GitCommitSummary } from "./api";
 import ContextMenu from "./ContextMenu";
 import GitHistory from "./GitHistory";
 import { Modal } from "./ui";
+import { useT } from "./i18n";
 
 interface GitFile {
   path: string;
@@ -28,6 +29,7 @@ export function useGitFileActions(props: {
     onRefresh: () => void;
   };
 }) {
+  const { t } = useT();
   const [context, setContext] = useState<{
     file: GitFile;
     x: number;
@@ -95,20 +97,20 @@ export function useGitFileActions(props: {
     <ContextMenu
       x={context.x}
       y={context.y}
-      label={`Source control actions for ${file.path}`}
+      label={t("Source control actions for {path}", { path: file.path })}
       onClose={dismiss}
       actions={[
         ...(change && props.working
           ? [
               {
-                label: file.staged ? "Unstage file" : "Stage file",
+                label: file.staged ? t("Unstage file") : t("Stage file"),
                 disabled,
                 run: () => props.working!.onStage(change, !file.staged),
               },
               ...(!file.staged
                 ? [
                     {
-                      label: "Discard changes…",
+                      label: t("Discard changes…"),
                       danger: true,
                       disabled,
                       run: () => {
@@ -120,12 +122,12 @@ export function useGitFileActions(props: {
                 : []),
               null,
               {
-                label: "Unstaged changes",
+                label: t("Unstaged changes"),
                 disabled: [" ", "!"].includes(change.worktree),
                 run: () => props.onDiff(file.path, false),
               },
               {
-                label: "Staged changes",
+                label: t("Staged changes"),
                 disabled: [" ", "?", "!"].includes(change.index),
                 run: () => props.onDiff(file.path, true),
               },
@@ -133,26 +135,26 @@ export function useGitFileActions(props: {
             ]
           : []),
         {
-          label: "Copy path",
+          label: t("Copy path"),
           run: () =>
             run(() =>
               writeText(`${props.root.replace(/[\\/]$/, "")}/${file.path}`),
             ),
         },
         {
-          label: "Copy relative path",
+          label: t("Copy relative path"),
           run: () => run(() => writeText(file.path)),
         },
         ...(change
           ? [
               null,
               {
-                label: "Add to .gitignore",
+                label: t("Add to .gitignore"),
                 disabled: disabled || change.index !== "?",
                 run: () => ignore(false),
               },
               {
-                label: "Add to .git/info/exclude",
+                label: t("Add to .git/info/exclude"),
                 disabled: disabled || change.index !== "?",
                 run: () => ignore(true),
               },
@@ -160,16 +162,16 @@ export function useGitFileActions(props: {
           : []),
         null,
         {
-          label: "Open diff",
+          label: t("Open diff"),
           run: () => props.onDiff(file.path, !!file.staged),
         },
         {
-          label: change ? "View file" : "View working file",
+          label: change ? t("View file") : t("View working file"),
           disabled: file.deleted || file.path.endsWith("/"),
           run: () => props.onOpenFile(file.path),
         },
         null,
-        { label: "View file history", run: () => setHistory(file.path) },
+        { label: t("View file history"), run: () => setHistory(file.path) },
       ]}
     />
   );
@@ -177,7 +179,7 @@ export function useGitFileActions(props: {
     <>
       {history !== undefined && (
         <Modal
-          title={`Git History · ${history}`}
+          title={t("Git History · {path}", { path: history })}
           wide
           className="file-history-dialog"
           onClose={() => setHistory(undefined)}
@@ -197,7 +199,7 @@ export function useGitFileActions(props: {
       {discard && (
         <Modal
           protectTheme
-          title="Discard changes"
+          title={t("Discard changes")}
           tone="danger"
           closeDisabled={busy}
           onClose={() => {
@@ -223,17 +225,12 @@ export function useGitFileActions(props: {
           >
             <div className="dialog-content">
               <p>
-                {discard.index === "?" ? (
-                  <>
-                    Move <strong>{discard.path}</strong> to the trash?
-                  </>
-                ) : (
-                  <>
-                    Discard unstaged changes in <strong>{discard.path}</strong>?
-                    The file will be restored to its staged version. This cannot
-                    be undone.
-                  </>
-                )}
+                {discard.index === "?"
+                  ? t("Move {path} to the trash?", { path: discard.path })
+                  : t(
+                      "Discard unstaged changes in {path}? The file will be restored to its staged version. This cannot be undone.",
+                      { path: discard.path },
+                    )}
               </p>
               {error && (
                 <p className="text-error" role="alert">
@@ -248,7 +245,7 @@ export function useGitFileActions(props: {
                 disabled={busy}
                 onClick={() => setDiscard(undefined)}
               >
-                Cancel
+                {t("Cancel")}
               </button>
               <button
                 type="submit"
@@ -256,10 +253,10 @@ export function useGitFileActions(props: {
                 disabled={disabled}
               >
                 {busy
-                  ? "Working…"
+                  ? t("Working…")
                   : discard.index === "?"
-                    ? "Move to trash"
-                    : "Discard changes"}
+                    ? t("Move to trash")
+                    : t("Discard changes")}
               </button>
             </div>
           </form>

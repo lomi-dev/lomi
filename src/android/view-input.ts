@@ -1,4 +1,5 @@
 import { api, errorMessage } from "../api";
+import { t } from "../i18n";
 import { reportAndroidError } from "./service";
 import { touchPoint, type AndroidFrame } from "./frame";
 import type { AndroidRenderer } from "./canvas";
@@ -69,7 +70,7 @@ async function drain() {
           const reply = await send(focus, { type: "focus", viewId: focus.id });
           if (!reply.lease)
             throw new Error(
-              "Android did not grant input focus. Focus the phone again.",
+              t("Android did not grant input focus. Focus the phone again."),
             );
           owner = { ...focus, lease: reply.lease, sequence: 0 };
           continue;
@@ -173,7 +174,9 @@ export function enqueueInput(id: string, event: InputEvent) {
   if (queue.length >= 64 || bytes + size > 32768 || size > 16384) {
     void releaseInput();
     reportAndroidError(
-      "Android input exceeded its queue limit. Gesture release was requested; focus the phone and retry with less text.",
+      t(
+        "Android input exceeded its queue limit. Gesture release was requested; focus the phone and retry with less text.",
+      ),
     );
     return;
   }

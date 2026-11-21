@@ -11,6 +11,7 @@ import {
 } from "./icons";
 import type { SidebarPanel, SidebarSide } from "./model";
 import { IconButton } from "./ui";
+import { useT } from "./i18n";
 
 export default function SidebarToggle({
   panel,
@@ -33,18 +34,19 @@ export default function SidebarToggle({
   onToggle: () => void;
   onMove: (side: SidebarSide) => void;
 }) {
+  const { t } = useT();
   const [anchor, setAnchor] = useState<{ x: number; y: number }>();
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const name =
     panel === "files"
-      ? "Explorer"
+      ? t("Explorer")
       : panel === "git"
-        ? "Source Control"
+        ? t("Source Control")
         : panel === "terminalOverview"
-          ? "Terminal overview"
+          ? t("Terminal overview")
           : panel === "workspaces"
-            ? "Workspaces"
+            ? t("Workspaces")
             : title;
   const dismiss = () => {
     setAnchor(undefined);
@@ -80,6 +82,7 @@ export default function SidebarToggle({
       <IconButton
         title={title}
         className={className}
+        data-sidebar-toggle={panel}
         aria-pressed={active}
         disabled={disabled}
         aria-haspopup="menu"
@@ -125,7 +128,7 @@ export default function SidebarToggle({
             ref={menu}
             className="menu sidebar-context-menu"
             role="menu"
-            aria-label={`${name} panel position`}
+            aria-label={t("{name} panel position", { name })}
             style={{ left: anchor.x, top: anchor.y }}
             onContextMenu={(event) => event.preventDefault()}
             onBlur={(event) => {
@@ -179,8 +182,8 @@ export default function SidebarToggle({
                 )}
                 <span>
                   {position === "left"
-                    ? "Panel on the left"
-                    : "Panel on the right"}
+                    ? t("Panel on the left")
+                    : t("Panel on the right")}
                 </span>
                 {side === position && <Check size={14} />}
               </button>

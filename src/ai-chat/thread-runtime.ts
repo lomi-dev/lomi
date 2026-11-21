@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { Channel } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { api, errorMessage } from "../api";
+import { t } from "../i18n";
 import type {
   ChatItem,
   ThreadMessage,
@@ -167,7 +168,7 @@ class ThreadView {
     text: string;
     attachments: string[];
   }) {
-    if (this.sending) throw new Error("A message is already being sent.");
+    if (this.sending) throw new Error(t("A message is already being sent."));
     this.sending = true;
     this.update({ busy: true, error: "" });
     const onEvent = new Channel<ThreadStreamEvent>();
@@ -283,7 +284,7 @@ export function apiMessages(
       streaming: active(message),
       error: failed
         ? (message.error ??
-          "The response was interrupted; the partial reply was kept.")
+          t("The response was interrupted; the partial reply was kept."))
         : message.state === "completed"
           ? message.error
           : null,

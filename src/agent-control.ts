@@ -20,6 +20,7 @@ import {
 import type { ControlStartupState } from "./agent-control-startup";
 import { listen } from "@tauri-apps/api/event";
 import { api, native } from "./api";
+import { msg, t, tp } from "./i18n";
 import type { KeybindingPatch, KeybindingSource } from "./agent-keybindings";
 import type {
   EditorReadInput,
@@ -1115,8 +1116,15 @@ export function useAgentControlBridge(
                   {
                     description:
                       action.type === "close_project"
-                        ? `An agent requested closing ${basename(project.path)} and its ${workspaces.length} workspaces. Saving keeps the project open so the agent can request closing again after the saved changes.`
-                        : "An agent requested closing this workspace. Saving keeps it open so the agent can request closing again after the saved changes.",
+                        ? tp(
+                            workspaces.length,
+                            "An agent requested closing {project} and its {count} workspace. Saving keeps the project open so the agent can request closing again after the saved changes.",
+                            "An agent requested closing {project} and its {count} workspaces. Saving keeps the project open so the agent can request closing again after the saved changes.",
+                            { project: basename(project.path) },
+                          )
+                        : t(
+                            "An agent requested closing this workspace. Saving keeps it open so the agent can request closing again after the saved changes.",
+                          ),
                     isActive,
                     onSaveStart: async () => {
                       if (!(await isActive()))
@@ -2458,7 +2466,7 @@ export function useAgentControlBridge(
               const tab: BrowserTab = {
                 type: "browser",
                 id: action.panelId,
-                title: "Agent browser",
+                title: msg("Agent browser"),
                 url: action.url,
                 automation: {
                   generation: action.browserGeneration,

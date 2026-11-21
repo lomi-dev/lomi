@@ -1,6 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { Channel } from "@tauri-apps/api/core";
 import { api, errorMessage } from "./api";
+import { t } from "./i18n";
 import { browserTabs } from "./model";
 import type { BrowserTab, Session } from "./model";
 
@@ -203,7 +204,7 @@ function schedule() {
       queueMicrotask(() => {
         hiddenSyncQueued = false;
         void synchronize().catch((error) =>
-          onError(`Browser: ${errorMessage(error)}`),
+          onError(t("Browser: {error}", { error: errorMessage(error) })),
         );
       });
     }
@@ -213,7 +214,7 @@ function schedule() {
     frame = requestAnimationFrame(() => {
       frame = 0;
       void synchronize().catch((error) =>
-        onError(`Browser: ${errorMessage(error)}`),
+        onError(t("Browser: {error}", { error: errorMessage(error) })),
       );
     });
 }
