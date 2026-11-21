@@ -4,7 +4,6 @@ import { api, errorMessage, native } from "./api";
 import { CliAgentIcon } from "./CliAgentIcon";
 import { ArrowLeft, Check, ChevronRight, RefreshCw, Search } from "./icons";
 import type { TitleProcess } from "./terminal-runtime";
-import { DisclosureSummary } from "./ui";
 import { SettingRow, SettingsNotice, SettingsSection } from "./settings-ui";
 
 interface McpClient {
@@ -205,21 +204,30 @@ export function McpClientsSettings({
           <div className="agent-control-section-heading">
             <div>
               <h2 id="mcp-clients-heading">Choose your agent</h2>
-              <p>
-                {yoloMode
-                  ? "Choose the coding agent you already use. Add the Lomi connection, then restart the agent. YOLO mode approves its Lomi session automatically."
-                  : "Choose the coding agent you already use. Add the Lomi connection, restart the agent, then review its request in Sessions."}
-              </p>
             </div>
-            <button
-              type="button"
-              className="icon-button agent-client-refresh"
-              aria-label="Refresh"
-              disabled={!native || busy || loading}
-              onClick={() => void refresh()}
-            >
-              <RefreshCw size={15} aria-hidden="true" />
-            </button>
+            <div className="agent-client-heading-actions">
+              {clients.length > 0 && (
+                <button
+                  type="button"
+                  className="button"
+                  disabled={!native || busy || loading || !eligible.length}
+                  onClick={() => void install(eligible)}
+                >
+                  {busy
+                    ? "Setting up…"
+                    : `Set up all eligible clients (${eligible.length})`}
+                </button>
+              )}
+              <button
+                type="button"
+                className="icon-button agent-client-refresh"
+                aria-label="Refresh"
+                disabled={!native || busy || loading}
+                onClick={() => void refresh()}
+              >
+                <RefreshCw size={15} aria-hidden="true" />
+              </button>
+            </div>
           </div>
 
           {!native && (
@@ -359,47 +367,6 @@ export function McpClientsSettings({
                   </button>
                 </div>
               )}
-
-              <p className="settings-footnote agent-client-configuration-help">
-                Configured means the connection is saved in the agent’s
-                settings. Connected agents appear in Sessions.
-              </p>
-
-              <details className="settings-disclosure agent-control-details">
-                <DisclosureSummary>All client configurations</DisclosureSummary>
-                <div className="settings-disclosure-body agent-control-details-content">
-                  <ul className="agent-setup-client-list">
-                    {clients.map((client) => (
-                      <li key={client.cli}>
-                        <span className="agent-setup-client-list-identity">
-                          <CliAgentIcon
-                            cli={client.cli}
-                            className="agent-setup-client-list-icon"
-                          />
-                          <span>{client.name}</span>
-                        </span>
-                        <span className="agent-setup-client-status">
-                          {clientStatus(client)}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="settings-help">
-                    Adds Lomi to every eligible client for all projects and
-                    starts the server. Client apps aren’t installed.
-                  </p>
-                  <button
-                    type="button"
-                    className="button"
-                    disabled={!native || busy || loading || !eligible.length}
-                    onClick={() => void install(eligible)}
-                  >
-                    {busy
-                      ? "Setting up…"
-                      : `Set up all eligible clients (${eligible.length})`}
-                  </button>
-                </div>
-              </details>
             </>
           )}
         </div>
@@ -448,7 +415,7 @@ export function McpClientsSettings({
               label="Connection setup"
               description={
                 selected.configured
-                  ? `The Lomi connection is saved in ${selected.name} settings. It does not grant access by itself.`
+                  ? `The Lomi connection is saved in ${selected.name} settings.`
                   : selected.manualReason
                     ? selected.manualReason
                     : selected.error
@@ -490,7 +457,7 @@ export function McpClientsSettings({
                 description={
                   serverEnabled
                     ? "The server can accept connection requests. Manage connected agents in Sessions."
-                    : "Start the local server before restarting your agent. Starting it does not grant access by itself."
+                    : "Start the local server before restarting your agent."
                 }
               >
                 <span className="agent-setup-server-status" role="status">
@@ -539,9 +506,8 @@ export function McpClientsSettings({
             )}
           </SettingsSection>
 
-          <details className="settings-disclosure agent-control-details">
-            <DisclosureSummary>Setup details</DisclosureSummary>
-            <div className="settings-disclosure-body agent-control-details-content">
+          <SettingsSection title="Setup details">
+            <div className="agent-control-details-content">
               <dl>
                 <dt>Configuration path</dt>
                 <dd>{selected.path || "Not reported"}</dd>
@@ -549,7 +515,7 @@ export function McpClientsSettings({
                 <dd>{selected.revision ?? "Not tracked"}</dd>
               </dl>
             </div>
-          </details>
+          </SettingsSection>
         </div>
       )}
     </section>

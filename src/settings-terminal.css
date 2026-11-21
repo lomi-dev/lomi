@@ -1,0 +1,200 @@
+/* Settings → Terminal: live preview and color chips. */
+.terminal-settings-page .setting-controls .terminal-unit-field {
+  position: relative;
+  flex: none;
+}
+.terminal-settings-page .setting-controls .terminal-unit-field > input {
+  width: 120px;
+  padding-right: 52px;
+}
+.terminal-unit-field::after {
+  content: attr(data-unit);
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  color: var(--color-muted-text);
+  font-size: var(--font-size-13);
+  pointer-events: none;
+}
+.terminal-settings-page .setting-controls .select-trigger {
+  width: 200px;
+}
+
+.terminal-settings-page .terminal-preview {
+  margin: 0;
+  padding: 16px 18px;
+  border: 0;
+  border-radius: 0;
+  white-space: pre;
+  overflow: hidden;
+  user-select: none;
+}
+.terminal-preview > div {
+  min-height: 1.25em;
+}
+.terminal-preview-cursor {
+  display: inline-block;
+  box-sizing: border-box;
+}
+.terminal-preview-cursor[data-style="bar"] {
+  width: var(--cursor-width);
+  background: var(--cursor);
+}
+.terminal-preview-cursor[data-style="block"] {
+  width: 1ch;
+  background: var(--cursor);
+  color: var(--cursor-text);
+}
+.terminal-preview-cursor[data-style="underline"] {
+  width: 1ch;
+  border-bottom: 2px solid var(--cursor);
+}
+
+.terminal-color-group > h3 {
+  margin: 0;
+  color: var(--color-surface-text);
+  font-size: var(--font-size-13);
+  font-weight: 600;
+}
+.terminal-color-group > p {
+  margin: var(--space-4) 0 0;
+  color: var(--color-muted-text);
+  font-size: var(--font-size-13);
+}
+.terminal-chip-grid,
+.terminal-ansi-grid {
+  margin-top: var(--space-16);
+}
+.terminal-chip-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: var(--space-16) var(--space-24);
+}
+.terminal-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  min-width: 0;
+}
+.terminal-chip-body {
+  flex: 1;
+  min-width: 0;
+}
+.terminal-chip-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: 20px;
+}
+.terminal-chip-head label {
+  overflow: hidden;
+  color: var(--color-surface-text);
+  font-size: var(--font-size-13);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.terminal-chip[data-overridden] .terminal-chip-head label::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--color-accent, currentColor);
+  vertical-align: middle;
+}
+.settings-dialog .settings-page .terminal-chip-body > input {
+  width: 100%;
+  min-height: 30px;
+  padding: 0 var(--space-8);
+  border-radius: 8px;
+  font-family: "Geist Mono", monospace;
+  font-size: var(--font-size-12);
+}
+.settings-dialog .settings-page input.terminal-swatch[type="color"] {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+}
+.terminal-chip-reset {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--color-muted-text);
+  cursor: pointer;
+}
+.terminal-chip-reset:hover:not(:disabled) {
+  background: var(--sheet-field);
+  color: var(--color-surface-text);
+}
+.terminal-chip-reset:focus-visible,
+.terminal-swatch:focus-visible {
+  outline: 2px solid var(--color-focus, var(--color-surface-text));
+  outline-offset: 2px;
+}
+
+.terminal-ansi-grid {
+  display: grid;
+  grid-template-columns: 56px repeat(8, minmax(0, 1fr));
+  align-items: start;
+  gap: var(--space-12) var(--space-8);
+}
+.terminal-ansi-grid > span {
+  align-self: center;
+  color: var(--color-muted-text);
+  font-size: var(--font-size-13);
+}
+.terminal-ansi-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.terminal-ansi-cell > span {
+  color: var(--color-muted-text);
+  font-size: var(--font-size-12);
+}
+.settings-dialog .settings-page .terminal-ansi-cell input.terminal-swatch {
+  width: 100%;
+  max-width: 44px;
+  height: 36px;
+}
+.terminal-ansi-cell .terminal-chip-reset {
+  position: absolute;
+  top: -6px;
+  right: calc(50% - 28px);
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--sheet-line);
+  border-radius: 50%;
+  background: var(--sheet-card);
+}
+
+/* Preview sits in a small terminal window, inset from the card edges. */
+.settings-dialog .settings-group > .terminal-preview-frame {
+  margin: 0 var(--space-24) var(--space-20);
+  padding: 0;
+  overflow: hidden;
+  border: var(--border-width) solid var(--sheet-line);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px -18px rgb(0 0 0 / 0.6);
+}
+.settings-dialog .settings-group > .setting-row + .terminal-preview-frame {
+  border-top: var(--border-width) solid var(--sheet-line);
+}
+.terminal-preview > div {
+  line-height: inherit;
+}
+.settings-dialog .settings-group > .setting-row:has(+ .terminal-preview-frame) {
+  padding-bottom: var(--space-14);
+  border-bottom: 0;
+}

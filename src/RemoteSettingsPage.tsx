@@ -240,14 +240,7 @@ export default function RemoteSettingsPage({
   const sharedWorkspaces =
     state?.workspaces.filter((workspace) => workspace.shared) ?? [];
   return (
-    <SettingsPage
-      title="Remote"
-      description={
-        available
-          ? "Connect to another Lomi host or manage this device’s shared workspaces."
-          : undefined
-      }
-    >
+    <SettingsPage title="Remote">
       {available && error && (
         <SettingsNotice tone="error" role="alert">
           {error}
@@ -442,9 +435,8 @@ export default function RemoteSettingsPage({
             }
           >
             <p className="settings-help">
-              Editors, chats, browsers and other desktop-only panels stay on
-              this device. Workspace sharing applies to the host-owned
-              terminals.
+              Editors, browsers and other desktop-only panels stay on this
+              device. Workspace sharing applies to the host-owned terminals.
             </p>
           </SettingsSection>
           <SettingsSection

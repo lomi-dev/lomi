@@ -85,6 +85,8 @@ struct UsageWindow {
     limit: Option<f64>,
     unit: Option<String>,
     resets_at: Option<i64>,
+    /// Window length, when the provider defines it; lets the UI show elapsed pace.
+    window_seconds: Option<i64>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -1384,6 +1386,23 @@ fn decode_native_keychain(
     }
 }
 
+/// Claude Code's OAuth access token for Lomi's own environment (default config dir).
+/// Blocking: may run `/usr/bin/security` with a short deadline on macOS.
+pub(crate) fn claude_access_token() -> Option<zeroize::Zeroizing<String>> {
+    let config = std::env::var_os("CLAUDE_CONFIG_DIR").map(PathBuf::from);
+    let paths = UsageProcessPaths {
+        claude_config_dir: config.clone(),
+        ..Default::default()
+    };
+    let namespace = UsageNamespace {
+        cli: TitleCli::Claude,
+        directory: config.unwrap_or_else(|| crate::shell::home().join(".claude")),
+        store: String::new(),
+    };
+    let (token, ..) = resolve_claude(&paths, &namespace).ok()??;
+    Some(zeroize::Zeroizing::new(token))
+}
+
 fn resolve_claude(
     paths: &UsageProcessPaths,
     _namespace: &UsageNamespace,
@@ -1397,7 +1416,11 @@ fn resolve_claude(
     let document: Value = {
         let service = claude_keychain_service(paths)?;
         let account = claude_keychain_account(paths);
-        let Some(serialized) = read_native_keychain(&service, &account)? else {
+        let serialized = match read_native_keychain(&service, &account) {
+            Err(AuthReadError::Error(_)) => read_claude_keychain_via_security(&service, &account)?,
+            other => other?,
+        };
+        let Some(serialized) = serialized else {
             return Ok(None);
         };
         serde_json::from_str(&serialized).map_err(|_| {
@@ -1433,6 +1456,57 @@ fn resolve_claude(
         }
     }
     Ok(Some((token, None, None, None)))
+}
+
+// Claude Code rewrites its Keychain item through /usr/bin/security on every
+// token refresh, which resets the item's access list to trust only that tool.
+// A silent native read from Lomi is then denied, so read the item the same way
+// Claude Code does. The trusted tool reads without a dialog; the deadline kills
+// the child if the access list ever changes and macOS would ask instead.
+#[cfg(target_os = "macos")]
+fn read_claude_keychain_via_security(
+    service: &str,
+    account: &str,
+) -> Result<Option<String>, AuthReadError> {
+    use std::process::{Command, Stdio};
+    const UNAVAILABLE: &str = "The system credential store is locked or unavailable.";
+    let mut child = Command::new("/usr/bin/security")
+        .args(["find-generic-password", "-s", service, "-a", account, "-w"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|_| AuthReadError::Error(UNAVAILABLE))?;
+    // shortcut: stdout is drained after exit, so output above the pipe buffer
+    // would stall; Claude credentials are a few KiB, far below that limit.
+    let deadline = Instant::now() + Duration::from_secs(3);
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(20)),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(AuthReadError::Error(UNAVAILABLE));
+            }
+        }
+    };
+    // 44 is errSecItemNotFound.
+    if status.code() == Some(44) {
+        return Ok(None);
+    }
+    if !status.success() {
+        return Err(AuthReadError::Error(UNAVAILABLE));
+    }
+    let mut secret = String::new();
+    child
+        .stdout
+        .take()
+        .ok_or(AuthReadError::Error(UNAVAILABLE))?
+        .take(MAX_CREDENTIAL_BYTES as u64 + 1)
+        .read_to_string(&mut secret)
+        .map_err(|_| AuthReadError::Error(UNAVAILABLE))?;
+    decode_native_keychain(Ok(secret))
 }
 
 #[cfg(target_os = "macos")]
@@ -2490,6 +2564,9 @@ fn append_codex_rate_windows(
             limit: None,
             unit: None,
             resets_at: epoch_millis_any(window, &["reset_at", "resetsAt"]),
+            window_seconds: duration_seconds
+                .filter(|seconds| seconds.is_finite() && *seconds > 0.0)
+                .map(|seconds| seconds as i64),
         });
     }
 }
@@ -2511,19 +2588,22 @@ fn format_duration(seconds: f64) -> String {
     }
 }
 
+const FIVE_HOURS: i64 = 5 * 3600;
+const ONE_WEEK: i64 = 7 * 86400;
+
 fn parse_claude_usage(value: &Value) -> Result<Vec<UsageWindow>, FetchFailure> {
     let Some(object) = value.as_object() else {
         return Err(unrecognized_response());
     };
     let known = [
-        ("five_hour", "5-hour"),
-        ("seven_day", "Weekly"),
-        ("seven_day_opus", "Weekly Opus"),
-        ("seven_day_sonnet", "Weekly Sonnet"),
-        ("seven_day_oauth_apps", "Weekly OAuth apps"),
+        ("five_hour", "5-hour", FIVE_HOURS),
+        ("seven_day", "Weekly", ONE_WEEK),
+        ("seven_day_opus", "Weekly Opus", ONE_WEEK),
+        ("seven_day_sonnet", "Weekly Sonnet", ONE_WEEK),
+        ("seven_day_oauth_apps", "Weekly OAuth apps", ONE_WEEK),
     ];
     let mut windows = Vec::new();
-    for (field, label) in known {
+    for (field, label, window_seconds) in known {
         if let Some(bucket) = object.get(field).and_then(Value::as_object) {
             let utilization = number_any(bucket, &["utilization"]).filter(|value| *value >= 0.0);
             if let Some(utilization) = utilization {
@@ -2534,6 +2614,7 @@ fn parse_claude_usage(value: &Value) -> Result<Vec<UsageWindow>, FetchFailure> {
                     limit: None,
                     unit: None,
                     resets_at: epoch_millis_any(bucket, &["resets_at", "resetsAt"]),
+                    window_seconds: Some(window_seconds),
                 });
             }
         }
@@ -2567,6 +2648,7 @@ fn parse_cursor_usage(value: &Value) -> Result<Vec<UsageWindow>, FetchFailure> {
         limit: None,
         unit: None,
         resets_at,
+        window_seconds: None,
     }])
 }
 
@@ -2575,13 +2657,13 @@ fn parse_kimi_usage(value: &Value) -> Result<Vec<UsageWindow>, FetchFailure> {
         return Err(unrecognized_response());
     };
     let known = [
-        ("limit_5h", "5-hour"),
-        ("limit_7d", "Weekly"),
-        ("limit_month_total", "Monthly"),
-        ("limit_month_code", "Monthly code"),
+        ("limit_5h", "5-hour", Some(FIVE_HOURS)),
+        ("limit_7d", "Weekly", Some(ONE_WEEK)),
+        ("limit_month_total", "Monthly", None),
+        ("limit_month_code", "Monthly code", None),
     ];
     let mut windows = Vec::new();
-    for (field, label) in known {
+    for (field, label, window_seconds) in known {
         let Some(bucket) = usages.get(field).and_then(Value::as_object) else {
             continue;
         };
@@ -2596,6 +2678,7 @@ fn parse_kimi_usage(value: &Value) -> Result<Vec<UsageWindow>, FetchFailure> {
             limit: None,
             unit: None,
             resets_at: epoch_millis_any(bucket, &["reset_time"]),
+            window_seconds,
         });
     }
     if windows.is_empty() {

@@ -1,6 +1,12 @@
 import ResourceIcon from "./ResourceIcon";
 import { useEffect, useId, useRef } from "react";
-import { Check, ChevronDown, FolderOpen, Menu as MenuIcon } from "./icons";
+import { Check, ChevronDown, Menu as MenuIcon } from "./icons";
+import {
+  githubHint,
+  SOURCES,
+  useGithubStatus,
+  type SourceKind,
+} from "./project-sources";
 import { basename } from "./model";
 import type { Project } from "./model";
 import { Menu } from "./ui";
@@ -12,7 +18,7 @@ export default function ProjectSwitcher({
   onToggle,
   onClose,
   onSelect,
-  onBrowse,
+  onSource,
 }: {
   projects: Project[];
   activeProjectId: string | null;
@@ -20,7 +26,7 @@ export default function ProjectSwitcher({
   onToggle: () => void;
   onClose: () => void;
   onSelect: (path: string) => void;
-  onBrowse: () => void;
+  onSource: (kind: SourceKind) => void;
 }) {
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -44,7 +50,7 @@ export default function ProjectSwitcher({
         aria-haspopup="menu"
         aria-expanded={expanded}
         aria-controls={expanded ? menuId : undefined}
-        title={project?.path ?? "Open Recent Project"}
+        title={project?.path ?? "Open recent project"}
         onClick={() => {
           focusLast.current = false;
           onToggle();
@@ -61,7 +67,7 @@ export default function ProjectSwitcher({
         ) : (
           <MenuIcon size={13} aria-hidden="true" />
         )}
-        <span>{project ? basename(project.path) : "Open Recent Project"}</span>
+        <span>{project ? basename(project.path) : "Open recent project"}</span>
         <ChevronDown
           className="switcher-chevron"
           size={11}
@@ -112,7 +118,7 @@ export default function ProjectSwitcher({
           >
             {projects.length > 0 && (
               <>
-                <div className="menu-label">RECENT PROJECTS</div>
+                <div className="menu-label">Recent projects</div>
                 <div
                   className="recent-projects"
                   role="group"
@@ -150,22 +156,41 @@ export default function ProjectSwitcher({
                 <div className="menu-divider" role="separator" />
               </>
             )}
-            <button
-              type="button"
-              role="menuitem"
-              tabIndex={-1}
-              className="menu-item"
-              onClick={() => {
+            <div className="menu-label">Open project</div>
+            <SourceItems
+              onSource={(kind) => {
                 trigger.current?.focus();
-                onBrowse();
+                onSource(kind);
               }}
-            >
-              <FolderOpen size={14} aria-hidden="true" />
-              <span>Open Local Folder…</span>
-            </button>
+            />
           </div>
         </Menu>
       )}
     </div>
   );
+}
+
+// Mounted only while the menu is open, so GitHub is checked on demand.
+function SourceItems({ onSource }: { onSource: (kind: SourceKind) => void }) {
+  const github = useGithubStatus();
+  return SOURCES.map(({ kind, label, Icon }) => {
+    const unavailable = kind === "github" && !github?.available;
+    return (
+      <button
+        key={kind}
+        type="button"
+        role="menuitem"
+        tabIndex={-1}
+        className="menu-item"
+        aria-disabled={unavailable || undefined}
+        title={unavailable ? githubHint(github) : undefined}
+        onClick={() => {
+          if (!unavailable) onSource(kind);
+        }}
+      >
+        <Icon size={14} />
+        <span>{label}…</span>
+      </button>
+    );
+  });
 }

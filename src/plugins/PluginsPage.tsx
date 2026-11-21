@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import { Download, Puzzle, Search, ShieldCheck, Trash2, X } from "../icons";
+import { Download, Info, Puzzle, Search, Trash2, X } from "../icons";
+import "../settings-plugins.css";
 import { api, errorMessage } from "../api";
 import { useThemes } from "../ThemeProvider";
 import Select from "../Select";
-import { DisclosureSummary, IconButton, Modal } from "../ui";
+import { IconButton, Modal } from "../ui";
 import { SettingsNotice, SettingsPage, SettingsSection } from "../settings-ui";
 import { usePlugins } from "./PluginsProvider";
 import type { PluginEntry } from "./host";
@@ -26,6 +27,7 @@ export default function PluginsPage() {
     [error, setError] = useState(""),
     [trust, setTrust] = useState<PluginEntry | null>(null),
     [fallback, setFallback] = useState<PluginEntry | null>(null),
+    [details, setDetails] = useState<PluginEntry | null>(null),
     [pending, setPending] = useState<string | null>(null);
   const [search, setSearch] = useState(""),
     [filter, setFilter] = useState("all"),
@@ -128,36 +130,33 @@ export default function PluginsPage() {
     setCategory("all");
     searchInput.current?.focus();
   };
+  const importButton = (
+    <button
+      className="button"
+      disabled={busy || !!pending}
+      onClick={() =>
+        void run(async () => {
+          const path = await open({
+            directory: true,
+            multiple: false,
+            title: "Import plugin package",
+          });
+          if (typeof path === "string") {
+            await api("import_plugin", { path });
+            clearFilters();
+          }
+        })
+      }
+    >
+      <Download size={15} aria-hidden="true" />
+      Import plugin
+    </button>
+  );
   return (
     <SettingsPage
       title="Plugins"
-      description="Local plugins that extend your workspace."
       className="plugins-page catalog-page"
       contentClassName="catalog-content"
-      actions={
-        <>
-          <button
-            className="button button-primary"
-            disabled={busy || !!pending}
-            onClick={() =>
-              void run(async () => {
-                const path = await open({
-                  directory: true,
-                  multiple: false,
-                  title: "Import plugin package",
-                });
-                if (typeof path === "string") {
-                  await api("import_plugin", { path });
-                  clearFilters();
-                }
-              })
-            }
-          >
-            <Download size={15} aria-hidden="true" />
-            Import plugin
-          </button>
-        </>
-      }
     >
       {plugins.catalog.safeMode && (
         <SettingsNotice tone="warning" role="status">
@@ -182,8 +181,12 @@ export default function PluginsPage() {
           Resolve unsaved plugin views in the workspace window to finish.
         </SettingsNotice>
       )}
-      <SettingsSection title="Installed plugins" grouped={false}>
-        <div className="catalog-toolbar">
+      <SettingsSection
+        title="Installed plugins"
+        grouped={false}
+        actions={importButton}
+      >
+        <div className="plugins-toolbar">
           <div className="catalog-search">
             <Search size={16} aria-hidden="true" />
             <input
@@ -207,6 +210,12 @@ export default function PluginsPage() {
             )}
           </div>
           <Select
+            aria-label="Plugin categories"
+            value={category}
+            onChange={setCategory}
+            options={[{ value: "all", label: "All types" }, ...categories]}
+          />
+          <Select
             aria-label="Plugin status"
             value={filter}
             onChange={setFilter}
@@ -218,56 +227,30 @@ export default function PluginsPage() {
             ]}
           />
         </div>
-        <div className="catalog-filter-row">
-          <div
-            className="catalog-categories"
-            role="group"
-            aria-label="Plugin categories"
-          >
-            {[{ value: "all", label: "All types" }, ...categories].map(
-              ({ value, label }) => (
-                <button
-                  key={value}
-                  aria-pressed={category === value}
-                  onClick={() => setCategory(value)}
-                >
-                  {label}
+        <div className="settings-group plugin-list">
+          {entries.length === 0 ? (
+            <div className="plugins-empty">
+              <span className="plugins-empty-icon" aria-hidden="true">
+                {installed.length ? <Search size={20} /> : <Puzzle size={20} />}
+              </span>
+              <h3>
+                {installed.length ? "No matching plugins" : "No plugins yet"}
+              </h3>
+              <p>
+                {installed.length
+                  ? "Try a different search or reset your filters."
+                  : "Import a local plugin package to get started."}
+              </p>
+              {installed.length ? (
+                <button className="text-button" onClick={clearFilters}>
+                  Clear filters
                 </button>
-              ),
-            )}
-          </div>
-          <span className="catalog-count" role="status">
-            {entries.length === installed.length
-              ? `${entries.length} installed`
-              : `${entries.length} of ${installed.length}`}
-          </span>
-        </div>
-        {entries.length === 0 ? (
-          <div className="catalog-empty">
-            {installed.length ? (
-              <Search size={30} aria-hidden="true" />
-            ) : (
-              <Puzzle size={30} aria-hidden="true" />
-            )}
-            <h2>
-              {installed.length
-                ? "No matching plugins"
-                : "No plugins installed."}
-            </h2>
-            <p>
-              {installed.length
-                ? "Try a different search or reset your filters."
-                : "Import a local package to get started."}
-            </p>
-            {(search || filter !== "all" || category !== "all") && (
-              <button className="button" onClick={clearFilters}>
-                Clear filters
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="catalog-list plugin-list">
-            {entries.map((entry) => {
+              ) : (
+                importButton
+              )}
+            </div>
+          ) : (
+            entries.map((entry) => {
               const name = entry.manifest?.name ?? entry.id;
               const problem = entry.error || entry.status?.error;
               const state = problem
@@ -279,75 +262,92 @@ export default function PluginsPage() {
                     : entry.enabled
                       ? "Enabled"
                       : "Disabled";
+              const types = categories
+                .filter(
+                  ({ value }) => entry.manifest?.contributes?.[value]?.length,
+                )
+                .map(({ label }) => label)
+                .join(" · ");
               return (
                 <article
-                  className="catalog-card"
+                  className="setting-row plugin-row"
                   key={entry.id}
                   aria-label={name}
                 >
-                  <header className="catalog-card-heading">
-                    <span className="theme-symbol" aria-hidden="true">
-                      <Puzzle size={19} />
-                    </span>
-                    <div className="catalog-card-title">
-                      <h2>{name}</h2>
+                  <span className="plugin-icon" aria-hidden="true">
+                    <Puzzle size={18} />
+                  </span>
+                  <div className="plugin-main">
+                    <div className="plugin-title">
+                      <h3>{name}</h3>
                       <span>
                         {entry.manifest?.version
                           ? `v${entry.manifest.version}`
                           : "Unknown version"}
                       </span>
+                      {types && <span className="plugin-type">{types}</span>}
                     </div>
-                    {entry.manifest?.entry && (
-                      <input
-                        type="checkbox"
-                        role="switch"
-                        className="settings-switch"
-                        aria-label={`Enable ${name}`}
-                        checked={entry.enabled}
-                        disabled={busy || !!pending || !!entry.error}
-                        onChange={() =>
-                          entry.enabled
-                            ? void run(() => remove(entry, false))
-                            : setTrust(entry)
-                        }
-                      />
+                    {entry.manifest?.description && (
+                      <p className="plugin-description">
+                        {entry.manifest.description}
+                      </p>
                     )}
-                  </header>
-                  {entry.manifest?.description && (
-                    <p className="catalog-description">
-                      {entry.manifest.description}
-                    </p>
-                  )}
-                  <div className="catalog-card-meta">
-                    <div className="catalog-tags">
-                      {categories
-                        .filter(
-                          ({ value }) =>
-                            entry.manifest?.contributes?.[value]?.length,
+                  </div>
+                  <span
+                    className={`plugin-state${problem ? " text-error" : ""}`}
+                    data-enabled={
+                      entry.enabled && !plugins.catalog.safeMode && !problem
+                    }
+                  >
+                    {state}
+                  </span>
+                  <div className="plugin-actions">
+                    <IconButton
+                      title={`Details for ${name}`}
+                      onClick={() => setDetails(entry)}
+                    >
+                      <Info size={15} />
+                    </IconButton>
+                    <IconButton
+                      title={`Uninstall ${name}`}
+                      className="icon-button plugin-uninstall"
+                      disabled={busy || !!pending}
+                      onClick={() =>
+                        entry.themeIds?.includes(
+                          themes.preferences.active ?? "",
                         )
-                        .map(({ value, label }) => (
-                          <span key={value}>{label}</span>
-                        ))}
-                    </div>
-                    <span
-                      className={`plugin-state${problem ? " text-error" : ""}`}
-                      data-enabled={
-                        entry.enabled && !plugins.catalog.safeMode && !problem
+                          ? setFallback(entry)
+                          : void run(() => remove(entry, true))
                       }
                     >
-                      {state}
-                    </span>
+                      <Trash2 size={15} />
+                    </IconButton>
                   </div>
-                  {(entry.error || entry.status?.error) && (
-                    <p className="text-error" role="alert">
-                      {entry.error || entry.status?.error}
+                  {entry.manifest?.entry && (
+                    <input
+                      type="checkbox"
+                      role="switch"
+                      className="settings-switch"
+                      aria-label={`Enable ${name}`}
+                      checked={entry.enabled}
+                      disabled={busy || !!pending || !!entry.error}
+                      onChange={() =>
+                        entry.enabled
+                          ? void run(() => remove(entry, false))
+                          : setTrust(entry)
+                      }
+                    />
+                  )}
+                  {problem && (
+                    <p className="plugin-extra text-error" role="alert">
+                      {problem}
                     </p>
                   )}
                   {entry.restartRequired && (
                     <SettingsNotice
                       tone="warning"
                       role="status"
-                      className="plugin-restart"
+                      className="plugin-extra plugin-restart"
                       action={
                         <button
                           className="button"
@@ -363,58 +363,49 @@ export default function PluginsPage() {
                       Restart to load the new code. Running terminals will end.
                     </SettingsNotice>
                   )}
-                  <footer className="catalog-card-footer">
-                    <details className="plugin-details">
-                      <DisclosureSummary>Details</DisclosureSummary>
-                      <dl>
-                        <dt>Plugin ID</dt>
-                        <dd>{entry.id}</dd>
-                        <dt>Source</dt>
-                        <dd>{entry.source}</dd>
-                        {entry.manifest?.entry && (
-                          <>
-                            <dt>Trust</dt>
-                            <dd>
-                              {entry.trustedRevision === entry.revision
-                                ? "Trusted revision"
-                                : "Not trusted"}
-                            </dd>
-                          </>
-                        )}
-                        {entry.status && (
-                          <>
-                            <dt>Runtime</dt>
-                            <dd>{entry.status.phase}</dd>
-                          </>
-                        )}
-                      </dl>
-                    </details>
-                    <button
-                      className="button button-danger plugin-uninstall"
-                      disabled={busy || !!pending}
-                      onClick={() =>
-                        entry.themeIds?.includes(
-                          themes.preferences.active ?? "",
-                        )
-                          ? setFallback(entry)
-                          : void run(() => remove(entry, true))
-                      }
-                    >
-                      <Trash2 size={13} aria-hidden="true" />
-                      Uninstall
-                    </button>
-                  </footer>
                 </article>
               );
-            })}
-          </div>
-        )}
-        <p className="settings-footnote">
-          <ShieldCheck size={15} aria-hidden="true" />
-          Only enable plugins you trust. Importing a package does not run its
-          code.
-        </p>
+            })
+          )}
+        </div>
       </SettingsSection>
+      {details && (
+        <Modal
+          protectTheme
+          title={details.manifest?.name ?? details.id}
+          onClose={() => setDetails(null)}
+        >
+          <div className="dialog-form dialog-layout">
+            <dl className="plugin-details">
+              <dt>Plugin ID</dt>
+              <dd>{details.id}</dd>
+              <dt>Source</dt>
+              <dd>{details.source}</dd>
+              {details.manifest?.entry && (
+                <>
+                  <dt>Trust</dt>
+                  <dd>
+                    {details.trustedRevision === details.revision
+                      ? "Trusted revision"
+                      : "Not trusted"}
+                  </dd>
+                </>
+              )}
+              {details.status && (
+                <>
+                  <dt>Runtime</dt>
+                  <dd>{details.status.phase}</dd>
+                </>
+              )}
+            </dl>
+            <div className="dialog-actions">
+              <button className="button" onClick={() => setDetails(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
       {trust && (
         <Modal
           protectTheme

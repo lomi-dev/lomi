@@ -188,14 +188,25 @@ export default function AgentControlStartup() {
         >
           <div className="dialog-form dialog-layout">
             <div className="dialog-content">
-              <p id="agent-control-startup-description">
-                Enabling starts the MCP server now and on every Lomi launch.
-                Local clients may request access to Lomi workspaces. Lomi
-                approvals follow the YOLO mode choice in Settings → Agent
-                control; your MCP client's own confirmation prompts remain
-                independent. You can change this startup choice later in
-                Settings → Agent control.
-              </p>
+              <div id="agent-control-startup-description">
+                <p>
+                  Lomi starts its MCP server now and on every launch, so local
+                  clients can request access to your workspaces.
+                </p>
+                <ul className="dialog-points">
+                  <li>
+                    Lomi approvals follow your YOLO mode choice in Settings →
+                    Agent control.
+                  </li>
+                  <li>
+                    Your MCP client&apos;s own confirmation prompts stay
+                    independent.
+                  </li>
+                  <li>
+                    You can change this later in Settings → Agent control.
+                  </li>
+                </ul>
+              </div>
               {saveError && (
                 <p className="keybindings-error" role="alert">
                   Could not save your choice: {saveError}

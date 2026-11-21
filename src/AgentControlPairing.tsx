@@ -1,7 +1,6 @@
+import "./settings-sections.css";
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "./api";
-import { AgentChatPermission } from "./AgentChatPermission";
-import { DisclosureSummary } from "./ui";
 import type { ControlState, ControlWorkspace } from "./agent-control";
 
 export default function AgentControlPairing({
@@ -19,14 +18,6 @@ export default function AgentControlPairing({
 }) {
   const [workspaceId, setWorkspaceId] = useState("");
   const [extraWorkspaceIds, setExtraWorkspaceIds] = useState<string[]>([]);
-  const [readChat, setReadChat] = useState(false);
-  const [sendChat, setSendChat] = useState(false);
-  const [stopChat, setStopChat] = useState(false);
-  const [exportChat, setExportChat] = useState(false);
-  const [draftChat, setDraftChat] = useState(false);
-  const [openChat, setOpenChat] = useState(false);
-  const [createChat, setCreateChat] = useState(false);
-  const [chatConversations, setChatConversations] = useState<string[]>([]);
   const [readSettings, setReadSettings] = useState(false);
   const [writeSettings, setWriteSettings] = useState(false);
   const [openSettings, setOpenSettings] = useState(false);
@@ -111,7 +102,6 @@ export default function AgentControlPairing({
   const gitAccessAdded = readFiles && readGit;
   const browserAccessAdded = navigateBrowser;
   const androidAccessAdded = readAndroid || (readFiles && importApk);
-  const chatAccessAdded = readChat;
   const workspacesAccessAdded = writeWorkspace || managePanels;
   const preferencesAccessAdded = readSettings || openSettings;
   const activePermissionGroups = [
@@ -120,22 +110,12 @@ export default function AgentControlPairing({
     ...(gitAccessAdded ? ["Git"] : []),
     ...(browserAccessAdded ? ["Browser"] : []),
     ...(androidAccessAdded ? ["Android"] : []),
-    ...(chatAccessAdded ? ["Chat AI"] : []),
     ...(workspacesAccessAdded ? ["Workspaces & panels"] : []),
     ...(preferencesAccessAdded ? ["Application preferences"] : []),
   ];
   const grantedScopes = [
     ...new Set([
       "workspace.read",
-      ...(readChat ? ["chat.read"] : []),
-      ...(readChat && draftChat ? ["chat.draft"] : []),
-      ...(readChat && sendChat ? ["chat.send"] : []),
-      ...(readChat && stopChat ? ["chat.stop"] : []),
-      ...(readChat && exportChat ? ["chat.export"] : []),
-      ...(readChat && openChat
-        ? ["chat.open", "panel.create", "panel.focus"]
-        : []),
-      ...(readChat && openChat && createChat ? ["chat.create"] : []),
       ...(openSettings ? ["settings.open"] : []),
       ...(readSettings ? ["settings.read"] : []),
       ...(readSettings && writeSettings ? ["settings.write"] : []),
@@ -246,12 +226,11 @@ export default function AgentControlPairing({
           Request: <code>{request.id}</code>
         </p>
       </div>
-      <details className="agent-pairing-details">
-        <DisclosureSummary>Connection details</DisclosureSummary>
+      <div className="agent-pairing-details">
         <p className="settings-help">
           Client certificate: <code>{request.certificateSha256}</code>
         </p>
-      </details>
+      </div>
       <div className="agent-pairing-workspace">
         <label htmlFor={`control-workspace-${request.id}`}>Workspace</label>
         <select
@@ -259,14 +238,6 @@ export default function AgentControlPairing({
           value={workspaceId}
           onChange={(event) => {
             setWorkspaceId(event.target.value);
-            setReadChat(false);
-            setOpenChat(false);
-            setDraftChat(false);
-            setSendChat(false);
-            setStopChat(false);
-            setExportChat(false);
-            setCreateChat(false);
-            setChatConversations([]);
             setExtraWorkspaceIds([]);
             setCloseProjects(false);
           }}
@@ -322,16 +293,18 @@ export default function AgentControlPairing({
           this agent needs.
         </p>
       </div>
-      <details className="agent-permission-group">
-        <DisclosureSummary>
-          <span className="agent-permission-title">Terminal</span>
-          <span className="agent-permission-description">
-            Run commands in one approved shell.
+      <div className="agent-permission-group">
+        <div className="agent-permission-summary">
+          <span className="disclosure-summary-content">
+            <span className="agent-permission-title">Terminal</span>
+            <span className="agent-permission-description">
+              Run commands in one approved shell.
+            </span>
+            {terminalAccessAdded && (
+              <span className="agent-permission-selected">Access added</span>
+            )}
           </span>
-          {terminalAccessAdded && (
-            <span className="agent-permission-selected">Access added</span>
-          )}
-        </DisclosureSummary>
+        </div>
         <div className="agent-permission-content">
           <label>
             <input
@@ -369,17 +342,19 @@ export default function AgentControlPairing({
             applies.
           </p>
         </div>
-      </details>
-      <details className="agent-permission-group">
-        <DisclosureSummary>
-          <span className="agent-permission-title">Files & editor</span>
-          <span className="agent-permission-description">
-            Access project files and editor buffers.
+      </div>
+      <div className="agent-permission-group">
+        <div className="agent-permission-summary">
+          <span className="disclosure-summary-content">
+            <span className="agent-permission-title">Files & editor</span>
+            <span className="agent-permission-description">
+              Access project files and editor buffers.
+            </span>
+            {filesAccessAdded && (
+              <span className="agent-permission-selected">Access added</span>
+            )}
           </span>
-          {filesAccessAdded && (
-            <span className="agent-permission-selected">Access added</span>
-          )}
-        </DisclosureSummary>
+        </div>
         <div className="agent-permission-content">
           <label>
             <input
@@ -538,18 +513,20 @@ export default function AgentControlPairing({
             permissions still apply.
           </p>
         </div>
-      </details>
-      <details className="agent-permission-group">
-        <DisclosureSummary>
-          <span className="agent-permission-title">Git</span>
-          <span className="agent-permission-description">
-            Read repository data or request approved changes. Requires project
-            file access in Files & editor.
+      </div>
+      <div className="agent-permission-group">
+        <div className="agent-permission-summary">
+          <span className="disclosure-summary-content">
+            <span className="agent-permission-title">Git</span>
+            <span className="agent-permission-description">
+              Read repository data or request approved changes. Requires project
+              file access in Files & editor.
+            </span>
+            {gitAccessAdded && (
+              <span className="agent-permission-selected">Access added</span>
+            )}
           </span>
-          {gitAccessAdded && (
-            <span className="agent-permission-selected">Access added</span>
-          )}
-        </DisclosureSummary>
+        </div>
         <div className="agent-permission-content">
           <label>
             <input
@@ -665,17 +642,19 @@ export default function AgentControlPairing({
             excluded.
           </p>
         </div>
-      </details>
-      <details className="agent-permission-group">
-        <DisclosureSummary>
-          <span className="agent-permission-title">Browser</span>
-          <span className="agent-permission-description">
-            Navigate isolated browser panels and choose page access.
+      </div>
+      <div className="agent-permission-group">
+        <div className="agent-permission-summary">
+          <span className="disclosure-summary-content">
+            <span className="agent-permission-title">Browser</span>
+            <span className="agent-permission-description">
+              Navigate isolated browser panels and choose page access.
+            </span>
+            {browserAccessAdded && (
+              <span className="agent-permission-selected">Access added</span>
+            )}
           </span>
-          {browserAccessAdded && (
-            <span className="agent-permission-selected">Access added</span>
-          )}
-        </DisclosureSummary>
+        </div>
         <div className="agent-permission-content">
           <label>
             <input
@@ -780,18 +759,20 @@ export default function AgentControlPairing({
             </>
           )}
         </div>
-      </details>
-      <details className="agent-permission-group">
-        <DisclosureSummary>
-          <span className="agent-permission-title">Android</span>
-          <span className="agent-permission-description">
-            Choose device access. APK imports require project file access in
-            Files & editor.
+      </div>
+      <div className="agent-permission-group">
+        <div className="agent-permission-summary">
+          <span className="disclosure-summary-content">
+            <span className="agent-permission-title">Android</span>
+            <span className="agent-permission-description">
+              Choose device access. APK imports require project file access in
+              Files & editor.
+            </span>
+            {androidAccessAdded && (
+              <span className="agent-permission-selected">Access added</span>
+            )}
           </span>
-          {androidAccessAdded && (
-            <span className="agent-permission-selected">Access added</span>
-          )}
-        </DisclosureSummary>
+        </div>
         <div className="agent-permission-content">
           <label>
             <input
@@ -995,127 +976,19 @@ export default function AgentControlPairing({
             </>
           )}
         </div>
-      </details>
-      <details className="agent-permission-group">
-        <DisclosureSummary>
-          <span className="agent-permission-title">Chat AI</span>
-          <span className="agent-permission-description">
-            Choose conversations and the actions allowed on them.
+      </div>
+      <div className="agent-permission-group">
+        <div className="agent-permission-summary">
+          <span className="disclosure-summary-content">
+            <span className="agent-permission-title">Workspaces & panels</span>
+            <span className="agent-permission-description">
+              Manage workspaces, projects and their panels.
+            </span>
+            {workspacesAccessAdded && (
+              <span className="agent-permission-selected">Access added</span>
+            )}
           </span>
-          {chatAccessAdded && (
-            <span className="agent-permission-selected">Access added</span>
-          )}
-        </DisclosureSummary>
-        <div className="agent-permission-content">
-          <label>
-            <input
-              type="checkbox"
-              checked={readChat}
-              disabled={busy || !selectedProject}
-              onChange={(event) => {
-                setReadChat(event.target.checked);
-                setOpenChat(false);
-                setDraftChat(false);
-                setSendChat(false);
-                setStopChat(false);
-                setExportChat(false);
-                setCreateChat(false);
-                setChatConversations([]);
-              }}
-            />
-            Allow reading selected Chat AI conversations
-          </label>
-          {readChat && selectedProject && (
-            <AgentChatPermission
-              key={selectedProject}
-              projectId={selectedProject}
-              selected={chatConversations}
-              onChange={setChatConversations}
-              disabled={busy}
-            />
-          )}
-
-          <label>
-            <input
-              type="checkbox"
-              checked={openChat}
-              disabled={busy || !readChat}
-              onChange={(event) => {
-                setOpenChat(event.target.checked);
-                if (!event.target.checked) setCreateChat(false);
-              }}
-            />
-            Allow opening selected Chat AI conversations
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={createChat}
-              disabled={busy || !readChat || !openChat}
-              onChange={(event) => setCreateChat(event.target.checked)}
-            />
-            Allow creating Chat AI conversations
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={draftChat}
-              disabled={busy || !readChat}
-              onChange={(event) => setDraftChat(event.target.checked)}
-            />
-            Allow editing selected Chat AI drafts
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={exportChat}
-              disabled={busy || !readChat}
-              onChange={(e) => setExportChat(e.target.checked)}
-            />
-            Allow exporting selected Chat AI text
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={stopChat}
-              disabled={busy || !readChat}
-              onChange={(e) => setStopChat(e.target.checked)}
-            />
-            Allow stopping selected Chat AI responses
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={sendChat}
-              disabled={busy || !readChat}
-              onChange={(event) => setSendChat(event.target.checked)}
-            />
-            Allow sending selected Chat AI messages
-          </label>
-          <p className="settings-help">
-            Each send requires your approval of the connection, model, message,
-            context and possible provider charges.
-          </p>
-          <p className="settings-help">
-            Draft editing saves text locally in an open conversation. Unsaved
-            human text is protected, and messages are not sent.
-          </p>
-          <p className="settings-help">
-            New conversations become readable by this connection. Opening and
-            creating do not send messages to a provider.
-          </p>
         </div>
-      </details>
-      <details className="agent-permission-group">
-        <DisclosureSummary>
-          <span className="agent-permission-title">Workspaces & panels</span>
-          <span className="agent-permission-description">
-            Manage workspaces, projects and their panels.
-          </span>
-          {workspacesAccessAdded && (
-            <span className="agent-permission-selected">Access added</span>
-          )}
-        </DisclosureSummary>
         <div className="agent-permission-content">
           <label>
             <input
@@ -1220,19 +1093,21 @@ export default function AgentControlPairing({
             uses the same unsaved-file and protected-process checks.
           </p>
         </div>
-      </details>
-      <details className="agent-permission-group">
-        <DisclosureSummary>
-          <span className="agent-permission-title">
-            Application preferences
+      </div>
+      <div className="agent-permission-group">
+        <div className="agent-permission-summary">
+          <span className="disclosure-summary-content">
+            <span className="agent-permission-title">
+              Application preferences
+            </span>
+            <span className="agent-permission-description">
+              Read or request changes to nonsecret preferences.
+            </span>
+            {preferencesAccessAdded && (
+              <span className="agent-permission-selected">Access added</span>
+            )}
           </span>
-          <span className="agent-permission-description">
-            Read or request changes to nonsecret preferences.
-          </span>
-          {preferencesAccessAdded && (
-            <span className="agent-permission-selected">Access added</span>
-          )}
-        </DisclosureSummary>
+        </div>
         <div className="agent-permission-content">
           <label>
             <input
@@ -1280,7 +1155,7 @@ export default function AgentControlPairing({
             require separate permissions.
           </p>
         </div>
-      </details>
+      </div>
       <footer className="agent-pairing-footer">
         <p className="settings-help">
           Included by default: workspace metadata.
@@ -1307,7 +1182,6 @@ export default function AgentControlPairing({
               !valid ||
               (executeTerminal &&
                 !terminalProfiles.some((p) => p.id === terminalProfileId)) ||
-              (readChat && chatConversations.length === 0 && !createChat) ||
               (readAndroid &&
                 !setupAndroid &&
                 !manageAndroid &&
@@ -1328,7 +1202,6 @@ export default function AgentControlPairing({
                     ...(executeTerminal ? { terminalProfileId } : {}),
                     androidDevices:
                       readAndroid && androidDevice ? [androidDevice] : [],
-                    chatConversations: readChat ? chatConversations : [],
                     androidPackages:
                       readAndroid &&
                       controlAndroid &&

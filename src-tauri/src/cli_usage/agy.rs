@@ -291,6 +291,7 @@ fn parse_usage_response(value: &Value) -> Result<Vec<UsageWindow>, FetchFailure>
                 limit: None,
                 unit: None,
                 resets_at: bucket.get("reset_time").and_then(reset_time_millis),
+                window_seconds: None,
             });
         }
     }

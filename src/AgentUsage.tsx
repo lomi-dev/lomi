@@ -7,7 +7,7 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { CircleAlert, RefreshCw } from "lucide-react";
+import { CircleAlert } from "lucide-react";
 import { api, native } from "./api";
 import { CliAgentIcon } from "./CliAgentIcon";
 import {
@@ -79,18 +79,6 @@ function formatReset(timestamp: number | null) {
   }).format(date);
 }
 
-function relativeUpdate(timestamp: number | null, now: number) {
-  if (timestamp === null || !Number.isFinite(timestamp)) return null;
-  const age = Math.max(0, now - timestamp);
-  const seconds = Math.floor(age / 1000);
-  if (seconds < 60) return "just now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes} min ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} hr ago`;
-  return `${Math.floor(hours / 24)} days ago`;
-}
-
 function hasUsageValues(entry: AgentUsageEntry | null) {
   return Boolean(
     entry?.windows.some(
@@ -115,23 +103,6 @@ function isStale(
     !Number.isFinite(entry.updatedAt) ||
     now - entry.updatedAt > staleAfterMs
   );
-}
-
-function sourceName(source: string | null) {
-  if (!source) return null;
-  const normalized = source
-    .trim()
-    .toLowerCase()
-    .replaceAll("_", " ")
-    .replaceAll("-", " ");
-  const labels: Record<string, string> = {
-    account: "Account",
-    "account usage": "Account",
-    subscription: "Subscription",
-    oauth: "Connected account",
-    "connected account": "Connected account",
-  };
-  return labels[normalized] ?? "Account usage";
 }
 
 function entryStatus(
@@ -232,14 +203,12 @@ export function useAgentUsage() {
   );
   const [targets, setTargets] = useState<AgentUsageTarget[]>([]);
   const [entries, setEntries] = useState<AgentUsageEntry[]>([]);
-  const [checking, setChecking] = useState(false);
   const [requestFailed, setRequestFailed] = useState(false);
   const [now, setNow] = useState(Date.now());
 
   const refresh = useCallback((force = false): Promise<void> => {
     const currentTargets = agentUsageTargets(contexts.current);
     if (!native || currentTargets.length === 0) {
-      setChecking(false);
       return Promise.resolve();
     }
 
@@ -259,7 +228,6 @@ export function useAgentUsage() {
       return inFlight.current.promise;
     }
 
-    setChecking(true);
     const request: InFlightRequest = {
       signature: currentSignature,
       epoch: currentEpoch,
@@ -305,8 +273,6 @@ export function useAgentUsage() {
         pending.current = { requested: false, force: false };
         if (next.requested) {
           void refreshRef.current(next.force);
-        } else {
-          setChecking(false);
         }
       }
     })();
@@ -390,8 +356,6 @@ export function useAgentUsage() {
       pending.current.force = false;
     } else if (nextTargets.length) {
       void refreshRef.current(false);
-    } else {
-      setChecking(false);
     }
   }, []);
 
@@ -423,14 +387,12 @@ export function useAgentUsage() {
     <AgentUsageBar
       targets={targets}
       entries={entries}
-      checking={checking}
       requestFailed={requestFailed}
       now={now}
       authorizing={authorizing}
       authorizationError={authorizationError}
       onAuthorize={authorize}
       onOpen={() => void refreshRef.current(false)}
-      onRefresh={() => void refreshRef.current(true)}
     />
   );
 
@@ -440,30 +402,25 @@ export function useAgentUsage() {
 function AgentUsageBar({
   targets,
   entries,
-  checking,
   requestFailed,
   now,
   authorizing,
   authorizationError,
   onAuthorize,
   onOpen,
-  onRefresh,
 }: {
   targets: AgentUsageTarget[];
   entries: AgentUsageEntry[];
-  checking: boolean;
   requestFailed: boolean;
   now: number;
   authorizing: AgentUsageTarget | null;
   authorizationError: { target: AgentUsageTarget; message: string } | null;
   onAuthorize: (target: AgentUsageTarget) => Promise<void>;
   onOpen: () => void;
-  onRefresh: () => void;
 }) {
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const agentList = useRef<HTMLDivElement>(null);
-  const refreshButton = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState({ left: 0, top: 0 });
 
@@ -560,7 +517,7 @@ function AgentUsageBar({
 
   useLayoutEffect(() => {
     if (!open) return;
-    refreshButton.current?.focus({ preventScroll: true });
+    agentList.current?.focus({ preventScroll: true });
   }, [open]);
 
   useEffect(() => {
@@ -727,9 +684,6 @@ function AgentUsageBar({
           >
             <div className="agent-usage-menu-heading" role="presentation">
               <strong>Account usage</strong>
-              <span>
-                {count} active CLI session{count === 1 ? "" : "s"}
-              </span>
             </div>
             <div
               ref={agentList}
@@ -740,13 +694,9 @@ function AgentUsageBar({
             >
               {groups.map(({ target, entry }, index) => {
                 const stale = isStale(entry, requestFailed, now);
-                const updated = relativeUpdate(entry?.updatedAt ?? null, now);
                 const statusText = entryStatus(entry, requestFailed, now);
                 const message = safeMessage(entry?.message ?? null);
                 const description = message ? "" : entryDescription(entry);
-                const freshness = updated
-                  ? `${stale ? "Last successful check" : "Updated"} · ${updated}`
-                  : "No successful usage check";
                 return (
                   <section
                     className="agent-usage-agent"
@@ -755,18 +705,24 @@ function AgentUsageBar({
                     key={`${target.id}:${target.process.cli}:${target.process.pid}`}
                   >
                     <div className="agent-usage-agent-heading">
+                      <CliAgentIcon cli={target.process.cli} />
                       <strong>{cliNames[target.process.cli]}</strong>
-                      <span
-                        className="agent-usage-status"
-                        data-stale={stale || undefined}
-                        data-attention={
-                          entry?.status === "keychain-access-required" ||
-                          undefined
-                        }
-                      >
-                        {stale && <CircleAlert size={12} aria-hidden="true" />}
-                        {statusText}
-                      </span>
+                      {(stale ||
+                        entry?.status === "keychain-access-required") && (
+                        <span
+                          className="agent-usage-status"
+                          data-stale={stale || undefined}
+                          data-attention={
+                            entry?.status === "keychain-access-required" ||
+                            undefined
+                          }
+                        >
+                          {stale && (
+                            <CircleAlert size={12} aria-hidden="true" />
+                          )}
+                          {statusText}
+                        </span>
+                      )}
                     </div>
                     {description && (
                       <p className="agent-usage-description">{description}</p>
@@ -819,6 +775,7 @@ function AgentUsageBar({
                           <UsageWindow
                             key={`${window.label}:${windowIndex}`}
                             window={window}
+                            now={now}
                           />
                         ))}
                       </div>
@@ -829,12 +786,6 @@ function AgentUsageBar({
                           : "Usage data is loading."}
                       </p>
                     ) : null}
-                    <div className="agent-usage-meta">
-                      <span>{freshness}</span>
-                      {entry?.source && (
-                        <span>Source · {sourceName(entry.source)}</span>
-                      )}
-                    </div>
                     {entry?.retryAt !== null &&
                       entry?.retryAt !== undefined && (
                         <p className="agent-usage-retry">
@@ -846,22 +797,6 @@ function AgentUsageBar({
                 );
               })}
             </div>
-            <div role="separator" className="menu-divider" />
-            <button
-              ref={refreshButton}
-              type="button"
-              role="menuitem"
-              tabIndex={-1}
-              className="menu-item agent-usage-refresh"
-              aria-busy={checking || undefined}
-              onClick={() => {
-                onRefresh();
-                refreshButton.current?.focus({ preventScroll: true });
-              }}
-            >
-              <RefreshCw size={14} aria-hidden="true" />
-              <span>{checking ? "Refreshing…" : "Refresh"}</span>
-            </button>
           </div>,
           document.body,
         )}
@@ -869,13 +804,43 @@ function AgentUsageBar({
   );
 }
 
-function UsageWindow({ window }: { window: AgentUsageWindow }) {
+const meterCells = 24;
+
+function formatCountdown(timestamp: number | null, now: number) {
+  if (timestamp === null || !Number.isFinite(timestamp)) return null;
+  const minutes = Math.max(0, Math.round((timestamp - now) / 60_000));
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  if (days) return `${days}d ${hours}h`;
+  if (hours) return `${hours}h ${minutes % 60}m`;
+  return `${minutes}m`;
+}
+
+/** Remaining share of the window's time, where an even pace would leave quota. */
+function paceRemaining(window: AgentUsageWindow, now: number) {
+  const length = window.windowSeconds;
+  if (!length || length <= 0 || window.resetsAt === null) return null;
+  const left = (window.resetsAt - now) / 1000;
+  if (!Number.isFinite(left) || left < 0 || left > length) return null;
+  return (left / length) * 100;
+}
+
+function UsageWindow({
+  window,
+  now,
+}: {
+  window: AgentUsageWindow;
+  now: number;
+}) {
   const remaining = validRemainingPercent(window.remainingPercent)
     ? window.remainingPercent
     : null;
   const used = formatQuantity(window.used, window.unit);
   const limit = formatQuantity(window.limit, window.unit);
   const reset = formatReset(window.resetsAt);
+  const countdown = formatCountdown(window.resetsAt, now);
+  const pace = remaining === null ? null : paceRemaining(window, now);
+  const label = window.label || "Quota window";
   const amount =
     used && limit
       ? `${used} used / ${limit}`
@@ -886,25 +851,52 @@ function UsageWindow({ window }: { window: AgentUsageWindow }) {
           : null;
 
   return (
-    <div className="agent-usage-window" data-tone={windowTone(window)}>
+    <div
+      className="agent-usage-window"
+      data-tone={windowTone(window)}
+      title={[amount, reset ? `Resets ${reset}` : "Reset time unavailable"]
+        .filter(Boolean)
+        .join(" · ")}
+    >
       <div className="agent-usage-window-heading">
-        <strong>{window.label || "Quota window"}</strong>
-        <span>
-          {remaining === null
-            ? "Quota unknown"
-            : `${formatPercent(remaining)} remaining`}
+        <span className="agent-usage-window-label">{label}</span>
+        <span className="agent-usage-window-reset">
+          {countdown ? `resets in ${countdown}` : "reset unknown"}
         </span>
       </div>
-      {remaining !== null && (
-        <progress
-          max={100}
-          value={remaining}
-          aria-label={`${window.label || "Quota window"} quota: ${formatPercent(remaining)} remaining`}
-        />
-      )}
-      <div className="agent-usage-window-meta">
-        {amount && <span>{amount}</span>}
-        <span>{reset ? `Resets ${reset}` : "Reset time unavailable"}</span>
+      <div className="agent-usage-window-body">
+        <strong className="agent-usage-window-value">
+          {remaining === null ? "—" : formatPercent(remaining)}
+        </strong>
+        <div
+          className="agent-usage-meter"
+          role={remaining === null ? undefined : "meter"}
+          aria-label={`${label} quota`}
+          aria-valuemin={remaining === null ? undefined : 0}
+          aria-valuemax={remaining === null ? undefined : 100}
+          aria-valuenow={remaining ?? undefined}
+          aria-valuetext={
+            remaining === null
+              ? undefined
+              : `${formatPercent(remaining)} remaining${reset ? `, resets ${reset}` : ""}`
+          }
+        >
+          <span className="agent-usage-meter-cells">
+            <span
+              style={{
+                // Whole cells only; any quota left keeps at least one lit.
+                width: `${(Math.ceil(((remaining ?? 0) / 100) * meterCells) / meterCells) * 100}%`,
+              }}
+            />
+          </span>
+          {pace !== null && (
+            <span
+              className="agent-usage-meter-pace"
+              style={{ left: `${pace}%` }}
+              title="Even pace for the time left in this window"
+            />
+          )}
+        </div>
       </div>
     </div>
   );

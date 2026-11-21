@@ -13,29 +13,25 @@ A local folder contains `theme.jsonc`, optional ordered CSS files and local asse
 also checks CSS values, contribution paths, duplicates and resource availability.
 Create theme writes `theme.jsonc` and its local schema. The new adaptive theme
 inherits Lomi until overrides are added; it contains no demonstration assets.
-[`lomi.json`](lomi.json) is the default built-in theme. Its colors match the
-`v0.6.1` Lomi palette. Light uses Chalk canvas, white surfaces and pale neutral
-controls; dark uses graphite surfaces, green-tinted selections and raised menus.
-Electric Lime marks primary actions; a softer green marks keyboard focus in
-dark mode. Muted selection fills keep navigation quiet. Semantic status and
-syntax colors remain readable in both appearances.
+[`lomi.json`](lomi.json) is the default built-in theme, following Lomi Brand
+Guidelines 4.0. Window chrome uses the background token and the central stage
+a raised, rounded surface. Signal Lime marks primary actions in dark mode and
+Agent Violet in light mode; Violet marks focus and text selection. Navigation
+selection stays neutral. Semantic status and syntax colors remain readable in
+both appearances.
 
-Bundled Geist Variable provides the 13 px interface with regular, medium and
-semibold weights. JetBrains Mono remains the code and terminal face, with the
-existing monospace and symbol fallbacks. The continuous workbench keeps a 44 px
-titlebar, 32 px tabs and panel headings, 26 px statusbar, and compact tree rows.
-Controls use 6 px corners and a 2 px focus ring; tabs use 10 px corners, menus
-12 px and dialogs 16 px. Explorer, Workspaces, Source Control and terminal panes
-retain their previous section styling and geometry. The main shell stays opaque, square and flush to the viewport.
+Mona Sans provides the 13 px interface; Geist Mono is the code, terminal and
+label face, with JetBrains Mono and symbol fallbacks. The workbench uses a 46 px
+titlebar, 30 px tabs, 28 px tree rows and a 26 px status bar. Controls use 8 px
+corners, the stage 12 px, menus 12 px and dialogs 16 px.
 
 Lomi is the only read-only built-in theme, represented by `active: null`. It
 supports System, Light and Dark modes, duplication into editable local packages,
 and VS Code export. Saved selections of the removed DeepMono built-in fall back
 to Lomi, preserving appearance and icon preferences. Explicit local and plugin
 selections remain unchanged. Lomi is embedded in the application and needs no
-external theme folder. Geist's Latin and Latin Extended variable subsets and OFL
-license ship in `public/fonts/geist/`; CSS Unicode ranges select the matching
-subset. `src/theme/baseline.css` registers these local fonts and provides matching
+external theme folder. Mona Sans and Geist Mono variable fonts and their OFL
+licenses ship in `public/fonts/`. `src/theme/baseline.css` registers these local fonts and provides matching
 startup tokens before JavaScript runs. The built-in theme uses no package asset
 resources or paths into the source brandbook.
 

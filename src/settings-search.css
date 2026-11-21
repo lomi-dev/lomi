@@ -1,0 +1,81 @@
+.settings-dialog .settings-search-results {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.settings-dialog .settings-search-result {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  min-height: 40px;
+  padding: var(--space-6) var(--space-12);
+  border-radius: 10px;
+  color: var(--color-surface-variant-text);
+  font-size: var(--font-size-14);
+  cursor: pointer;
+}
+.settings-dialog .settings-search-result svg {
+  flex: none;
+  width: 17px;
+  height: 17px;
+  color: var(--color-muted-text);
+  stroke-width: 1.75;
+}
+.settings-dialog .settings-search-result[aria-selected="true"] {
+  background: color-mix(in srgb, var(--color-surface-text) 8%, transparent);
+  color: var(--color-surface-text);
+}
+.settings-dialog .settings-search-result[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: default;
+}
+.settings-dialog .settings-search-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.settings-dialog .settings-search-label,
+.settings-dialog .settings-search-crumb {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settings-dialog .settings-search-crumb {
+  color: var(--color-muted-text);
+  font-size: var(--font-size-12);
+}
+.settings-dialog .settings-search-result mark {
+  background: color-mix(in srgb, var(--lomi-focus) 28%, transparent);
+  color: inherit;
+  border-radius: 3px;
+}
+.settings-dialog .settings-search-empty {
+  margin: 0;
+  padding: var(--space-12);
+  color: var(--color-muted-text);
+  font-size: var(--font-size-14);
+  overflow-wrap: anywhere;
+}
+
+.settings-dialog .settings-search-hit {
+  border-radius: 10px;
+  animation: settings-search-hit 1.6s ease-out;
+}
+@keyframes settings-search-hit {
+  0%,
+  60% {
+    background: color-mix(in srgb, var(--lomi-focus) 16%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--lomi-focus) 60%, transparent);
+  }
+  100% {
+    background: transparent;
+    box-shadow: 0 0 0 2px transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings-dialog .settings-search-hit {
+    animation: none;
+    background: color-mix(in srgb, var(--lomi-focus) 16%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--lomi-focus) 60%, transparent);
+  }
+}

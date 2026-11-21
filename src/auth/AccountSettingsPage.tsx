@@ -173,7 +173,6 @@ export default function AccountSettingsPage() {
   return (
     <SettingsPage
       title="Account"
-      description="Local projects and terminals remain available without signing in."
       busy={busy || !ready}
       className="account-settings"
     >

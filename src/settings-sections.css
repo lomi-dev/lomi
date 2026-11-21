@@ -1,0 +1,16 @@
+/* Always-visible replacements for former disclosure sections. */
+.agent-permission-summary {
+  padding: var(--space-16) 0;
+}
+.agent-permission-summary .disclosure-summary-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--space-8);
+}
+.agent-pairing-details {
+  margin-top: var(--space-12);
+}
+.settings-section .agent-control-config {
+  max-height: 14rem;
+  overflow: auto;
+}

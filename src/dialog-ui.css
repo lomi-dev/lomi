@@ -124,7 +124,7 @@
   min-height: 36px;
 }
 
-.modal .dialog-content :is(.settings-help, .chat-field-help) {
+.modal .dialog-content .settings-help {
   margin-top: var(--space-6);
   color: var(--color-muted-text);
   font-size: var(--font-size-11);
@@ -181,11 +181,6 @@
 .modal .theme-editor-footer {
   flex-direction: column;
   align-items: stretch;
-}
-
-.modal .agent-task-account-field {
-  display: grid;
-  gap: var(--space-6);
 }
 
 .native-permission-dialog .dialog-actions {
@@ -266,7 +261,7 @@
   padding: 0;
 }
 
-.modal .dialog-content:is(.agent-task-dialog, .update-content) > p {
+.modal .dialog-content.update-content > p {
   margin: 0;
 }
 
@@ -314,4 +309,466 @@
   .modal .command-picker-search {
     margin-inline: var(--space-20);
   }
+}
+
+/* Dialog motion and depth. Entrance only; closing stays instant so focus
+   returns without waiting on an animation. */
+.modal[open] {
+  animation: lomi-dialog-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.modal[open]::backdrop {
+  backdrop-filter: blur(3px);
+  animation: lomi-backdrop-in 200ms ease-out;
+}
+.modal .modal-surface {
+  box-shadow: var(--shadow-modal);
+}
+@keyframes lomi-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+}
+@keyframes lomi-backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Command palette: a floating search field anchored high on the window. */
+.modal.command-picker {
+  width: min(620px, calc(100vw - 32px));
+  margin-top: 14vh;
+}
+.command-picker .modal-header {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.command-picker .dialog-form {
+  gap: 0;
+  padding-top: 0;
+}
+.modal .command-picker-search {
+  margin: 0;
+  padding: 0 var(--space-18);
+  height: 54px;
+  border: 0;
+  border-bottom: var(--border-width) solid var(--color-outline);
+  border-radius: 0;
+  background: transparent;
+}
+.command-picker-search:focus-within {
+  outline: none;
+}
+.command-picker .command-picker-search > input {
+  font-size: var(--font-size-15);
+  color: var(--color-surface-text);
+}
+.modal .dialog-content.command-picker-list {
+  gap: 1px;
+  padding: var(--space-6);
+  max-height: min(52vh, 420px);
+}
+.command-picker-list > .button {
+  min-height: 36px;
+  padding: var(--space-6) var(--space-10);
+  border-radius: var(--radius-control);
+  font-weight: 400;
+}
+.command-picker-list > .button:hover:not(:disabled),
+.command-picker-list > .button:focus-visible {
+  background: var(--lomi-selected, var(--color-surface-container-high));
+  outline: none;
+}
+.command-picker-list > .button > small {
+  font-size: var(--font-size-11);
+}
+.modal .command-picker-footer {
+  padding: var(--space-8) var(--space-16);
+  background: color-mix(
+    in srgb,
+    var(--color-surface-container) 50%,
+    transparent
+  );
+  font-size: var(--font-size-11);
+}
+.command-picker-footer kbd {
+  margin: 0 2px 0 6px;
+}
+
+/* Keycaps everywhere share one look. */
+kbd,
+.command-picker kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border: var(--border-width) solid var(--color-outline);
+  border-radius: 5px;
+  background: var(--color-surface-container);
+  box-shadow: inset 0 -1px 0
+    color-mix(in srgb, var(--color-surface-text) 14%, transparent);
+  color: var(--color-surface-variant-text);
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal[open],
+  .modal[open]::backdrop {
+    animation: none;
+  }
+}
+
+.modal.command-picker
+  .dialog-form
+  .command-picker-search
+  > input:not([type="checkbox"]) {
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* Dialog system. One surface, generous rhythm, no footer rule: actions sit
+   on the same plane as the content, like native macOS sheets. */
+.modal {
+  width: min(460px, calc(100vw - 32px));
+}
+.modal .modal-surface {
+  border: var(--border-width) solid
+    color-mix(in srgb, var(--color-outline) 85%, transparent);
+  border-radius: 16px;
+  box-shadow:
+    var(--shadow-modal),
+    inset 0 1px 0 rgb(255 255 255 / 0.04);
+}
+.modal .modal-header {
+  align-items: center;
+  gap: var(--space-14);
+  padding: var(--space-20) var(--space-16) var(--space-4) var(--space-24);
+}
+.modal .modal-header h2 {
+  font-size: var(--font-size-17);
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  line-height: 1.35;
+}
+.modal .modal-close {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  margin: 0 0 0 auto;
+  border-radius: var(--radius-control);
+  color: var(--color-muted-text);
+}
+.modal .modal-close:hover:not(:disabled) {
+  background: var(--color-surface-container-high);
+  color: var(--color-surface-text);
+}
+.modal .modal-symbol {
+  flex: 0 0 36px;
+  height: 36px;
+  border-radius: 10px;
+}
+.modal .dialog-content {
+  padding: var(--space-10) var(--space-24) var(--space-4);
+  font-size: var(--font-size-14);
+  line-height: 1.55;
+}
+.modal .dialog-content p {
+  margin-bottom: var(--space-12);
+}
+.modal .dialog-content label {
+  color: var(--color-surface-variant-text);
+}
+
+/* Fields: soft fill, hairline border, focus as a calm halo. */
+.modal
+  .dialog-content
+  :is(
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+    textarea,
+    select,
+    .select-trigger
+  ) {
+  min-height: 38px;
+  border: var(--border-width) solid var(--color-outline);
+  border-radius: 10px;
+  background: var(--color-surface-container);
+  color: var(--color-surface-text);
+  transition:
+    border-color 140ms ease-out,
+    box-shadow 140ms ease-out,
+    background-color 140ms ease-out;
+}
+.modal
+  .dialog-content
+  :is(
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+    textarea,
+    select,
+    .select-trigger
+  ):focus-visible {
+  outline: none;
+  border-color: var(--lomi-focus);
+  background: var(--color-surface);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lomi-focus) 22%, transparent);
+}
+
+/* Footer actions. */
+.modal .dialog-layout > .dialog-actions,
+.modal .dialog-footer {
+  gap: var(--space-8);
+  padding: var(--space-20) var(--space-24) var(--space-24);
+  border-top: 0;
+  background: transparent;
+}
+.modal :is(.dialog-actions, .dialog-footer) .button {
+  min-height: 34px;
+  min-width: 80px;
+  padding: 0 var(--space-16);
+  border-radius: 10px;
+  font-size: var(--font-size-13);
+  transition:
+    background-color 140ms ease-out,
+    transform 120ms ease-out;
+}
+.modal :is(.dialog-actions, .dialog-footer) .button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.modal
+  :is(.dialog-actions, .dialog-footer)
+  .button:not(.button-primary):not(.button-danger):not(.text-error):not(
+    .danger
+  ) {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--color-surface-text) 7%, transparent);
+  color: var(--color-surface-text);
+  font-weight: 500;
+}
+.modal
+  :is(.dialog-actions, .dialog-footer)
+  .button:not(.button-primary):not(.button-danger):not(.text-error):not(
+    .danger
+  ):hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-surface-text) 12%, transparent);
+}
+.modal
+  :is(.dialog-actions, .dialog-footer)
+  :is(.button-danger, .button.text-error, .button.danger) {
+  border-color: transparent;
+  background: var(--color-error);
+  color: var(--lomi-on-danger, #fff);
+  font-weight: 600;
+}
+.modal
+  :is(.dialog-actions, .dialog-footer)
+  :is(.button-danger, .button.text-error, .button.danger):hover:not(:disabled) {
+  background: color-mix(
+    in srgb,
+    var(--color-error) 88%,
+    var(--color-surface-text)
+  );
+}
+.modal .dialog-content [role="alert"] {
+  border-radius: 10px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .modal :is(.dialog-actions, .dialog-footer) .button {
+    transition: none;
+  }
+}
+
+/* Alert layout for toned dialogs: the symbol sits above the title, as in
+   native macOS alerts, on a neutral tile with only the glyph in tone. */
+.modal[data-tone] .modal-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  row-gap: var(--space-14);
+  padding-top: var(--space-24);
+}
+.modal[data-tone] .modal-symbol {
+  grid-column: 1;
+  grid-row: 1;
+  width: 40px;
+  height: 40px;
+  border: var(--border-width) solid var(--color-outline);
+  border-radius: 12px;
+  background: var(--color-surface-container);
+}
+.modal[data-tone] .modal-close {
+  grid-column: 2;
+  grid-row: 1;
+  margin-top: -4px;
+}
+.modal[data-tone] .modal-header h2 {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  align-self: start;
+}
+.modal .dialog-content {
+  color: var(--color-muted-text);
+}
+.modal .dialog-content .dialog-points {
+  display: grid;
+  gap: var(--space-6);
+  font-size: var(--font-size-13);
+  line-height: 1.5;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.modal .dialog-content .dialog-points li {
+  position: relative;
+  padding-left: var(--space-16);
+}
+.modal .dialog-content .dialog-points li::before {
+  content: "";
+  position: absolute;
+  top: 0.6em;
+  left: 2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 1.6px;
+  background: var(--color-muted-text);
+}
+
+/* Focus inside dialogs is a soft halo; initial focus should not shout. */
+.modal .modal-surface .button:focus-visible,
+.modal .modal-surface .icon-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--lomi-focus) 28%, transparent);
+}
+
+/* Tones use the brand palette: attention is Agent Violet; only destructive
+   dialogs keep the danger red. */
+.modal[data-tone="warning"] .modal-symbol {
+  color: var(--color-accent-text);
+}
+.modal[data-tone="danger"] .modal-symbol {
+  color: var(--color-error);
+}
+.modal[data-tone] .modal-symbol {
+  background: var(--color-surface-container);
+}
+
+/* Compact dialogs (Codex / Claude Code style): narrow, no symbol, small title,
+   small actions. The primary action is neutral (light on dark, ink on light);
+   destructive actions keep the danger fill. */
+.modal {
+  width: min(400px, calc(100vw - 32px));
+}
+.modal .modal-surface {
+  border-radius: 14px;
+}
+.modal .modal-header,
+.modal[data-tone] .modal-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  padding: var(--space-18) var(--space-14) 0 var(--space-20);
+}
+.modal .modal-symbol,
+.modal[data-tone] .modal-symbol {
+  display: none;
+}
+.modal .modal-header h2,
+.modal[data-tone] .modal-header h2 {
+  font-size: var(--font-size-15);
+  font-weight: 600;
+  letter-spacing: -0.006em;
+  line-height: 1.4;
+}
+.modal .modal-close,
+.modal[data-tone] .modal-close {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  margin: 0 0 0 auto;
+  border-radius: 6px;
+}
+.modal .dialog-content {
+  padding: var(--space-8) var(--space-20) 0;
+  font-size: var(--font-size-13);
+  line-height: 1.55;
+}
+.modal .dialog-content p {
+  margin-bottom: var(--space-10);
+}
+.modal .dialog-content .dialog-points {
+  gap: var(--space-4);
+}
+.modal .dialog-content .dialog-points li {
+  padding-left: var(--space-12);
+}
+.modal .dialog-content .dialog-points li::before {
+  left: 0;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+}
+.modal
+  .dialog-content
+  :is(
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+    textarea,
+    select,
+    .select-trigger
+  ) {
+  min-height: 34px;
+  border-radius: 8px;
+}
+.modal .dialog-layout > .dialog-actions,
+.modal .dialog-footer {
+  gap: var(--space-6);
+  padding: var(--space-18) var(--space-16) var(--space-16);
+}
+.modal :is(.dialog-actions, .dialog-footer) .button {
+  min-width: 0;
+  min-height: 30px;
+  padding: 0 var(--space-12);
+  border-radius: 8px;
+  font-size: var(--font-size-13);
+  font-weight: 500;
+}
+.modal :is(.dialog-actions, .dialog-footer) .button-primary {
+  border-color: transparent;
+  background: var(--color-surface-text);
+  color: var(--color-surface);
+  font-weight: 500;
+}
+.modal
+  :is(.dialog-actions, .dialog-footer)
+  .button-primary:hover:not(:disabled) {
+  background: color-mix(
+    in srgb,
+    var(--color-surface-text) 86%,
+    var(--color-surface)
+  );
+  box-shadow: none;
+}
+.modal
+  :is(.dialog-actions, .dialog-footer)
+  .button-primary:active:not(:disabled) {
+  background: color-mix(
+    in srgb,
+    var(--color-surface-text) 76%,
+    var(--color-surface)
+  );
+  box-shadow: none;
+}
+.modal
+  :is(.dialog-actions, .dialog-footer)
+  :is(.button-danger, .button.text-error, .button.danger) {
+  font-weight: 500;
 }

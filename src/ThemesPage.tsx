@@ -1,15 +1,17 @@
+import "./settings-themes.css";
 import type { IconKind } from "./theme/icon-theme";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import {
   Check,
   Copy,
   Download,
+  Ellipsis,
   FolderOpen,
   Import,
   Monitor,
   Moon,
-  Palette,
   Plus,
   Pencil,
   Search,
@@ -28,14 +30,55 @@ import {
 } from "./theme/format";
 import type { ThemeBundle, ThemeCatalog } from "./theme/format";
 import ThemeEditor from "./ThemeEditor";
+import LomiSymbol from "./LomiSymbol";
 import Select from "./Select";
-import { DisclosureSummary, IconButton } from "./ui";
+import { IconButton, Menu } from "./ui";
 import {
   SettingRow,
   SettingsNotice,
   SettingsPage,
   SettingsSection,
 } from "./settings-ui";
+
+const PreviewScene = ({ tone }: { tone: "light" | "dark" }) => (
+  <span className={`tp tp-${tone}`}>
+    <span className="tp-bar">
+      <i />
+      <i />
+    </span>
+    <span className="tp-side">
+      <i />
+      <i />
+      <i />
+      <i />
+      <i />
+    </span>
+    <span className="tp-stage">
+      <b />
+      <b />
+      <b />
+      <b />
+    </span>
+    <span className="tp-status" />
+  </span>
+);
+
+function ThemePreview({ mode }: { mode: "system" | "light" | "dark" }) {
+  return (
+    <span className="theme-preview" aria-hidden="true">
+      {mode !== "dark" && (
+        <span className={mode === "system" ? "tp-clip-light" : "tp-whole"}>
+          <PreviewScene tone="light" />
+        </span>
+      )}
+      {mode !== "light" && (
+        <span className={mode === "system" ? "tp-clip" : "tp-whole"}>
+          <PreviewScene tone="dark" />
+        </span>
+      )}
+    </span>
+  );
+}
 
 export default function ThemesPage() {
   const themes = useThemes();
@@ -60,6 +103,7 @@ export default function ThemesPage() {
         : themes.preferences.productIcons) ?? null;
   const [filter, setFilter] = useState("all");
   const [source, setSource] = useState("all");
+  const [manageOpen, setManageOpen] = useState(false);
   const searchInput = useRef<HTMLInputElement>(null);
   const clearFilters = useCallback(() => {
     setSearch("");
@@ -145,6 +189,50 @@ export default function ThemesPage() {
     const bundle = await api<ThemeBundle>("load_theme", { id });
     setEditing(bundle);
   };
+  const createTheme = () =>
+    void run(async () => {
+      const id =
+        kind === "color"
+          ? await api<string>("create_theme")
+          : await api<string>("duplicate_theme", { id: null, kind });
+      await refreshCatalog();
+      clearFilters();
+      if (kind === "color") await edit(id);
+      else await api("open_themes_folder", { id });
+    }, "Theme created");
+  const importVSCode = () =>
+    void run(async () => {
+      const path = await open({
+        multiple: false,
+        title: "Import a VS Code theme, package.json, or VSIX",
+        filters: [
+          {
+            name: "VS Code themes",
+            extensions: ["json", "jsonc", "tmTheme", "vsix"],
+          },
+        ],
+      });
+      if (typeof path !== "string") return;
+      const ids = await api<string[]>("import_vscode_themes", { path });
+      await refreshCatalog();
+      clearFilters();
+      setStatus(
+        `${ids.length} VS Code theme${ids.length === 1 ? "" : "s"} imported`,
+      );
+    }, "");
+  const importFolderDialog = () =>
+    void run(async () => {
+      const path = await open({
+        directory: true,
+        multiple: false,
+        title: "Import a Lomi theme or VS Code extension folder",
+      });
+      if (typeof path !== "string") return;
+      await api("import_theme", { path });
+      await refreshCatalog();
+      clearFilters();
+      setStatus("Theme imported");
+    }, "");
   const allEntries = [
     ...(kind === "color"
       ? builtinThemes.map(({ id, manifest }) => ({
@@ -185,7 +273,6 @@ export default function ThemesPage() {
   return (
     <SettingsPage
       title="Themes"
-      description="Colors and icons for all windows."
       busy={busy}
       className={`themes-page catalog-page${dragging ? " theme-dragging" : ""}`}
       contentClassName="catalog-content"
@@ -261,6 +348,7 @@ export default function ThemesPage() {
                     }}
                   />
                   <Icon size={16} aria-hidden="true" />
+                  <ThemePreview mode={appearance} />
                   {label}
                 </label>
               ))}
@@ -269,32 +357,88 @@ export default function ThemesPage() {
         </SettingRow>
       </SettingsSection>
 
-      <SettingsSection title="Theme library" grouped={false}>
-        <div
-          className="catalog-categories"
-          role="group"
-          aria-label="Theme types"
-        >
-          {(
-            [
-              ["color", "Colors"],
-              ["file", "File icons"],
-              ["product", "Interface icons"],
-            ] as const
-          ).map(([value, label]) => (
+      <SettingsSection
+        title="Theme library"
+        grouped={false}
+        actions={
+          <div className="theme-manage">
             <button
-              key={value}
-              aria-pressed={kind === value}
-              onClick={() => {
-                setKind(value);
-                clearFilters();
-              }}
+              type="button"
+              className="button theme-manage-trigger"
+              data-menu-trigger
+              aria-haspopup="menu"
+              aria-expanded={manageOpen}
+              aria-label="Manage themes"
+              title="Manage themes"
+              onClick={() => setManageOpen((value) => !value)}
             >
-              {label}
+              <Ellipsis size={16} aria-hidden="true" />
             </button>
-          ))}
-        </div>
-        <div className="catalog-toolbar">
+            {manageOpen && (
+              <Menu
+                className="theme-manage-menu"
+                onClose={() => setManageOpen(false)}
+              >
+                {[
+                  {
+                    Icon: Plus,
+                    label:
+                      kind === "color" ? "Create theme" : "Create icon theme",
+                    action: createTheme,
+                  },
+                  {
+                    Icon: Import,
+                    label: "Import VS Code…",
+                    action: importVSCode,
+                  },
+                  {
+                    Icon: Import,
+                    label: "Import folder…",
+                    action: importFolderDialog,
+                  },
+                ].map(({ Icon, label, action }) => (
+                  <button
+                    key={label}
+                    type="button"
+                    role="menuitem"
+                    className="menu-item"
+                    disabled={busy || !native}
+                    onClick={() => {
+                      setManageOpen(false);
+                      action();
+                    }}
+                  >
+                    <Icon size={15} aria-hidden="true" />
+                    <span>{label}</span>
+                  </button>
+                ))}
+              </Menu>
+            )}
+          </div>
+        }
+      >
+        <div className="catalog-toolbar theme-toolbar">
+          <div className="theme-kinds" role="group" aria-label="Theme types">
+            {(
+              [
+                ["color", "Colors"],
+                ["file", "File icons"],
+                ["product", "Interface icons"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={kind === value}
+                onClick={() => {
+                  setKind(value);
+                  clearFilters();
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <div className="catalog-search">
             <Search size={16} aria-hidden="true" />
             <input
@@ -327,33 +471,17 @@ export default function ThemesPage() {
               { value: "attention", label: "Needs attention" },
             ]}
           />
-        </div>
-        <div className="catalog-filter-row">
-          <div
-            className="catalog-categories"
-            role="group"
+          <Select
             aria-label="Theme sources"
-          >
-            {[
+            value={source}
+            onChange={setSource}
+            options={[
               { value: "all", label: "All sources" },
               { value: "builtin", label: "Built in" },
               { value: "local", label: "Local" },
               { value: "package", label: "Packages" },
-            ].map(({ value, label }) => (
-              <button
-                key={value}
-                aria-pressed={source === value}
-                onClick={() => setSource(value)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <span className="catalog-count" role="status">
-            {entries.length === allEntries.length
-              ? `${entries.length} available`
-              : `${entries.length} of ${allEntries.length}`}
-          </span>
+            ]}
+          />
         </div>
         {entries.length === 0 ? (
           <div className="catalog-empty">
@@ -379,67 +507,46 @@ export default function ThemesPage() {
               const active = entry.id === selectedId;
               return (
                 <article
-                  className={`catalog-card theme-card${active ? " active-theme" : ""}`}
+                  className={`theme-row${active ? " active-theme" : ""}`}
                   key={entry.id ?? "builtin"}
                   aria-label={entry.name}
                 >
-                  <header className="catalog-card-heading">
-                    <span className="theme-symbol" aria-hidden="true">
-                      <Palette size={19} />
-                    </span>
-                    <div className="catalog-card-title">
-                      <h2>{entry.name}</h2>
-                      <span>
-                        {entry.author ||
-                          (isBuiltinTheme(entry.id)
-                            ? "Built in"
-                            : entry.owner
-                              ? "Package theme"
-                              : "Local theme")}
-                      </span>
-                    </div>
-                    <button
-                      className={`button theme-choice${active ? " button-primary" : ""}`}
-                      aria-pressed={active}
-                      aria-label={`Use ${entry.name} theme`}
-                      disabled={busy || !themes.ready || !!entry.error}
-                      onClick={() => select(entry.id)}
-                    >
-                      {active && <Check size={13} aria-hidden="true" />}
-                      {active ? "Active" : "Use theme"}
-                    </button>
-                  </header>
-                  <p className="catalog-description">
-                    {entry.description ||
-                      (entry.owner
-                        ? "A theme supplied by an installed package."
-                        : "A custom theme for your workspace.")}
-                  </p>
-                  {(isBuiltinTheme(entry.id) ||
-                    entry.owner ||
-                    (kind === "color" && entry.id === null)) && (
-                    <div className="catalog-tags">
+                  <ThemeLogo
+                    builtin={isBuiltinTheme(entry.id)}
+                    name={entry.name}
+                  />
+                  <div className="theme-row-main">
+                    <div className="theme-row-name">
+                      <h3>{entry.name}</h3>
                       {(isBuiltinTheme(entry.id) || entry.owner) && (
-                        <span>Read only</span>
+                        <span className="theme-tag">Read only</span>
                       )}
                       {kind === "color" && entry.id === null && (
-                        <span>Default</span>
+                        <span className="theme-tag">Default</span>
                       )}
                     </div>
-                  )}
-                  {entry.error && (
-                    <p className="text-error" role="alert">
-                      {entry.error}
+                    <p className="theme-row-meta">
+                      {!isBuiltinTheme(entry.id) &&
+                        `${entry.author || (entry.owner ? "Package theme" : "Local theme")} · `}
+                      {entry.description ||
+                        (entry.owner
+                          ? "A theme supplied by an installed package."
+                          : "A custom theme for your workspace.")}
                     </p>
-                  )}
-                  {entry.owner && (
-                    <p className="settings-help theme-package-owner">
-                      From {entry.owner}. Duplicate to customize.
-                    </p>
-                  )}
-                  <footer className="catalog-card-footer theme-card-actions">
-                    <button
-                      className="theme-action"
+                    {entry.error && (
+                      <p className="text-error" role="alert">
+                        {entry.error}
+                      </p>
+                    )}
+                    {entry.owner && (
+                      <p className="theme-row-meta theme-package-owner">
+                        From {entry.owner}. Duplicate to customize.
+                      </p>
+                    )}
+                  </div>
+                  <div className="theme-row-actions">
+                    <IconButton
+                      title="Export to VS Code"
                       disabled={busy || !native || !!entry.error}
                       onClick={() =>
                         void run(async () => {
@@ -487,12 +594,17 @@ export default function ThemesPage() {
                         }, "")
                       }
                     >
-                      <Download size={13} aria-hidden="true" /> Export to VS
-                      Code
-                    </button>
+                      <Download size={15} />
+                    </IconButton>
                     {entry.id && !isBuiltinTheme(entry.id) && (
-                      <button
-                        className="theme-action"
+                      <IconButton
+                        title={
+                          kind !== "color"
+                            ? "Open icon definitions"
+                            : entry.owner
+                              ? "View theme"
+                              : "Edit theme"
+                        }
                         disabled={busy}
                         onClick={() =>
                           void run(
@@ -504,17 +616,11 @@ export default function ThemesPage() {
                           )
                         }
                       >
-                        <Pencil size={13} aria-hidden="true" />
-                        {kind !== "color"
-                          ? "Open icon definitions"
-                          : entry.owner
-                            ? "View theme"
-                            : "Edit theme"}
-                      </button>
+                        <Pencil size={15} />
+                      </IconButton>
                     )}
-                    <button
-                      className="theme-action"
-                      aria-label="Duplicate theme"
+                    <IconButton
+                      title="Duplicate theme"
                       disabled={busy || !!entry.error}
                       onClick={() =>
                         void run(async () => {
@@ -529,8 +635,8 @@ export default function ThemesPage() {
                         }, "Theme copied")
                       }
                     >
-                      <Copy size={13} aria-hidden="true" /> Duplicate
-                    </button>
+                      <Copy size={15} />
+                    </IconButton>
                     {entry.id && !isBuiltinTheme(entry.id) && (
                       <IconButton
                         title="Open theme folder"
@@ -542,97 +648,27 @@ export default function ThemesPage() {
                           )
                         }
                       >
-                        <FolderOpen size={14} />
+                        <FolderOpen size={15} />
                       </IconButton>
                     )}
-                  </footer>
+                  </div>
+                  <button
+                    type="button"
+                    className={active ? "theme-active-pill" : "button"}
+                    aria-pressed={active}
+                    aria-label={`Use ${entry.name} theme`}
+                    disabled={busy || !themes.ready || !!entry.error}
+                    onClick={() => select(entry.id)}
+                  >
+                    {active && <Check size={13} aria-hidden="true" />}
+                    {active ? "Active" : "Use"}
+                  </button>
                 </article>
               );
             })}
           </div>
         )}
       </SettingsSection>
-      <details className="settings-disclosure">
-        <DisclosureSummary>Manage themes</DisclosureSummary>
-        <div className="settings-disclosure-body">
-          <p className="settings-help">
-            Create your own theme or import themes from a file or folder.
-          </p>
-          <div className="settings-section-actions">
-            <button
-              className="button"
-              disabled={busy || !native}
-              onClick={() =>
-                void run(async () => {
-                  const id =
-                    kind === "color"
-                      ? await api<string>("create_theme")
-                      : await api<string>("duplicate_theme", {
-                          id: null,
-                          kind,
-                        });
-                  await refreshCatalog();
-                  clearFilters();
-                  if (kind === "color") await edit(id);
-                  else await api("open_themes_folder", { id });
-                }, "Theme created")
-              }
-            >
-              <Plus size={15} aria-hidden="true" />{" "}
-              {kind === "color" ? "Create theme" : "Create icon theme"}
-            </button>
-            <button
-              className="button"
-              disabled={busy || !native}
-              onClick={() =>
-                void run(async () => {
-                  const path = await open({
-                    multiple: false,
-                    title: "Import a VS Code theme, package.json, or VSIX",
-                    filters: [
-                      {
-                        name: "VS Code themes",
-                        extensions: ["json", "jsonc", "tmTheme", "vsix"],
-                      },
-                    ],
-                  });
-                  if (typeof path !== "string") return;
-                  const ids = await api<string[]>("import_vscode_themes", {
-                    path,
-                  });
-                  await refreshCatalog();
-                  clearFilters();
-                  setStatus(
-                    `${ids.length} VS Code theme${ids.length === 1 ? "" : "s"} imported`,
-                  );
-                }, "")
-              }
-            >
-              <Import size={15} aria-hidden="true" /> Import VS Code
-            </button>
-            <button
-              className="button button-primary"
-              disabled={busy || !native}
-              onClick={() =>
-                void run(async () => {
-                  const path = await open({
-                    directory: true,
-                    multiple: false,
-                    title: "Import a Lomi theme or VS Code extension folder",
-                  });
-                  if (typeof path !== "string") return;
-                  await api("import_theme", { path });
-                  await refreshCatalog();
-                  clearFilters();
-                  setStatus("Theme imported");
-                }, "")
-              }
-            >
-              <Import size={15} aria-hidden="true" /> Import folder
-            </button>
-          </div>
-        </div>
-      </details>
       {editing && (
         <ThemeEditor
           key={editing.id}
@@ -642,5 +678,35 @@ export default function ThemesPage() {
         />
       )}
     </SettingsPage>
+  );
+}
+
+/** Extension-style logo tile: the Lomi mark for the built-in theme, otherwise
+ *  initials on a hue derived from the theme name (stable across sessions). */
+function ThemeLogo({ builtin, name }: { builtin: boolean; name: string }) {
+  if (builtin)
+    return (
+      <span className="theme-logo theme-logo-lomi" aria-hidden="true">
+        <LomiSymbol size={20} />
+      </span>
+    );
+  const initials =
+    name
+      .split(/[\s_-]+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((word) => word[0])
+      .join("")
+      .toLocaleUpperCase() || "?";
+  let hue = 0;
+  for (const char of name) hue = (hue * 31 + char.codePointAt(0)!) % 360;
+  return (
+    <span
+      className="theme-logo"
+      style={{ "--logo-hue": hue } as CSSProperties}
+      aria-hidden="true"
+    >
+      {initials}
+    </span>
   );
 }

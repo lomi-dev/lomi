@@ -1,11 +1,12 @@
-import { DisclosureSummary } from "./ui";
+import "./settings-sections.css";
+import "./settings-terminal.css";
 import {
   SettingRow,
   SettingsNotice,
   SettingsPage,
   SettingsSection,
 } from "./settings-ui";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import Select from "./Select";
 import { RotateCcw } from "./icons";
 import { errorMessage, windows } from "./api";
@@ -76,28 +77,34 @@ const labels: Record<string, string> = {
   wordSeparator: "Word separators",
 };
 const help: Record<string, string> = {
-  alwaysShowTitles: "When off, hold Control to reveal a title.",
+  alwaysShowTitles: "Otherwise hold Control to reveal titles.",
   windowsShell: "Applies to new terminals.",
-  fontSize: "In pixels.",
-  lineHeight: "1–3 × font size.",
-  letterSpacing: "−2 to 20 px.",
-  cursorWidth: "1–10 px, bar cursor only.",
-  minimumContrastRatio: "1 keeps exact colors; up to 21.",
-  scrollback: "Up to 100,000 lines. Lowering it discards older output.",
-  smoothScrollDuration: "0 disables animation; up to 1,000 ms.",
-  tabStopWidth: "Spaces per tab stop in terminal output.",
-  wordSeparator:
-    "Characters that end a word on double-click, including spaces.",
+  cursorWidth: "Bar cursor only.",
+  minimumContrastRatio: "1 keeps exact colors.",
+  scrollback: "Lowering it drops older output.",
+  smoothScrollDuration: "0 turns animation off.",
+  wordSeparator: "Characters that end a word on double-click.",
   customGlyphs: "Accelerated renderer only.",
   rescaleOverlappingGlyphs: "Accelerated renderer only.",
 };
-const labelFor = (key: string) =>
+export const labelFor = (key: string) =>
   labels[key] ??
   key
     .replace(/([A-Z])/g, " $1")
     .replace(/^./, (letter) => letter.toUpperCase());
 
-function Setting({
+const units: Record<string, string> = {
+  lineHeight: "×",
+  letterSpacing: "px",
+  cursorWidth: "px",
+  scrollback: "lines",
+  smoothScrollDuration: "ms",
+  tabStopWidth: "spaces",
+  scrollSensitivity: "×",
+  fastScrollSensitivity: "×",
+};
+
+function Control({
   name,
   value,
   disabled,
@@ -106,7 +113,7 @@ function Setting({
   reset,
   resetKind = "theme",
   change,
-  color = false,
+  unit,
 }: {
   name: string;
   value: string | number | boolean;
@@ -116,23 +123,70 @@ function Setting({
   reset?: () => void;
   resetKind?: "theme" | "behavior";
   change: (value: string | number | boolean) => void;
-  color?: boolean;
+  unit?: string;
 }) {
   const [text, setText] = useState(String(value));
   useEffect(() => setText(String(value)), [value, disabled]);
   const label = labelFor(name);
+  unit ??= range ? units[name] : undefined;
   const id = `terminal-setting-${name}`;
   const resetLabel =
     resetKind === "theme"
       ? `Restore theme default for ${label}`
       : `Restore default behavior for ${label}`;
+  const field = (
+    <input
+      id={id}
+      type={range ? "number" : "text"}
+      value={text}
+      disabled={disabled}
+      aria-label={unit ? `${label} (${unit})` : undefined}
+      aria-describedby={help[name] ? `${id}-help` : undefined}
+      min={range?.[0]}
+      max={range?.[1]}
+      step={
+        [
+          "cursorWidth",
+          "scrollback",
+          "smoothScrollDuration",
+          "tabStopWidth",
+        ].includes(name)
+          ? 1
+          : "any"
+      }
+      maxLength={name === "wordSeparator" ? 200 : 500}
+      spellCheck={false}
+      onChange={(event) => setText(event.target.value)}
+      onBlur={(event) => {
+        if (text !== String(value)) {
+          if (event.target.checkValidity())
+            change(range ? (text.trim() ? Number(text) : NaN) : text);
+          else event.target.reportValidity();
+        }
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") event.currentTarget.blur();
+        if (event.key === "Escape") {
+          event.preventDefault();
+          setText(String(value));
+        }
+      }}
+    />
+  );
   return (
-    <SettingRow
-      label={label}
-      htmlFor={id}
-      description={help[name]}
-      descriptionId={`${id}-help`}
-    >
+    <>
+      {reset && (
+        <button
+          type="button"
+          className="icon-button"
+          aria-label={resetLabel}
+          title={resetLabel}
+          disabled={disabled}
+          onClick={reset}
+        >
+          <RotateCcw size={14} />
+        </button>
+      )}
       {typeof value === "boolean" ? (
         <input
           id={id}
@@ -156,80 +210,32 @@ function Setting({
             label: labelFor(choice),
           }))}
         />
+      ) : unit ? (
+        <span className="terminal-unit-field" data-unit={unit}>
+          {field}
+        </span>
       ) : (
-        <>
-          {color && (
-            <input
-              type="color"
-              aria-label={`${label} picker`}
-              disabled={disabled}
-              value={/^#[\da-f]{6}/i.test(text) ? text.slice(0, 7) : "#000000"}
-              onChange={(event) =>
-                change(
-                  event.target.value + (text.length === 9 ? text.slice(7) : ""),
-                )
-              }
-            />
-          )}
-          <input
-            id={id}
-            type={range ? "number" : "text"}
-            value={text}
-            disabled={disabled}
-            aria-describedby={help[name] ? `${id}-help` : undefined}
-            min={range?.[0]}
-            max={range?.[1]}
-            step={
-              [
-                "cursorWidth",
-                "scrollback",
-                "smoothScrollDuration",
-                "tabStopWidth",
-              ].includes(name)
-                ? 1
-                : "any"
-            }
-            maxLength={color ? 9 : name === "wordSeparator" ? 200 : 500}
-            placeholder={color ? "Automatic" : undefined}
-            spellCheck={false}
-            onChange={(event) => setText(event.target.value)}
-            onBlur={(event) => {
-              if (text !== String(value)) {
-                if (event.target.checkValidity())
-                  change(range ? (text.trim() ? Number(text) : NaN) : text);
-                else event.target.reportValidity();
-              }
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") event.currentTarget.blur();
-              if (event.key === "Escape") {
-                event.preventDefault();
-                setText(String(value));
-              }
-            }}
-          />
-        </>
+        field
       )}
-      {reset ? (
-        <button
-          type="button"
-          className="icon-button"
-          aria-label={resetLabel}
-          title={resetLabel}
-          disabled={disabled}
-          onClick={reset}
-        >
-          <RotateCcw size={14} />
-        </button>
-      ) : typeof value !== "boolean" ? (
-        <span
-          className="terminal-setting-reset-placeholder"
-          aria-hidden="true"
-        />
-      ) : null}
+    </>
+  );
+}
+
+function Setting(props: Parameters<typeof Control>[0]) {
+  const id = `terminal-setting-${props.name}`;
+  return (
+    <SettingRow
+      label={labelFor(props.name)}
+      htmlFor={id}
+      description={help[props.name]}
+      descriptionId={`${id}-help`}
+    >
+      <Control {...props} />
     </SettingRow>
   );
 }
+
+export type ColorKey = (typeof terminalColors)[number];
 
 export default function TerminalSettingsPage() {
   const preferences = useTerminalPreferences();
@@ -330,31 +336,25 @@ export default function TerminalSettingsPage() {
       }
     />
   );
-  const setColor = (key: (typeof terminalColors)[number], value?: string) => {
-    const colors = { ...preferences.value.appearance.colors };
-    if (value === undefined) delete colors[key];
-    else colors[key] = value;
-    void persist({
-      ...preferences.value,
-      appearance: { ...preferences.value.appearance, colors },
-    });
+  const effectiveColor = (key: ColorKey) => palette[key];
+  const effective = <K extends keyof ThemeTerminal>(key: K) =>
+    preferences.value.appearance[key] ?? (appearance as ThemeTerminal)[key];
+  const fontFamilyShown =
+    fontFamilyOverride ?? String(appearance.fontFamily ?? "monospace");
+  const cursorStyle = effective("cursorStyle") ?? "bar";
+  const previewColor = (key: ColorKey, fallback = "currentColor") =>
+    effectiveColor(key) ?? fallback;
+  const ansi = (key: ColorKey) => ({ color: previewColor(key) });
+  const cursorColor = previewColor("cursor");
+  const previewStyle: CSSProperties = {
+    background: previewColor("background", "transparent"),
+    color: previewColor("foreground"),
+    fontFamily: fontFamilyShown,
+    fontSize: `${effective("fontSize") ?? 14}px`,
+    lineHeight: effective("lineHeight") ?? 1.25,
+    letterSpacing: `${effective("letterSpacing") ?? 0}px`,
+    fontWeight: effective("fontWeight") ?? "normal",
   };
-  const colorSetting = (key: (typeof terminalColors)[number]) => (
-    <Setting
-      key={key}
-      name={key}
-      color
-      disabled={disabled}
-      value={preferences.value.appearance.colors?.[key] ?? palette[key] ?? ""}
-      resetKind="theme"
-      reset={
-        preferences.value.appearance.colors?.[key] === undefined
-          ? undefined
-          : () => setColor(key)
-      }
-      change={(value) => setColor(key, String(value))}
-    />
-  );
   const behaviorSetting = (key: keyof TerminalPreferences["behavior"]) => (
     <Setting
       key={key}
@@ -423,7 +423,6 @@ export default function TerminalSettingsPage() {
     <SettingsPage
       title="Terminal"
       className="terminal-settings-page"
-      description="Text, colors and behavior for all terminals."
       busy={!preferences.ready || busy}
     >
       {(error || preferences.error) && (
@@ -468,8 +467,12 @@ export default function TerminalSettingsPage() {
         </SettingsNotice>
       )}
 
-      <SettingsSection title="Basics">
-        <SettingRow label="Font" htmlFor="terminal-setting-font">
+      <SettingsSection title="Font">
+        <SettingRow
+          label="Terminal font"
+          htmlFor="terminal-setting-font"
+          description="Used by every terminal."
+        >
           <Select
             id="terminal-setting-font"
             value={fontMode}
@@ -481,9 +484,20 @@ export default function TerminalSettingsPage() {
               { value: "custom", label: "Custom font…" },
             ]}
           />
-          <span
-            className="terminal-setting-reset-placeholder"
-            aria-hidden="true"
+          <Control
+            name="fontSize"
+            unit="px"
+            disabled={disabled}
+            value={
+              preferences.value.appearance.fontSize ?? appearance.fontSize ?? ""
+            }
+            range={terminalNumbers.fontSize}
+            reset={
+              preferences.value.appearance.fontSize === undefined
+                ? undefined
+                : () => void setAppearanceValue("fontSize")
+            }
+            change={(value) => void setAppearanceValue("fontSize", value)}
           />
         </SettingRow>
         {fontMode === "custom" && (
@@ -493,6 +507,18 @@ export default function TerminalSettingsPage() {
             description="An installed font. Separate fallbacks with commas."
             descriptionId="terminal-setting-font-family-help"
           >
+            {fontFamilyOverride !== undefined && (
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Restore theme default for Font family"
+                title="Restore theme default"
+                disabled={disabled}
+                onClick={resetFont}
+              >
+                <RotateCcw size={14} />
+              </button>
+            )}
             <input
               id="terminal-setting-font-family"
               type="text"
@@ -513,27 +539,115 @@ export default function TerminalSettingsPage() {
                 }
               }}
             />
-            {fontFamilyOverride !== undefined ? (
-              <button
-                type="button"
-                className="icon-button"
-                aria-label="Restore theme default for Font family"
-                title="Restore theme default"
-                disabled={disabled}
-                onClick={resetFont}
-              >
-                <RotateCcw size={14} />
-              </button>
-            ) : (
-              <span
-                className="terminal-setting-reset-placeholder"
-                aria-hidden="true"
-              />
-            )}
           </SettingRow>
         )}
-        {(["fontSize", "cursorStyle"] as const).map(appearanceSetting)}
-
+        <div className="terminal-preview-frame">
+          <div
+            className="terminal-preview"
+            role="img"
+            aria-label="Live preview of the terminal font and colors"
+            style={previewStyle}
+          >
+            <div>
+              <span style={ansi("brightGreen")}>➜ </span>
+              <span style={ansi("cyan")}>lomi </span>
+              <span style={ansi("blue")}>git:(</span>
+              <span style={ansi("red")}>main</span>
+              <span style={ansi("blue")}>) </span>
+              <span style={ansi("yellow")}>✗ </span>pnpm dev
+            </div>
+            <div>
+              {"  "}
+              <span style={ansi("brightGreen")}>VITE v7</span> ready in{" "}
+              <b>1.24s</b>
+            </div>
+            <div>
+              {"  "}
+              <span style={ansi("brightGreen")}>➜ </span>
+              <b>Local:</b>{" "}
+              <span
+                style={{ ...ansi("brightBlue"), textDecoration: "underline" }}
+              >
+                http://127.0.0.1:5173/
+              </span>
+            </div>
+            <div>
+              {"  "}
+              <span style={ansi("green")}>✓ 85 passed</span>
+              {"  "}
+              <span style={ansi("yellow")}>△ 2 warnings</span>
+              {"  "}
+              <span style={ansi("red")}>✗ 0 failed</span>
+            </div>
+            <div>
+              <span style={ansi("brightGreen")}>➜ </span>
+              <span style={ansi("cyan")}>lomi </span>
+              <span style={ansi("blue")}>git:(</span>
+              <span style={ansi("red")}>main</span>
+              <span style={ansi("blue")}>) </span>
+              rg{" "}
+              <span
+                style={{
+                  background: previewColor(
+                    "selectionBackground",
+                    "transparent",
+                  ),
+                  color: previewColor("selectionForeground"),
+                }}
+              >
+                formatUser
+              </span>
+            </div>
+            <div>
+              <span style={ansi("magenta")}>src/user.ts</span>
+              <span style={ansi("brightBlack")}>:12 </span> export function{" "}
+              <span
+                style={{
+                  background: previewColor(
+                    "searchActiveMatchBackground",
+                    "transparent",
+                  ),
+                  outline: `1px solid ${previewColor("searchActiveMatchBorder", "transparent")}`,
+                }}
+              >
+                formatUser
+              </span>
+              (user){" "}
+              <span
+                style={{
+                  background: previewColor(
+                    "searchMatchBackground",
+                    "transparent",
+                  ),
+                  outline: `1px solid ${previewColor("searchMatchBorder", "transparent")}`,
+                }}
+              >
+                {"{"}
+              </span>
+            </div>
+            <div>
+              <span style={ansi("brightGreen")}>➜ </span>
+              <span style={ansi("cyan")}>lomi </span>
+              <span style={ansi("blue")}>git:(</span>
+              <span style={ansi("red")}>main</span>
+              <span style={ansi("blue")}>) </span>
+              <span
+                className="terminal-preview-cursor"
+                data-style={cursorStyle}
+                style={
+                  {
+                    "--cursor": cursorColor,
+                    "--cursor-width": `${effective("cursorWidth") ?? 1}px`,
+                    "--cursor-text": previewColor("cursorAccent"),
+                  } as CSSProperties
+                }
+              >
+                {"\u00a0"}
+              </span>
+            </div>
+          </div>
+        </div>
+        {appearanceSetting("cursorStyle")}
         <Setting
           name="alwaysShowTitles"
           value={preferences.value.alwaysShowTitles}
@@ -557,116 +671,81 @@ export default function TerminalSettingsPage() {
         />
       </SettingsSection>
 
-      <details className="settings-disclosure">
-        <DisclosureSummary>Customize colors</DisclosureSummary>
-        <div className="settings-disclosure-body">
-          <p className="settings-help">
-            Colors follow the theme until changed. Use #RRGGBB, or #RRGGBBAA for
-            opacity.
-          </p>
-          {terminalColors.slice(0, 7).map(colorSetting)}
-          <details className="settings-disclosure terminal-settings-nested">
-            <DisclosureSummary>
-              ANSI palette and search colors
-            </DisclosureSummary>
-            <div className="settings-disclosure-body">
-              {terminalColors.slice(7).map(colorSetting)}
-            </div>
-          </details>
-        </div>
-      </details>
-
-      <details className="settings-disclosure">
-        <DisclosureSummary>Advanced settings</DisclosureSummary>
-        <div className="settings-disclosure-body">
-          <section
-            className="settings-subsection"
-            aria-label="Text and cursor details"
-          >
-            <h3>Text and cursor details</h3>
-            {(
-              [
-                "fontWeight",
-                "fontWeightBold",
-                "lineHeight",
-                "letterSpacing",
-                "cursorInactiveStyle",
-                "cursorBlink",
-                "cursorWidth",
-              ] as const
-            ).map(appearanceSetting)}
-          </section>
-          <section className="settings-subsection" aria-label="Scrolling">
-            <h3>Scrolling</h3>
-            {(
-              [
-                "scrollback",
-                "scrollSensitivity",
-                "fastScrollSensitivity",
-                "smoothScrollDuration",
-                "scrollOnUserInput",
-                "scrollOnEraseInDisplay",
-              ] as const
-            ).map(behaviorSetting)}
-          </section>
-          <section
-            className="settings-subsection"
-            aria-label="Keyboard and selection"
-          >
-            <h3>Keyboard and selection</h3>
-            {windows && (
-              <Setting
-                name="windowsShell"
-                value={preferences.value.windowsShell}
-                choices={["powershell", "cmd"]}
-                disabled={disabled}
-                resetKind="behavior"
-                change={(value) =>
-                  void persist({
-                    ...preferences.value,
-                    windowsShell: value as TerminalPreferences["windowsShell"],
-                  })
-                }
-                reset={
-                  preferences.value.windowsShell === "powershell"
-                    ? undefined
-                    : () =>
-                        void persist({
-                          ...preferences.value,
-                          windowsShell: "powershell",
-                        })
-                }
-              />
-            )}
-            {(
-              [
-                "tabStopWidth",
-                "altClickMovesCursor",
-                "rightClickSelectsWord",
-                "macOptionIsMeta",
-                "macOptionClickForcesSelection",
-                "wordSeparator",
-              ] as const
-            ).map(behaviorSetting)}
-          </section>
-          <section
-            className="settings-subsection"
-            aria-label="Accessibility and rendering"
-          >
-            <h3>Accessibility and rendering</h3>
-            {(
-              ["minimumContrastRatio", "drawBoldTextInBrightColors"] as const
-            ).map(appearanceSetting)}
-            {(
-              [
-                "screenReaderMode",
-                "customGlyphs",
-                "rescaleOverlappingGlyphs",
-              ] as const
-            ).map(behaviorSetting)}
-          </section>
-        </div>
-      </details>
+      <SettingsSection title="Text">
+        {(
+          [
+            "fontWeight",
+            "fontWeightBold",
+            "lineHeight",
+            "letterSpacing",
+          ] as const
+        ).map(appearanceSetting)}
+      </SettingsSection>
+      <SettingsSection title="Cursor">
+        {(["cursorInactiveStyle", "cursorBlink", "cursorWidth"] as const).map(
+          appearanceSetting,
+        )}
+      </SettingsSection>
+      <SettingsSection title="Scrolling">
+        {(
+          [
+            "scrollback",
+            "scrollSensitivity",
+            "fastScrollSensitivity",
+            "smoothScrollDuration",
+            "scrollOnUserInput",
+            "scrollOnEraseInDisplay",
+          ] as const
+        ).map(behaviorSetting)}
+      </SettingsSection>
+      <SettingsSection title="Input">
+        {windows && (
+          <Setting
+            name="windowsShell"
+            value={preferences.value.windowsShell}
+            choices={["powershell", "cmd"]}
+            disabled={disabled}
+            resetKind="behavior"
+            change={(value) =>
+              void persist({
+                ...preferences.value,
+                windowsShell: value as TerminalPreferences["windowsShell"],
+              })
+            }
+            reset={
+              preferences.value.windowsShell === "powershell"
+                ? undefined
+                : () =>
+                    void persist({
+                      ...preferences.value,
+                      windowsShell: "powershell",
+                    })
+            }
+          />
+        )}
+        {(
+          [
+            "tabStopWidth",
+            "altClickMovesCursor",
+            "rightClickSelectsWord",
+            "macOptionIsMeta",
+            "macOptionClickForcesSelection",
+            "wordSeparator",
+          ] as const
+        ).map(behaviorSetting)}
+      </SettingsSection>
+      <SettingsSection title="Rendering">
+        {(["minimumContrastRatio", "drawBoldTextInBrightColors"] as const).map(
+          appearanceSetting,
+        )}
+        {(
+          [
+            "screenReaderMode",
+            "customGlyphs",
+            "rescaleOverlappingGlyphs",
+          ] as const
+        ).map(behaviorSetting)}
+      </SettingsSection>
     </SettingsPage>
   );
 }

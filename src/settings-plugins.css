@@ -1,0 +1,147 @@
+.settings-dialog .plugins-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  margin-bottom: var(--space-12);
+}
+.settings-dialog .plugins-toolbar .catalog-search {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  height: 36px;
+  border-radius: 10px;
+}
+.settings-dialog .plugins-toolbar .catalog-search input:not([type="checkbox"]) {
+  height: 34px;
+}
+.settings-dialog .plugins-toolbar .select-trigger {
+  width: auto;
+  min-width: 132px;
+  height: 36px;
+}
+
+.settings-dialog .plugin-row {
+  flex-wrap: wrap;
+  gap: var(--space-12);
+  min-height: 64px;
+  padding: var(--space-12) var(--space-20);
+}
+.settings-dialog .plugin-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--sheet-field);
+  border: var(--border-width) solid var(--sheet-line);
+  color: var(--color-muted-text);
+}
+.settings-dialog .plugin-main {
+  flex: 1;
+  min-width: 0;
+}
+.settings-dialog .plugin-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-8);
+  min-width: 0;
+  font-size: var(--font-size-12);
+  color: var(--color-muted-text);
+}
+.settings-dialog .plugin-title h3 {
+  margin: 0;
+  overflow: hidden;
+  color: var(--color-surface-text);
+  font-size: var(--font-size-14);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settings-dialog .plugin-type {
+  padding: 0 var(--space-6);
+  border-radius: 6px;
+  background: var(--sheet-field);
+  border: var(--border-width) solid var(--sheet-line);
+  line-height: 1.5;
+}
+.settings-dialog .plugin-description {
+  margin: 2px 0 0;
+  overflow: hidden;
+  color: var(--color-muted-text);
+  font-size: var(--font-size-13);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settings-dialog .plugin-state {
+  flex: none;
+  color: var(--color-muted-text);
+  font-size: var(--font-size-12);
+}
+.settings-dialog .plugin-actions {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+.settings-dialog .plugin-row:hover .plugin-actions,
+.settings-dialog .plugin-actions:focus-within {
+  opacity: 1;
+}
+.settings-dialog .plugin-uninstall {
+  color: var(--color-error);
+}
+.settings-dialog .plugin-extra {
+  flex-basis: 100%;
+  margin: 0;
+}
+.settings-dialog .plugin-extra.inline-notice {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.plugin-details {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-8) var(--space-16);
+  margin: 0;
+  font-size: var(--font-size-13);
+}
+.plugin-details dt {
+  color: var(--color-muted-text);
+}
+.plugin-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.settings-dialog .plugins-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-40) var(--space-24);
+  text-align: center;
+}
+.settings-dialog .plugins-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: var(--space-4);
+  border-radius: 12px;
+  background: var(--sheet-field);
+  color: var(--color-muted-text);
+}
+.settings-dialog .plugins-empty h3 {
+  margin: 0;
+  color: var(--color-surface-text);
+  font-size: var(--font-size-15);
+  font-weight: 600;
+}
+.settings-dialog .plugins-empty p {
+  margin: 0 0 var(--space-8);
+  color: var(--color-muted-text);
+  font-size: var(--font-size-13);
+}

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, errorMessage, native } from "../api";
 import { listen } from "@tauri-apps/api/event";
-import { DisclosureSummary, IconButton, Modal } from "../ui";
+import { IconButton, Modal } from "../ui";
 import {
   SettingRow,
   SettingsNotice,
@@ -15,7 +15,6 @@ import {
   Download,
   Layers,
   Check,
-  ChevronRight,
   Ellipsis,
   Play,
   Square,
@@ -171,8 +170,8 @@ function Installation({
             {formatBytes(plan.downloadBytes)} to download. Extraction and
             virtual phone data need additional space.
           </p>
-          <details className="android-install-details">
-            <DisclosureSummary>Installation details</DisclosureSummary>
+          <div className="android-install-details">
+            <h3>Installation details</h3>
             <p className="settings-help">
               Managed SDK: <code>{snapshot.sdkPath}</code>. Existing SDKs, shell
               settings and system Java remain separate.
@@ -190,7 +189,7 @@ function Installation({
                 </li>
               ))}
             </ul>
-          </details>
+          </div>
           <p>Review and accept the provider terms to continue.</p>
           {plan.licenses.map((license) => (
             <section
@@ -358,9 +357,6 @@ export default function AndroidSettingsPage() {
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const locked = useRef(false);
-  const [imagesOpen, setImagesOpen] = useState(false);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-  const imagesHeading = useRef<HTMLButtonElement>(null);
   const imageDownload = useRef<HTMLDivElement>(null);
   const [menu, setMenu] = useState<{
     deviceId: string;
@@ -413,12 +409,9 @@ export default function AndroidSettingsPage() {
   const downloading =
     progress?.phase === "running" || progress?.phase === "cancelling";
   useEffect(() => {
-    if (operationImageId) setImagesOpen(true);
-  }, [operationImageId, progress?.operationId]);
-  useEffect(() => {
-    if (imagesOpen && operationImageId)
+    if (operationImageId)
       imageDownload.current?.scrollIntoView({ block: "center" });
-  }, [imagesOpen, operationImageId, progress?.operationId]);
+  }, [operationImageId, progress?.operationId]);
   const cancelOperation = () =>
     api("android_cancel_operation", { operationId: progress!.operationId });
   const working =
@@ -544,7 +537,6 @@ export default function AndroidSettingsPage() {
   return (
     <SettingsPage
       title="Android"
-      description="Virtual phones that run inside your workspace."
       className="android-settings-page"
       busy={busy}
       status={!snapshot && state.loading ? "Loading…" : notice}
@@ -597,18 +589,8 @@ export default function AndroidSettingsPage() {
               {name}: {message}
             </SettingsNotice>
           ))}
-          {!!snapshot.recovery.length && !advancedOpen && (
-            <SettingsNotice
-              tone="warning"
-              action={
-                <button
-                  className="text-button"
-                  onClick={() => setAdvancedOpen(true)}
-                >
-                  Review recovery options
-                </button>
-              }
-            >
+          {!!snapshot.recovery.length && (
+            <SettingsNotice tone="warning">
               Some Android files need recovery.
             </SettingsNotice>
           )}
@@ -645,8 +627,6 @@ export default function AndroidSettingsPage() {
                   if (setupStep === 1)
                     void perform(() => review(snapshot.requiredTools));
                   else if (setupStep === 2) {
-                    setImagesOpen(true);
-                    imagesHeading.current?.focus();
                     if (!catalog) void perform(() => loadCatalog());
                   } else setForm("new");
                 }}
@@ -743,7 +723,7 @@ export default function AndroidSettingsPage() {
                             >
                               <Square size={12} />
                               {status?.phase === "stopping"
-                                ? "Retry Stop"
+                                ? "Retry stop"
                                 : "Stop"}
                             </button>
                           )}
@@ -882,25 +862,11 @@ export default function AndroidSettingsPage() {
               Stop running phones before changing Android tools or versions.
             </p>
           )}
-          <div className="settings-disclosure">
-            <button
-              ref={imagesHeading}
-              className="settings-disclosure-toggle"
-              aria-expanded={imagesOpen}
-              aria-controls="android-versions"
-              onClick={() => {
-                setImagesOpen(!imagesOpen);
-                if (!imagesOpen && !catalog) void perform(() => loadCatalog());
-              }}
-            >
-              <ChevronRight
-                className="disclosure-summary-icon"
-                size={14}
-                aria-hidden="true"
-              />
-              Android versions
-              {operationImageId && downloading ? (
-                <span className="settings-disclosure-meta android-download-indicator">
+          <SettingsSection
+            title="Android versions"
+            actions={
+              operationImageId && downloading ? (
+                <span className="android-download-indicator">
                   {progress?.phase === "cancelling"
                     ? "Cancelling…"
                     : progress && progress.total > 0
@@ -909,18 +875,12 @@ export default function AndroidSettingsPage() {
                 </span>
               ) : (
                 !!installedImages.length && (
-                  <span className="settings-disclosure-meta">
-                    {installedImages.length} installed
-                  </span>
+                  <span>{installedImages.length} installed</span>
                 )
-              )}
-            </button>
-            <section
-              className="settings-disclosure-body"
-              id="android-versions"
-              hidden={!imagesOpen}
-              aria-label="Android versions"
-            >
+              )
+            }
+          >
+            <div id="android-versions">
               {operationImageId && progress && (
                 <div ref={imageDownload}>
                   <Operation
@@ -1079,308 +1039,274 @@ export default function AndroidSettingsPage() {
                   )}
                 </div>
               )}
-            </section>
-          </div>
-          <div className="settings-disclosure">
-            <button
-              className="settings-disclosure-toggle"
-              aria-expanded={advancedOpen}
-              aria-controls="android-advanced"
-              onClick={() => setAdvancedOpen(!advancedOpen)}
+            </div>
+          </SettingsSection>
+          <SettingsSection
+            title="Android tools"
+            actions={
+              toolsReady && <Check size={14} aria-label="Tools installed" />
+            }
+          >
+            <SettingRow
+              label={
+                snapshot.acceleration.available
+                  ? "Hardware acceleration available"
+                  : "System preparation required"
+              }
+              description={`${snapshot.host} · ${snapshot.acceleration.backend}`}
             >
-              <ChevronRight
-                className="disclosure-summary-icon"
-                size={14}
-                aria-hidden="true"
-              />
-              Advanced
-              {toolsReady && (
-                <Check
-                  className="settings-disclosure-meta"
-                  size={14}
-                  aria-label="Tools installed"
-                />
-              )}
-            </button>
-            <div
-              className="settings-disclosure-body"
-              id="android-advanced"
-              hidden={!advancedOpen}
-            >
-              <section className="settings-subsection" aria-label="Environment">
-                <h3>Android tools</h3>
-                <SettingRow
-                  label={
-                    snapshot.acceleration.available
-                      ? "Hardware acceleration available"
-                      : "System preparation required"
-                  }
-                  description={`${snapshot.host} · ${snapshot.acceleration.backend}`}
-                >
-                  <button
-                    className="button"
-                    disabled={busy || state.loading}
-                    onClick={() => void perform(reload)}
-                  >
-                    <RefreshCw size={14} /> Refresh status
-                  </button>
-                </SettingRow>
-                <SettingRow
-                  label="Managed SDK"
-                  className="android-path"
-                  description={
-                    <>
-                      <code>{snapshot.sdkPath}</code>
-                      <br />
-                      SDK manager {snapshot.toolchain.cli.version} · Java{" "}
-                      {snapshot.toolchain.java.version} ·{" "}
-                      {snapshot.toolchainReady ? "Prepared" : "Not prepared"}
-                    </>
-                  }
-                />
-                {usage && (
-                  <details className="android-storage">
-                    <DisclosureSummary>
-                      {formatBytes(
-                        Object.values(usage.directories).reduce(
-                          (total, size) => total + size.allocatedBytes,
-                          0,
-                        ),
-                      )}{" "}
-                      used · {formatBytes(usage.freeBytes)} free
-                    </DisclosureSummary>
-                    <p className="settings-help">
-                      Reserved for phone growth:{" "}
-                      {formatBytes(usage.growthReserveBytes)}
-                    </p>
-                    <dl>
-                      {Object.entries(usage.directories).map(([name, size]) => (
-                        <div key={name}>
-                          <dt>{name}</dt>
-                          <dd>
-                            {formatBytes(size.allocatedBytes)} used ·{" "}
-                            {formatBytes(size.logicalBytes)} logical
-                          </dd>
-                        </div>
-                      ))}
-                    </dl>
-                  </details>
-                )}
-                <div className="android-actions">
-                  <button
-                    className="button"
-                    disabled={
-                      working ||
-                      alive ||
-                      !editable ||
-                      !snapshot.qualified ||
-                      !snapshot.acceleration.available
-                    }
-                    onClick={() =>
-                      void perform(() => review(snapshot.requiredTools))
-                    }
-                  >
-                    <Download size={14} />
-                    {snapshot.requiredTools.every((id) => installed[id])
-                      ? "Update tools"
-                      : "Install Android tools"}
-                  </button>
-                  <button
-                    className="button"
-                    disabled={
-                      working ||
-                      alive ||
-                      !editable ||
-                      !snapshot.qualified ||
-                      !snapshot.acceleration.available
-                    }
-                    onClick={() =>
-                      void perform(() =>
-                        review(
-                          snapshot.requiredTools.filter((id) => installed[id]),
-                          true,
-                          true,
-                        ),
-                      )
-                    }
-                  >
-                    Repair tools
-                  </button>
-                </div>
-                {snapshot.requiredTools
-                  .filter((id) => installed[id])
-                  .map((id) => (
-                    <div className="android-row" key={id}>
-                      <div>
-                        <strong>{id}</strong>
-                        <p className="settings-help">
-                          Installed {installed[id].revision}
-                        </p>
-                      </div>
-                      <div className="android-actions">
-                        {snapshot.rollbacks.find((pkg) => pkg.id === id) && (
-                          <button
-                            className="button"
-                            disabled={working || alive}
-                            onClick={() =>
-                              setConfirmation({
-                                title: "Roll back tool",
-                                description: `Restore ${id} ${snapshot.rollbacks.find((pkg) => pkg.id === id)!.revision}. The current version will be kept as the previous copy.`,
-                                action: () =>
-                                  maintain({
-                                    type: "rollback",
-                                    packageId: id,
-                                    expectedRevision:
-                                      snapshot.packages!.revision,
-                                  }),
-                              })
-                            }
-                          >
-                            Roll back
-                          </button>
-                        )}
-                        <button
-                          className="button"
-                          disabled={working || alive || !editable}
-                          onClick={() => remove(id)}
-                        >
-                          Remove
-                        </button>
-                      </div>
+              <button
+                className="button"
+                disabled={busy || state.loading}
+                onClick={() => void perform(reload)}
+              >
+                <RefreshCw size={14} /> Refresh status
+              </button>
+            </SettingRow>
+            <SettingRow
+              label="Managed SDK"
+              className="android-path"
+              description={
+                <>
+                  <code>{snapshot.sdkPath}</code>
+                  <br />
+                  SDK manager {snapshot.toolchain.cli.version} · Java{" "}
+                  {snapshot.toolchain.java.version} ·{" "}
+                  {snapshot.toolchainReady ? "Prepared" : "Not prepared"}
+                </>
+              }
+            />
+            {usage && (
+              <div className="android-storage">
+                <strong>
+                  {formatBytes(
+                    Object.values(usage.directories).reduce(
+                      (total, size) => total + size.allocatedBytes,
+                      0,
+                    ),
+                  )}{" "}
+                  used · {formatBytes(usage.freeBytes)} free
+                </strong>
+                <p className="settings-help">
+                  Reserved for phone growth:{" "}
+                  {formatBytes(usage.growthReserveBytes)}
+                </p>
+                <dl>
+                  {Object.entries(usage.directories).map(([name, size]) => (
+                    <div key={name}>
+                      <dt>{name}</dt>
+                      <dd>
+                        {formatBytes(size.allocatedBytes)} used ·{" "}
+                        {formatBytes(size.logicalBytes)} logical
+                      </dd>
                     </div>
                   ))}
-              </section>
-              {!!installedImages.length && (
-                <section
-                  className="settings-subsection"
-                  aria-label="Image repairs"
-                >
-                  <h3>Repair Android versions</h3>
-                  <p className="settings-help">
-                    Re-download an installed version.
-                  </p>
-                  {installedImages.map((pkg) => (
-                    <div className="android-row" key={pkg.id}>
-                      <strong>{imageTitle(pkg)}</strong>
+                </dl>
+              </div>
+            )}
+            <div className="android-actions">
+              <button
+                className="button"
+                disabled={
+                  working ||
+                  alive ||
+                  !editable ||
+                  !snapshot.qualified ||
+                  !snapshot.acceleration.available
+                }
+                onClick={() =>
+                  void perform(() => review(snapshot.requiredTools))
+                }
+              >
+                <Download size={14} />
+                {snapshot.requiredTools.every((id) => installed[id])
+                  ? "Update tools"
+                  : "Install Android tools"}
+              </button>
+              <button
+                className="button"
+                disabled={
+                  working ||
+                  alive ||
+                  !editable ||
+                  !snapshot.qualified ||
+                  !snapshot.acceleration.available
+                }
+                onClick={() =>
+                  void perform(() =>
+                    review(
+                      snapshot.requiredTools.filter((id) => installed[id]),
+                      true,
+                      true,
+                    ),
+                  )
+                }
+              >
+                Repair tools
+              </button>
+            </div>
+            {snapshot.requiredTools
+              .filter((id) => installed[id])
+              .map((id) => (
+                <div className="android-row" key={id}>
+                  <div>
+                    <strong>{id}</strong>
+                    <p className="settings-help">
+                      Installed {installed[id].revision}
+                    </p>
+                  </div>
+                  <div className="android-actions">
+                    {snapshot.rollbacks.find((pkg) => pkg.id === id) && (
                       <button
                         className="button"
-                        disabled={
-                          working || alive || !editable || !snapshot.qualified
-                        }
+                        disabled={working || alive}
                         onClick={() =>
-                          void perform(() => review([pkg.id], true))
+                          setConfirmation({
+                            title: "Roll back tool",
+                            description: `Restore ${id} ${snapshot.rollbacks.find((pkg) => pkg.id === id)!.revision}. The current version will be kept as the previous copy.`,
+                            action: () =>
+                              maintain({
+                                type: "rollback",
+                                packageId: id,
+                                expectedRevision: snapshot.packages!.revision,
+                              }),
+                          })
                         }
                       >
-                        Repair image
+                        Roll back
                       </button>
-                    </div>
-                  ))}
-                </section>
-              )}
-              <section className="settings-subsection" aria-label="Maintenance">
-                <h3>Storage and troubleshooting</h3>
-                <p className="settings-help">
-                  Repairs and cleanup keep your phones and their data.
-                </p>
-                <div className="android-actions">
+                    )}
+                    <button
+                      className="button"
+                      disabled={working || alive || !editable}
+                      onClick={() => remove(id)}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ))}
+          </SettingsSection>
+          {!!installedImages.length && (
+            <SettingsSection title="Repair Android versions">
+              <p className="settings-help">Re-download an installed version.</p>
+              {installedImages.map((pkg) => (
+                <div className="android-row" key={pkg.id}>
+                  <strong>{imageTitle(pkg)}</strong>
                   <button
                     className="button"
-                    disabled={working || alive}
-                    onClick={() =>
-                      void perform(async () => {
-                        await manage({ type: "recover" });
-                        await refreshAndroid();
-                      })
+                    disabled={
+                      working || alive || !editable || !snapshot.qualified
                     }
+                    onClick={() => void perform(() => review([pkg.id], true))}
                   >
-                    Repair interrupted operation
-                  </button>
-                  <button
-                    className="button"
-                    disabled={working || alive}
-                    onClick={() =>
-                      void perform(async () => {
-                        await maintain({ type: "cleanup" });
-                        await refreshAndroid();
-                      })
-                    }
-                  >
-                    Clean temporary files
-                  </button>
-                  <button
-                    className="button"
-                    disabled={busy}
-                    onClick={() =>
-                      void perform(async () => {
-                        if (await api<boolean>("android_export_diagnostics"))
-                          setNotice("Diagnostic logs exported.");
-                      })
-                    }
-                  >
-                    Export diagnostics
+                    Repair image
                   </button>
                 </div>
-                {snapshot.recovery.map((item) => (
-                  <div className="android-row" key={item.file}>
-                    <div>
-                      <strong>Recover {item.file}</strong>
-                      <p className="settings-help">
-                        The damaged file is kept.{" "}
-                        {item.backupRevision !== null
-                          ? `Backup revision ${item.backupRevision} is available.`
-                          : "No valid backup is available."}
-                      </p>
-                    </div>
-                    <div className="android-actions">
-                      {item.backupRevision !== null && (
-                        <button
-                          className="button"
-                          disabled={working || alive}
-                          onClick={() =>
-                            setConfirmation({
-                              title: "Restore metadata backup",
-                              description: `Restore the previous ${item.file} file. Newer configuration edits may not be in this backup. All AVD files are preserved.`,
-                              action: () =>
-                                maintain({
-                                  type: "restoreMetadata",
-                                  file: item.file,
-                                  digest: item.digest,
-                                  reset: false,
-                                }),
-                            })
-                          }
-                        >
-                          Restore backup
-                        </button>
-                      )}
-                      {item.file === "preferences" && (
-                        <button
-                          className="button"
-                          disabled={working || alive}
-                          onClick={() =>
-                            setConfirmation({
-                              title: "Reset Android preferences",
-                              description:
-                                "Clear the default-device preference and preserve the damaged preferences file for recovery. Devices and their data are unchanged.",
-                              action: () =>
-                                maintain({
-                                  type: "restoreMetadata",
-                                  file: item.file,
-                                  digest: item.digest,
-                                  reset: true,
-                                }),
-                            })
-                          }
-                        >
-                          Reset preferences
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </section>
+              ))}
+            </SettingsSection>
+          )}
+          <SettingsSection title="Storage and troubleshooting">
+            <p className="settings-help">
+              Repairs and cleanup keep your phones and their data.
+            </p>
+            <div className="android-actions">
+              <button
+                className="button"
+                disabled={working || alive}
+                onClick={() =>
+                  void perform(async () => {
+                    await manage({ type: "recover" });
+                    await refreshAndroid();
+                  })
+                }
+              >
+                Repair interrupted operation
+              </button>
+              <button
+                className="button"
+                disabled={working || alive}
+                onClick={() =>
+                  void perform(async () => {
+                    await maintain({ type: "cleanup" });
+                    await refreshAndroid();
+                  })
+                }
+              >
+                Clean temporary files
+              </button>
+              <button
+                className="button"
+                disabled={busy}
+                onClick={() =>
+                  void perform(async () => {
+                    if (await api<boolean>("android_export_diagnostics"))
+                      setNotice("Diagnostic logs exported.");
+                  })
+                }
+              >
+                Export diagnostics
+              </button>
             </div>
-          </div>
+            {snapshot.recovery.map((item) => (
+              <div className="android-row" key={item.file}>
+                <div>
+                  <strong>Recover {item.file}</strong>
+                  <p className="settings-help">
+                    The damaged file is kept.{" "}
+                    {item.backupRevision !== null
+                      ? `Backup revision ${item.backupRevision} is available.`
+                      : "No valid backup is available."}
+                  </p>
+                </div>
+                <div className="android-actions">
+                  {item.backupRevision !== null && (
+                    <button
+                      className="button"
+                      disabled={working || alive}
+                      onClick={() =>
+                        setConfirmation({
+                          title: "Restore metadata backup",
+                          description: `Restore the previous ${item.file} file. Newer configuration edits may not be in this backup. All AVD files are preserved.`,
+                          action: () =>
+                            maintain({
+                              type: "restoreMetadata",
+                              file: item.file,
+                              digest: item.digest,
+                              reset: false,
+                            }),
+                        })
+                      }
+                    >
+                      Restore backup
+                    </button>
+                  )}
+                  {item.file === "preferences" && (
+                    <button
+                      className="button"
+                      disabled={working || alive}
+                      onClick={() =>
+                        setConfirmation({
+                          title: "Reset Android preferences",
+                          description:
+                            "Clear the default-device preference and preserve the damaged preferences file for recovery. Devices and their data are unchanged.",
+                          action: () =>
+                            maintain({
+                              type: "restoreMetadata",
+                              file: item.file,
+                              digest: item.digest,
+                              reset: true,
+                            }),
+                        })
+                      }
+                    >
+                      Reset preferences
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </SettingsSection>
         </>
       )}
       {plan && snapshot && (

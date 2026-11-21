@@ -38,8 +38,7 @@
   );
 }
 .explorer-panel .tree-row[data-selected="true"] {
-  background: var(--lomi-selection, var(--color-primary-container));
-  box-shadow: inset 2px 0 var(--color-accent-text);
+  background: var(--lomi-selected, var(--color-surface-container-high));
 }
 .explorer-panel .tree-toggle:hover,
 .explorer-panel .tree-action:hover {
@@ -65,7 +64,7 @@
     var(--color-accent-text) 45%,
     var(--color-outline)
   );
-  background: var(--lomi-selection, var(--color-primary-container));
+  background: var(--lomi-selected, var(--color-surface-container-high));
 }
 .project-search-scope {
   min-height: 26px;
@@ -114,7 +113,7 @@
 }
 .search-match.is-selected,
 .search-match.is-selected:hover {
-  background: var(--lomi-selection, var(--color-primary-container));
+  background: var(--lomi-selected, var(--color-surface-container-high));
 }
 .search-match mark {
   background: color-mix(
@@ -143,12 +142,11 @@
   font-size: var(--font-size-12);
 }
 .source-repository[aria-current="page"] {
-  background: var(--lomi-selection, var(--color-primary-container));
+  background: var(--lomi-selected, var(--color-surface-container-high));
   color: var(--color-surface-text);
-  box-shadow: inset 2px 0 var(--color-accent-text);
 }
 .source-repository[aria-current="page"]:hover {
-  background: var(--lomi-selection, var(--color-primary-container));
+  background: var(--lomi-selected, var(--color-surface-container-high));
 }
 .source-all-repository {
   border-color: color-mix(in srgb, var(--color-outline) 55%, transparent);
@@ -297,7 +295,7 @@
   border-radius: var(--radius-sm);
 }
 .commit-file-entry[aria-current="true"] {
-  background: var(--lomi-selection, var(--color-primary-container));
+  background: var(--lomi-selected, var(--color-surface-container-high));
 }
 .commit-file-path {
   font-family: var(--font-family-mono);
@@ -410,7 +408,7 @@
     color-mix(in srgb, var(--color-outline) 55%, transparent);
 }
 .image-preview .editor-actions [aria-pressed="true"] {
-  background: var(--lomi-selection, var(--color-primary-container));
+  background: var(--lomi-selected, var(--color-surface-container-high));
   color: var(--color-surface-text);
 }
 .browser-toolbar,

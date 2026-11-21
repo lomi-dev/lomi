@@ -1,0 +1,1447 @@
+/* Settings sheet, modelled on current agent desktops (T3 Code, Grok Bot):
+   a near-full-window sheet, a navigation column with search, a breadcrumb bar,
+   and one centered column of large rows grouped into soft cards. Controls sit
+   on the right with a fixed width. Loaded last so it owns the sheet. */
+
+.settings-dialog {
+  --sheet-nav: var(--color-surface);
+  --sheet-body: var(--color-background);
+  --sheet-card: color-mix(
+    in srgb,
+    var(--color-surface-container) 55%,
+    var(--color-surface)
+  );
+  --sheet-field: var(--color-background);
+  --sheet-line: var(--color-outline);
+  --sheet-control-width: 200px;
+  width: min(1240px, calc(100vw - 48px));
+  height: calc(100dvh - 48px);
+  max-width: none;
+  max-height: none;
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  border: var(--border-width) solid var(--sheet-line);
+  border-radius: 18px;
+  background: var(--sheet-body);
+  color: var(--color-surface-text);
+  box-shadow:
+    0 40px 120px -30px rgb(0 0 0 / 0.7),
+    0 0 0 1px rgb(0 0 0 / 0.2);
+}
+:root[data-appearance="light"] .settings-dialog {
+  --sheet-nav: var(--color-background);
+  --sheet-card: var(--color-surface);
+  --sheet-body: var(--color-background);
+  box-shadow:
+    0 40px 120px -30px rgb(24 24 28 / 0.3),
+    0 0 0 1px rgb(24 24 28 / 0.04);
+}
+.settings-dialog:focus,
+.settings-dialog:focus-visible {
+  outline: none;
+}
+.settings-dialog[open] {
+  display: flex;
+  animation: lomi-sheet-in 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.settings-dialog::backdrop {
+  background: rgb(14 14 17 / 0.62);
+  backdrop-filter: blur(6px);
+}
+:root[data-appearance="light"] .settings-dialog::backdrop {
+  background: rgb(24 24 28 / 0.28);
+}
+.settings-dialog[open]::backdrop {
+  animation: lomi-sheet-fade 240ms ease-out;
+}
+@keyframes lomi-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+}
+@keyframes lomi-sheet-fade {
+  from {
+    opacity: 0;
+  }
+}
+.settings-dialog .settings-panel,
+.settings-dialog .settings-layout {
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  gap: 0;
+  background: transparent;
+}
+
+/* ---- Navigation ---- */
+.settings-dialog .settings-navigation {
+  flex: 0 0 260px;
+  gap: 2px;
+  padding: var(--space-14) var(--space-12) var(--space-16);
+  border: 0;
+  border-right: var(--border-width) solid var(--sheet-line);
+  background: var(--sheet-nav);
+  scrollbar-gutter: auto;
+}
+.settings-dialog .settings-nav-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  min-height: 36px;
+  margin: 0 0 var(--space-10);
+  padding: 0 var(--space-12);
+  border: var(--border-width) solid var(--sheet-line);
+  border-radius: 10px;
+  background: var(--color-surface);
+  color: var(--color-muted-text);
+  transition:
+    border-color 140ms ease-out,
+    box-shadow 140ms ease-out;
+}
+.settings-dialog .settings-nav-search:focus-within {
+  border-color: var(--lomi-focus);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lomi-focus) 18%, transparent);
+}
+.settings-dialog .settings-nav-search svg {
+  width: 16px;
+  height: 16px;
+}
+.settings-dialog .settings-nav-search input:not([type="checkbox"]) {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  box-shadow: none;
+  color: var(--color-surface-text);
+  font-size: var(--font-size-14);
+}
+.settings-dialog .settings-nav-search input::-webkit-search-cancel-button {
+  display: none;
+}
+.settings-dialog .settings-nav-group-label {
+  padding: var(--space-18) var(--space-12) var(--space-6);
+  color: var(--color-muted-text);
+  font-size: var(--font-size-12);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.settings-dialog .settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  width: 100%;
+  min-height: 36px;
+  padding: 0 var(--space-12);
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--color-surface-variant-text);
+  font-size: var(--font-size-14);
+  font-weight: 400;
+  text-align: left;
+  transition:
+    background-color 120ms ease-out,
+    color 120ms ease-out;
+}
+.settings-dialog .settings-nav-item svg {
+  flex: none;
+  width: 17px;
+  height: 17px;
+  color: var(--color-muted-text);
+  stroke-width: 1.75;
+}
+.settings-dialog .settings-nav-item:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-surface-text) 5%, transparent);
+  color: var(--color-surface-text);
+}
+.settings-dialog .settings-nav-item[aria-current="page"] {
+  background: color-mix(in srgb, var(--color-surface-text) 8%, transparent);
+  color: var(--color-surface-text);
+  font-weight: 500;
+}
+.settings-dialog .settings-nav-item[aria-current="page"] svg {
+  color: var(--color-surface-text);
+}
+.settings-dialog .settings-nav-item:disabled {
+  opacity: 0.4;
+}
+.settings-dialog .settings-nav-item:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px
+    color-mix(in srgb, var(--lomi-focus) 50%, transparent);
+}
+.settings-dialog .settings-nav-about {
+  margin-top: auto;
+}
+
+/* ---- Main column ---- */
+.settings-dialog .settings-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.settings-dialog .settings-topbar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  height: 56px;
+  padding: 0 var(--space-16) 0 var(--space-32);
+  border-bottom: var(--border-width) solid var(--sheet-line);
+}
+.settings-dialog .settings-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  margin: 0;
+  color: var(--color-muted-text);
+  font-size: var(--font-size-14);
+}
+.settings-dialog .settings-breadcrumb [aria-current] {
+  color: var(--color-surface-text);
+  font-weight: 500;
+}
+.settings-dialog .settings-close {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  color: var(--color-muted-text);
+}
+.settings-dialog .settings-close svg {
+  width: 18px;
+  height: 18px;
+}
+.settings-dialog .settings-close:hover {
+  background: color-mix(in srgb, var(--color-surface-text) 7%, transparent);
+  color: var(--color-surface-text);
+}
+
+/* ---- Page ---- */
+.settings-dialog .settings-page {
+  --settings-group-background: var(--sheet-card);
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: var(--space-32) var(--space-32) 72px;
+  overflow: hidden auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.settings-dialog .settings-page-content {
+  max-width: 760px;
+  margin-inline: auto;
+}
+.settings-dialog .settings-page-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-16);
+  margin: 0 0 var(--space-28);
+}
+.settings-dialog .settings-page-heading:not(:has(.settings-page-actions)) {
+  display: none;
+}
+/* The breadcrumb names the page; the heading stays for assistive tech. */
+.settings-dialog .settings-page-title h1 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---- Sections ---- */
+.settings-dialog .settings-section,
+.settings-dialog .settings-disclosure {
+  margin: 0;
+}
+.settings-dialog
+  :is(.settings-section, .settings-disclosure, .settings-notice)
+  + :is(.settings-section, .settings-disclosure) {
+  margin-top: var(--space-32);
+}
+.settings-dialog .settings-section-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-16);
+  margin: 0 0 var(--space-12);
+  padding: 0 var(--space-4);
+}
+.settings-dialog .settings-section-heading h2 {
+  margin: 0;
+  color: var(--color-surface-text);
+  font-size: var(--font-size-17);
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  line-height: 1.3;
+}
+.settings-dialog .settings-section-heading p {
+  margin: var(--space-4) 0 0;
+  color: var(--color-muted-text);
+  font-size: var(--font-size-13);
+  line-height: 1.5;
+}
+.settings-dialog .settings-count {
+  margin-left: var(--space-8);
+  color: var(--color-muted-text);
+  font-weight: 400;
+}
+
+/* ---- Cards and rows ---- */
+.settings-dialog
+  :is(
+    .settings-group,
+    .settings-disclosure,
+    .settings-list-card,
+    .catalog-list
+  ) {
+  overflow: hidden;
+  padding: 0;
+  border: var(--border-width) solid var(--sheet-line);
+  border-radius: 16px;
+  background: var(--sheet-card);
+  box-shadow: none;
+}
+.settings-dialog .setting-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-24);
+  min-height: 68px;
+  margin: 0;
+  padding: var(--space-16) var(--space-24);
+}
+.settings-dialog .setting-row-stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-12);
+}
+.settings-dialog .settings-group > * + * {
+  border-top: var(--border-width) solid var(--sheet-line);
+}
+.settings-dialog .settings-group > :not(.setting-row) {
+  margin: 0;
+  padding: var(--space-16) var(--space-24);
+}
+.settings-dialog .setting-label {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-size-14);
+  line-height: 1.4;
+}
+.settings-dialog .setting-label :is(label, strong, span):first-child {
+  color: var(--color-surface-text);
+  font-size: var(--font-size-14);
+  font-weight: 500;
+}
+.settings-dialog .setting-label p,
+.settings-dialog .settings-help {
+  margin: var(--space-4) 0 0;
+  max-width: 62ch;
+  color: var(--color-muted-text);
+  font-size: var(--font-size-13);
+  line-height: 1.5;
+}
+.settings-dialog .setting-controls {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-8);
+}
+.settings-dialog .setting-value {
+  color: var(--color-muted-text);
+  font-size: var(--font-size-14);
+}
+.settings-dialog .settings-disclosure-toggle {
+  min-height: 56px;
+  padding: 0 var(--space-24);
+  color: var(--color-surface-text);
+  font-size: var(--font-size-14);
+  font-weight: 500;
+}
+.settings-dialog .settings-disclosure-toggle svg {
+  color: var(--color-muted-text);
+}
+.settings-dialog .settings-disclosure-body {
+  padding: 0;
+  border-top: var(--border-width) solid var(--sheet-line);
+}
+.settings-dialog .settings-disclosure-body > * + * {
+  border-top: var(--border-width) solid var(--sheet-line);
+}
+
+/* ---- Fields ---- */
+.settings-dialog
+  .settings-page
+  :is(
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not(
+        [type="color"]
+      ),
+    select,
+    textarea,
+    .select-trigger
+  ) {
+  min-height: 36px;
+  border: var(--border-width) solid var(--sheet-line);
+  border-radius: 10px;
+  background: var(--sheet-field);
+  color: var(--color-surface-text);
+  font-size: var(--font-size-14);
+  box-shadow: none;
+  transition:
+    border-color 140ms ease-out,
+    box-shadow 140ms ease-out;
+}
+.settings-dialog
+  .setting-controls
+  :is(
+    input:not([type]),
+    input[type="text"],
+    input[type="number"],
+    input[type="url"],
+    select,
+    .select-trigger
+  ) {
+  width: var(--sheet-control-width);
+}
+.settings-dialog
+  .settings-page
+  :is(
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not(
+        [type="color"]
+      ),
+    select,
+    textarea,
+    .select-trigger
+  ):hover:not(:disabled) {
+  border-color: var(--lomi-control-border);
+}
+.settings-dialog
+  .settings-page
+  :is(
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not(
+        [type="color"]
+      ),
+    select,
+    textarea,
+    .select-trigger
+  ):focus-visible {
+  outline: none;
+  border-color: var(--lomi-focus);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lomi-focus) 18%, transparent);
+}
+
+/* Search fields: the wrapper is the field; the inner input is bare. */
+.settings-dialog
+  .settings-page
+  :is(.settings-shortcut-search, .catalog-search, .agent-client-search-field) {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  min-height: 40px;
+  padding: 0 var(--space-14);
+  border: var(--border-width) solid var(--sheet-line);
+  border-radius: 12px;
+  background: var(--sheet-field);
+  color: var(--color-muted-text);
+  box-shadow: none;
+}
+.settings-dialog
+  .settings-page
+  :is(
+    .settings-shortcut-search,
+    .catalog-search,
+    .agent-client-search-field
+  ):focus-within {
+  border-color: var(--lomi-focus);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lomi-focus) 18%, transparent);
+}
+.settings-dialog
+  .settings-page
+  :is(.settings-shortcut-search, .catalog-search, .agent-client-search-field)
+  > svg {
+  position: static;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  transform: none;
+}
+.settings-dialog
+  .settings-page
+  :is(.settings-shortcut-search, .catalog-search, .agent-client-search-field)
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not(
+    [type="color"]
+  ),
+.settings-dialog
+  .settings-page
+  :is(.settings-shortcut-search, .catalog-search, .agent-client-search-field)
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not(
+    [type="color"]
+  ):is(:hover, :focus-visible) {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  min-height: 0;
+  height: 38px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  background: transparent;
+  box-shadow: none;
+}
+.settings-dialog .settings-page input::-webkit-search-cancel-button {
+  display: none;
+}
+
+/* ---- Buttons ---- */
+.settings-dialog .settings-page .button {
+  min-height: 34px;
+  padding: 0 var(--space-14);
+  gap: var(--space-8);
+  border-radius: 10px;
+  font-size: var(--font-size-14);
+  font-weight: 500;
+  box-shadow: none;
+  transition:
+    background-color 120ms ease-out,
+    border-color 120ms ease-out;
+}
+.settings-dialog .settings-page .button svg {
+  width: 15px;
+  height: 15px;
+}
+.settings-dialog
+  .settings-page
+  .button:not(.button-primary):not(.button-danger):not(.text-error):not(
+    .danger
+  ) {
+  border: var(--border-width) solid var(--sheet-line);
+  background: var(--color-surface);
+  color: var(--color-surface-text);
+}
+.settings-dialog
+  .settings-page
+  .button:not(.button-primary):not(.button-danger):not(.text-error):not(
+    .danger
+  ):hover:not(:disabled) {
+  border-color: var(--lomi-control-border);
+  background: var(--color-surface-container);
+}
+.settings-dialog .settings-page .button-primary {
+  border: 0;
+  background: var(--color-surface-text);
+  color: var(--color-surface);
+}
+.settings-dialog .settings-page .button-primary:hover:not(:disabled) {
+  background: color-mix(
+    in srgb,
+    var(--color-surface-text) 88%,
+    var(--color-surface)
+  );
+}
+.settings-dialog .settings-page .button:disabled {
+  opacity: 1;
+  border-color: var(--sheet-line);
+  background: transparent;
+  color: var(--color-muted-text);
+  cursor: default;
+}
+.settings-dialog .settings-page .button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lomi-focus) 30%, transparent);
+}
+.settings-dialog .settings-page .theme-choice.button-primary {
+  border: var(--border-width) solid var(--sheet-line);
+  background: transparent;
+  color: var(--color-muted-text);
+}
+.settings-dialog :is(.account-actions, .account-access-actions) {
+  gap: var(--space-8);
+  margin: 0;
+}
+
+/* ---- Switch ---- */
+.settings-dialog .settings-switch {
+  width: 40px;
+  height: 24px;
+  padding: 2px;
+  border: 0;
+  border-radius: 24px;
+  background: var(--color-surface-container-highest);
+}
+.settings-dialog .settings-switch::before {
+  width: 20px;
+  height: 20px;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
+}
+.settings-dialog .settings-switch:checked {
+  border: 0;
+  background: #723bfa;
+}
+.settings-dialog .settings-switch:checked::before {
+  background: #ffffff;
+  transform: translateX(16px);
+}
+
+/* ---- Color mode: preview tiles ---- */
+.settings-dialog .theme-mode-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-14);
+}
+.settings-dialog .theme-mode-row .setting-controls,
+.settings-dialog .theme-appearance {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.settings-dialog .theme-appearance-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-12);
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.settings-dialog .theme-appearance-options label {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-10);
+  padding: var(--space-8) var(--space-8) var(--space-12);
+  border: var(--border-width) solid var(--sheet-line);
+  border-radius: 14px;
+  background: var(--sheet-field);
+  color: var(--color-surface-variant-text);
+  font-size: var(--font-size-13);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    border-color 140ms ease-out,
+    box-shadow 140ms ease-out;
+}
+.settings-dialog .theme-appearance-options label::before {
+  content: "";
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 9px;
+  background:
+    linear-gradient(#b9f500, #b9f500) 86% 18% / 7px 7px no-repeat,
+    linear-gradient(#34343c, #34343c) 10% 18% / 18% 4px no-repeat,
+    linear-gradient(#27272d, #27272d) 10% 32% / 18% 4px no-repeat,
+    linear-gradient(#27272d, #27272d) 10% 46% / 18% 4px no-repeat,
+    linear-gradient(#1f1f24, #1f1f24) 88% 50% / 62% 72% no-repeat,
+    #0e0e11;
+}
+.settings-dialog
+  .theme-appearance-options
+  label:has(input[value="light"])::before {
+  background:
+    linear-gradient(#723bfa, #723bfa) 86% 18% / 7px 7px no-repeat,
+    linear-gradient(#9696a2, #9696a2) 10% 18% / 18% 4px no-repeat,
+    linear-gradient(#dcdce2, #dcdce2) 10% 32% / 18% 4px no-repeat,
+    linear-gradient(#dcdce2, #dcdce2) 10% 46% / 18% 4px no-repeat,
+    linear-gradient(#ffffff, #ffffff) 88% 50% / 62% 72% no-repeat,
+    #f2f2f5;
+}
+.settings-dialog
+  .theme-appearance-options
+  label:has(input[value="system"])::before {
+  background:
+    linear-gradient(105deg, transparent 50%, #0e0e11 50%),
+    linear-gradient(#9696a2, #9696a2) 10% 18% / 18% 4px no-repeat,
+    linear-gradient(#dcdce2, #dcdce2) 10% 32% / 18% 4px no-repeat,
+    linear-gradient(#ffffff, #ffffff) 88% 50% / 62% 72% no-repeat,
+    #f2f2f5;
+}
+.settings-dialog .theme-appearance-options label > input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.settings-dialog .theme-appearance-options label svg {
+  display: none;
+}
+.settings-dialog .theme-appearance-options label:hover {
+  border-color: var(--lomi-control-border);
+}
+.settings-dialog .theme-appearance-options label:has(:checked) {
+  border-color: var(--lomi-focus);
+  background: var(--sheet-field);
+  color: var(--color-surface-text);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lomi-focus) 22%, transparent);
+}
+.settings-dialog .theme-appearance-options label:has(:focus-visible) {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lomi-focus) 40%, transparent);
+}
+
+/* ---- General: workflow choice ---- */
+.settings-dialog .general-mode-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-12);
+}
+.settings-dialog .general-mode-options label {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  padding: var(--space-14) var(--space-16) var(--space-14) var(--space-14);
+  border: var(--border-width) solid var(--sheet-line);
+  border-radius: 14px;
+  background: var(--sheet-card);
+  cursor: pointer;
+  transition:
+    border-color 160ms ease-out,
+    box-shadow 160ms ease-out,
+    background-color 160ms ease-out;
+}
+.settings-dialog .general-mode-options label > input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.settings-dialog .general-mode-options label:hover {
+  border-color: var(--lomi-control-border);
+}
+.settings-dialog .general-mode-options label:has(:checked) {
+  border-color: var(--lomi-focus);
+  background: color-mix(in srgb, var(--lomi-focus) 6%, var(--sheet-card));
+}
+.settings-dialog .general-mode-options label:has(:focus-visible) {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lomi-focus) 40%, transparent);
+}
+.general-mode-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: var(--sheet-field);
+  box-shadow: inset 0 0 0 var(--border-width) var(--sheet-line);
+  color: var(--color-surface-variant-text);
+  transition:
+    background-color 160ms ease-out,
+    color 160ms ease-out;
+}
+label:has(:checked) > .general-mode-icon {
+  background: color-mix(in srgb, var(--lomi-focus) 16%, transparent);
+  box-shadow: none;
+  color: var(--lomi-focus);
+}
+.general-mode-copy {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+}
+.general-mode-copy strong {
+  color: var(--color-surface-text);
+  font-size: var(--font-size-13);
+  font-weight: 600;
+}
+.settings-dialog .general-mode-copy small {
+  color: var(--color-muted-text);
+  font-size: var(--font-size-12);
+  line-height: 1.4;
+}
+.general-mode-radio {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  border: 1.5px solid var(--lomi-control-border);
+  border-radius: 50%;
+  transition: border 160ms ease-out;
+}
+label:has(:checked) > .general-mode-radio {
+  border: 5px solid var(--lomi-focus);
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings-dialog .general-mode-options label,
+  .general-mode-icon,
+  .general-mode-radio {
+    transition: none;
+  }
+}
+.settings-dialog .general-location {
+  max-width: min(360px, 100%);
+}
+.settings-dialog .general-location > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* Keep the folder name visible: truncate the start of long paths. */
+  direction: rtl;
+}
+@media (max-width: 640px) {
+  .settings-dialog .general-mode-options {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- Tabs (segmented) ---- */
+.settings-dialog .agent-control-tabs {
+  padding: 3px;
+  border: var(--border-width) solid var(--sheet-line);
+  border-radius: 12px;
+  background: var(--sheet-field);
+}
+.settings-dialog .agent-control-tabs [role="tab"] {
+  min-height: 32px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--color-surface-variant-text);
+  font-size: var(--font-size-14);
+  font-weight: 500;
+}
+.settings-dialog .agent-control-tabs [role="tab"][aria-selected="true"] {
+  background: var(--color-surface-container-high);
+  color: var(--color-surface-text);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+}
+
+/* ---- Catalog lists: the list is the card; entries are rows ---- */
+.settings-dialog .catalog-list {
+  gap: 0;
+}
+.settings-dialog .catalog-card,
+.settings-dialog .theme-card.active-theme {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: var(--space-18) var(--space-24);
+}
+.settings-dialog .catalog-card + .catalog-card {
+  border-top: var(--border-width) solid var(--sheet-line);
+}
+.settings-dialog .catalog-tags > * {
+  border-radius: 7px;
+  font-size: var(--font-size-12);
+}
+.settings-dialog .settings-notice {
+  border-radius: 14px;
+}
+
+@media (max-width: 860px) {
+  .settings-dialog {
+    --sheet-control-width: 160px;
+  }
+  .settings-dialog .settings-navigation {
+    flex-basis: 210px;
+  }
+  .settings-dialog .settings-page {
+    padding-inline: var(--space-20);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings-dialog[open],
+  .settings-dialog[open]::backdrop {
+    animation: none;
+  }
+  .settings-dialog .settings-nav-item,
+  .settings-dialog .theme-appearance-options label {
+    transition: none;
+  }
+}
+
+/* Alignment: group labels line up with item icons; disclosure summaries share
+   the row inset. */
+.settings-dialog .settings-nav-group-label {
+  margin: 0;
+}
+.settings-dialog .settings-disclosure > summary,
+.settings-dialog .settings-page-content > .settings-disclosure > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  min-height: 56px;
+  margin: 0;
+  padding: 0 var(--space-24);
+  color: var(--color-surface-text);
+  font-size: var(--font-size-14);
+  font-weight: 500;
+}
+
+/* ---- Status toast ---- */
+.settings-dialog .settings-toast-region {
+  position: absolute;
+  right: 24px;
+  bottom: 20px;
+  z-index: 2;
+  pointer-events: none;
+}
+.settings-dialog .settings-toast {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+  height: 32px;
+  padding: 0 var(--space-14);
+  border: var(--border-width) solid var(--sheet-line);
+  border-radius: 10px;
+  background: var(--color-surface-container-high);
+  color: var(--color-surface-text);
+  font-size: var(--font-size-13);
+  box-shadow: 0 12px 32px -12px rgb(0 0 0 / 0.5);
+  animation: settings-toast 2600ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+.settings-dialog .settings-toast::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-primary);
+}
+.settings-dialog .settings-toast[data-progress] {
+  animation: settings-toast-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.settings-dialog .settings-toast[data-progress]::before {
+  animation: settings-pulse 1s ease-in-out infinite;
+}
+@keyframes settings-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+@keyframes settings-toast {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  8%,
+  85% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(4px);
+    visibility: hidden;
+  }
+}
+@keyframes settings-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* ---- Motion ---- */
+.settings-dialog .settings-main {
+  position: relative;
+}
+.settings-dialog .settings-page-content {
+  animation: settings-page-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes settings-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.settings-dialog .settings-breadcrumb [aria-current] {
+  animation: settings-fade 180ms ease-out;
+}
+@keyframes settings-fade {
+  from {
+    opacity: 0;
+  }
+}
+.settings-dialog .settings-nav-item svg {
+  transition:
+    color 120ms ease-out,
+    transform 160ms ease-out;
+}
+.settings-dialog .settings-nav-item:active:not(:disabled) {
+  transform: scale(0.985);
+}
+.settings-dialog .settings-nav-item[aria-current="page"] svg {
+  transform: scale(1.06);
+}
+.settings-dialog .settings-page .button:active:not(:disabled),
+.settings-dialog .settings-close:active {
+  transform: scale(0.97);
+}
+.settings-dialog .settings-page .button,
+.settings-dialog .settings-close {
+  transition:
+    background-color 120ms ease-out,
+    border-color 120ms ease-out,
+    color 120ms ease-out,
+    transform 100ms ease-out;
+}
+.settings-dialog .settings-switch {
+  transition: background-color 180ms ease-out;
+}
+.settings-dialog .settings-switch::before {
+  transition:
+    transform 220ms cubic-bezier(0.3, 1.4, 0.5, 1),
+    width 160ms ease-out;
+}
+.settings-dialog .settings-switch:active:not(:disabled)::before {
+  width: 24px;
+}
+.settings-dialog .settings-switch:checked:active:not(:disabled)::before {
+  transform: translateX(12px);
+}
+.settings-dialog .setting-row {
+  transition: background-color 140ms ease-out;
+}
+.settings-dialog .settings-group > .setting-row:hover {
+  background: color-mix(in srgb, var(--color-surface-text) 2.5%, transparent);
+}
+.settings-dialog .settings-disclosure > summary {
+  cursor: pointer;
+  transition: background-color 140ms ease-out;
+}
+.settings-dialog .settings-disclosure > summary:hover {
+  background: color-mix(in srgb, var(--color-surface-text) 3%, transparent);
+}
+.settings-dialog .settings-disclosure .disclosure-summary-icon,
+.settings-dialog .settings-disclosure-toggle .disclosure-summary-icon {
+  transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.settings-dialog .settings-disclosure[open] > .settings-disclosure-body,
+.settings-dialog .settings-disclosure-body {
+  animation: settings-disclosure-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes settings-disclosure-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+.settings-dialog .theme-appearance-options label {
+  transition:
+    border-color 160ms ease-out,
+    box-shadow 160ms ease-out,
+    transform 160ms ease-out;
+}
+.settings-dialog .theme-appearance-options label:hover {
+  transform: translateY(-1px);
+}
+.settings-dialog .theme-appearance-options label:active {
+  transform: translateY(0) scale(0.99);
+}
+.settings-dialog .agent-control-tabs [role="tab"] {
+  transition:
+    background-color 160ms ease-out,
+    color 160ms ease-out,
+    box-shadow 160ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings-dialog *,
+  .settings-dialog *::before {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+  .settings-dialog .settings-toast {
+    animation: settings-toast 2600ms steps(1, end) forwards !important;
+  }
+}
+
+/* ---- Consistency: notices, loading, disabled ---- */
+/* Standalone notices share the card radius and rhythm of the page. */
+.settings-dialog .inline-notice {
+  gap: var(--space-8) var(--space-16);
+  padding: var(--space-12) var(--space-16);
+  border-radius: 14px;
+  font-size: var(--font-size-13);
+  line-height: 1.5;
+}
+.settings-dialog .settings-page-content > .settings-notice {
+  margin: 0 0 var(--space-24);
+}
+/* Inside a card a notice is just another row: no second box. */
+.settings-dialog .settings-group > .inline-notice,
+.settings-dialog .settings-group > .settings-notice:first-child,
+.settings-dialog .settings-disclosure-body > .inline-notice {
+  margin: 0;
+  padding: var(--space-14) var(--space-24);
+  border: 0;
+  border-radius: 0;
+  background: color-mix(in srgb, var(--notice-color) 5%, transparent);
+}
+.settings-dialog .settings-group > * + .inline-notice {
+  border-top: var(--border-width) solid var(--sheet-line);
+}
+.settings-dialog
+  .settings-group:has(> .setting-row)
+  > :last-child:not(.setting-row) {
+  margin-bottom: 0;
+}
+.settings-dialog .inline-notice .text-button {
+  color: var(--color-surface-text);
+  font-weight: 500;
+  text-decoration: none;
+}
+.settings-dialog .inline-notice .text-button:hover {
+  text-decoration: underline;
+}
+/* Loading placeholders read as a quiet, consistent row. */
+.settings-dialog .settings-help[role="status"] {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  min-height: 56px;
+  margin: 0;
+  color: var(--color-muted-text);
+}
+.settings-dialog .settings-switch:disabled {
+  opacity: 0.38;
+}
+
+/* ---- Keybinds ---- */
+.settings-dialog .keybindings-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  margin: 0 0 var(--space-28);
+}
+.settings-dialog .keybindings-toolbar .settings-shortcut-search {
+  flex: 1;
+  margin: 0;
+}
+.settings-dialog .keybindings-toolbar > .button {
+  flex: none;
+  min-height: 40px;
+  border-radius: 12px;
+}
+.settings-dialog .keybinding-draft {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 180px auto auto;
+  align-items: center;
+  gap: var(--space-10);
+  margin: calc(var(--space-12) * -1) 0 var(--space-28);
+  padding: var(--space-14) var(--space-16) var(--space-14) var(--space-24);
+  border: var(--border-width) solid var(--lomi-focus);
+  border-radius: 16px;
+  background: var(--sheet-card);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lomi-focus) 14%, transparent);
+  animation: settings-disclosure-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.settings-dialog .keybinding-draft > strong {
+  margin-right: var(--space-8);
+  font-size: var(--font-size-14);
+  font-weight: 500;
+}
+.settings-dialog .keybinding-draft .select-trigger {
+  width: 100%;
+}
+.settings-dialog .keybinding-draft-keys {
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 var(--space-12);
+  border: var(--border-width) solid var(--sheet-line);
+  border-radius: 10px;
+  background: var(--sheet-field);
+}
+.settings-dialog .keybinding-draft-keys.recording {
+  border-color: var(--lomi-focus);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lomi-focus) 18%, transparent);
+}
+.settings-dialog .keybinding-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.settings-dialog
+  .keybinding-row
+  .shortcut-recorder:not(.keybinding-draft-keys) {
+  min-height: 30px;
+  padding: 0 var(--space-4);
+  border: var(--border-width) solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  transition:
+    border-color 140ms ease-out,
+    background-color 140ms ease-out;
+}
+.settings-dialog .keybinding-row .shortcut-recorder:hover:not(:disabled) {
+  border-color: var(--sheet-line);
+  background: var(--sheet-field);
+}
+.settings-dialog .keybinding-row .shortcut-recorder.recording {
+  padding: 0 var(--space-10);
+  border-color: var(--lomi-focus);
+  background: var(--sheet-field);
+}
+.settings-dialog .shortcut-unassigned {
+  color: var(--color-muted-text);
+  font-size: var(--font-size-13);
+}
+.settings-dialog .shortcut-recorder.recording .shortcut-unassigned {
+  animation: settings-pulse 1.2s ease-in-out infinite;
+}
+/* Row actions stay out of the way until the row is hovered or focused. */
+.settings-dialog .keybinding-row-action {
+  width: 28px;
+  height: 28px;
+  opacity: 0;
+  transition: opacity 140ms ease-out;
+}
+.settings-dialog
+  .keybinding-row:is(:hover, :focus-within)
+  .keybinding-row-action {
+  opacity: 1;
+}
+.settings-dialog .keybinding-row-action:disabled {
+  visibility: hidden;
+}
+
+/* ---- Consistency: one card, one row rhythm on every page ---- */
+/* A card never contains another card: nested blocks become rows. */
+.settings-dialog
+  :is(.settings-group, .settings-disclosure-body, .agent-control-request)
+  > .settings-disclosure,
+.settings-dialog .settings-disclosure-body .agent-capabilities-scroll {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.settings-dialog
+  :is(.settings-group, .settings-disclosure-body, .agent-control-request)
+  > .settings-disclosure {
+  border-top: var(--border-width) solid var(--sheet-line);
+}
+
+/* Lists inside cards: full-width dividers, the same inset and type scale. */
+.settings-dialog .agent-client-list,
+.settings-dialog .android-phones .settings-group {
+  padding: 0;
+  border: var(--border-width) solid var(--sheet-line);
+  border-radius: 16px;
+  background: var(--sheet-card);
+}
+.settings-dialog .agent-control-page .agent-client-list > li + li,
+.settings-dialog .android-device-card + .android-device-card {
+  border-top: var(--border-width) solid var(--sheet-line);
+}
+.settings-dialog .android-phone-list {
+  margin: 0;
+}
+.settings-dialog .android-device-card {
+  margin: 0;
+  padding: var(--space-14) var(--space-24);
+  border-bottom: 0;
+}
+.settings-dialog .agent-control-page .agent-client-row {
+  min-height: 56px;
+  padding: var(--space-10) var(--space-24);
+  border-radius: 0;
+}
+.settings-dialog .agent-control-page .agent-client-row:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-surface-text) 3%, transparent);
+}
+.settings-dialog
+  :is(
+    .agent-control-page .agent-client-option-name,
+    .android-device-card h3,
+    .catalog-card h3
+  ) {
+  color: var(--color-surface-text);
+  font-size: var(--font-size-14);
+  font-weight: 500;
+}
+.settings-dialog
+  :is(.agent-control-page .agent-client-option-status, .android-phone-info p) {
+  color: var(--color-muted-text);
+  font-size: var(--font-size-13);
+}
+
+/* Row-level actions are secondary everywhere; the filled button is reserved
+   for the one main action of a form (Save, Sign in). */
+.settings-dialog
+  :is(.android-device-card, .catalog-card, .agent-client-list)
+  .button-primary {
+  border: var(--border-width) solid var(--sheet-line);
+  background: var(--color-surface);
+  color: var(--color-surface-text);
+}
+.settings-dialog
+  :is(.android-device-card, .catalog-card, .agent-client-list)
+  .button-primary:hover:not(:disabled) {
+  border-color: var(--lomi-control-border);
+  background: var(--color-surface-container);
+}
+
+/* Custom section headings (Agent control, Android) align with standard ones. */
+.settings-dialog .agent-control-section-heading {
+  margin: 0 0 var(--space-12);
+  padding: 0 var(--space-4);
+}
+.settings-dialog .agent-control-section-heading h2 {
+  margin: 0;
+  font-size: var(--font-size-17);
+  font-weight: 600;
+  letter-spacing: -0.012em;
+}
+.settings-dialog .agent-control-section-heading p {
+  margin: var(--space-4) 0 0;
+  color: var(--color-muted-text);
+  font-size: var(--font-size-13);
+}
+.settings-dialog .agent-control-tabs {
+  margin-bottom: var(--space-28);
+}
+.settings-dialog .agent-control-panel + .agent-control-panel {
+  margin-top: var(--space-32);
+}
+.settings-dialog .settings-footnote,
+.settings-dialog .agent-control-page .settings-help:not([role]) {
+  margin: var(--space-12) var(--space-4) 0;
+  color: var(--color-muted-text);
+  font-size: var(--font-size-12);
+}
+/* Wrappers that hold rows are not rows themselves: no inset of their own. */
+.settings-dialog
+  .settings-group
+  > :is(.android-phone-list, .settings-disclosure) {
+  padding: 0;
+}
+.settings-dialog .agent-control-page .agent-client-list {
+  padding: 0;
+  border-color: var(--sheet-line);
+  border-radius: 16px;
+  background: var(--sheet-card);
+}
+.settings-dialog .agent-control-request {
+  padding: var(--space-16) var(--space-24) 0;
+}
+.settings-dialog .agent-control-request > .settings-disclosure {
+  margin: var(--space-12) calc(var(--space-24) * -1) 0;
+}
+/* Status pills: neutral surface, the dot carries the state color. */
+.settings-dialog .agent-control-badge {
+  height: 28px;
+  padding: 0 var(--space-12);
+  border: var(--border-width) solid var(--sheet-line);
+  border-radius: 999px;
+  background: var(--sheet-field);
+  color: var(--color-surface-text);
+  font-size: var(--font-size-12);
+}
+.settings-dialog .agent-control-badge::before {
+  background: var(--color-muted-text);
+}
+.settings-dialog .agent-control-badge[data-state="ready"]::before {
+  background: var(--color-success, var(--color-primary));
+  box-shadow: 0 0 0 3px
+    color-mix(
+      in srgb,
+      var(--color-success, var(--color-primary)) 20%,
+      transparent
+    );
+}
+.settings-dialog .agent-control-badge[data-state="waiting"]::before {
+  background: var(--color-warning);
+}
+
+/* ---- Fields: quiet, same family as the card ---- */
+.settings-dialog {
+  --sheet-field: color-mix(
+    in srgb,
+    var(--color-surface-text) 3.5%,
+    var(--sheet-card)
+  );
+}
+:root[data-appearance="light"] .settings-dialog {
+  --sheet-field: var(--color-background);
+}
+.settings-dialog
+  .settings-page
+  :is(
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not(
+        [type="color"]
+      ),
+    select,
+    textarea,
+    .select-trigger
+  ) {
+  min-height: 34px;
+  border-radius: 9px;
+  font-size: var(--font-size-13);
+}
+.settings-dialog
+  .settings-page
+  :is(
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not(
+        [type="color"]
+      ),
+    textarea
+  ) {
+  padding-inline: var(--space-12);
+}
+.settings-dialog .settings-page .select-trigger {
+  justify-content: space-between;
+  gap: var(--space-8);
+}
+.settings-dialog .settings-page .select-trigger svg {
+  color: var(--color-muted-text);
+}
+.settings-dialog .settings-page input[type="number"] {
+  font-variant-numeric: tabular-nums;
+  -moz-appearance: textfield;
+}
+.settings-dialog .settings-page input[type="number"]::-webkit-inner-spin-button,
+.settings-dialog
+  .settings-page
+  input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.settings-dialog .settings-page textarea {
+  padding-block: var(--space-10);
+  line-height: 1.5;
+}
+
+/* Color swatches: a small rounded chip, not a text field. */
+.settings-dialog .settings-page input[type="color"] {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: var(--border-width) solid var(--sheet-line);
+  border-radius: 8px;
+  background: none;
+  cursor: pointer;
+}
+.settings-dialog
+  .settings-page
+  input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+.settings-dialog .settings-page input[type="color"]::-webkit-color-swatch {
+  border: 0;
+  border-radius: 7px;
+}
+
+/* Reserve the scrollbar on both edges so the centered column keeps the same
+   width and position whether or not a page scrolls. */
+.settings-dialog .settings-page {
+  overflow-y: auto;
+  scrollbar-gutter: stable both-edges;
+}

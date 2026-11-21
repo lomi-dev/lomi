@@ -2,19 +2,11 @@ import { McpClientsSettings } from "./McpClientsSettings";
 import { AgentBrowserUploadApproval } from "./AgentBrowserUploadApproval";
 import { AgentAndroidApproval } from "./AgentAndroidApproval";
 import Pairing from "./AgentControlPairing";
-import {
-  Fragment,
-  Suspense,
-  lazy,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { listen } from "@tauri-apps/api/event";
 import { api, errorMessage, native } from "./api";
-import { DisclosureSummary, Modal } from "./ui";
+import { Modal } from "./ui";
 import {
   SettingRow,
   SettingsNotice,
@@ -26,11 +18,7 @@ import type { ControlStartupState } from "./agent-control-startup";
 import { formatShortcut } from "./keybindings";
 import "./agent-control-settings.css";
 
-const AccountsSettings = lazy(
-  () => import("./agent-runtime/accounts/AccountsSettings"),
-);
-
-type AgentControlTab = "connect" | "sessions" | "preferences" | "accounts";
+type AgentControlTab = "connect" | "sessions" | "preferences";
 
 function pendingRequestCount(
   broker: ControlState["broker"] | null | undefined,
@@ -742,12 +730,7 @@ export default function AgentControlSettingsPage({
     tabSelectedByUser.current = true;
     setActiveTab(tab);
   };
-  const tabOrder: AgentControlTab[] = [
-    "connect",
-    "sessions",
-    "preferences",
-    "accounts",
-  ];
+  const tabOrder: AgentControlTab[] = ["connect", "sessions", "preferences"];
   const tabButtons = (tab: AgentControlTab) => ({
     id: `agent-control-tab-${tab}`,
     role: "tab" as const,
@@ -773,11 +756,6 @@ export default function AgentControlSettingsPage({
   return (
     <SettingsPage
       title="Agent control"
-      description={
-        activeTab === "accounts"
-          ? "Native CLI logins for agent tasks. Chat AI services are managed separately."
-          : "Connect coding agents to use your Lomi files, terminals and tools. Manage their access in Sessions."
-      }
       className="agent-control-page"
       status={status}
     >
@@ -798,7 +776,7 @@ export default function AgentControlSettingsPage({
         </SettingsNotice>
       )}
       {error && <SettingsNotice tone="error">{error}</SettingsNotice>}
-      {activeTab !== "accounts" && state && !state.supported && (
+      {state && !state.supported && (
         <SettingsNotice tone="warning">
           Agent control isn’t available on this computer yet.
         </SettingsNotice>
@@ -838,13 +816,6 @@ export default function AgentControlSettingsPage({
         >
           Preferences
         </button>
-        <button
-          type="button"
-          className="agent-control-tab"
-          {...tabButtons("accounts")}
-        >
-          CLI Accounts
-        </button>
       </div>
 
       {requestCount > 0 && activeTab !== "sessions" && (
@@ -866,15 +837,12 @@ export default function AgentControlSettingsPage({
         </SettingsNotice>
       )}
 
-      {(activeTab === "sessions" || activeTab === "preferences") && (
+      {activeTab === "sessions" && (
         <SettingsSection
           title="Local connection"
           className="agent-control-server-section"
         >
-          <SettingRow
-            label="Connection server"
-            description="Lets agents request access to Lomi. Starting the server alone does not approve a session."
-          >
+          <SettingRow label="Connection server">
             <span
               className="agent-control-badge"
               data-state={serverState}
@@ -916,8 +884,8 @@ export default function AgentControlSettingsPage({
               <p id="agent-control-yolo-confirmation-description">
                 Local MCP clients will pair automatically, and their requests
                 run in every workspace without asking: terminal commands, file
-                changes, Git, browser, Android and chat messages. Active
-                sessions disconnect and must reconnect.
+                changes, Git, browser, and Android. Active sessions disconnect
+                and must reconnect.
               </p>
               {startupError && (
                 <div className="keybindings-error" role="alert">
@@ -947,21 +915,6 @@ export default function AgentControlSettingsPage({
           </div>
         </Modal>
       )}
-
-      <section
-        className="agent-control-panel"
-        id="agent-control-panel-accounts"
-        role="tabpanel"
-        aria-labelledby="agent-control-tab-accounts"
-        tabIndex={0}
-        hidden={activeTab !== "accounts"}
-      >
-        {activeTab === "accounts" && (
-          <Suspense fallback={<p role="status">Loading accounts…</p>}>
-            <AccountsSettings />
-          </Suspense>
-        )}
-      </section>
 
       <section
         className="agent-control-panel"
@@ -1058,42 +1011,33 @@ export default function AgentControlSettingsPage({
                       )
                       .join(", ")}
                   </p>
-                  <details className="settings-disclosure agent-control-details">
-                    <DisclosureSummary>Access details</DisclosureSummary>
-                    <div className="agent-control-details-content">
-                      <dl>
-                        <dt>Granted access</dt>
-                        <dd>
-                          {session.scopes.join(", ") || "No additional scopes"}
-                        </dd>
-                        {session.scopes.includes("terminal.execute") &&
-                          session.terminalProfile && (
-                            <>
-                              <dt>Shell</dt>
-                              <dd>{session.terminalProfile.id}</dd>
-                            </>
-                          )}
-                        {session.chatConversations?.length > 0 && (
+                  <div className="agent-control-details-content">
+                    <dl>
+                      <dt>Granted access</dt>
+                      <dd>
+                        {session.scopes.join(", ") || "No additional scopes"}
+                      </dd>
+                      {session.scopes.includes("terminal.execute") &&
+                        session.terminalProfile && (
                           <>
-                            <dt>Chat conversations</dt>
-                            <dd>{session.chatConversations.length}</dd>
+                            <dt>Shell</dt>
+                            <dd>{session.terminalProfile.id}</dd>
                           </>
                         )}
-                        {session.androidPackages?.length > 0 && (
-                          <>
-                            <dt>Android apps</dt>
-                            <dd>{session.androidPackages.join(", ")}</dd>
-                          </>
-                        )}
-                        {session.browserOrigins.length > 0 && (
-                          <>
-                            <dt>Browser origins</dt>
-                            <dd>{session.browserOrigins.join(", ")}</dd>
-                          </>
-                        )}
-                      </dl>
-                    </div>
-                  </details>
+                      {session.androidPackages?.length > 0 && (
+                        <>
+                          <dt>Android apps</dt>
+                          <dd>{session.androidPackages.join(", ")}</dd>
+                        </>
+                      )}
+                      {session.browserOrigins.length > 0 && (
+                        <>
+                          <dt>Browser origins</dt>
+                          <dd>{session.browserOrigins.join(", ")}</dd>
+                        </>
+                      )}
+                    </dl>
+                  </div>
                 </article>
               ))}
             </SettingsSection>
@@ -1118,9 +1062,7 @@ export default function AgentControlSettingsPage({
               </SettingRow>
             )}
             <p className="settings-footnote">
-              Access ends when the connection closes or Lomi restarts. If this
-              view stops responding, stop access from the Lomi menu. Client
-              names are labels, not verified identities.
+              Client names are labels, not verified identities.
             </p>
           </>
         )}
@@ -1134,22 +1076,16 @@ export default function AgentControlSettingsPage({
         tabIndex={0}
         hidden={activeTab !== "preferences"}
       >
-        <SettingsSection
-          title="Server preferences"
-          description="Choose how Lomi handles connections when it opens."
-        >
+        <SettingsSection title="Server preferences">
           <SettingRow
             label="Start MCP server when Lomi opens"
             htmlFor="agent-control-auto-start"
-            description="Takes effect the next time Lomi opens."
-            descriptionId="agent-control-auto-start-help"
           >
             <input
               id="agent-control-auto-start"
               className="settings-switch"
               type="checkbox"
               role="switch"
-              aria-describedby="agent-control-auto-start-help"
               checked={startupState?.autoStart === true}
               disabled={
                 !native ||
@@ -1161,118 +1097,80 @@ export default function AgentControlSettingsPage({
             />
           </SettingRow>
         </SettingsSection>
-        <details className="settings-disclosure agent-control-details agent-control-automatic-approvals">
-          <DisclosureSummary>Automatic approvals (YOLO)</DisclosureSummary>
-          <div className="settings-disclosure-body">
-            <SettingRow
-              label="Automatically approve requests (YOLO)"
-              htmlFor="agent-control-yolo-mode"
-              description="Approves requests from all local clients without asking. Active sessions reconnect."
-              descriptionId="agent-control-yolo-mode-help"
-            >
-              <input
-                id="agent-control-yolo-mode"
-                ref={yoloSwitch}
-                className="settings-switch"
-                type="checkbox"
-                role="switch"
-                aria-label="YOLO mode"
-                aria-describedby="agent-control-yolo-mode-help"
-                checked={startupState?.yoloMode === true}
-                disabled={
-                  !native ||
-                  !startupState ||
-                  !startupState.supported ||
-                  startupBusy
-                }
-                onChange={(event) => {
-                  if (event.target.checked) {
-                    event.currentTarget.focus();
-                    setYoloConfirmationOpen(true);
-                  } else void setYoloMode(false);
-                }}
-              />
-            </SettingRow>
-          </div>
-        </details>
+        <SettingsSection
+          title="Automatic approvals (YOLO)"
+          className="agent-control-automatic-approvals"
+        >
+          <SettingRow
+            label="Automatically approve requests (YOLO)"
+            htmlFor="agent-control-yolo-mode"
+            description="Approves requests from all local clients without asking. Active sessions reconnect."
+            descriptionId="agent-control-yolo-mode-help"
+          >
+            <input
+              id="agent-control-yolo-mode"
+              ref={yoloSwitch}
+              className="settings-switch"
+              type="checkbox"
+              role="switch"
+              aria-label="YOLO mode"
+              aria-describedby="agent-control-yolo-mode-help"
+              checked={startupState?.yoloMode === true}
+              disabled={
+                !native ||
+                !startupState ||
+                !startupState.supported ||
+                startupBusy
+              }
+              onChange={(event) => {
+                if (event.target.checked) {
+                  event.currentTarget.focus();
+                  setYoloConfirmationOpen(true);
+                } else void setYoloMode(false);
+              }}
+            />
+          </SettingRow>
+        </SettingsSection>
 
         {state?.supported && (
-          <>
-            <details className="settings-disclosure agent-control-details">
-              <DisclosureSummary>Manual configuration</DisclosureSummary>
-              <div className="settings-disclosure-body agent-control-details-content">
-                {config ? (
-                  <>
-                    <label htmlFor="control-config">
-                      MCP configuration for this server
-                    </label>
-                    <textarea
-                      id="control-config"
-                      className="agent-control-config"
-                      readOnly
-                      value={config}
-                      rows={13}
-                      spellCheck={false}
-                    />
-                    <button
-                      type="button"
-                      className="button"
-                      onClick={() =>
-                        void run(
-                          () => writeText(config),
-                          "Configuration copied.",
-                        )
-                      }
-                    >
-                      Copy configuration
-                    </button>
-                  </>
-                ) : broker ? (
-                  <p className="settings-help">
-                    Manual setup needs the optional lomi-mcp executable next to
-                    the app. Automatic setup is in Connect an agent.
-                  </p>
-                ) : (
-                  <p className="settings-help">
-                    Start the server to generate a configuration. Automatic
-                    setup is in Connect an agent.
-                  </p>
-                )}
+          <SettingsSection title="Manual configuration">
+            <div className="agent-control-details-content">
+              {config ? (
+                <>
+                  <label htmlFor="control-config">
+                    MCP configuration for this server
+                  </label>
+                  <textarea
+                    id="control-config"
+                    className="agent-control-config"
+                    readOnly
+                    value={config}
+                    rows={13}
+                    spellCheck={false}
+                  />
+                  <button
+                    type="button"
+                    className="button"
+                    onClick={() =>
+                      void run(() => writeText(config), "Configuration copied.")
+                    }
+                  >
+                    Copy configuration
+                  </button>
+                </>
+              ) : broker ? (
                 <p className="settings-help">
-                  It grants no access by itself. Copy it again after restarting
-                  the server.
+                  Manual setup needs the optional lomi-mcp executable next to
+                  the app. Automatic setup is in Connect an agent.
                 </p>
-              </div>
-            </details>
-
-            <details className="settings-disclosure agent-control-details">
-              <DisclosureSummary>File recovery</DisclosureSummary>
-              <div className="settings-disclosure-body agent-control-details-content">
+              ) : (
                 <p className="settings-help">
-                  Files from an interrupted move to Trash stay in the
-                  operation’s “entry” folder, and “plan.json” records their
-                  original path. Restore to an unused name to keep newer work.
-                  “completed.json” means the item reached the Trash.
+                  Start the server to generate a configuration. Automatic setup
+                  is in Connect an agent.
                 </p>
-                <button
-                  type="button"
-                  className="button"
-                  disabled={!native || busy}
-                  onClick={() =>
-                    void run(
-                      () => api("agent_control_open_recovery"),
-                      (opened) =>
-                        opened
-                          ? "Recovery folder opened."
-                          : "No file recovery data has been created.",
-                    )
-                  }
-                >
-                  Show recovery folder
-                </button>
-              </div>
-            </details>
-          </>
+              )}
+            </div>
+          </SettingsSection>
         )}
       </section>
     </SettingsPage>

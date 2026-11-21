@@ -3,7 +3,6 @@ import { Notice, type NoticeProps } from "./Notice";
 
 export function SettingsPage({
   title,
-  description,
   status,
   actions,
   busy,
@@ -12,7 +11,6 @@ export function SettingsPage({
   children,
 }: {
   title: string;
-  description?: ReactNode;
   status?: ReactNode;
   actions?: ReactNode;
   busy?: boolean;
@@ -33,19 +31,25 @@ export function SettingsPage({
         <header className="settings-page-heading">
           <div className="settings-page-title">
             <h1 id={titleId}>{title}</h1>
-            {description && <p>{description}</p>}
           </div>
-          {(status !== undefined || actions) && (
-            <div className="settings-page-actions">
-              {status !== undefined && (
-                <span className="settings-status" role="status">
-                  {status}
-                </span>
-              )}
-              {actions}
-            </div>
-          )}
+          {actions && <div className="settings-page-actions">{actions}</div>}
         </header>
+        {/* Confirmations are transient toasts; progress text ("…") stays until it changes. */}
+        <span className="settings-toast-region" role="status">
+          {status ? (
+            <span
+              key={String(status)}
+              className="settings-toast"
+              data-progress={
+                typeof status === "string" && status.endsWith("…")
+                  ? true
+                  : undefined
+              }
+            >
+              {status}
+            </span>
+          ) : null}
+        </span>
         {children}
       </div>
     </main>

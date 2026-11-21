@@ -130,10 +130,8 @@ export function applyTerminalPreferences(next: TerminalPreferences) {
   }
   terminalPreferences = next;
   for (const [key, value] of Object.entries(next.appearance)) {
-    if (key === "colors") {
-      for (const [name, color] of Object.entries(next.appearance.colors ?? {}))
-        root.setProperty(`--terminal-${kebab(name)}`, color, "important");
-    } else
+    // Colors belong to the active theme; legacy saved overrides are ignored.
+    if (key !== "colors")
       root.setProperty(
         `--terminal-${kebab(key)}`,
         `${typeof value === "boolean" ? Number(value) : value}${key === "fontSize" || key === "letterSpacing" ? "px" : ""}`,

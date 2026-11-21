@@ -1,100 +1,71 @@
 # Lomi desktop theme
 
-The built-in Lomi theme uses the color palette from the `v0.6.1` release.
-Current typography, workspace geometry and controls remain in place. It follows
-system appearance by default. Light and dark remain explicit user overrides,
-independent from the selected theme.
+The built-in Lomi theme follows Lomi Brand Guidelines 4.0 (`brandbook/` in the
+Lomi workspace). It follows system appearance by default. Light and dark remain
+explicit user overrides, independent from the selected theme.
 
 ## Visual direction
 
-The workbench keeps its existing workspace structure. Rounded active tabs share
-one vertical centerline with the project picker, close buttons and strip controls. Geist Variable carries interface text; code and terminals
-retain their existing monospace fonts. Light uses Chalk, Paper and Ink. Dark
-uses the original graphite surfaces and bright foregrounds.
-Navigation, content and raised menus/dialogs use distinct surface levels. Electric
-Lime identifies primary actions and keyboard focus where appropriate. It is
-not a general-purpose success color or a border around every active region.
+Lomi matches current agent-first desktop apps (Codex, Claude Code, Devin):
+quiet navigation chrome and one raised content surface.
 
-Explorer, terminal desktop, Workspaces and Source Control retain their previous
-section layout, spacing, pane framing and selection treatments. The reference
-style applies to tabs, chat composition, tool/account cards, menus and dialogs.
-Content remains
-opaque; the theme does not imitate native Liquid Glass by blurring terminals.
-States use semantic colors and text or actual interface icons. New UI copy uses
-plain punctuation and does not add ornamental text glyphs.
+- Titlebar, sidebars and status bar share the window background and have no
+  separators. The central stage is a 12 px rounded surface with a hairline
+  border, inset 8 px from the window edges.
+- Selection and hover use neutral fills. Signal Lime (dark) and Agent Violet
+  (light, where Signal fails contrast on white) mark only primary actions and
+  live states. Violet 300/500 marks keyboard focus and text selection.
+- Mona Sans carries the interface (Expanded 700-800 for display headlines);
+  Geist Mono carries code, terminals, labels and anything the machine says.
+  Labels use sentence case; mono eyebrows use capitals with +4% tracking.
+- Motion explains change: 180 ms `cubic-bezier(.2,.8,.2,1)` entrances, 120-160
+  ms state changes, no bounce except the Signal landing on the logo. Reduced
+  motion swaps movement for a fade.
 
-These choices are adaptations for Lomi, rather than copied interfaces or claims
-that the linked products use Lomi's token values.
+- Dialogs are compact (400 px, no symbol, 15 px title, 30 px actions) on the
+  stage surface. Their primary action is neutral (light on dark, ink on
+  light); destructive actions keep the danger fill.
 
-## References and resulting decisions
+## Surfaces
 
-| Reference                                                                                                       | Applied principle                                                                                                                                   |
-| --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [VS Code modern UI](https://code.visualstudio.com/blogs/2026/10/15/modern-ui)                                   | Shared surface/control tokens, compact density, sentence-case labels and clear active-tab states.                                                   |
-| [Linear design refresh](https://linear.app/now/behind-the-latest-design-refresh)                                | Quieter navigation, fewer competing treatments and separators, and visual evaluation in the application.                                            |
-| [Claude Code desktop redesign](https://claude.com/resources/articles/claude-code-desktop-redesign)              | Keep terminal, editor, changes and preview in a coherent workspace with contextual actions.                                                         |
-| [Introducing the Codex app](https://openai.com/pl-PL/index/introducing-the-codex-app/)                          | Preserve project context while moving between work, coordination and review. The article does not prescribe exact styling values.                   |
-| [Motion React](https://motion.dev/docs/react)                                                                   | Use CSS for small visual feedback and retain existing runtime-aware motion infrastructure.                                                          |
-| [Motion layout animations](https://motion.dev/docs/react-layout-animations)                                     | Avoid blanket transform-based layout animation on retained terminals, native browser panes or editor ancestors.                                     |
-| [VS Code custom layout](https://code.visualstudio.com/docs/configure/custom-layout)                             | Preserve resizable, movable, keyboard-accessible workspace regions and existing layout preferences.                                                 |
-| [VS Code UX guidelines](https://code.visualstudio.com/api/ux-guidelines/overview)                               | Keep navigation, editor content, contextual tools and status hierarchies distinct.                                                                  |
-| [Apple: designing for macOS](https://developer.apple.com/design/human-interface-guidelines/designing-for-macos) | Dense but readable desktop content, resizable windows, keyboard use and customization.                                                              |
-| [Apple: materials](https://developer.apple.com/design/human-interface-guidelines/materials)                     | Separate navigation and content roles; keep code and terminal surfaces readable and opaque.                                                         |
-| [Radix introduction](https://www.radix-ui.com/primitives/docs/overview/introduction)                            | Preserve accessible control semantics, focus handling and keyboard behavior. A visual refresh alone does not justify replacing existing primitives. |
-| [Designing Grok Bot](https://x.ai/news/designing-grok-bot)                                                      | Make identity, current activity and required attention understandable without permanent verbose chrome.                                             |
-| [Devin gets a Mac](https://devin.ai/blog/devin-gets-a-mac)                                                      | Verify visible state and actual interaction sequences, rather than treating successful compilation as visual acceptance.                            |
+| Role                       | Dark      | Light     |
+| -------------------------- | --------- | --------- |
+| Window chrome (background) | `#0e0e11` | `#f2f2f5` |
+| Content surface            | `#111114` | `#ffffff` |
+| Containers / hover         | `#1a1a1e` | `#ededf1` |
+| Structural borders         | `#27272d` | `#e2e2e8` |
+| Primary text               | `#f7f7f9` | `#18181c` |
+| Muted text                 | `#9696a2` | `#686874` |
+| Primary action             | `#b9f500` | `#723bfa` |
+| Focus                      | `#ae8dff` | `#723bfa` |
+| Text selection             | `#3a1594` | `#e6dbff` |
 
-References were reviewed on 20 October 2026. Apple's official Markdown versions
-were also used where the web pages depend on JavaScript. Motion's layout URL
-appeared twice in the supplied list and represents one reference.
+Neutrals come from the brand scale, which carries a slight violet tint.
+Semantic colors use the brand success, warning and danger values, darkened in
+light mode to keep 4.5:1 contrast.
+
+## Welcome and onboarding
+
+`src/Welcome.tsx` shows the Lomi symbol (`src/LomiSymbol.tsx`, geometry from
+the brandbook), one heading and two buttons on the plain stage:
+Add project opens a menu of project sources, New file picks a folder. `src/Onboarding.tsx`
+runs once on first launch: intro, a CLI-first or Chat-first workflow choice,
+appearance, detected agent CLIs, a shortcut step where pressing a listed
+shortcut lights its row, and the trust model with a summary of the choices.
+Chat first opens new projects with a chat tab and lists New chat first in the
+new-tab menu; CLI first (default) keeps the terminal. Onboarding uses the brand Aurora, staged entrances and keyboard control
+(Enter and arrow keys navigate, progress dots jump, Escape skips). Completion
+and the workflow choice are stored in webview storage
+(`src/onboarding-state.ts`).
 
 ## Theme implementation
 
-- `themes/lomi.json` is the sole built-in definition. Its color tokens, surface
-  assignments and syntax colors match `v0.6.1`; other tokens retain the current
-  typography and layout. New input-border roles use the original control colors.
-- `src/theme/baseline.css` supplies the same startup values before the runtime
-  theme commits and remains a fallback for partial custom themes.
-- Geist and its OFL license ship locally in `public/fonts/geist/`. The application
-  has no runtime dependency on either documentation repository or a font CDN.
-- The existing theme format, runtime, custom/plugin theme support and native
-  appearance synchronization remain the authority for loading and switching.
-- `src/styles.css` owns shared workbench chrome. Content, workflow, dialog, chat,
-  task, account and authentication styles use the same semantic hooks.
-
-The built-in selection remains `active: null`. The existing migration from
-historical built-in selections remains intact. There is no second legacy
-built-in theme left for users to select.
-
-## Reference-led appearance
-
-The supplied desktop screenshot adds a concrete visual direction: restrained
-graphite surfaces, softly rounded tab pills, bordered tool/account cards and a
-raised composer with the draft above its controls. Geist and Electric Lime
-retain Lomi's identity. Both appearances use the `v0.6.1` color values, including
-selection, focus, control borders, semantic states and primary hover/pressed states.
-
-The Explorer, terminal desktop, Workspaces list and Source Control use their
-pre-reference component styles and workspace geometry. Their tree rows remain
-30 px, terminal padding remains 12 px by 14 px, and desktop panes retain zero
-extra spacing, border and radius. The tab strip is centered and uses 10 px
-corners with 148-220 px widths. The outer native shell remains square and opaque.
-
-The table below records the restored dark palette. The website's scoped green
-dark surface remains documented separately in the brandbook.
-
-| Role                           | Value     |
-| ------------------------------ | --------- |
-| Canvas and editor              | `#101114` |
-| Terminal and navigation        | `#181a1f` |
-| Primary text                   | `#f3f4f6` |
-| Variant surfaces               | `#202329` |
-| Muted text                     | `#989fac` |
-| Raised menus                   | `#282c34` |
-| Selection                      | `#29351c` |
-| Structural borders             | `#343943` |
-| Control borders                | `#7d8694` |
-| Primary action / Electric Lime | `#c8ff3d` |
+- `themes/lomi.json` is the sole built-in definition; `src/theme/baseline.css`
+  supplies the same startup values and registers the fonts before JavaScript.
+- Mona Sans and Geist Mono variable fonts and their OFL licenses ship in
+  `public/fonts/`. The built-in theme reads nothing from the brandbook at runtime.
+- `src/styles.css` ends with the brand shell layer (stage surface, dividers,
+  neutral selection, tabs). Custom themes still override every token.
 
 ## Runtime constraints
 

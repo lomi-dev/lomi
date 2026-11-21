@@ -1,10 +1,12 @@
 export const settingsPageIds = [
+  "general",
   "keybinds",
   "notifications",
   "terminal",
   "themes",
   "plugins",
-  "chat-ai",
+  "chat-providers",
+  "chat-defaults",
   "android",
   "agent-control",
   "remote",
@@ -14,7 +16,7 @@ export const settingsPageIds = [
 
 export type SettingsPageId = (typeof settingsPageIds)[number];
 
-export const defaultSettingsPage: SettingsPageId = "keybinds";
+export const defaultSettingsPage: SettingsPageId = "general";
 
 export function parseSettingsPage(value: unknown): SettingsPageId | null {
   return typeof value === "string" &&

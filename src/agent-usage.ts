@@ -17,6 +17,8 @@ export interface AgentUsageWindow {
   limit: number | null;
   unit: string | null;
   resetsAt: number | null;
+  /** Window length in seconds when the provider defines one. */
+  windowSeconds?: number | null;
 }
 
 export interface AgentUsageEntry {

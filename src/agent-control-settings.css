@@ -99,11 +99,10 @@
   font-size: var(--font-size-11);
 }
 
-.agent-control-page .agent-client-configuration-help {
-  margin-block: var(--space-12) var(--space-24);
-  max-width: 64ch;
-  line-height: 1.6;
-  text-wrap: pretty;
+.agent-control-page .agent-client-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
 }
 
 .agent-control-page .agent-setup-client-header {

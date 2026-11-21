@@ -1,96 +1,3 @@
-.welcome {
-  min-width: 0;
-  padding: var(--space-30);
-  container-type: inline-size;
-  container-name: welcome;
-}
-
-.welcome-content {
-  max-width: 460px;
-  min-width: 0;
-  flex-shrink: 0;
-}
-
-.welcome-heading {
-  align-items: flex-start;
-  gap: var(--space-12);
-  margin-bottom: var(--space-24);
-}
-
-.welcome-heading > div {
-  min-width: 0;
-}
-
-.welcome-brandmark {
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  width: 36px;
-  height: 36px;
-}
-
-.welcome-heading img {
-  border-radius: var(--radius-control);
-}
-
-.welcome-heading h1 {
-  margin-bottom: var(--space-6);
-  font-size: var(--font-size-22);
-  font-weight: 600;
-  text-wrap: pretty;
-}
-
-.welcome-heading p {
-  max-width: 38ch;
-  text-wrap: pretty;
-}
-
-.welcome-actions {
-  gap: var(--space-8);
-}
-
-.welcome-action {
-  min-height: 68px;
-  gap: var(--space-12);
-  padding: var(--space-14) var(--space-16);
-  border: var(--border-width) solid var(--color-outline);
-  border-radius: var(--radius-menu);
-  background: var(--color-surface);
-  cursor: pointer;
-  transition:
-    background-color 140ms ease,
-    border-color 140ms ease;
-}
-
-.welcome-action > svg:first-child {
-  flex: 0 0 auto;
-  color: var(--color-surface-variant-text);
-}
-
-.welcome-action-primary {
-  border-color: var(--color-outline);
-  background: var(--color-surface-container);
-  color: var(--color-surface-text);
-}
-
-.welcome-action-primary > svg:first-child {
-  color: var(--color-surface-text);
-}
-
-.welcome-action > svg:last-child {
-  flex: 0 0 auto;
-  color: var(--color-surface-variant-text);
-}
-
-.welcome-action-copy {
-  gap: var(--space-4);
-  overflow-wrap: anywhere;
-}
-
-.welcome-action-copy > span {
-  text-wrap: pretty;
-}
-
 .empty-message {
   gap: var(--space-12);
   font-size: var(--font-size-13);
@@ -165,7 +72,7 @@
 
 .agents-count-presets button[aria-pressed="true"] {
   border-color: var(--color-accent-text);
-  background: var(--lomi-selection, var(--color-primary-container));
+  background: var(--lomi-selected, var(--color-surface-container-high));
   color: var(--color-accent-text);
 }
 
@@ -311,19 +218,6 @@
   margin-inline-start: var(--space-4);
 }
 
-.agent-chat-permission {
-  min-width: 0;
-  margin-block: var(--space-16);
-  padding: var(--space-12) var(--space-16);
-  border: var(--border-width) solid var(--color-outline);
-  border-radius: var(--radius-control);
-}
-
-.agent-chat-permission legend {
-  padding-inline: var(--space-6);
-  font-weight: 600;
-}
-
 .agent-git-details {
   line-height: 1.6;
 }
@@ -342,72 +236,10 @@
   background: var(--color-surface);
 }
 
-.agent-chat-send-details {
-  gap: var(--space-12) var(--space-20);
-  padding-block: var(--space-16);
-  border-block: var(--border-width) solid var(--color-outline);
-  font-size: var(--font-size-12);
-  line-height: 1.6;
-}
-
-.agent-chat-send-details dt {
-  color: var(--color-surface-variant-text);
-}
-
-.agent-chat-send-details dd {
-  color: var(--color-surface-text);
-}
-
 .agent-control-startup-dialog .dialog-form > p {
   margin: 0;
   color: var(--color-surface-variant-text);
   font-size: var(--font-size-13);
   line-height: 1.65;
   text-wrap: pretty;
-}
-
-@media (max-height: 520px) {
-  .welcome {
-    padding: var(--space-16) var(--space-24);
-  }
-
-  .welcome-heading {
-    margin-bottom: var(--space-18);
-  }
-}
-
-@container welcome (width < 360px) {
-  .welcome-heading {
-    flex-direction: column;
-    gap: var(--space-12);
-  }
-
-  .welcome-heading h1 {
-    font-size: var(--font-size-18);
-  }
-
-  .welcome-action {
-    align-items: flex-start;
-    gap: var(--space-10);
-    padding: var(--space-12);
-  }
-
-  .welcome-action > svg {
-    margin-top: var(--space-2);
-  }
-
-  .welcome-action > svg:last-child {
-    display: none;
-  }
-}
-
-.welcome-action:hover:not([aria-disabled="true"]) {
-  border-color: var(--color-outline);
-  background: var(--color-surface-container);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .welcome-action {
-    transition: none;
-  }
 }
