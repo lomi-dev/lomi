@@ -4451,24 +4451,16 @@ svg {
     justify-content: flex-start;
   }
 }
-.android-setup {
-  padding: var(--space-20);
-  margin-bottom: var(--space-28);
-  border: var(--border-width) solid var(--color-outline);
-  border-radius: var(--radius-menu);
-  background: var(--color-surface-container);
+/* Setup reuses settings rows; upcoming steps are quiet until reached. */
+.settings-dialog .android-setup-step.is-next .setting-label {
+  opacity: 0.45;
 }
-.android-step {
-  color: var(--color-surface-variant-text);
-  font-size: var(--font-size-11);
-}
-.android-setup h2 {
-  margin: var(--space-8) 0 var(--space-6);
-  font-size: var(--font-size-15);
-  font-weight: 600;
-}
-.android-setup > .button {
-  margin-top: var(--space-20);
+.settings-dialog .android-setup-done {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+  color: var(--color-muted-text);
+  font-size: var(--font-size-13);
 }
 .android-phone-list {
   margin-bottom: var(--space-16);
@@ -4731,9 +4723,6 @@ svg {
   }
   .android-phone-info {
     flex-basis: 160px;
-  }
-  .android-setup {
-    padding: var(--space-16);
   }
 }
 .android-license h3 {
