@@ -182,10 +182,10 @@
   background: var(--color-surface);
 }
 
-.agent-control-startup-dialog .dialog-form > p {
+.agent-control-startup-dialog .dialog-content > p {
   margin: 0;
   color: var(--color-surface-variant-text);
   font-size: var(--font-size-13);
-  line-height: 1.65;
+  line-height: 1.5;
   text-wrap: pretty;
 }

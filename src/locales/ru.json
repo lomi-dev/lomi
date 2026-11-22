@@ -2314,5 +2314,9 @@
   "Upload image": "Загрузить изображение",
   "Edit workspace": "Изменить рабочее пространство",
   "Edit workspace…": "Изменить рабочее пространство…",
-  "Upload logo": "Загрузить логотип"
+  "Upload logo": "Загрузить логотип",
+  "Start MCP server on launch?": "Запускать сервер MCP при старте?",
+  "Local AI agents can then request access to your workspaces. Change this anytime in Settings → Agent control.": "Локальные ИИ-агенты смогут запрашивать доступ к вашим рабочим пространствам. Изменить можно в Настройки → Управление агентами.",
+  "Not now": "Не сейчас",
+  "Turn on": "Включить"
 }

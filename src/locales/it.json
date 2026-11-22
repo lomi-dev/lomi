@@ -2290,5 +2290,9 @@
   "Upload image": "Carica immagine",
   "Edit workspace": "Modifica workspace",
   "Edit workspace…": "Modifica workspace…",
-  "Upload logo": "Carica logo"
+  "Upload logo": "Carica logo",
+  "Start MCP server on launch?": "Avviare il server MCP all'apertura?",
+  "Local AI agents can then request access to your workspaces. Change this anytime in Settings → Agent control.": "Gli agenti IA locali potranno richiedere l'accesso ai tuoi workspace. Puoi cambiarlo in Impostazioni → Controllo agenti.",
+  "Not now": "Non ora",
+  "Turn on": "Attiva"
 }

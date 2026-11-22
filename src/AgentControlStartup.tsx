@@ -187,7 +187,7 @@ export default function AgentControlStartup() {
         <Modal
           protectTheme
           tone="warning"
-          title={t("Start the MCP server automatically?")}
+          title={t("Start MCP server on launch?")}
           className="agent-control-startup-dialog"
           descriptionId="agent-control-startup-description"
           initialFocus={disabledButton}
@@ -200,30 +200,11 @@ export default function AgentControlStartup() {
         >
           <div className="dialog-form dialog-layout">
             <div className="dialog-content">
-              <div id="agent-control-startup-description">
-                <p>
-                  {t(
-                    "Lomi starts its MCP server now and on every launch, so local clients can request access to your workspaces.",
-                  )}
-                </p>
-                <ul className="dialog-points">
-                  <li>
-                    {t(
-                      "Lomi approvals follow your YOLO mode choice in Settings → Agent control.",
-                    )}
-                  </li>
-                  <li>
-                    {t(
-                      "Your MCP client's own confirmation prompts stay independent.",
-                    )}
-                  </li>
-                  <li>
-                    {t(
-                      "You can change this later in Settings → Agent control.",
-                    )}
-                  </li>
-                </ul>
-              </div>
+              <p id="agent-control-startup-description">
+                {t(
+                  "Local AI agents can then request access to your workspaces. Change this anytime in Settings → Agent control.",
+                )}
+              </p>
               {saveError && (
                 <p className="keybindings-error" role="alert">
                   {t("Could not save your choice: {error}", {
@@ -240,7 +221,7 @@ export default function AgentControlStartup() {
                 disabled={saving}
                 onClick={() => void decide(false)}
               >
-                {t("Keep disabled")}
+                {t("Not now")}
               </button>
               <button
                 type="button"
@@ -248,7 +229,7 @@ export default function AgentControlStartup() {
                 disabled={saving}
                 onClick={() => void decide(true)}
               >
-                {saving ? t("Saving…") : t("Enable automatic start")}
+                {saving ? t("Saving…") : t("Turn on")}
               </button>
             </div>
           </div>
