@@ -1373,8 +1373,6 @@
   "Unread terminal notifications": "Ungelesene Terminal-Benachrichtigungen",
   "Actions for {name}": "Aktionen für {name}",
   "Agents in {name}": "Agents in {name}",
-  "Collapse items in {name}": "Elemente in {name} zuklappen",
-  "Expand items in {name}": "Elemente in {name} aufklappen",
   "Open items in {name}": "Elemente in {name} öffnen",
   "No projects yet": "Noch keine Projekte",
   "Workspace actions": "Arbeitsbereichsaktionen",
@@ -2260,5 +2258,7 @@
   "Run Android apps on virtual phones inside your workspace.": "Führe Android-Apps auf virtuellen Telefonen in deinem Workspace aus.",
   "Install": "Installieren",
   "Choose version": "Version wählen",
-  "Create phone": "Telefon erstellen"
+  "Create phone": "Telefon erstellen",
+  "Logo": "Logo",
+  "Custom image": "Eigenes Bild"
 }

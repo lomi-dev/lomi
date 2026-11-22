@@ -1390,8 +1390,6 @@
   "Unread terminal notifications": "Notificaciones de terminal sin leer",
   "Actions for {name}": "Acciones de {name}",
   "Agents in {name}": "Agentes en {name}",
-  "Collapse items in {name}": "Contraer elementos de {name}",
-  "Expand items in {name}": "Expandir elementos de {name}",
   "Open items in {name}": "Abrir elementos de {name}",
   "No projects yet": "Aún no hay proyectos",
   "Workspace actions": "Acciones del espacio de trabajo",
@@ -2284,5 +2282,7 @@
   "Run Android apps on virtual phones inside your workspace.": "Ejecuta apps de Android en teléfonos virtuales dentro de tu espacio de trabajo.",
   "Install": "Instalar",
   "Choose version": "Elegir versión",
-  "Create phone": "Crear teléfono"
+  "Create phone": "Crear teléfono",
+  "Logo": "Logotipo",
+  "Custom image": "Imagen personalizada"
 }

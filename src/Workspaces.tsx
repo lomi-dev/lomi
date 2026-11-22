@@ -11,9 +11,7 @@ import {
 } from "react";
 import {
   FileDiff,
-  ChevronRight,
   Ellipsis,
-  Folder,
   GitCommitHorizontal,
   Globe,
   MessageSquare,
@@ -71,13 +69,6 @@ const agentLabel = (cli: CliAgent, count: number) =>
   tp(count, "{cli} · {count} agent", "{cli} · {count} agents", {
     cli: cliNames[cli],
   });
-
-function toggleExpanded(current: Set<string>, id: string) {
-  const next = new Set(current);
-  if (next.has(id)) next.delete(id);
-  else next.add(id);
-  return next;
-}
 
 export default function Workspaces({
   projects,
@@ -140,7 +131,6 @@ export default function Workspaces({
   const [menu, setMenu] = useState<{ id: string; x: number; y: number }>();
   const [customizing, setCustomizing] = useState<Workspace>();
   const [sharingId, setSharingId] = useState<string>();
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const trigger = useRef<HTMLButtonElement>(null);
   const agents = useSyncExternalStore(
     subscribeTerminalAgents,
@@ -342,7 +332,7 @@ export default function Workspaces({
                 data-workspace-id={workspace.id}
               >
                 <div
-                  className={`workspace-list-heading${expanded.has(workspace.id) ? " is-expanded" : ""}${menu?.id === workspace.id ? " is-menu-open" : ""}`}
+                  className={`workspace-list-heading${menu?.id === workspace.id ? " is-menu-open" : ""}`}
                 >
                   <button
                     type="button"
@@ -376,11 +366,10 @@ export default function Workspaces({
                     }}
                   >
                     <span className="workspace-name-row">
-                      {workspace.appearance ? (
-                        <WorkspaceAvatar appearance={workspace.appearance} />
-                      ) : (
-                        <Folder size={14} aria-hidden="true" />
-                      )}
+                      <WorkspaceAvatar
+                        appearance={workspace.appearance}
+                        project={project.path}
+                      />
                       <span className="workspace-name">{workspace.name}</span>
                       {hasUnread && <WorkspaceNotificationDot />}
                       {shared && (
@@ -472,27 +461,6 @@ export default function Workspaces({
                         )}
                       </div>
                     )}
-                    <IconButton
-                      className="icon-button workspace-tabs-toggle"
-                      title={
-                        expanded.has(workspace.id)
-                          ? t("Collapse items in {name}", {
-                              name: workspace.name,
-                            })
-                          : t("Expand items in {name}", {
-                              name: workspace.name,
-                            })
-                      }
-                      aria-expanded={expanded.has(workspace.id)}
-                      aria-controls={`workspace-items-${workspace.id}`}
-                      onClick={() =>
-                        setExpanded((current) =>
-                          toggleExpanded(current, workspace.id),
-                        )
-                      }
-                    >
-                      <ChevronRight size={12} aria-hidden="true" />
-                    </IconButton>
                   </div>
                 </div>
                 <ul
@@ -501,56 +469,50 @@ export default function Workspaces({
                   aria-label={t("Open items in {name}", {
                     name: workspace.name,
                   })}
-                  hidden={!expanded.has(workspace.id)}
                 >
-                  {expanded.has(workspace.id) &&
-                    openItems.map(
-                      ({
-                        item,
-                        ownerTab,
-                        terminalIndex: itemTerminalIndex,
-                      }) => {
-                        const activity =
-                          item.type === "terminal"
-                            ? activities[item.id]
-                            : undefined;
-                        const unread =
-                          item.type === "terminal" && unreadPanes.has(item.id);
-                        const active =
-                          workspace.id === activeWorkspaceId &&
-                          ownerTab.id === workspace.activeTabId &&
-                          (ownerTab.type !== "terminal" ||
-                            ownerTab.activePaneId === item.id);
-                        return (
-                          <WorkspaceOpenItem
-                            key={`${ownerTab.id}:${item.id}`}
-                            item={item}
-                            ownerTab={ownerTab}
-                            terminalIndex={itemTerminalIndex}
-                            agent={agents[item.id]}
-                            activity={activity}
-                            unread={unread}
-                            active={active}
-                            onSelect={() =>
-                              onSelect(
-                                project.path,
-                                workspace.id,
-                                ownerTab.id,
-                                item.id,
-                              )
-                            }
-                            onReveal={() =>
-                              onReveal(
-                                project.path,
-                                workspace.id,
-                                ownerTab.id,
-                                item.id,
-                              )
-                            }
-                          />
-                        );
-                      },
-                    )}
+                  {openItems.map(
+                    ({ item, ownerTab, terminalIndex: itemTerminalIndex }) => {
+                      const activity =
+                        item.type === "terminal"
+                          ? activities[item.id]
+                          : undefined;
+                      const unread =
+                        item.type === "terminal" && unreadPanes.has(item.id);
+                      const active =
+                        workspace.id === activeWorkspaceId &&
+                        ownerTab.id === workspace.activeTabId &&
+                        (ownerTab.type !== "terminal" ||
+                          ownerTab.activePaneId === item.id);
+                      return (
+                        <WorkspaceOpenItem
+                          key={`${ownerTab.id}:${item.id}`}
+                          item={item}
+                          ownerTab={ownerTab}
+                          terminalIndex={itemTerminalIndex}
+                          agent={agents[item.id]}
+                          activity={activity}
+                          unread={unread}
+                          active={active}
+                          onSelect={() =>
+                            onSelect(
+                              project.path,
+                              workspace.id,
+                              ownerTab.id,
+                              item.id,
+                            )
+                          }
+                          onReveal={() =>
+                            onReveal(
+                              project.path,
+                              workspace.id,
+                              ownerTab.id,
+                              item.id,
+                            )
+                          }
+                        />
+                      );
+                    },
+                  )}
                 </ul>
               </div>
             );
@@ -616,6 +578,10 @@ export default function Workspaces({
         <WorkspaceAppearanceDialog
           key={customizing.id}
           workspace={customizing}
+          project={
+            projects.find((item) => item.workspaces.includes(customizing))
+              ?.path ?? ""
+          }
           onSave={(appearance) => onAppearanceChange(customizing, appearance)}
           onClose={() => setCustomizing(undefined)}
         />

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { api } from "./api";
 import type { Workspace } from "./model";
 import {
   sanitizeWorkspaceAppearance,
@@ -21,10 +22,12 @@ const colors = [
 
 export default function WorkspaceAppearanceDialog({
   workspace,
+  project,
   onSave,
   onClose,
 }: {
   workspace: Workspace;
+  project: string;
   onSave: (appearance?: WorkspaceAppearance) => void;
   onClose: () => void;
 }) {
@@ -32,6 +35,7 @@ export default function WorkspaceAppearanceDialog({
   const [appearance, setAppearance] = useState<WorkspaceAppearance>(
     workspace.appearance ?? {},
   );
+  const [error, setError] = useState("");
   return (
     <Modal
       title={t("Customize workspace")}
@@ -48,7 +52,7 @@ export default function WorkspaceAppearanceDialog({
       >
         <div className="dialog-content workspace-appearance-body">
           <div className="workspace-appearance-preview">
-            <WorkspaceAvatar appearance={appearance} />
+            <WorkspaceAvatar appearance={appearance} project={project} />
             <div>
               <strong>{workspace.name}</strong>
               <p>{t("Give this workspace its own identity.")}</p>
@@ -64,19 +68,64 @@ export default function WorkspaceAppearanceDialog({
                   title={t(label)}
                   aria-label={t("{label} icon", { label: t(label) })}
                   aria-pressed={
-                    !appearance.image && (appearance.icon || "layers") === id
+                    !appearance.image &&
+                    !appearance.logo &&
+                    appearance.icon === id
                   }
                   onClick={() => {
-                    setAppearance(({ image: _image, ...current }) => ({
-                      ...current,
-                      icon: id,
-                    }));
+                    setAppearance(
+                      ({ image: _image, logo: _logo, ...current }) => ({
+                        ...current,
+                        icon: id,
+                      }),
+                    );
                   }}
                 >
                   <Icon size={20} />
                 </button>
               ))}
             </div>
+          </fieldset>
+          <fieldset className="workspace-appearance-field">
+            <legend>{t("Logo")}</legend>
+            <div className="workspace-logo-options">
+              <button
+                type="button"
+                className="button"
+                aria-pressed={!appearance.logo && !appearance.icon}
+                onClick={() => {
+                  setError("");
+                  setAppearance(
+                    ({ image: _image, logo: _logo, icon: _icon, ...rest }) =>
+                      rest,
+                  );
+                }}
+              >
+                {t("Automatic")}
+              </button>
+              <button
+                type="button"
+                className="button"
+                aria-pressed={!!appearance.logo}
+                onClick={() => {
+                  setError("");
+                  api<string | null>("workspace_logo_pick")
+                    .then((logo) => {
+                      if (logo)
+                        setAppearance(
+                          ({ image: _image, icon: _icon, ...rest }) => ({
+                            ...rest,
+                            logo,
+                          }),
+                        );
+                    })
+                    .catch((reason) => setError(String(reason)));
+                }}
+              >
+                {t("Custom image")}
+              </button>
+            </div>
+            {error && <p role="alert">{error}</p>}
           </fieldset>
           <fieldset className="workspace-appearance-field">
             <legend>{t("Color")}</legend>

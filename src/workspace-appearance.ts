@@ -16,6 +16,8 @@ export interface WorkspaceAppearance {
   icon?: string;
   color?: string;
   image?: string;
+  /** Id of a picked file in the native workspace-logos store. */
+  logo?: string;
 }
 
 export function sanitizeWorkspaceAppearance(
@@ -36,6 +38,11 @@ export function sanitizeWorkspaceAppearance(
   }
   if (typeof source.color === "string" && /^#[\da-f]{6}$/i.test(source.color))
     result.color = source.color;
+  if (
+    typeof source.logo === "string" &&
+    /^[0-9a-f]{32}\.(?:png|jpg|svg|webp|ico)$/.test(source.logo)
+  )
+    result.logo = source.logo;
   if (
     typeof source.image === "string" &&
     source.image.length <= Math.ceil(MAX_WORKSPACE_IMAGE_BYTES / 3) * 4 + 32

@@ -1407,8 +1407,6 @@
   "Unread terminal notifications": "Непрочитані сповіщення терміналів",
   "Actions for {name}": "Дії для {name}",
   "Agents in {name}": "Агенти в {name}",
-  "Collapse items in {name}": "Згорнути елементи в {name}",
-  "Expand items in {name}": "Розгорнути елементи в {name}",
   "Open items in {name}": "Відкрити елементи в {name}",
   "No projects yet": "Проєктів ще немає",
   "Workspace actions": "Дії з робочою областю",
@@ -2308,5 +2306,7 @@
   "Run Android apps on virtual phones inside your workspace.": "Запускайте Android-застосунки на віртуальних телефонах у своєму робочому просторі.",
   "Install": "Встановити",
   "Choose version": "Вибрати версію",
-  "Create phone": "Створити телефон"
+  "Create phone": "Створити телефон",
+  "Logo": "Логотип",
+  "Custom image": "Власне зображення"
 }

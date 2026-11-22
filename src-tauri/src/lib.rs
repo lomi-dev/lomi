@@ -65,6 +65,7 @@ mod themes;
 mod updater;
 #[cfg(windows)]
 mod windows_instance;
+mod workspace_logo;
 
 mod window_lifecycle;
 
@@ -552,6 +553,10 @@ pub fn run() {
                 git::git_repositories,
                 git::git_fetch,
                 git::git_remotes,
+                workspace_logo::workspace_favicon,
+                workspace_logo::workspace_origin_url,
+                workspace_logo::workspace_logo_pick,
+                workspace_logo::workspace_logo_read,
                 git::git_push,
                 files::operations::git_pull,
                 git::git_stage,

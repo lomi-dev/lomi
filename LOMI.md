@@ -79,6 +79,10 @@ or acronym.
   sidebar. Removing the last workspace removes its project from the session,
   preserving files on disk and checking unsaved editor buffers before closing.
   Preserve legacy left-sidebar settings when restoring older sessions.
+  Workspace rows are always expanded. Their icon is the custom logo from
+  Customize workspace (`app_data/workspace-logos/<sha>.<ext>`), else a chosen
+  icon, else the project favicon (`workspace_logo.rs`, bounded search inside
+  the project), else the GitHub owner avatar of `origin`, else a folder.
 - `src/editor-service.ts` loads the editor on demand; `src/editor-runtime.ts`
   keeps shared CodeMirror buffers and history outside React. `src/FileEditor.tsx`
   mounts visible file panels. `src/editor-text.ts` preserves exact line endings.
