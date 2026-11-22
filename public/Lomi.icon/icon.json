@@ -1,50 +1,56 @@
 {
-  "fill" : {
-    "automatic-gradient" : "display-p3:0.78431,1.00000,0.23922,1.00000"
+  "fill": {
+    "solid": "srgb:0.05490,0.05490,0.06667,1.00000"
   },
-  "groups" : [
+  "groups": [
     {
-      "layers" : [
+      "layers": [
         {
-          "fill-specializations" : [
-            {
-              "appearance" : "dark",
-              "value" : {
-                "solid" : "display-p3:0.78431,1.00000,0.23922,1.00000"
-              }
-            },
-            {
-              "appearance" : "tinted",
-              "value" : {
-                "solid" : "display-p3:0.22960,0.96783,0.21740,1.00000"
-              }
-            }
-          ],
-          "image-name" : "lomi-icon-transparent 2.svg",
-          "name" : "lomi-icon-transparent 2",
-          "position" : {
-            "scale" : 3,
-            "translation-in-points" : [
-              0,
-              0
-            ]
-          }
+          "image-name": "lomi-signal.svg",
+          "name": "signal"
+        },
+        {
+          "image-name": "lomi-letters.svg",
+          "name": "letters"
         }
       ],
-      "shadow" : {
-        "kind" : "neutral",
-        "opacity" : 0.5
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
       },
-      "translucency" : {
-        "enabled" : true,
-        "value" : 0.5
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      }
+    },
+    {
+      "layers": [
+        {
+          "glass": false,
+          "hidden-specializations": [
+            {
+              "appearance": "tinted",
+              "value": true
+            }
+          ],
+          "image-name": "aurora.png",
+          "name": "aurora"
+        }
+      ],
+      "shadow": {
+        "kind": "none",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
       }
     }
   ],
-  "supported-platforms" : {
-    "circles" : [
+  "supported-platforms": {
+    "circles": [
       "watchOS"
     ],
-    "squares" : "shared"
+    "squares": "shared"
   }
 }
