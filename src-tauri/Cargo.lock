@@ -3576,7 +3576,7 @@ dependencies = [
 
 [[package]]
 name = "lomi-files"
-version = "0.1.7"
+version = "0.1.9"
 dependencies = [
  "libc",
  "lomi-fs-policy",
@@ -3589,11 +3589,11 @@ dependencies = [
 
 [[package]]
 name = "lomi-fs-policy"
-version = "0.1.7"
+version = "0.1.9"
 
 [[package]]
 name = "lomi-git"
-version = "0.1.7"
+version = "0.1.9"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -3612,7 +3612,7 @@ dependencies = [
 
 [[package]]
 name = "lomi-host"
-version = "0.1.7"
+version = "0.1.9"
 dependencies = [
  "libc",
  "lomi-files",
@@ -3639,7 +3639,7 @@ dependencies = [
 
 [[package]]
 name = "lomi-host-auth"
-version = "0.1.7"
+version = "0.1.9"
 dependencies = [
  "lomi-platform",
  "lomi-remote-crypto",
@@ -3652,7 +3652,7 @@ dependencies = [
 
 [[package]]
 name = "lomi-host-http"
-version = "0.1.7"
+version = "0.1.9"
 dependencies = [
  "log",
  "lomi-host-auth",
@@ -3669,7 +3669,7 @@ dependencies = [
 
 [[package]]
 name = "lomi-host-store"
-version = "0.1.7"
+version = "0.1.9"
 dependencies = [
  "lomi-platform",
  "lomi-remote-protocol",
@@ -3695,7 +3695,7 @@ dependencies = [
 
 [[package]]
 name = "lomi-native-custody"
-version = "0.1.7"
+version = "0.1.9"
 dependencies = [
  "libc",
  "lomi-fs-policy",
@@ -3707,7 +3707,7 @@ dependencies = [
 
 [[package]]
 name = "lomi-native-files"
-version = "0.1.7"
+version = "0.1.9"
 dependencies = [
  "lomi-files",
  "serde",
@@ -3715,7 +3715,7 @@ dependencies = [
 
 [[package]]
 name = "lomi-native-git"
-version = "0.1.7"
+version = "0.1.9"
 dependencies = [
  "libc",
  "lomi-native-project-files",
@@ -3729,7 +3729,7 @@ dependencies = [
 
 [[package]]
 name = "lomi-native-project-files"
-version = "0.1.7"
+version = "0.1.9"
 dependencies = [
  "libc",
  "lomi-files",
@@ -3742,7 +3742,7 @@ dependencies = [
 
 [[package]]
 name = "lomi-platform"
-version = "0.1.7"
+version = "0.1.9"
 dependencies = [
  "chacha20poly1305 0.10.1",
  "core-foundation 0.10.1",
@@ -3795,7 +3795,7 @@ dependencies = [
 
 [[package]]
 name = "lomi-terminal"
-version = "0.1.7"
+version = "0.1.9"
 dependencies = [
  "libc",
  "lomi-platform",
@@ -3811,7 +3811,7 @@ dependencies = [
 
 [[package]]
 name = "lomi-terminal-state"
-version = "0.1.7"
+version = "0.1.9"
 dependencies = [
  "alacritty_terminal",
  "log",
@@ -3824,7 +3824,7 @@ dependencies = [
 
 [[package]]
 name = "lomi-windows-pty"
-version = "0.1.7"
+version = "0.1.9"
 dependencies = [
  "windows-sys 0.61.2",
 ]
