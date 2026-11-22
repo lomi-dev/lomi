@@ -8,7 +8,6 @@ import {
   FileCode,
   FileDiff,
   Globe,
-  Layers,
   MessageSquare,
   Monitor,
   Plus,
@@ -37,7 +36,6 @@ interface Props {
   onNewBrowser: () => void;
   onNewAndroid: () => void;
   onNewChat: () => void;
-  onNewAgents: () => void;
   onSelect: (id: string) => void;
   onClose: (id: string, action?: TabCloseAction) => void;
   onRename: (tab: Tab) => void;
@@ -112,7 +110,6 @@ export default function TabBar({
   onNewBrowser,
   onNewAndroid,
   onNewChat,
-  onNewAgents,
   onSelect,
   onClose,
   onRename,
@@ -442,11 +439,6 @@ export default function TabBar({
               label: t("New file"),
               icon: <FileCode size={14} aria-hidden="true" />,
               run: onNewFile,
-            },
-            {
-              label: t("Agents"),
-              icon: <Layers size={14} aria-hidden="true" />,
-              run: onNewAgents,
             },
             {
               label: t("New browser"),

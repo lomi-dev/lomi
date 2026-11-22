@@ -102,7 +102,6 @@ import {
   newPane,
   newProject,
   newTab,
-  maximumAgentCount,
   newFileTab,
   openCommitTab,
   openDiffTab,
@@ -140,7 +139,6 @@ import {
   observeTerminalContexts,
   isAgentTerminal,
   runningTerminal,
-  terminalFor,
 } from "./terminal-runtime";
 import type { TerminalContext } from "./terminal-runtime";
 import { dropPaths, nativePositionToClient, terminalAt } from "./file-drag";
@@ -204,12 +202,8 @@ import {
 } from "./application-close";
 import { useCliIntegrations } from "./CliIntegrations";
 import { useAgentNotifications } from "./AgentNotifications";
-import AgentsDialog from "./AgentsDialog";
 
-import { measureAgentLayoutSize } from "./useAgentLayoutSize";
 import { loadInstalledAgentClis } from "./installed-agent-clis";
-import { cliNames } from "./cli-agents";
-import type { CliAgent } from "./cli-agents";
 import {
   absoluteFilePath,
   applyFileChange,
@@ -1214,11 +1208,6 @@ export default function Workbench() {
     SourceKind,
     "local"
   > | null>(null);
-  const [agentsTarget, setAgentsTarget] = useState<{
-    workspaceId: string;
-    profile: ShellProfile;
-    cwd: string;
-  } | null>(null);
   const [terminalOverview, setTerminalOverview] = useState(false);
   usePointerFocus(
     preferences.focusFollowsPointer && !terminalOverview && !settings.active,
@@ -2089,70 +2078,6 @@ export default function Workbench() {
         activeTabId: added.id,
       }));
     });
-  const openAgents = () => {
-    const state = currentSession.current;
-    const selection = state && active(state);
-    if (!selection || !info) return;
-    const profileId =
-      info.platform !== "windows" && selection.tab.type === "terminal"
-        ? selection.tab.profileId
-        : defaultProfileId;
-    const profile = info.profiles.find((profile) => profile.id === profileId);
-    if (!profile) {
-      setError(
-        t("Choose an installed terminal environment before launching agents."),
-      );
-      return;
-    }
-    setAgentsTarget({
-      workspaceId: selection.workspace.id,
-      profile,
-      cwd: selection.project.path,
-    });
-  };
-  const launchAgents = async (cli: CliAgent, count: number) => {
-    if (!agentsTarget || !Number.isSafeInteger(count) || count < 1)
-      throw new Error(t("Choose a CLI and a positive number of terminals."));
-    const { workspaceId, profile, cwd } = agentsTarget;
-    const state = currentSession.current;
-    const target = state?.projects
-      .flatMap((project) => project.workspaces)
-      .find((workspace) => workspace.id === workspaceId);
-    if (!target) throw new Error(t("The selected workspace was closed."));
-    const size = measureAgentLayoutSize(terminalStage.current);
-    const maximum = maximumAgentCount(size);
-    if (count > maximum)
-      throw new Error(
-        tp(
-          maximum,
-          "Only {count} agent fits in the current window.",
-          "Only {count} agents fit in the current window.",
-        ),
-      );
-    const added = newTab(cwd, profile.id, cliNames[cli], count, size);
-    const runtimes = panes(added.layout).map((pane) =>
-      terminalFor(pane, profile, cli),
-    );
-    change((state) =>
-      updateWorkspace(state, workspaceId, (workspace) => ({
-        ...workspace,
-        tabs: [...workspace.tabs, added],
-        activeTabId: added.id,
-      })),
-    );
-    const results = await Promise.allSettled(
-      runtimes.map((runtime) => runtime.startInBackground()),
-    );
-    const failures = results.filter((result) => result.status === "rejected");
-    if (failures.length)
-      setError(
-        t("{failed} of {count} agents could not start. {error}", {
-          failed: failures.length,
-          count,
-          error: errorMessage(failures[0].reason),
-        }),
-      );
-  };
   const closeTab = async (id: string, action: TabCloseAction = "close") => {
     const state = currentSession.current;
     if (!state) return;
@@ -3634,7 +3559,6 @@ export default function Workbench() {
               }}
               newTabTitle={shortcutTitle(t("New tab"), bindings.newTab)}
               onNew={() => addTab()}
-              onNewAgents={openAgents}
               onNewChat={addChat}
               onNewAndroid={() =>
                 change((state) => {
@@ -4765,16 +4689,6 @@ export default function Workbench() {
             <AppDialog dialog={dialog} onClose={() => setDialog(null)} />
           )}
           {projectSourceDialog}
-          {agentsTarget && (
-            <AgentsDialog
-              key={JSON.stringify([agentsTarget.profile, agentsTarget.cwd])}
-              profile={agentsTarget.profile}
-              cwd={agentsTarget.cwd}
-              stage={terminalStage}
-              onClose={() => setAgentsTarget(null)}
-              onLaunch={launchAgents}
-            />
-          )}
           {updater.dialog}
           {closeGuard.dialog}
           {gitApproval.dialog}

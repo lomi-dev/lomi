@@ -37,60 +37,6 @@
   line-height: 1.65;
 }
 
-.agents-dialog-body {
-  gap: var(--space-24);
-}
-
-.agents-chooser-heading {
-  margin-bottom: var(--space-12);
-  font-size: var(--font-size-13);
-}
-
-.dialog-form .agents-cli-option {
-  width: 48px;
-  height: 48px;
-  background: var(--color-surface);
-}
-
-.agents-count {
-  padding-top: var(--space-20);
-  border-top: var(--border-width) solid var(--color-outline);
-}
-
-.agents-count-presets {
-  gap: var(--space-6);
-  border: 0;
-  padding: 0;
-  background: transparent;
-}
-
-.agents-count-presets button {
-  min-height: 34px;
-  border: var(--border-width) solid var(--color-outline);
-  background: var(--color-surface);
-}
-
-.agents-count-presets button[aria-pressed="true"] {
-  border-color: var(--color-accent-text);
-  background: var(--lomi-selected, var(--color-surface-container-high));
-  color: var(--color-accent-text);
-}
-
-.agents-launch-context {
-  gap: var(--space-10);
-  padding-top: var(--space-16);
-  border-top: var(--border-width) solid var(--color-outline);
-}
-
-.agents-layout-summary {
-  color: var(--color-surface-text);
-  font-size: var(--font-size-12);
-}
-
-.agents-directory {
-  line-height: 1.6;
-}
-
 .workspace-appearance-body {
   gap: var(--space-24);
 }
