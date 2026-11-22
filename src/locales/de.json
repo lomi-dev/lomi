@@ -2260,5 +2260,11 @@
   "Choose version": "Version wählen",
   "Create phone": "Telefon erstellen",
   "Logo": "Logo",
-  "Custom image": "Eigenes Bild"
+  "Custom image": "Eigenes Bild",
+  "Automatic: project favicon or GitHub avatar": "Automatisch: Projekt-Favicon oder GitHub-Avatar",
+  "No color": "Keine Farbe",
+  "Upload image": "Bild hochladen",
+  "Edit workspace": "Workspace bearbeiten",
+  "Edit workspace…": "Workspace bearbeiten…",
+  "Upload logo": "Logo hochladen"
 }

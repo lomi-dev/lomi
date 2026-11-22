@@ -1746,76 +1746,43 @@ svg {
   padding: var(--space-12) var(--space-24);
   border-top: var(--border-width) solid var(--color-outline);
 }
-.workspace-appearance-preview {
+.modal.workspace-appearance-dialog {
+  width: min(400px, calc(100vw - 40px));
+}
+.workspace-appearance-logo {
   display: flex;
   align-items: center;
-  gap: var(--space-12);
+  gap: var(--space-16);
 }
-.workspace-appearance-preview .workspace-avatar {
-  width: 52px;
-  height: 52px;
+.workspace-appearance-logo .workspace-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
 }
-.workspace-appearance-preview strong {
-  display: block;
-  overflow-wrap: anywhere;
+.workspace-appearance-logo .workspace-avatar svg {
+  width: 24px;
+  height: 24px;
 }
-.workspace-appearance-preview p {
-  margin: var(--space-4) 0 0;
-  color: var(--color-surface-variant-text);
-  font-size: var(--font-size-12);
-}
-.workspace-appearance-field {
-  margin: 0;
-  padding: 0;
-  border: 0;
-  min-width: 0;
-}
-.workspace-appearance-field legend {
-  margin-bottom: var(--space-8);
-  font-size: var(--font-size-12);
-  font-weight: 600;
-}
-.workspace-icon-options,
-.workspace-logo-options,
-.workspace-color-options {
+.workspace-appearance-logo-actions {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-8);
+}
+.workspace-appearance-error {
+  margin: 0;
+  color: var(--color-error);
+  font-size: var(--font-size-12);
+}
+.workspace-appearance-name {
+  display: flex;
+  flex-direction: column;
   gap: var(--space-6);
+  color: var(--color-muted-text);
+  font-size: var(--font-size-12);
+  font-weight: 500;
 }
-.workspace-icon-options button {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border: var(--border-width) solid var(--color-outline);
-  border-radius: var(--radius-control);
-  color: var(--color-surface-variant-text);
-}
-.workspace-icon-options button:hover {
-  background: var(--color-surface-variant);
-}
-.workspace-icon-options button[aria-pressed="true"] {
-  border-color: var(--color-primary);
-  background: var(--color-primary-container);
-  color: var(--color-surface-text);
-}
-.workspace-logo-options button[aria-pressed="true"] {
-  border-color: var(--color-primary);
-  background: var(--color-primary-container);
-}
-.workspace-color-options button {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-.workspace-color-options button[aria-pressed="true"] {
-  outline: 2px solid var(--color-surface-text);
-  outline-offset: 2px;
-}
-.workspace-appearance-reset {
-  margin-right: auto;
+.workspace-appearance-name input {
+  width: 100%;
 }
 .project-tree-heading {
   display: flex;

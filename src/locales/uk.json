@@ -2308,5 +2308,11 @@
   "Choose version": "Вибрати версію",
   "Create phone": "Створити телефон",
   "Logo": "Логотип",
-  "Custom image": "Власне зображення"
+  "Custom image": "Власне зображення",
+  "Automatic: project favicon or GitHub avatar": "Автоматично: favicon проєкту або аватар GitHub",
+  "No color": "Без кольору",
+  "Upload image": "Завантажити зображення",
+  "Edit workspace": "Редагувати робочий простір",
+  "Edit workspace…": "Редагувати робочий простір…",
+  "Upload logo": "Завантажити логотип"
 }

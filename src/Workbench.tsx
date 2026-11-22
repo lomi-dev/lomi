@@ -2906,10 +2906,11 @@ export default function Workbench() {
         activeWorkspaceId={selected?.workspace.id}
         activeRoot={selected?.project.path ?? ""}
         git={git}
-        onAppearanceChange={(workspace, appearance) =>
+        onAppearanceChange={(workspace, name, appearance) =>
           change((state) =>
             updateWorkspace(state, workspace.id, (current) => ({
               ...current,
+              name,
               appearance,
             })),
           )

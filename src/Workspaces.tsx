@@ -123,6 +123,7 @@ export default function Workspaces({
   onRename: (workspace: Workspace) => void;
   onAppearanceChange: (
     workspace: Workspace,
+    name: string,
     appearance?: WorkspaceAppearance,
   ) => void;
   onDelete: (workspace: Workspace) => void;
@@ -559,7 +560,7 @@ export default function Workspaces({
                 }
               : null,
             {
-              label: t("Customize workspace…"),
+              label: t("Edit workspace…"),
               run: () => setCustomizing(workspace),
             },
             {
@@ -582,7 +583,9 @@ export default function Workspaces({
             projects.find((item) => item.workspaces.includes(customizing))
               ?.path ?? ""
           }
-          onSave={(appearance) => onAppearanceChange(customizing, appearance)}
+          onSave={(name, appearance) =>
+            onAppearanceChange(customizing, name, appearance)
+          }
           onClose={() => setCustomizing(undefined)}
         />
       )}

@@ -2308,5 +2308,11 @@
   "Choose version": "Wybierz wersję",
   "Create phone": "Utwórz telefon",
   "Logo": "Logo",
-  "Custom image": "Własny obraz"
+  "Custom image": "Własny obraz",
+  "Automatic: project favicon or GitHub avatar": "Automatycznie: favicon projektu lub awatar z GitHuba",
+  "No color": "Bez koloru",
+  "Upload image": "Wgraj obraz",
+  "Edit workspace": "Edytuj workspace",
+  "Edit workspace…": "Edytuj workspace…",
+  "Upload logo": "Wgraj logo"
 }
