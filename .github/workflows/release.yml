@@ -43,6 +43,16 @@ jobs:
           remote-web-sha: ${{ vars.REMOTE_WEB_SHA }}
           checkout-token: ${{ secrets.CANONICAL_SOURCE_TOKEN || github.token }}
 
+      # Desktop compiles shared Remote Web sources, which resolve their own
+      # dependencies from the sibling checkout's node_modules.
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version: 1.4.4
+
+      - name: install Remote Web dependencies
+        working-directory: ../remote-web
+        run: bun install --frozen-lockfile
+
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # pnpm/action-setup@v4
 
       - name: setup node
