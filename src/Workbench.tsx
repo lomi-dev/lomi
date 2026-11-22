@@ -246,7 +246,8 @@ function initialize() {
         saved.version !== 2 &&
         saved.version !== 3 &&
         saved.version !== 4 &&
-        saved.version !== 5
+        saved.version !== 5 &&
+        saved.version !== 6
       ) {
         throw new Error(
           t(
