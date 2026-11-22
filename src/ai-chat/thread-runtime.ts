@@ -329,7 +329,7 @@ export const createThread = (request: {
   instanceId: string;
   model: string;
   title: string;
-  /** Reasoning effort; only for the configured default model. */
+  /** Reasoning effort of a CLI thread. */
   effort?: string | null;
   /** Working directory for CLI threads. */
   cwd?: string;
@@ -337,7 +337,13 @@ export const createThread = (request: {
 
 export const updateThread = (
   thread: Pick<ThreadSummary, "threadId" | "revision">,
-  change: { title?: string; instanceId?: string; model?: string },
+  change: {
+    title?: string;
+    instanceId?: string;
+    model?: string;
+    /** Omitted keeps it; null clears it. */
+    effort?: string | null;
+  },
 ) =>
   api<ThreadSummary>("ai_thread_update", {
     request: {
@@ -346,6 +352,7 @@ export const updateThread = (
       title: change.title ?? null,
       instanceId: change.instanceId ?? null,
       model: change.model ?? null,
+      ...(change.effort !== undefined && { effort: change.effort }),
     },
   });
 

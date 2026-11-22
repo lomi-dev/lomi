@@ -3,8 +3,8 @@ import type { ComponentType } from "react";
 import "../thread.css";
 import "./providers-settings.css";
 import { macOS } from "../../api";
-import { msg, t, useT } from "../../i18n";
-import { Eye, Folder, Gauge, Lock, Pencil, ShieldAlert, X } from "../../icons";
+import { msg, useT } from "../../i18n";
+import { Eye, Folder, Lock, Pencil, ShieldAlert, X } from "../../icons";
 import Select from "../../Select";
 import {
   SettingRow,
@@ -13,6 +13,7 @@ import {
   SettingsSection,
 } from "../../settings-ui";
 import { Modal } from "../../ui";
+import EffortSelect, { useEfforts } from "../EffortSelect";
 import ProviderModelPicker, {
   loadCliModels,
   type Choice,
@@ -27,7 +28,6 @@ import type {
   ChatBehavior,
   ChatDefaults,
   Permissions,
-  ProviderEntry,
   Workspace,
 } from "../types";
 
@@ -47,38 +47,6 @@ const WORKSPACES: { value: Workspace; label: string; icon: Icon }[] = [
   { value: "project", label: msg("Project folder"), icon: Folder },
   { value: "private", label: msg("Private folder"), icon: Lock },
 ];
-const EFFORT_LABELS: Record<string, string> = {
-  minimal: msg("Minimal"),
-  low: msg("Low"),
-  medium: msg("Medium"),
-  high: msg("High"),
-  max: msg("Max"),
-};
-const effortLabel = (id: string) =>
-  Object.hasOwn(EFFORT_LABELS, id)
-    ? t(EFFORT_LABELS[id])
-    : id.charAt(0).toUpperCase() + id.slice(1);
-
-/** Reasoning efforts the CLI reports for a model; empty for API providers. */
-function useEfforts(entry: ProviderEntry | undefined, model: string) {
-  const [efforts, setEfforts] = useState<string[]>([]);
-  const cli = entry?.cli ?? null;
-  useEffect(() => {
-    let live = true;
-    setEfforts([]);
-    if (cli && model)
-      void loadCliModels(cli).then(
-        (models) =>
-          live &&
-          setEfforts(models.find((item) => item.id === model)?.efforts ?? []),
-      );
-    return () => {
-      live = false;
-    };
-  }, [cli, model]);
-  return efforts;
-}
-
 /** A quiet select with the current option's icon in front. */
 function IconSelect<T extends string>({
   id,
@@ -137,6 +105,10 @@ export default function DefaultsSettingsPage() {
   const efforts = useEfforts(entry, model);
   const fallbackEntry = usable.find(
     (item) => item.instanceId === defaults?.fallback?.instanceId,
+  );
+  const fallbackEfforts = useEfforts(
+    fallbackEntry,
+    defaults?.fallback?.model ?? "",
   );
   useEffect(() => {
     if (!behavior) return;
@@ -200,29 +172,14 @@ export default function DefaultsSettingsPage() {
                 disabled={off}
               />
             </div>
-            {efforts.length > 0 && (
-              <div className="defaults-select">
-                <Gauge className="defaults-select-icon" size={15} aria-hidden />
-                <Select
-                  id={ids.effort}
-                  aria-label={t("Reasoning effort")}
-                  value={
-                    efforts.includes(defaults?.effort ?? "")
-                      ? (defaults?.effort ?? "")
-                      : ""
-                  }
-                  disabled={off}
-                  options={[
-                    { value: "", label: t("Default") },
-                    ...efforts.map((id) => ({
-                      value: id,
-                      label: effortLabel(id),
-                    })),
-                  ]}
-                  onChange={(value) => void save({ effort: value || null })}
-                />
-              </div>
-            )}
+            <EffortSelect
+              id={ids.effort}
+              className="defaults-select"
+              efforts={efforts}
+              value={defaults?.effort ?? null}
+              disabled={off}
+              onChange={(effort) => void save({ effort })}
+            />
           </div>
         </SettingRow>
         <SettingRow
@@ -240,8 +197,24 @@ export default function DefaultsSettingsPage() {
                     instanceId: fallbackEntry.instanceId,
                     model: defaults?.fallback?.model ?? "",
                   }}
-                  onChange={(choice) => void save({ fallback: choice })}
+                  onChange={(choice) =>
+                    choice.instanceId === fallbackEntry.instanceId &&
+                    choice.model === defaults?.fallback?.model
+                      ? undefined
+                      : void save({ fallback: { ...choice, effort: null } })
+                  }
                   disabled={off}
+                />
+                <EffortSelect
+                  className="defaults-select"
+                  efforts={fallbackEfforts}
+                  value={defaults?.fallback?.effort ?? null}
+                  disabled={off}
+                  onChange={(effort) =>
+                    void save({
+                      fallback: { ...defaults!.fallback!, effort },
+                    })
+                  }
                 />
                 <button
                   type="button"
@@ -280,7 +253,11 @@ export default function DefaultsSettingsPage() {
                   ).then(([model]) => {
                     if (model)
                       void save({
-                        fallback: { instanceId: first.instanceId, model },
+                        fallback: {
+                          instanceId: first.instanceId,
+                          model,
+                          effort: null,
+                        },
                       });
                   });
                 }}

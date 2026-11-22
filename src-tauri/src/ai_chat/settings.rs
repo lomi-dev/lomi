@@ -105,6 +105,9 @@ pub(crate) struct Defaults {
 pub(crate) struct Fallback {
     pub instance_id: String,
     pub model: String,
+    /// Reasoning effort for the fallback model.
+    #[serde(default)]
+    pub effort: Option<String>,
 }
 
 /// What CLI agents may do in a thread; fixed when the thread is created.
@@ -512,6 +515,7 @@ impl ChatSettings {
                 return Err("The fallback provider does not exist.".into());
             }
             valid_model_id(&f.model)?;
+            f.effort.as_deref().map_or(Ok(()), valid_effort)?;
         }
         match (&d.instance_id, &d.model) {
             (None, None) => Ok(()),
@@ -832,7 +836,22 @@ mod tests {
         bad.fallback = Some(Fallback {
             instance_id: "nope".into(),
             model: "m".into(),
+            effort: None,
         });
+        assert!(s.validate_defaults(&bad).is_err());
+        // Old files have no fallback effort; a present one is validated.
+        assert_eq!(new.fallback.as_ref().unwrap().effort, None);
+        let with: Defaults = serde_json::from_str(
+            r#"{"instanceId":null,"model":null,"fallback":{"instanceId":"claude","model":"opus","effort":"high"}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            with.fallback.as_ref().unwrap().effort.as_deref(),
+            Some("high")
+        );
+        assert!(s.validate_defaults(&with).is_ok());
+        let mut bad = with.clone();
+        bad.fallback.as_mut().unwrap().effort = Some("High".into());
         assert!(s.validate_defaults(&bad).is_err());
         assert!(valid_effort("xhigh").is_ok());
         assert!(["", "-x", "a b", "abcdefghijklmnopq"]

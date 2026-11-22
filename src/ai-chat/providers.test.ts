@@ -116,7 +116,9 @@ test("providerDefault prefers default, then fallback, then first usable", () => 
       defaults: {
         ...base,
         instanceId,
-        fallback: fallbackId ? { instanceId: fallbackId, model: "m" } : null,
+        fallback: fallbackId
+          ? { instanceId: fallbackId, model: "m", effort: null }
+          : null,
       },
     });
     return providerDefault(mergeProviders(s, {}), s)?.instanceId;

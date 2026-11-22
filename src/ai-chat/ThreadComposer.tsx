@@ -16,6 +16,7 @@ export default function ThreadComposer({
   disabled,
   sendKey,
   picker,
+  effort,
   placeholder,
   focusKey,
   attachments,
@@ -33,6 +34,7 @@ export default function ThreadComposer({
   disabled: boolean;
   sendKey: "enter" | "mod-enter";
   picker: ReactNode;
+  effort?: ReactNode;
   placeholder: string;
   /** Changing this refocuses the field (e.g. after Edit and resend). */
   focusKey?: unknown;
@@ -111,6 +113,7 @@ export default function ThreadComposer({
           <Paperclip size={16} />
         </IconButton>
         {picker}
+        {effort}
         <span className="thread-composer-hint">
           {sendKey === "enter"
             ? t("Enter to send")

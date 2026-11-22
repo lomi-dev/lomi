@@ -33,7 +33,7 @@ export interface ChatDefaults {
   instanceId: string | null;
   model: string | null;
   effort: string | null;
-  fallback: { instanceId: string; model: string } | null;
+  fallback: { instanceId: string; model: string; effort: string | null } | null;
   permissions: Permissions;
   workspace: Workspace;
 }

@@ -733,3 +733,30 @@
   margin: 0 auto;
   border-radius: 10px;
 }
+
+/* Quiet effort select beside the model picker. */
+.thread-effort {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.thread-effort-icon {
+  position: absolute;
+  left: var(--space-8);
+  color: var(--color-muted-text);
+  pointer-events: none;
+}
+.thread-effort .select-trigger {
+  min-height: 0;
+  gap: var(--space-6);
+  padding: var(--space-4) var(--space-8) var(--space-4) 28px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font-size: var(--font-size-12);
+}
+.thread-effort .select-trigger:hover:not(:disabled),
+.thread-effort .select-trigger[aria-expanded="true"] {
+  background: var(--color-surface-container-highest);
+}

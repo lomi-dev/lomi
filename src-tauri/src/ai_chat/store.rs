@@ -116,6 +116,15 @@ pub(crate) struct ThreadUpdate {
     pub title: Option<String>,
     pub instance_id: Option<String>,
     pub model: Option<String>,
+    /// Omitted: unchanged; `null`: back to the CLI default; string: set.
+    #[serde(default, deserialize_with = "set_or_clear")]
+    pub effort: Option<Option<String>>,
+}
+
+fn set_or_clear<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<Option<String>>, D::Error> {
+    Option::<String>::deserialize(d).map(Some)
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -764,6 +773,14 @@ impl Store {
             return Err("This thread changed in another view. Reload and try again.".into());
         }
         let title = req.title.as_deref().map(valid_title).transpose()?;
+        if let Some(effort) = &req.effort {
+            effort
+                .as_deref()
+                .map_or(Ok(()), super::settings::valid_effort)?;
+            if thread.kind != ThreadKind::Cli {
+                return Err("Only CLI threads have a reasoning effort.".into());
+            }
+        }
         let changes_target = req.instance_id.is_some() || req.model.is_some();
         if changes_target {
             if thread.streaming {
@@ -776,13 +793,16 @@ impl Store {
         }
         tx.execute(
             "UPDATE threads SET title=COALESCE(?2,title), instance_id=COALESCE(?3,instance_id),
-             model=COALESCE(?4,model), revision=revision+1, updated_ms=?5 WHERE id=?1",
+             model=COALESCE(?4,model), effort=CASE WHEN ?6 THEN ?7 ELSE effort END,
+             revision=revision+1, updated_ms=?5 WHERE id=?1",
             params![
                 req.thread_id,
                 title,
                 req.instance_id,
                 req.model,
-                now_ms() as i64
+                now_ms() as i64,
+                req.effort.is_some(),
+                req.effort.clone().flatten()
             ],
         )
         .map_err(db_err)?;
@@ -1264,11 +1284,16 @@ mod tests {
             title: title.map(Into::into),
             instance_id: None,
             model: None,
+            effort: None,
         };
         let renamed = s.update(&upd(Some(" New "), 1), |_| Ok(())).unwrap();
         assert_eq!(renamed.title, "New");
         assert!(s.update(&upd(Some("x"), 1), |_| Ok(())).is_err());
         assert!(s.update(&upd(Some("  "), 2), |_| Ok(())).is_err());
+        // API threads have no effort.
+        let mut e = upd(None, 2);
+        e.effort = Some(Some("high".into()));
+        assert!(s.update(&e, |_| Ok(())).is_err());
         s.delete(&ThreadDelete {
             thread_id: t.thread_id.clone(),
             expected_revision: 2,
@@ -1284,6 +1309,33 @@ mod tests {
         drop(db);
         assert!(Store::open(other.path()).unwrap_err().contains("preserved"));
         drop(dir);
+    }
+
+    #[test]
+    fn update_sets_clears_and_keeps_effort() {
+        let (_dir, mut s) = open();
+        let t = s.create(&create_req("c"), "T", ThreadKind::Cli).unwrap();
+        let upd = |effort: Option<Option<&str>>, rev| ThreadUpdate {
+            thread_id: t.thread_id.clone(),
+            expected_revision: rev,
+            title: None,
+            instance_id: None,
+            model: None,
+            effort: effort.map(|e| e.map(Into::into)),
+        };
+        let a = s.update(&upd(Some(Some("high")), 1), |_| Ok(())).unwrap();
+        assert_eq!(a.effort.as_deref(), Some("high"));
+        let b = s.update(&upd(None, 2), |_| Ok(())).unwrap();
+        assert_eq!(b.effort.as_deref(), Some("high"));
+        assert!(s.update(&upd(Some(Some("High")), 3), |_| Ok(())).is_err());
+        let c = s.update(&upd(Some(None), 3), |_| Ok(())).unwrap();
+        assert_eq!(c.effort, None);
+        let req: ThreadUpdate =
+            serde_json::from_str(r#"{"threadId":"x","expectedRevision":1,"effort":null}"#).unwrap();
+        assert_eq!(req.effort, Some(None));
+        let req: ThreadUpdate =
+            serde_json::from_str(r#"{"threadId":"x","expectedRevision":1}"#).unwrap();
+        assert_eq!(req.effort, None);
     }
 
     fn begin(s: &mut Store, t: &ThreadSummary, op: &str, text: &str) -> ThreadSendAccepted {

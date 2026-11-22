@@ -5,6 +5,8 @@ import { History, Plus } from "../icons";
 import { newId, type ThreadTab } from "../model";
 import { IconButton, Modal } from "../ui";
 import { useAttachments } from "./attachment-store";
+import EffortSelect, { loadEfforts, useEfforts } from "./EffortSelect";
+import { effortFor, initialEffort } from "./effort";
 import ProviderModelPicker, { type Choice } from "./ProviderModelPicker";
 import ThreadComposer from "./ThreadComposer";
 import ThreadHistory from "./ThreadHistory";
@@ -15,6 +17,7 @@ import {
   getDraft,
   getThreadView,
   renameThread,
+  updateThread,
   setDraft,
   threadTitle,
   useThreadView,
@@ -45,6 +48,8 @@ export default function ThreadPane({
   const thread = state.snapshot?.thread;
   const [draft, setDraftState] = useState(() => getDraft(tab.id));
   const [choice, setChoice] = useState<Choice>();
+  // New chats only; undefined keeps the prefill from the defaults.
+  const [effortChoice, setEffortChoice] = useState<string | null>();
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -60,7 +65,10 @@ export default function ThreadPane({
     (op.current = op.current?.key === key ? op.current : { key, id: newId() })
       .id;
 
-  useEffect(() => setChoice(undefined), [tab.threadId]);
+  useEffect(() => {
+    setChoice(undefined);
+    setEffortChoice(undefined);
+  }, [tab.threadId]);
   // Workbench routes native file drops over this pane here (see Workbench.tsx).
   useEffect(() => {
     const element = pane.current;
@@ -102,6 +110,15 @@ export default function ThreadPane({
   }, [thread, entries, settings]);
   const value = choice ?? fallback;
   const entry = entries.find((item) => item.instanceId === value.instanceId);
+  const efforts = useEfforts(entry, value.model);
+  const effort = effortFor(
+    thread
+      ? thread.effort
+      : effortChoice === undefined
+        ? initialEffort(settings?.defaults, value)
+        : effortChoice,
+    efforts,
+  );
   const items = useMemo(
     () => apiMessages(state.snapshot?.messages ?? [], state.live),
     [state.snapshot, state.live],
@@ -171,11 +188,7 @@ export default function ThreadPane({
           model: value.model,
           title: threadTitle(text || attach.items[0].name),
           cwd: entry.kind === "cli" ? projectPath : undefined,
-          effort:
-            entry.instanceId === settings?.defaults.instanceId &&
-            value.model === settings.defaults.model
-              ? settings.defaults.effort
-              : null,
+          effort,
         });
         threadId = summary.threadId;
         getThreadView(threadId).seed(summary);
@@ -202,6 +215,27 @@ export default function ThreadPane({
     } finally {
       setSending(false);
     }
+  }
+
+  async function changeEffort(next: string | null) {
+    if (!thread) return setEffortChoice(next);
+    try {
+      await updateThread(thread, { effort: next });
+      await view?.refresh();
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  }
+  // A new model keeps the effort only when it supports it; a new chat re-prefills from the defaults.
+  async function changeModel(next: Choice) {
+    setChoice(next);
+    if (!thread) return setEffortChoice(undefined);
+    const nextEntry = entries.find(
+      (item) => item.instanceId === next.instanceId,
+    );
+    if (!thread.effort || !nextEntry?.cli) return;
+    const supported = await loadEfforts(nextEntry.cli, next.model);
+    if (effortFor(thread.effort, supported) === null) await changeEffort(null);
   }
 
   const stop = () => void view?.stop();
@@ -344,8 +378,17 @@ export default function ThreadPane({
                   <ProviderModelPicker
                     entries={pickerEntries}
                     value={value}
-                    onChange={setChoice}
+                    onChange={(next) => void changeModel(next)}
                     disabled={running || sending}
+                  />
+                }
+                effort={
+                  <EffortSelect
+                    className="thread-effort"
+                    efforts={efforts}
+                    value={effort}
+                    disabled={running || sending}
+                    onChange={(next) => void changeEffort(next)}
                   />
                 }
               />
