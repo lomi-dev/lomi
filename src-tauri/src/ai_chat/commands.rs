@@ -1,21 +1,15 @@
 use super::{
     attachments::{self, Attachment, Kind},
-    cli, emit_changed, http,
+    cli, emit_changed,
+    engine::{valid_operation, EventSink, Inner},
+    http,
     settings::{self, *},
     store::{self, *},
-    AiChat, Inner,
+    AiChat,
 };
-use std::{sync::Arc, time::Instant};
+use std::sync::Arc;
 use tauri::{ipc::Channel, AppHandle, State, Window};
-use tokio::{io::AsyncReadExt, sync::Notify};
 use zeroize::Zeroizing;
-
-const FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_millis(750);
-const FLUSH_BYTES: usize = 16 * 1024;
-/// Stored assistant output never exceeds what a later request could carry.
-const CONTENT_CAP: usize = store::MAX_CONTEXT;
-const NOTE_LIMIT: &str = "Response hit the output limit.";
-const NOTE_SIZE: &str = "Response exceeded the size limit and was truncated.";
 
 async fn blocking<T: Send + 'static>(
     f: impl FnOnce() -> Result<T, String> + Send + 'static,
@@ -35,7 +29,10 @@ fn key_entry(app: &AppHandle, instance_id: &str) -> Result<keyring::Entry, Strin
     .map_err(|_| "The system key store is unavailable.".to_string())
 }
 
-fn read_key(app: &AppHandle, instance_id: &str) -> Result<Option<Zeroizing<String>>, String> {
+pub(super) fn read_key(
+    app: &AppHandle,
+    instance_id: &str,
+) -> Result<Option<Zeroizing<String>>, String> {
     match key_entry(app, instance_id)?.get_password() {
         Ok(key) => Ok(Some(Zeroizing::new(key))),
         Err(keyring::Error::NoEntry) => Ok(None),
@@ -287,7 +284,7 @@ fn detect_plan(installed: &[String], existing: &[String], auto: &[String]) -> Ve
 fn installed_clis() -> Vec<String> {
     cli::CLIS
         .into_iter()
-        .filter(|id| crate::cli_bin::resolve(id).is_some())
+        .filter(|id| lomi_chat::cli_bin::resolve(id).is_some())
         .map(String::from)
         .collect()
 }
@@ -438,6 +435,7 @@ pub(crate) async fn ai_provider_probe(
 ) -> Result<ProbeResult, String> {
     crate::files::main_window(&window)?;
     let chat = state.inner().clone();
+    let client = chat.engine(&app)?.client()?;
     let (base_url, kind, headers, key) = {
         let chat = chat.clone();
         blocking(move || {
@@ -475,7 +473,7 @@ pub(crate) async fn ai_provider_probe(
         })
         .await?
     };
-    let models = http::probe(&chat.client()?, kind, &base_url, &headers, key.as_ref()).await?;
+    let models = http::probe(&client, kind, &base_url, &headers, key.as_ref()).await?;
     Ok(ProbeResult { models })
 }
 
@@ -506,20 +504,6 @@ pub(crate) async fn ai_chat_preferences_update(
 }
 
 // ---- threads ---------------------------------------------------------
-
-fn valid_operation(op: &str) -> Result<(), String> {
-    if op.len() > 120 {
-        return Err("Invalid operation identity.".into());
-    }
-    if op.is_empty()
-        || !op
-            .bytes()
-            .all(|v| v.is_ascii_alphanumeric() || matches!(v, b'-' | b'_' | b':'))
-    {
-        return Err("Invalid operation identity.".into());
-    }
-    Ok(())
-}
 
 #[tauri::command]
 pub(crate) async fn ai_threads_list(
@@ -663,7 +647,7 @@ pub(crate) async fn ai_thread_delete(
     blocking(move || {
         chat.with(&app, |i| {
             // Without a running stream, leftover in-flight rows (e.g. after a panic) must not block deletion.
-            if !chat.active()?.contains_key(&request.thread_id) {
+            if !chat.engine(&app)?.is_active(&request.thread_id)? {
                 i.store.interrupt_inflight(&request.thread_id, false)?;
             }
             i.store.delete(&request)
@@ -682,88 +666,16 @@ pub(crate) async fn ai_thread_stop(
     thread_id: String,
 ) -> Result<(), String> {
     crate::files::main_window(&window)?;
-    let chat = state.inner().clone();
-    blocking(move || {
-        let changed = chat.with(&app, |i| {
-            if let Some(token) = chat.active()?.get(&thread_id) {
-                token.notify_one();
-                return Ok(false);
-            }
-            i.store.interrupt_inflight(&thread_id, true)
-        })?;
-        if changed {
-            emit_changed(&app, "threads", 0, Some(&thread_id));
-        }
-        Ok(())
-    })
-    .await
+    let engine = state.engine(&app)?.clone();
+    blocking(move || engine.stop(&thread_id)).await
 }
 
-/// Registers a running stream's stop token; dropping it (also on panic) removes the entry.
-struct ActiveGuard {
-    chat: AiChat,
-    thread_id: String,
-    stop: Arc<Notify>,
-}
+struct ChannelSink(Channel<ThreadStreamEvent>);
 
-impl ActiveGuard {
-    fn new(chat: &AiChat, thread_id: String) -> Result<Self, String> {
-        let stop = Arc::new(Notify::new());
-        chat.active()?.insert(thread_id.clone(), stop.clone());
-        Ok(Self {
-            chat: chat.clone(),
-            thread_id,
-            stop,
-        })
+impl EventSink for ChannelSink {
+    fn send(&self, event: ThreadStreamEvent) {
+        let _ = self.0.send(event);
     }
-}
-
-impl Drop for ActiveGuard {
-    fn drop(&mut self) {
-        if let Ok(mut active) = self.chat.active() {
-            // A newer stream of the same thread may have replaced the entry.
-            if active
-                .get(&self.thread_id)
-                .is_some_and(|s| Arc::ptr_eq(s, &self.stop))
-            {
-                active.remove(&self.thread_id);
-            }
-        }
-    }
-}
-
-struct ApiJob {
-    provider: ApiProvider,
-    max_tokens: Option<u32>,
-    context: Vec<Turn>,
-    attachments_dir: std::path::PathBuf,
-}
-
-struct CliJob {
-    cli: String,
-    spec: cli::Spec,
-    /// Session the CLI was resumed from, if any.
-    session: Option<String>,
-}
-
-enum Target {
-    Api(ApiJob),
-    Cli(CliJob),
-}
-
-struct Job {
-    thread_id: String,
-    message_id: String,
-    model: String,
-    system: String,
-    target: Target,
-    guard: ActiveGuard,
-}
-
-/// Provider state a send needs, captured under the storage lock.
-enum Provider {
-    Api(ApiProvider),
-    Cli(String, std::path::PathBuf),
 }
 
 #[tauri::command]
@@ -775,657 +687,10 @@ pub(crate) async fn ai_thread_send(
     on_event: Channel<ThreadStreamEvent>,
 ) -> Result<ThreadSendAccepted, String> {
     crate::files::main_window(&window)?;
-    let chat = state.inner().clone();
-    let accepted = {
-        let (chat, app, request) = (chat.clone(), app.clone(), request.clone());
-        blocking(move || {
-            valid_operation(&request.operation_id)?;
-            settings::valid_model_id(&request.model)?;
-            let started = chat.with(&app, |i| {
-                let Inner {
-                    settings,
-                    store,
-                    dir,
-                    ..
-                } = i;
-                let mut provider = None;
-                let begin = store.send_begin(
-                    &request,
-                    settings.behavior.system_instructions.len(),
-                    |t| {
-                        provider = Some(match t.kind {
-                            ThreadKind::Api => {
-                                let p = settings
-                                    .api_providers
-                                    .iter()
-                                    .find(|p| p.instance_id == request.instance_id)
-                                    .ok_or("Unknown API provider.")?;
-                                if !p.enabled {
-                                    return Err("This provider is disabled.".into());
-                                }
-                                if !p.api_key_set && p.kind != ApiKind::OpenaiCompatible {
-                                    return Err("This provider has no API key.".into());
-                                }
-                                Provider::Api(p.clone())
-                            }
-                            ThreadKind::Cli => {
-                                let p = settings
-                                    .cli_providers
-                                    .iter()
-                                    .find(|p| p.instance_id == request.instance_id)
-                                    .filter(|p| p.instance_id == t.instance_id)
-                                    .ok_or("Unknown CLI provider.")?;
-                                if !p.enabled {
-                                    return Err("This provider is disabled.".into());
-                                }
-                                cli::valid_model(&request.model)?;
-                                cli::check_prompt(&p.cli, &request.text)?;
-                                if t.cwd
-                                    .as_deref()
-                                    .is_some_and(|c| !std::path::Path::new(c).is_dir())
-                                {
-                                    return Err("The project folder no longer exists.".into());
-                                }
-                                let bin = crate::cli_bin::resolve(&p.cli).ok_or(
-                                    "This CLI is not installed. Install it or remove the provider.",
-                                )?;
-                                Provider::Cli(p.cli.clone(), bin)
-                            }
-                        });
-                        Ok(())
-                    },
-                )?;
-                Ok(match begin {
-                    SendBegin::Replay(a) => (a, None),
-                    SendBegin::New(a, context) => {
-                        let target = match provider.expect("checked during begin") {
-                            Provider::Api(provider) => Target::Api(ApiJob {
-                                provider,
-                                max_tokens: settings.behavior.max_output_tokens,
-                                context,
-                                attachments_dir: store.attachments_dir(),
-                            }),
-                            Provider::Cli(id, bin) => {
-                                let session = store
-                                    .native_session(&a.thread.thread_id)?
-                                    .filter(|s| cli::valid_session(s));
-                                let agent_file = if id == "kimi"
-                                    && session.is_none()
-                                    && a.thread.permissions == Permissions::ReadOnly
-                                {
-                                    let path = dir.join("kimi-chat-agent.md");
-                                    crate::storage_guard::atomic(
-                                        &path,
-                                        cli::KIMI_AGENT.as_bytes(),
-                                    )?;
-                                    Some(path.to_string_lossy().into_owned())
-                                } else {
-                                    None
-                                };
-                                Target::Cli(cli_job(
-                                    &id,
-                                    bin,
-                                    &a,
-                                    &store.attachments_dir(),
-                                    session,
-                                    &settings.behavior.system_instructions,
-                                    agent_file.as_deref(),
-                                ))
-                            }
-                        };
-                        // Registered under the storage lock so stop/delete never see a started send as stuck.
-                        let guard = ActiveGuard::new(&chat, a.thread.thread_id.clone())?;
-                        let job = Job {
-                            thread_id: a.thread.thread_id.clone(),
-                            message_id: a.assistant.message_id.clone(),
-                            model: request.model.clone(),
-                            system: settings.behavior.system_instructions.clone(),
-                            target,
-                            guard,
-                        };
-                        (a, Some(job))
-                    }
-                })
-            })?;
-            Ok(started)
-        })
-        .await?
-    };
-    let (accepted, job) = accepted;
-    if let Some(job) = job {
-        emit_changed(
-            &app,
-            "threads",
-            accepted.thread.revision,
-            Some(&accepted.thread.thread_id),
-        );
-        tauri::async_runtime::spawn(run_stream(chat, app, job, on_event));
-    }
-    Ok(accepted)
-}
-
-/// Builds the argv and working directory of a CLI send; a thread without a directory uses home.
-fn cli_job(
-    cli_id: &str,
-    bin: std::path::PathBuf,
-    accepted: &ThreadSendAccepted,
-    files_dir: &std::path::Path,
-    session: Option<String>,
-    system: &str,
-    agent_file: Option<&str>,
-) -> CliJob {
-    let (thread, files) = (&accepted.thread, &accepted.user.attachments);
-    let cwd = thread
-        .cwd
-        .as_deref()
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(crate::shell::home);
-    let path = |a: &Attachment| {
-        attachments::path(files_dir, a)
-            .to_string_lossy()
-            .into_owned()
-    };
-    let listed: Vec<(String, String)> = files.iter().map(|a| (path(a), a.name.clone())).collect();
-    let images: Vec<String> = files
-        .iter()
-        .filter(|a| a.kind == Kind::Image)
-        .map(path)
-        .collect();
-    let prompt = cli::attach_prompt(&accepted.user.content, &listed);
-    let attach_dir = files_dir.to_string_lossy();
-    let (args, stdin) = cli::argv(&cli::Invocation {
-        cli: cli_id,
-        model: &accepted.user.model,
-        cwd: &cwd.to_string_lossy(),
-        session: session.as_deref(),
-        system,
-        prompt: &prompt,
-        agent_file,
-        permissions: thread.permissions,
-        effort: thread.effort.as_deref(),
-        attach_dir: (!files.is_empty()).then_some(&*attach_dir),
-        images: &images,
-    });
-    CliJob {
-        cli: cli_id.into(),
-        spec: cli::Spec {
-            bin,
-            args,
-            stdin,
-            cwd,
-        },
-        session,
-    }
-}
-
-#[derive(Clone)]
-struct Outcome {
-    state: MessageState,
-    content: String,
-    stream_seq: u64,
-    stop_reason: Option<String>,
-    error: Option<String>,
-}
-
-impl Outcome {
-    fn failed(message: String, content: String, stream_seq: u64) -> Self {
-        Self {
-            state: MessageState::Failed,
-            content,
-            stream_seq,
-            stop_reason: None,
-            error: Some(message),
-        }
-    }
-}
-
-/// Visible note for a response the provider cut off at its output limit.
-fn truncation_note(reason: Option<&str>) -> Option<&'static str> {
-    matches!(reason, Some("length" | "max_tokens")).then_some(NOTE_LIMIT)
-}
-
-/// Retries the final commit, then falls back to a minimal state update so the
-/// row can never stay in flight.
-async fn commit_outcome(
-    chat: &AiChat,
-    app: &AppHandle,
-    job: &Job,
-    outcome: &Outcome,
-) -> Result<(ThreadSummary, ThreadMessage), String> {
-    for attempt in 0..3u64 {
-        let (chat, app, o) = (chat.clone(), app.clone(), outcome.clone());
-        let (thread_id, message_id) = (job.thread_id.clone(), job.message_id.clone());
-        let result = blocking(move || {
-            chat.with(&app, |i| {
-                i.store.finish(
-                    &thread_id,
-                    &message_id,
-                    &Finish {
-                        state: o.state,
-                        content: &o.content,
-                        stream_seq: o.stream_seq,
-                        stop_reason: o.stop_reason.as_deref(),
-                        error: o.error.as_deref(),
-                    },
-                )
-            })
-        })
-        .await;
-        if let Ok(done) = result {
-            return Ok(done);
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(200 * (attempt + 1))).await;
-    }
-    let (chat, app) = (chat.clone(), app.clone());
-    let (thread_id, message_id) = (job.thread_id.clone(), job.message_id.clone());
-    blocking(move || chat.with(&app, |i| i.store.finish_minimal(&thread_id, &message_id))).await
-}
-
-async fn run_stream(chat: AiChat, app: AppHandle, job: Job, channel: Channel<ThreadStreamEvent>) {
-    let stop = job.guard.stop.clone();
-    let outcome = stream(&chat, &app, &job, &channel, &stop).await;
-    let finished = commit_outcome(&chat, &app, &job, &outcome).await;
-    // The entry is removed on every path, including panics, when `job` drops.
-    drop(job.guard);
-    if let Ok((thread, message)) = finished {
-        let _ = channel.send(ThreadStreamEvent::Final {
-            thread: thread.clone(),
-            message,
-        });
-        emit_changed(&app, "threads", thread.revision, Some(&thread.thread_id));
-    }
-}
-
-fn stopped_outcome(content: String, seq: u64) -> Outcome {
-    Outcome {
-        state: MessageState::Stopped,
-        content,
-        stream_seq: seq,
-        stop_reason: Some("stopped".into()),
-        error: None,
-    }
-}
-
-/// Streamed assistant text: delta events to the webview plus periodic persistence.
-struct Acc {
-    content: String,
-    seq: u64,
-    pending: usize,
-    last_flush: Instant,
-}
-
-impl Acc {
-    fn new() -> Self {
-        Self {
-            content: String::new(),
-            seq: 0,
-            pending: 0,
-            last_flush: Instant::now(),
-        }
-    }
-
-    /// Appends and emits `text`; false when it would exceed the stored-content cap.
-    fn push(&mut self, job: &Job, channel: &Channel<ThreadStreamEvent>, text: String) -> bool {
-        if self.content.len() + text.len() > CONTENT_CAP {
-            return false;
-        }
-        self.content.push_str(&text);
-        self.seq += 1;
-        self.pending += text.len();
-        let _ = channel.send(ThreadStreamEvent::Delta {
-            message_id: job.message_id.clone(),
-            seq: self.seq,
-            text,
-        });
-        true
-    }
-
-    async fn flush_due(&mut self, chat: &AiChat, app: &AppHandle, job: &Job) {
-        if self.pending < FLUSH_BYTES && self.last_flush.elapsed() < FLUSH_INTERVAL {
-            return;
-        }
-        let (chat, app, id, text, seq) = (
-            chat.clone(),
-            app.clone(),
-            job.message_id.clone(),
-            self.content.clone(),
-            self.seq,
-        );
-        let _ = blocking(move || chat.with(&app, |i| i.store.flush(&id, &text, seq))).await;
-        self.pending = 0;
-        self.last_flush = Instant::now();
-    }
-
-    fn oversized(self) -> Outcome {
-        Outcome {
-            state: MessageState::Completed,
-            content: self.content,
-            stream_seq: self.seq,
-            stop_reason: Some("size_limit".into()),
-            error: Some(NOTE_SIZE.into()),
-        }
-    }
-}
-
-async fn mark_streaming(chat: &AiChat, app: &AppHandle, job: &Job) -> Result<(), String> {
-    let (chat, app, id) = (chat.clone(), app.clone(), job.message_id.clone());
-    blocking(move || chat.with(&app, |i| i.store.mark_streaming(&id))).await
-}
-
-async fn stream(
-    chat: &AiChat,
-    app: &AppHandle,
-    job: &Job,
-    channel: &Channel<ThreadStreamEvent>,
-    stop: &Notify,
-) -> Outcome {
-    match &job.target {
-        Target::Api(api) => stream_api(chat, app, job, api, channel, stop).await,
-        Target::Cli(cli) => stream_cli(chat, app, job, cli, channel, stop).await,
-    }
-}
-
-async fn stream_api(
-    chat: &AiChat,
-    app: &AppHandle,
-    job: &Job,
-    api: &ApiJob,
-    channel: &Channel<ThreadStreamEvent>,
-    stop: &Notify,
-) -> Outcome {
-    let stopped = stop.notified();
-    tokio::pin!(stopped);
-
-    let key = if api.provider.api_key_set {
-        let (app, id) = (app.clone(), api.provider.instance_id.clone());
-        match blocking(move || read_key(&app, &id)).await {
-            Ok(Some(key)) => Some(key),
-            Ok(None) if api.provider.kind != ApiKind::OpenaiCompatible => {
-                return Outcome::failed(
-                    "The API key is missing from the system key store. Re-enter the API key."
-                        .into(),
-                    String::new(),
-                    0,
-                );
-            }
-            Ok(None) => None,
-            Err(message) => return Outcome::failed(message, String::new(), 0),
-        }
-    } else {
-        None
-    };
-    let key_text = key.as_ref().map(|k| k.as_str());
-    let client = match chat.client() {
-        Ok(c) => c,
-        Err(m) => return Outcome::failed(m, String::new(), 0),
-    };
-    let request = http::ChatRequest {
-        kind: api.provider.kind,
-        base_url: &api.provider.base_url,
-        headers: &api.provider.headers,
-        key: key_text,
-        model: &job.model,
-        system: &job.system,
-        max_tokens: api.max_tokens,
-        messages: &api.context,
-        attachments_dir: &api.attachments_dir,
-    };
-    let mut response = tokio::select! {
-        _ = &mut stopped => return stopped_outcome(String::new(), 0),
-        r = http::open_stream(&client, &request) => match r {
-            Ok(r) => r,
-            Err(m) => return Outcome::failed(http::redact(&m, key_text), String::new(), 0),
-        },
-    };
-    if let Err(m) = mark_streaming(chat, app, job).await {
-        return Outcome::failed(m, String::new(), 0);
-    }
-
-    let mut parser = http::SseParser::default();
-    let mut acc = Acc::new();
-    let (mut done, mut stop_reason): (bool, Option<String>) = (false, None);
-    let mut failure: Option<String> = None;
-    let mut oversized = false;
-
-    'read: loop {
-        let chunk = tokio::select! {
-            _ = &mut stopped => return stopped_outcome(acc.content, acc.seq),
-            c = response.chunk() => c,
-        };
-        let eof = matches!(chunk, Ok(None));
-        let events = match chunk {
-            Ok(Some(bytes)) => parser.push(&bytes),
-            Ok(None) => Ok(parser.finish().into_iter().collect()),
-            Err(e) if e.is_timeout() => {
-                failure = Some("The provider did not respond for 120 seconds.".into());
-                break;
-            }
-            Err(_) => break,
-        };
-        let events = match events {
-            Ok(e) => e,
-            Err(m) => {
-                failure = Some(m);
-                break;
-            }
-        };
-        for event in events {
-            for mapped in http::map_event(api.provider.kind, &event) {
-                match mapped {
-                    http::Mapped::Text(text) => {
-                        if !acc.push(job, channel, text) {
-                            oversized = true;
-                            break 'read;
-                        }
-                    }
-                    http::Mapped::Stop(reason) => stop_reason = Some(reason),
-                    http::Mapped::Done => done = true,
-                    http::Mapped::Error(m) => {
-                        failure = Some(http::redact(&m, key_text));
-                        break 'read;
-                    }
-                }
-            }
-        }
-        if done || eof {
-            break;
-        }
-        acc.flush_due(chat, app, job).await;
-    }
-
-    if let Some(message) = failure {
-        return Outcome::failed(message, acc.content, acc.seq);
-    }
-    if oversized {
-        return acc.oversized();
-    }
-    if !done && stop_reason.is_none() {
-        return Outcome::failed(
-            "The connection closed before the response finished; the partial response was kept."
-                .into(),
-            acc.content,
-            acc.seq,
-        );
-    }
-    Outcome {
-        state: MessageState::Completed,
-        content: acc.content,
-        stream_seq: acc.seq,
-        error: truncation_note(stop_reason.as_deref()).map(Into::into),
-        stop_reason,
-    }
-}
-
-/// How long the pipes may stay open after the CLI exits or reports its final event.
-const DRAIN: std::time::Duration = std::time::Duration::from_secs(2);
-/// No stdout for this long means the CLI is hung.
-const INACTIVITY: std::time::Duration = std::time::Duration::from_secs(600);
-
-/// Runs the CLI, then settles the stored session id. A session id is kept only
-/// once the turn produced text or exited successfully (it may not exist
-/// otherwise). A resumed send that fails without text clears it, so the next
-/// send starts fresh instead of resuming a session the CLI cannot find.
-async fn stream_cli(
-    chat: &AiChat,
-    app: &AppHandle,
-    job: &Job,
-    run: &CliJob,
-    channel: &Channel<ThreadStreamEvent>,
-    stop: &Notify,
-) -> Outcome {
-    let mut seen = None;
-    let outcome = run_cli(chat, app, job, run, channel, stop, &mut seen).await;
-    let next = if !outcome.content.is_empty() || outcome.state == MessageState::Completed {
-        seen.filter(|s| run.session.as_deref() != Some(s.as_str()))
-            .map(Some)
-    } else if run.session.is_some() && outcome.state == MessageState::Failed {
-        Some(None)
-    } else {
-        None
-    };
-    if let Some(next) = next {
-        let (chat, app, thread) = (chat.clone(), app.clone(), job.thread_id.clone());
-        let _ = blocking(move || {
-            chat.with(&app, |i| {
-                i.store.set_native_session(&thread, next.as_deref())
-            })
-        })
-        .await;
-    }
-    outcome
-}
-
-/// Runs the CLI and maps its JSONL stdout onto the same deltas as an API stream.
-/// The process group dies with `proc` on every return path (stop included).
-async fn run_cli(
-    chat: &AiChat,
-    app: &AppHandle,
-    job: &Job,
-    run: &CliJob,
-    channel: &Channel<ThreadStreamEvent>,
-    stop: &Notify,
-    session: &mut Option<String>,
-) -> Outcome {
-    let stopped = stop.notified();
-    tokio::pin!(stopped);
-    let mut proc = match cli::Proc::spawn(&run.spec) {
-        Ok(p) => p,
-        Err(m) => return Outcome::failed(m, String::new(), 0),
-    };
-    let _group = chat.track_group(proc.pgid());
-    if let Err(m) = mark_streaming(chat, app, job).await {
-        return Outcome::failed(m, String::new(), 0);
-    }
-
-    let mut parser = cli::Parser::new(&run.cli);
-    let mut splitter = cli::LineSplitter::default();
-    let mut acc = Acc::new();
-    let mut fallback: Option<String> = None;
-    let (mut failure, mut oversized) = (None::<String>, false);
-    let mut buf = [0u8; 8192];
-    let (mut exited, mut hung) = (false, false);
-    // Set once the CLI exited or sent its final event; the pipes then get `DRAIN` to close.
-    let mut drain_until: Option<tokio::time::Instant> = None;
-    let mut last_byte = tokio::time::Instant::now();
-
-    'read: loop {
-        let read = tokio::select! {
-            _ = &mut stopped => return stopped_outcome(acc.content, acc.seq),
-            r = proc.stdout.read(&mut buf) => r,
-            _ = proc.child.wait(), if !exited => {
-                exited = true;
-                drain_until.get_or_insert(tokio::time::Instant::now() + DRAIN);
-                continue;
-            }
-            _ = tokio::time::sleep_until(drain_until.unwrap_or(last_byte)), if drain_until.is_some() => {
-                proc.kill();
-                break;
-            }
-            _ = tokio::time::sleep_until(last_byte + INACTIVITY) => {
-                hung = true;
-                break;
-            }
-        };
-        let n = read.unwrap_or(0);
-        if n > 0 {
-            last_byte = tokio::time::Instant::now();
-        }
-        let lines = if n == 0 {
-            splitter.finish()
-        } else {
-            splitter.push(&buf[..n])
-        };
-        for line in lines {
-            for event in parser.line(&line) {
-                match event {
-                    cli::Ev::Text(text) => {
-                        if !acc.push(job, channel, text) {
-                            oversized = true;
-                            break 'read;
-                        }
-                    }
-                    cli::Ev::Final(text) => {
-                        fallback = Some(text);
-                        drain_until.get_or_insert(tokio::time::Instant::now() + DRAIN);
-                    }
-                    cli::Ev::Error(m) => {
-                        failure = Some(http::redact(&m, None));
-                        break 'read;
-                    }
-                    cli::Ev::Session(id) => {
-                        if cli::valid_session(&id) {
-                            *session = Some(id);
-                        }
-                    }
-                }
-            }
-        }
-        if n == 0 {
-            break;
-        }
-        acc.flush_due(chat, app, job).await;
-    }
-
-    if hung {
-        proc.kill();
-        return Outcome::failed("The CLI stopped responding.".into(), acc.content, acc.seq);
-    }
-    if let Some(message) = failure {
-        return Outcome::failed(message, acc.content, acc.seq);
-    }
-    if oversized {
-        return acc.oversized();
-    }
-    let (success, status, stderr) = tokio::select! {
-        _ = &mut stopped => return stopped_outcome(acc.content, acc.seq),
-        r = proc.finish() => r,
-    };
-    if !success {
-        let detail = if stderr.is_empty() {
-            String::new()
-        } else {
-            format!(": {stderr}")
-        };
-        return Outcome::failed(
-            format!("The CLI exited ({status}){detail}"),
-            acc.content,
-            acc.seq,
-        );
-    }
-    if acc.content.is_empty() {
-        // Some CLIs only report the complete answer at the end.
-        let text = fallback.unwrap_or_default();
-        if text.is_empty() || !acc.push(job, channel, text) {
-            return Outcome::failed("The CLI returned no response.".into(), acc.content, acc.seq);
-        }
-    }
-    Outcome {
-        state: MessageState::Completed,
-        content: acc.content.trim_end().to_string(),
-        stream_seq: acc.seq,
-        stop_reason: Some("stop".into()),
-        error: None,
-    }
+    state
+        .engine(&app)?
+        .send(request, Arc::new(ChannelSink(on_event)))
+        .await
 }
 
 #[cfg(test)]
@@ -1492,29 +757,6 @@ mod tests {
             v(&["claude"])
         );
         assert!(detect_plan(&[], &v(&["codex"]), &[]).is_empty());
-    }
-
-    #[test]
-    fn truncation_notes() {
-        assert_eq!(truncation_note(Some("length")), Some(NOTE_LIMIT));
-        assert_eq!(truncation_note(Some("max_tokens")), Some(NOTE_LIMIT));
-        assert_eq!(truncation_note(Some("stop")), None);
-        assert_eq!(truncation_note(None), None);
-    }
-
-    #[test]
-    fn active_guard_removes_its_own_entry_only() {
-        let chat = AiChat::default();
-        let first = ActiveGuard::new(&chat, "t".into()).unwrap();
-        let second = ActiveGuard::new(&chat, "t".into()).unwrap();
-        drop(first);
-        assert!(chat.active().unwrap().contains_key("t"));
-        let handle = std::thread::spawn(move || {
-            let _guard = second;
-            panic!("stream failed");
-        });
-        assert!(handle.join().is_err());
-        assert!(chat.active().unwrap().is_empty());
     }
 }
 
