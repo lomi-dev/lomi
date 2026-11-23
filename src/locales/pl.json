@@ -2356,5 +2356,14 @@
   "Signing out…": "Wylogowywanie…",
   "now": "teraz",
   "Revoke every session, including this device. Use this if you think your account was accessed by someone else.": "Unieważnij wszystkie sesje, także na tym urządzeniu. Użyj tego, jeśli podejrzewasz, że ktoś inny uzyskał dostęp do konta.",
-  "Sign in to use Lomi online services. Your local projects work without an account.": "Zaloguj się, aby korzystać z usług online Lomi. Lokalne projekty działają bez konta."
+  "Sign in to use Lomi online services. Your local projects work without an account.": "Zaloguj się, aby korzystać z usług online Lomi. Lokalne projekty działają bez konta.",
+  "Wants to connect": "Chce się połączyć",
+  "Verify the request": "Zweryfikuj prośbę",
+  "Choose access": "Wybierz dostęp",
+  "Choose a workspace to approve this session.": "Wybierz obszar roboczy, aby zatwierdzić tę sesję.",
+  "Agents that can use Lomi right now.": "Agenci, którzy mogą teraz korzystać z Lomi.",
+  "Connected": "Połączono",
+  "can change": "może zmieniać",
+  "read-only": "tylko odczyt",
+  "Workspace layout only": "Tylko układ obszaru roboczego"
 }

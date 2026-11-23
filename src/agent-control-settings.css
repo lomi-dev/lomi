@@ -161,3 +161,260 @@
     white-space: normal;
   }
 }
+
+/* ---- Pairing request: three numbered steps and a sticky decision bar ---- */
+.agent-control-page .agent-pairing {
+  padding: 0;
+  overflow: clip;
+}
+.agent-control-page .agent-pairing > :not(footer) {
+  margin-inline: var(--space-20);
+}
+.agent-control-page .agent-pairing-header {
+  align-items: center;
+  margin-top: var(--space-20);
+}
+.agent-control-page .agent-pairing-header h3 {
+  margin: var(--space-2) 0 0;
+  font-size: var(--font-size-17);
+}
+.agent-pairing-kicker {
+  color: var(--color-surface-variant-text);
+  font-size: var(--font-size-12);
+}
+.agent-control-page
+  :is(
+    .agent-pairing-identity,
+    .agent-pairing-workspace,
+    .agent-permissions-heading
+  ) {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: var(--space-12);
+  margin-block: var(--space-24) 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.agent-pairing-step {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--color-surface-container-highest);
+  color: var(--color-surface-text);
+  font-size: var(--font-size-12);
+  font-weight: 600;
+}
+.agent-control-page .agent-pairing h4 {
+  margin: 2px 0 var(--space-4);
+  font-size: var(--font-size-14);
+  font-weight: 600;
+}
+.agent-pairing-request-id {
+  display: inline-block;
+  margin-top: var(--space-8);
+  padding: var(--space-6) var(--space-12);
+  border: var(--border-width) solid var(--color-outline);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-container);
+  font-size: var(--font-size-15);
+  letter-spacing: 0.04em;
+  user-select: all;
+}
+.agent-control-page .agent-pairing-details {
+  margin-top: var(--space-8);
+  font-size: var(--font-size-12);
+}
+.agent-control-page .agent-pairing-details code {
+  display: block;
+  margin-top: var(--space-6);
+  overflow-wrap: anywhere;
+  color: var(--color-surface-variant-text);
+}
+.agent-control-page .agent-pairing-workspace select {
+  margin-top: var(--space-8);
+}
+.agent-permission-list {
+  margin-top: var(--space-12);
+  overflow: hidden;
+  border: var(--border-width) solid
+    color-mix(in srgb, var(--color-outline) 55%, transparent);
+  border-radius: var(--radius-menu);
+}
+.agent-control-page .agent-permission-list > .agent-permission-group {
+  border-top: var(--border-width) solid
+    color-mix(in srgb, var(--color-outline) 45%, transparent);
+}
+.agent-control-page
+  .agent-permission-list
+  > .agent-permission-group:first-child {
+  border-top: 0;
+}
+.agent-control-page .agent-permission-group > summary {
+  padding: var(--space-14) var(--space-16);
+  cursor: pointer;
+}
+.agent-control-page .agent-permission-group > summary:hover {
+  background: var(--color-surface-container);
+}
+.agent-control-page .agent-permission-group[open] > summary {
+  background: var(--color-surface-container);
+}
+.agent-control-page .agent-permission-group .agent-permission-description {
+  margin-top: 2px;
+}
+.agent-control-page .agent-permission-content {
+  margin: 0 var(--space-16) var(--space-16) var(--space-32);
+  padding: 0 0 0 var(--space-16);
+}
+.agent-control-page .agent-pairing-footer {
+  position: sticky;
+  /* Matches the settings scroller's 72px bottom padding so the bar meets its visible edge. */
+  bottom: -72px;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
+  margin-top: var(--space-24);
+  padding: var(--space-12) var(--space-20);
+  border-top: var(--border-width) solid var(--color-outline);
+  background: var(--color-surface);
+  box-shadow: 0 -8px 16px -12px rgb(0 0 0 / 0.35);
+}
+.agent-control-page .agent-pairing-footer > p {
+  flex: 1 1 240px;
+  margin: 0;
+}
+.agent-control-page .agent-pairing-footer .agent-control-actions {
+  margin: 0;
+}
+
+/* ---- Active sessions ---- */
+.agent-session {
+  padding: var(--space-16) 0;
+  border-bottom: var(--border-width) solid
+    color-mix(in srgb, var(--color-outline) 45%, transparent);
+}
+.agent-session:last-child {
+  border-bottom: 0;
+}
+.agent-session-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+}
+.agent-session-icon {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-menu);
+  background: var(--color-surface-container-highest);
+  color: var(--color-surface-text);
+}
+.agent-session-title {
+  flex: 1;
+  min-width: 0;
+}
+.agent-control-page .agent-session-title h3 {
+  margin: 0;
+  font-size: var(--font-size-14);
+  font-weight: 600;
+}
+.agent-control-page .agent-session-title p {
+  margin: 2px 0 0;
+  overflow: hidden;
+  color: var(--color-surface-variant-text);
+  font-size: var(--font-size-12);
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-session-title code,
+.agent-session-note code {
+  font-size: var(--font-size-11);
+}
+.agent-session-live {
+  color: var(--color-surface-variant-text);
+  font-size: var(--font-size-12);
+}
+.agent-session-access {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: var(--space-6);
+  margin: var(--space-12) 0 0 calc(32px + var(--space-12));
+  padding: 0;
+  list-style: none;
+}
+.agent-session-access li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 1px var(--space-10);
+  padding: var(--space-8) var(--space-12);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-container);
+  font-size: var(--font-size-12);
+}
+.agent-session-access li > svg {
+  grid-row: span 2;
+  color: var(--color-surface-variant-text);
+}
+.agent-session-access li > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-session-access small {
+  grid-column: 2;
+  color: var(--color-surface-variant-text);
+  font-size: var(--font-size-11);
+}
+.agent-session-access li[data-level="change"] small {
+  color: var(--color-warning);
+}
+.agent-control-page .agent-session-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6) var(--space-12);
+  margin: var(--space-10) 0 0 calc(32px + var(--space-12));
+  color: var(--color-surface-variant-text);
+  font-size: var(--font-size-12);
+}
+.agent-session-scopes {
+  margin: var(--space-10) 0 0 calc(32px + var(--space-12));
+  color: var(--color-surface-variant-text);
+  font-size: var(--font-size-12);
+}
+.agent-session-scopes code {
+  display: block;
+  margin-top: var(--space-6);
+  overflow-wrap: anywhere;
+}
+.agent-session-empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-10);
+  padding: var(--space-32) var(--space-16);
+  text-align: center;
+}
+.agent-control-page .agent-session-empty p {
+  margin: 0;
+  color: var(--color-surface-variant-text);
+  font-size: var(--font-size-13);
+}
+.agent-session-empty .agent-session-icon {
+  color: var(--color-surface-variant-text);
+}
+@container settings-page (max-width: 520px) {
+  .agent-session-access,
+  .agent-control-page .agent-session-note,
+  .agent-session-scopes {
+    margin-left: 0;
+  }
+}

@@ -7,7 +7,17 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { listen } from "@tauri-apps/api/event";
 import { api, errorMessage, native } from "./api";
 import { useT } from "./i18n";
-import { Modal } from "./ui";
+import { sessionAccess } from "./agent-control-access";
+import { DisclosureSummary, Modal } from "./ui";
+import {
+  FileText,
+  GitBranch,
+  Globe,
+  LayoutGrid,
+  Settings,
+  Smartphone,
+  Terminal,
+} from "./icons";
 import {
   SettingRow,
   SettingsNotice,
@@ -1029,101 +1039,152 @@ export default function AgentControlSettingsPage({
           </div>
         ) : (
           <>
-            <SettingsSection title={t("New session requests")} grouped={false}>
-              {!broker.pending.length && (
-                <p className="settings-help">
-                  {t("No client is waiting to connect.")}
-                </p>
-              )}
-              {broker.pending.map((request) => (
-                <Pairing
-                  key={request.id}
-                  request={request}
-                  workspaces={broker.workspaces}
-                  terminalProfiles={
-                    broker.terminalProfiles ??
-                    (broker.terminalProfile ? [broker.terminalProfile] : [])
-                  }
-                  busy={busy}
-                  run={run}
-                />
-              ))}
-            </SettingsSection>
+            {broker.pending.length > 0 && (
+              <SettingsSection
+                title={t("New session requests")}
+                count={broker.pending.length || undefined}
+                grouped={false}
+              >
+                {broker.pending.map((request) => (
+                  <Pairing
+                    key={request.id}
+                    request={request}
+                    workspaces={broker.workspaces}
+                    terminalProfiles={
+                      broker.terminalProfiles ??
+                      (broker.terminalProfile ? [broker.terminalProfile] : [])
+                    }
+                    busy={busy}
+                    run={run}
+                  />
+                ))}
+              </SettingsSection>
+            )}
 
             {pendingOperationRequests}
 
-            <SettingsSection title={t("Active sessions")} grouped={false}>
-              {!broker.sessions.length && (
-                <p className="settings-help">{t("No active sessions.")}</p>
-              )}
-              {broker.sessions.map((session) => (
-                <article className="agent-control-request" key={session.id}>
-                  <h3>{session.clientLabel}</h3>
-                  <p>
-                    {session.workspaceIds
-                      .map(
-                        (id) =>
-                          broker.workspaces.find(
-                            (workspace) => workspace.id === id,
-                          )?.name ?? t("Unavailable workspace"),
+            <SettingsSection
+              title={t("Active sessions")}
+              count={broker.sessions.length || undefined}
+              description={
+                broker.sessions.length > 0 &&
+                t("Client names are labels, not verified identities.")
+              }
+              actions={
+                (broker.sessions.length > 0 || requestCount > 0) && (
+                  <button
+                    type="button"
+                    className="button button-danger"
+                    title={t(
+                      "Ends every session and rejects pending requests. The server stays on.",
+                    )}
+                    disabled={busy}
+                    onClick={() =>
+                      void run(
+                        () => api("agent_control_revoke"),
+                        t(
+                          "All sessions stopped and pending requests rejected.",
+                        ),
                       )
-                      .join(", ")}
-                  </p>
-                  <div className="agent-control-details-content">
-                    <dl>
-                      <dt>{t("Granted access")}</dt>
-                      <dd>
+                    }
+                  >
+                    {t("Stop all sessions")}
+                  </button>
+                )
+              }
+            >
+              {!broker.sessions.length && (
+                <div className="agent-session-empty">
+                  <span className="agent-session-icon" aria-hidden="true">
+                    <Terminal size={16} />
+                  </span>
+                  <p>{t("No active sessions.")}</p>
+                </div>
+              )}
+              {broker.sessions.map((session) => {
+                const areas = sessionAccess(session.scopes);
+                const workspaces = session.workspaceIds.map((id) => {
+                  const workspace = broker.workspaces.find(
+                    (item) => item.id === id,
+                  );
+                  return workspace
+                    ? `${workspace.projectName} / ${workspace.name}`
+                    : t("Unavailable workspace");
+                });
+                const shell =
+                  session.scopes.includes("terminal.execute") &&
+                  session.terminalProfile?.id;
+                return (
+                  <article className="agent-session" key={session.id}>
+                    <header className="agent-session-header">
+                      <span className="agent-session-icon" aria-hidden="true">
+                        <Terminal size={16} />
+                      </span>
+                      <div className="agent-session-title">
+                        <h3>{session.clientLabel}</h3>
+                        <p>
+                          {workspaces.join(", ")}
+                          {shell && (
+                            <>
+                              {" · "}
+                              <code>{shell}</code>
+                            </>
+                          )}
+                        </p>
+                      </div>
+                      <span className="agent-session-live">
+                        {t("Connected")}
+                      </span>
+                    </header>
+                    {areas.length > 0 ? (
+                      <ul className="agent-session-access">
+                        {areas.map((area) => {
+                          const Icon = areaIcons[area.label] ?? Terminal;
+                          return (
+                            <li
+                              key={area.label}
+                              data-level={area.changes ? "change" : "read"}
+                              title={area.scopes.join(", ")}
+                            >
+                              <Icon size={14} aria-hidden="true" />
+                              <span>{t(area.label)}</span>
+                              <small>
+                                {area.changes
+                                  ? t("can change")
+                                  : t("read-only")}
+                              </small>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : (
+                      <p className="agent-session-note">
+                        {t("Workspace layout only")}
+                      </p>
+                    )}
+                    {(session.browserOrigins.length > 0 ||
+                      session.androidPackages?.length > 0) && (
+                      <p className="agent-session-note">
+                        {[
+                          ...session.browserOrigins,
+                          ...(session.androidPackages ?? []),
+                        ].map((value) => (
+                          <code key={value}>{value}</code>
+                        ))}
+                      </p>
+                    )}
+                    <details className="agent-session-scopes">
+                      <DisclosureSummary>
+                        {t("Granted access")}
+                      </DisclosureSummary>
+                      <code>
                         {session.scopes.join(", ") || t("No additional scopes")}
-                      </dd>
-                      {session.scopes.includes("terminal.execute") &&
-                        session.terminalProfile && (
-                          <>
-                            <dt>{t("Shell")}</dt>
-                            <dd>{session.terminalProfile.id}</dd>
-                          </>
-                        )}
-                      {session.androidPackages?.length > 0 && (
-                        <>
-                          <dt>{t("Android apps")}</dt>
-                          <dd>{session.androidPackages.join(", ")}</dd>
-                        </>
-                      )}
-                      {session.browserOrigins.length > 0 && (
-                        <>
-                          <dt>{t("Browser origins")}</dt>
-                          <dd>{session.browserOrigins.join(", ")}</dd>
-                        </>
-                      )}
-                    </dl>
-                  </div>
-                </article>
-              ))}
+                      </code>
+                    </details>
+                  </article>
+                );
+              })}
             </SettingsSection>
-            {(broker.sessions.length > 0 || requestCount > 0) && (
-              <SettingRow
-                label={t("Stop all access")}
-                description={t(
-                  "Ends every session and rejects pending requests. The server stays on.",
-                )}
-              >
-                <button
-                  type="button"
-                  className="button"
-                  disabled={busy}
-                  onClick={() =>
-                    void run(
-                      () => api("agent_control_revoke"),
-                      t("All sessions stopped and pending requests rejected."),
-                    )
-                  }
-                >
-                  {t("Stop all sessions")}
-                </button>
-              </SettingRow>
-            )}
-            <p className="settings-footnote">
-              {t("Client names are labels, not verified identities.")}
-            </p>
           </>
         )}
       </section>
@@ -1243,3 +1304,13 @@ export default function AgentControlSettingsPage({
     </SettingsPage>
   );
 }
+
+const areaIcons: Record<string, typeof Terminal> = {
+  Terminal,
+  "Files & editor": FileText,
+  Git: GitBranch,
+  Browser: Globe,
+  Android: Smartphone,
+  "Workspaces & panels": LayoutGrid,
+  "Application preferences": Settings,
+};

@@ -2356,5 +2356,14 @@
   "Signing out…": "Выход…",
   "now": "сейчас",
   "Revoke every session, including this device. Use this if you think your account was accessed by someone else.": "Отозвать все сеансы, включая это устройство. Используйте это, если подозреваете, что кто-то получил доступ к вашей учётной записи.",
-  "Sign in to use Lomi online services. Your local projects work without an account.": "Войдите, чтобы пользоваться онлайн-сервисами Lomi. Локальные проекты работают без учётной записи."
+  "Sign in to use Lomi online services. Your local projects work without an account.": "Войдите, чтобы пользоваться онлайн-сервисами Lomi. Локальные проекты работают без учётной записи.",
+  "Wants to connect": "Хочет подключиться",
+  "Verify the request": "Проверьте запрос",
+  "Choose access": "Выберите доступ",
+  "Choose a workspace to approve this session.": "Выберите рабочую область, чтобы одобрить этот сеанс.",
+  "Agents that can use Lomi right now.": "Агенты, которые сейчас могут использовать Lomi.",
+  "Connected": "Подключено",
+  "can change": "может изменять",
+  "read-only": "только чтение",
+  "Workspace layout only": "Только макет рабочей области"
 }
