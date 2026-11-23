@@ -3638,6 +3638,7 @@ name = "lomi-host"
 version = "0.1.10"
 dependencies = [
  "libc",
+ "lomi-chat",
  "lomi-files",
  "lomi-git",
  "lomi-host-auth",
@@ -3655,6 +3656,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "signal-hook",
+ "tokio",
  "uuid",
  "windows-service",
  "windows-sys 0.61.2",

@@ -2124,6 +2124,10 @@ async fn remote_channel_task(
                                 if lomi_remote_protocol::decode_watch_frame(&bytes).is_err() { break "REMOTE_CHANNEL_STREAM_INVALID"; }
                                 events.send(RemoteV2NativeEvent::Message { kind: 5, id: id.to_string(), bytes }).map_err(|_| "REMOTE_VIEW_CLOSED".to_owned())
                             }
+                            MessageKind::ChatStreamFrame => {
+                                if lomi_remote_protocol::decode_chat_frame(&bytes).is_err() { break "REMOTE_CHANNEL_STREAM_INVALID"; }
+                                events.send(RemoteV2NativeEvent::Message { kind: 6, id: id.to_string(), bytes }).map_err(|_| "REMOTE_VIEW_CLOSED".to_owned())
+                            }
                             MessageKind::RpcRequest => break "REMOTE_CHANNEL_UNEXPECTED_REQUEST",
                         };
                         if result.is_err() { break "REMOTE_VIEW_CLOSED"; }

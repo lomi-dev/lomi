@@ -271,24 +271,6 @@ pub(crate) struct DetectResult {
     added: Vec<String>,
 }
 
-/// Installed CLIs that have no provider yet and were never auto-added or dismissed.
-fn detect_plan(installed: &[String], existing: &[String], auto: &[String]) -> Vec<String> {
-    installed
-        .iter()
-        .filter(|id| !existing.contains(id) && !auto.contains(id))
-        .cloned()
-        .collect()
-}
-
-/// Binary lookup only; never spawns.
-fn installed_clis() -> Vec<String> {
-    cli::CLIS
-        .into_iter()
-        .filter(|id| lomi_chat::cli_bin::resolve(id).is_some())
-        .map(String::from)
-        .collect()
-}
-
 #[tauri::command]
 pub(crate) async fn ai_providers_detect(
     window: Window,
@@ -298,33 +280,11 @@ pub(crate) async fn ai_providers_detect(
     crate::files::main_window(&window)?;
     let chat = state.inner().clone();
     blocking(move || {
-        let installed = installed_clis();
+        let installed = cli::installed_clis();
         // Planned and committed under one storage lock, so concurrent scans cannot double-add.
         let (settings, added) = chat.with(&app, |i| {
-            let existing: Vec<String> = i
-                .settings
-                .cli_providers
-                .iter()
-                .map(|c| c.instance_id.clone())
-                .collect();
-            let added = detect_plan(&installed, &existing, &i.settings.auto_detected);
-            if added.is_empty() {
-                return Ok((i.settings.clone(), added));
-            }
             let Inner { settings, dir, .. } = i;
-            settings.mutate(dir, None, |s| {
-                for id in &added {
-                    s.cli_providers.push(CliProvider {
-                        instance_id: id.clone(),
-                        cli: id.clone(),
-                        label: cli::display_name(id).into(),
-                        enabled: true,
-                        models: vec![],
-                    });
-                    s.auto_detected.push(id.clone());
-                }
-                Ok(())
-            })?;
+            let added = settings::detect_cli_providers(settings, dir, &installed)?;
             Ok((settings.clone(), added))
         })?;
         let settings = if added.is_empty() {
@@ -747,16 +707,6 @@ mod tests {
         assert!(!same_origin("https://a.example", "http://127.0.0.1"));
         assert!(!same_origin("https://a.example", "https://a.example:8443"));
         assert!(!same_origin("https://a.example", "https://b.example"));
-    }
-
-    #[test]
-    fn detect_plan_skips_existing_and_remembered() {
-        let v = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-        assert_eq!(
-            detect_plan(&v(&["claude", "codex", "pi"]), &v(&["codex"]), &v(&["pi"])),
-            v(&["claude"])
-        );
-        assert!(detect_plan(&[], &v(&["codex"]), &[]).is_empty());
     }
 }
 
