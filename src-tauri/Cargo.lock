@@ -3478,6 +3478,7 @@ dependencies = [
  "jsonc-parser",
  "keyring",
  "libc",
+ "lomi-chat",
  "lomi-control-core",
  "lomi-control-protocol",
  "lomi-files",
@@ -3536,6 +3537,27 @@ dependencies = [
  "windows-sys 0.61.2",
  "zeroize",
  "zip",
+]
+
+[[package]]
+name = "lomi-chat"
+version = "0.1.10"
+dependencies = [
+ "base64 0.22.1",
+ "libc",
+ "regex",
+ "reqwest",
+ "ring",
+ "rusqlite",
+ "rustls",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "tokio",
+ "toml_edit 0.25.13+spec-1.1.0",
+ "windows-sys 0.61.2",
+ "zeroize",
 ]
 
 [[package]]

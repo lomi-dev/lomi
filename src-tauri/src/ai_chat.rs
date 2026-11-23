@@ -1,11 +1,8 @@
 //! Chat AI v2: provider registry, thread storage, API streaming and system-CLI chat.
 //! Data lives in `app_data/ai-chat/`; API keys live only in the system key store.
-mod attachments;
-mod cli;
 mod commands;
-mod http;
-mod settings;
-mod store;
+
+use lomi_chat::{attachments, cli, http, settings, store};
 
 pub(crate) use commands::*;
 

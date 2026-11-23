@@ -362,7 +362,7 @@ pub(crate) async fn ai_cli_models(
 ) -> Result<Vec<cli::CliModel>, String> {
     crate::files::main_window(&window)?;
     supported_cli(&cli)?;
-    Ok(cli::models(&cli).await)
+    Ok(cli::models(&cli, crate::cli_usage::claude_access_token).await)
 }
 
 #[tauri::command]

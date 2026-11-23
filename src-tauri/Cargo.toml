@@ -51,6 +51,7 @@ lomi-mcp = { path = "crates/lomi-mcp" }
 lomi-control-core = { path = "crates/lomi-control-core" }
 lomi-control-protocol = { path = "crates/lomi-control-protocol" }
 lomi-host = { path = "../../lomi-remote/crates/lomi-host" }
+lomi-chat = { path = "../../lomi-remote/crates/lomi-chat" }
 lomi-git = { path = "../../lomi-remote/crates/lomi-git" }
 lomi-files = { path = "../../lomi-remote/crates/lomi-files" }
 lomi-native-files = { path = "../../lomi-remote/crates/lomi-native-files" }
