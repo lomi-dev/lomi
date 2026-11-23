@@ -1,9 +1,10 @@
 use super::{
     callback::{self, CallbackError},
     config::AuthConfig,
-    http::{ApiClient, HttpProblem, RemoteHttpError, SessionCheck},
+    http::{self, ApiClient, HttpProblem, RemoteHttpError, SessionCheck},
     storage::{CredentialSaveError, CredentialStore},
-    AuthAttempt, AuthState, AuthStatus, AuthStorage, STATE_CHANGED_EVENT,
+    AccountSession, AuthAttempt, AuthState, AuthStatus, AuthStorage, RevokeOutcome,
+    STATE_CHANGED_EVENT,
 };
 use ring::digest::{digest, SHA256};
 use ring::rand::{SecureRandom, SystemRandom};
@@ -1088,6 +1089,11 @@ impl AuthController {
     }
 
     pub async fn sign_out(&self) -> AuthState {
+        self.sign_out_inner(true).await
+    }
+
+    /// `remote: false` is for when the server already revoked this session.
+    async fn sign_out_inner(&self, remote: bool) -> AuthState {
         let (generation, token, tombstone_error, had_session) = {
             let Ok(mut core) = self.authority_mutation() else {
                 return self.snapshot();
@@ -1130,6 +1136,7 @@ impl AuthController {
         self.publish();
 
         let remote_confirmed = match token.as_ref() {
+            _ if !remote => Some(true),
             Some(token) => match self.inner.api.as_ref() {
                 Some(api) => Some(api.sign_out(token.exposed()).await),
                 None => Some(false),
@@ -1163,6 +1170,82 @@ impl AuthController {
             }
         }
         self.publish()
+    }
+
+    pub async fn list_account_sessions(&self) -> Result<Vec<AccountSession>, String> {
+        // shortcut: first 100 sessions only, paginate via nextCursor if users exceed that
+        match self
+            .account_request(reqwest::Method::GET, "/v1/account/sessions?limit=100", None)
+            .await?
+        {
+            AccountReply::Ok(value) => http::parse_sessions(value)
+                .map_err(|_| account_message(HttpProblem::InvalidResponse).to_string()),
+            _ => Err(account_message(HttpProblem::Rejected).into()),
+        }
+    }
+
+    pub async fn revoke_account_session(&self, session_id: &str) -> Result<RevokeOutcome, String> {
+        if !http::valid_session_id(session_id) {
+            return Err("Invalid session identifier.".into());
+        }
+        let path = format!("/v1/account/sessions/{session_id}");
+        match self
+            .account_request(reqwest::Method::DELETE, &path, None)
+            .await?
+        {
+            AccountReply::ReauthRequired => Ok(RevokeOutcome::ReauthRequired),
+            _ => Ok(RevokeOutcome::Revoked),
+        }
+    }
+
+    pub async fn revoke_all_account_sessions(&self) -> Result<RevokeOutcome, String> {
+        let body = serde_json::json!({});
+        match self
+            .account_request(
+                reqwest::Method::POST,
+                "/v1/account/sessions/revoke-all",
+                Some(&body),
+            )
+            .await?
+        {
+            AccountReply::ReauthRequired => Ok(RevokeOutcome::ReauthRequired),
+            _ => {
+                // This desktop token is revoked too; clear local state without the remote call.
+                self.sign_out_inner(false).await;
+                Ok(RevokeOutcome::Revoked)
+            }
+        }
+    }
+
+    async fn account_request(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&serde_json::Value>,
+    ) -> Result<AccountReply, String> {
+        let (token, binding) = {
+            let core = self.inner.core.lock().map_err(|_| "Account unavailable.")?;
+            let binding = remote_binding(&core).map_err(|_| "Sign in first.")?;
+            (core.token.clone().ok_or("Sign in first.")?, binding)
+        };
+        let result = self
+            .inner
+            .api
+            .as_ref()
+            .ok_or("Account unavailable.")?
+            .account_request(token.exposed(), method, path, body)
+            .await;
+        let core = self.inner.core.lock().map_err(|_| "Account unavailable.")?;
+        if !remote_binding(&core)?.same_authority(&binding) {
+            return Err("Account session changed.".into());
+        }
+        match result {
+            Ok(value) => Ok(AccountReply::Ok(value)),
+            Err(error) if error.code == "REAUTH_REQUIRED" => Ok(AccountReply::ReauthRequired),
+            // Already gone counts as revoked.
+            Err(error) if error.status == Some(404) => Ok(AccountReply::NotFound),
+            Err(error) => Err(account_message(error.problem()).into()),
+        }
     }
 
     pub fn open_account_portal(&self, app: &tauri::AppHandle) -> Result<(), String> {
@@ -1626,6 +1709,31 @@ fn desktop_start_message(problem: HttpProblem) -> &'static str {
             "The account service is unavailable. Check your connection and retry."
         }
         _ => "The account service could not start sign-in. Please retry later.",
+    }
+}
+
+enum AccountReply {
+    Ok(serde_json::Value),
+    ReauthRequired,
+    NotFound,
+}
+
+fn account_message(problem: HttpProblem) -> &'static str {
+    match problem {
+        HttpProblem::Transport => {
+            "Cannot connect to the account service. Check your connection and retry."
+        }
+        HttpProblem::Temporary => {
+            "The account service is temporarily unavailable. Try again shortly."
+        }
+        HttpProblem::RateLimited(_) => "Too many requests. Wait a moment and retry.",
+        HttpProblem::Unauthorized => "Your session could not be verified. Sign in again.",
+        HttpProblem::Forbidden => "The account service denied this request.",
+        HttpProblem::InvalidResponse => {
+            "The account service returned an invalid response. Try again later."
+        }
+        HttpProblem::DesktopUpdateRequired => "Update Lomi to manage account sessions.",
+        HttpProblem::Rejected => "The account service rejected the request. Try again later.",
     }
 }
 

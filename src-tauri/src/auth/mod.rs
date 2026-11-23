@@ -49,6 +49,24 @@ pub struct AuthSession {
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AccountSession {
+    pub(super) id: String,
+    pub(super) kind: String,
+    pub(super) created_at: String,
+    pub(super) updated_at: String,
+    pub(super) expires_at: String,
+    pub(super) is_current: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RevokeOutcome {
+    Revoked,
+    ReauthRequired,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AuthAttempt {
     pub(super) id: String,
     pub(super) expires_at: String,
@@ -165,6 +183,34 @@ pub async fn auth_sign_out(
 ) -> Result<AuthState, String> {
     trusted_account_window(&window)?;
     Ok(controller.sign_out().await)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn auth_list_sessions(
+    window: Window,
+    controller: State<'_, AuthController>,
+) -> Result<Vec<AccountSession>, String> {
+    settings_window(&window)?;
+    controller.list_account_sessions().await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn auth_revoke_session(
+    window: Window,
+    controller: State<'_, AuthController>,
+    session_id: String,
+) -> Result<RevokeOutcome, String> {
+    settings_window(&window)?;
+    controller.revoke_account_session(&session_id).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn auth_revoke_all_sessions(
+    window: Window,
+    controller: State<'_, AuthController>,
+) -> Result<RevokeOutcome, String> {
+    settings_window(&window)?;
+    controller.revoke_all_account_sessions().await
 }
 
 #[tauri::command(rename_all = "camelCase")]

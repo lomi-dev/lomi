@@ -1,4 +1,4 @@
-use super::{config::AuthConfig, safe_text, AuthSession, AuthUser};
+use super::{config::AuthConfig, safe_text, AccountSession, AuthSession, AuthUser};
 use reqwest::{header, Client, Response, StatusCode};
 use serde::Deserialize;
 use serde_json::Value;
@@ -78,6 +78,10 @@ impl RemoteHttpError {
             code,
             problem,
         }
+    }
+
+    pub(super) fn problem(&self) -> HttpProblem {
+        self.problem
     }
 
     pub(crate) fn message(&self) -> &'static str {
@@ -595,6 +599,42 @@ impl ApiClient {
         response.status().is_success()
     }
 
+    /// Account-session management with the desktop Bearer token. Callers
+    /// pass only fixed `/v1/account/sessions` routes.
+    pub async fn account_request(
+        &self,
+        token: &str,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&Value>,
+    ) -> Result<Value, RemoteHttpError> {
+        let local = |problem| RemoteHttpError::local(problem, problem_code(problem));
+        if !path.starts_with("/v1/account/sessions") {
+            return Err(local(HttpProblem::Rejected));
+        }
+        let url = self
+            .config
+            .endpoint(path)
+            .map_err(|_| local(HttpProblem::InvalidResponse))?;
+        let request = self.client.request(method, url).bearer_auth(token);
+        let (response, bytes, retry_after) = match body {
+            Some(body) => self.send_json(request, body).await,
+            None => match request.send().await {
+                Ok(response) => read_response(response).await,
+                Err(_) => Err(HttpProblem::Transport),
+            },
+        }
+        .map_err(local)?;
+        if !response.status().is_success() {
+            return Err(RemoteHttpError::from_http(
+                response.status(),
+                &bytes,
+                retry_after,
+            ));
+        }
+        serde_json::from_slice(&bytes).map_err(|_| local(HttpProblem::InvalidResponse))
+    }
+
     pub async fn probe(&self) -> Result<(), HttpProblem> {
         let url = self
             .config
@@ -724,6 +764,33 @@ fn classify_http_error(status: StatusCode, body: &[u8], retry_after: Option<u64>
     HttpProblem::Rejected
 }
 
+pub(super) fn valid_session_id(id: &str) -> bool {
+    (1..=128).contains(&id.len())
+        && id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+}
+
+pub(super) fn parse_sessions(value: Value) -> Result<Vec<AccountSession>, HttpProblem> {
+    let wire: SessionListWire =
+        serde_json::from_value(value).map_err(|_| HttpProblem::InvalidResponse)?;
+    Ok(wire
+        .sessions
+        .into_iter()
+        .map(|session| AccountSession {
+            id: safe_text(&session.id, 128),
+            kind: match session.kind.as_str() {
+                "desktop" | "browser" => session.kind,
+                _ => "unknown".to_owned(),
+            },
+            created_at: safe_text(&session.created_at, 64),
+            updated_at: safe_text(&session.updated_at, 64),
+            expires_at: safe_text(&session.expires_at, 64),
+            is_current: session.is_current,
+        })
+        .collect())
+}
+
 fn valid_token(token: &str) -> bool {
     !token.is_empty() && token.len() <= 4096 && token.bytes().all(|byte| !byte.is_ascii_control())
 }
@@ -765,4 +832,45 @@ struct UserWire {
 struct SessionWire {
     id: String,
     expires_at: String,
+}
+
+#[derive(Deserialize)]
+struct SessionListWire {
+    sessions: Vec<AccountSessionWire>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AccountSessionWire {
+    id: String,
+    kind: String,
+    created_at: String,
+    updated_at: String,
+    expires_at: String,
+    is_current: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn session_id_validation() {
+        assert!(valid_session_id("abc_DEF-123"));
+        assert!(!valid_session_id(""));
+        assert!(!valid_session_id("a/b"));
+        assert!(!valid_session_id("a?b"));
+        assert!(!valid_session_id(&"a".repeat(129)));
+    }
+
+    #[test]
+    fn unknown_kind_is_mapped() {
+        let value = serde_json::json!({"sessions": [
+            {"id": "a", "kind": "desktop", "createdAt": "t", "updatedAt": "t", "expiresAt": "t", "isCurrent": true},
+            {"id": "b", "kind": "weird", "createdAt": "t", "updatedAt": "t", "expiresAt": "t", "isCurrent": false}
+        ], "nextCursor": null});
+        let sessions = parse_sessions(value).unwrap();
+        assert_eq!(sessions[0].kind, "desktop");
+        assert_eq!(sessions[1].kind, "unknown");
+    }
 }
