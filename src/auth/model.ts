@@ -32,6 +32,17 @@ export interface AuthState {
   remoteRevocationConfirmed: boolean | null;
 }
 
+export interface AccountSession {
+  id: string;
+  kind: "desktop" | "browser" | "unknown";
+  createdAt: string;
+  updatedAt: string;
+  expiresAt: string;
+  isCurrent: boolean;
+}
+
+export type RevokeOutcome = "revoked" | "reauth-required";
+
 export const unavailableState: AuthState = {
   revision: 0,
   status: "unavailable",

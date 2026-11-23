@@ -335,15 +335,35 @@ const account = build(
   [
     [
       msg("Your account"),
-      "profile, name, email",
+      "profile, name, email, avatar",
       [
-        [msg("Name"), undefined, "profile"],
-        [msg("GitHub"), undefined, "username, identity"],
-        [msg("Email"), undefined, "address"],
+        [msg("Email"), undefined, "address, copy"],
+        [msg("Account ID"), undefined, "support, identifier, copy"],
+      ],
+    ],
+    [
+      msg("This device"),
+      "session, sign out, logout",
+      [
         [
-          msg("Storage"),
-          msg("You will need to sign in again after closing Lomi."),
-          "session, credential store",
+          msg("Sign-in storage"),
+          undefined,
+          "session, credential store, keychain",
+        ],
+        [msg("Session expires"), undefined, "expiry"],
+        [msg("Check now"), undefined, "refresh, reconnect, offline"],
+        [msg("Sign out"), undefined, "log out, logout, disconnect, sign off"],
+      ],
+    ],
+    [
+      msg("Sessions"),
+      "devices, browsers, security, revoke",
+      [
+        [msg("Revoke"), undefined, "remove session, kick device"],
+        [
+          msg("Sign out everywhere"),
+          undefined,
+          "revoke all, logout all devices",
         ],
       ],
     ],
@@ -372,20 +392,14 @@ const account = build(
       ],
     ],
     [
-      msg("Account access"),
-      "sessions, sign out, logout",
+      msg("More"),
+      "portal, notifications, remote",
       [
         [
-          msg("Manage account"),
-          msg("Manage sessions in your browser."),
-          "portal, profile, subscription, billing",
-        ],
-        [
-          msg("Sign out of this device"),
+          msg("Account portal"),
           undefined,
-          "log out, logout, disconnect, sign off",
+          "manage account, delete account, profile",
         ],
-        [msg("Retry connection"), undefined, "reconnect, offline"],
       ],
     ],
   ],

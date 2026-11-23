@@ -151,7 +151,10 @@ export default function SettingsPanel({
             </Suspense>
           ) : page === "account" ? (
             <Suspense fallback={<SettingsLoading title={t("Account")} />}>
-              <AccountSettingsPage />
+              <AccountSettingsPage
+                remoteAvailable={remoteAvailable}
+                onNavigate={setPage}
+              />
             </Suspense>
           ) : page === "agent-control" ? (
             <Suspense fallback={<SettingsLoading title={t("Agent control")} />}>
