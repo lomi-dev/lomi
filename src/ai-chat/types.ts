@@ -84,6 +84,8 @@ export interface ThreadSummary {
   instanceId: string;
   model: string;
   title: string;
+  /** Working directory of a CLI thread; null for API threads. */
+  cwd?: string | null;
   revision: number;
   createdMs: number;
   updatedMs: number;
@@ -99,6 +101,62 @@ export interface Attachment {
   kind: "image" | "text" | "pdf";
   size: number;
 }
+export type ActivityKind =
+  | "reasoning"
+  | "read"
+  | "edit"
+  | "search"
+  | "execute"
+  | "fetch"
+  | "agent"
+  | "other";
+export type ActivityStatus = "running" | "completed" | "failed";
+export interface ActivityDiff {
+  path: string;
+  before: string | null;
+  after: string;
+}
+export type ApprovalState = "pending" | "allowed" | "denied" | "expired";
+export type ApprovalDecision = "allow" | "allow_session" | "deny";
+export interface Approval {
+  requestId: string;
+  state: ApprovalState;
+  canRemember: boolean;
+}
+export interface Activity {
+  id: string;
+  kind: ActivityKind;
+  title: string;
+  status: ActivityStatus;
+  /** UTF-16 offset into the message content where it happened. */
+  at: number;
+  detail: string | null;
+  diff: ActivityDiff | null;
+  /** Absent when no permission prompt happened. */
+  approval?: Approval;
+}
+export interface Usage {
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens: number;
+  costUsd: number | null;
+}
+export type ChangeStatus = "added" | "modified" | "deleted" | "renamed";
+export interface FileChange {
+  path: string;
+  status: ChangeStatus;
+  additions: number;
+  deletions: number;
+  binary: boolean;
+}
+export interface TurnChanges {
+  files: FileChange[];
+  undone: boolean;
+}
+export interface TurnUndoResult {
+  restored: string[];
+  skipped: string[];
+}
 export interface ThreadMessage {
   messageId: string;
   seq: number;
@@ -112,6 +170,11 @@ export interface ThreadMessage {
   error: string | null;
   createdMs: number;
   attachments: Attachment[];
+  /** Missing on data stored before activity existed. */
+  activity?: Activity[];
+  usage?: Usage | null;
+  /** Files the agent changed in this turn; absent when none were captured. */
+  changes?: TurnChanges | null;
 }
 export interface ThreadSnapshot {
   thread: ThreadSummary;
@@ -124,6 +187,7 @@ export interface ThreadSendAccepted {
 }
 export type ThreadStreamEvent =
   | { type: "delta"; messageId: string; seq: number; text: string }
+  | { type: "activity"; messageId: string; activity: Activity }
   | { type: "final"; thread: ThreadSummary; message: ThreadMessage };
 export type ProviderKind = ApiKind | "cli";
 export interface ProviderEntry {
@@ -143,11 +207,6 @@ export interface ProviderEntry {
   cliStatus?: CliStatus;
   api?: ApiProvider;
 }
-export interface ToolRow {
-  id: string;
-  label: string;
-  state: string;
-}
 /** One rendered message. */
 export interface ChatItem {
   id: string;
@@ -158,7 +217,9 @@ export interface ChatItem {
   error: string | null;
   /** The reply was cut short by the user. */
   stopped: boolean;
-  tools: ToolRow[];
+  activity: Activity[];
+  usage: Usage | null;
+  changes: TurnChanges | null;
   attachments: Attachment[];
   /** Text of the user message that produced a failed reply. */
   resend: string | null;

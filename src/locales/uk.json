@@ -1453,6 +1453,7 @@
   "No models available.": "Немає доступних моделей.",
   "Message": "Повідомлення",
   "Attach files": "Прикріпити файли",
+  "No matching files": "Немає відповідних файлів",
   "Enter to send": "Enter — надіслати",
   "{modifier} Enter to send": "{modifier} Enter — надіслати",
   "Stop": "Зупинити",
@@ -1528,6 +1529,8 @@
   "Allow full access?": "Дозволити повний доступ?",
   "New CLI threads will be able to run any command and edit files without asking you first. Use this only for projects you trust.": "Нові діалоги CLI зможуть виконувати будь-які команди та редагувати файли без попереднього запитання. Використовуйте це лише для проєктів, яким довіряєте.",
   "Allow full access": "Дозволити повний доступ",
+  "Stop the reply before changing permissions.": "Зупиніть відповідь, перш ніж змінювати дозволи.",
+  "This thread will be able to run any command and edit files without asking you first. Use this only for projects you trust.": "Ця гілка зможе виконувати будь-які команди та змінювати файли без попереднього запиту. Використовуйте це лише для проєктів, яким довіряєте.",
   "Edit files": "Редагування файлів",
   "Full access": "Повний доступ",
   "Project folder": "Папка проєкту",
@@ -2365,5 +2368,60 @@
   "Connected": "Під’єднано",
   "can change": "може змінювати",
   "read-only": "лише читання",
-  "Workspace layout only": "Лише макет робочої області"
+  "Workspace layout only": "Лише макет робочої області",
+  "Failed": "Не вдалося",
+  "Thinking": "Думає",
+  "Thought": "Роздум",
+  "{count} steps": {
+    "one": "{count} крок",
+    "few": "{count} кроки",
+    "many": "{count} кроків",
+    "other": "{count} кроку"
+  },
+  "Tokens: input {input}, output {output}": "Токени: вхід {input}, вихід {output}",
+  "{input} in, {output} out": "{input} вх., {output} вих.",
+  "Allow": "Дозволити",
+  "Allow for this session": "Дозволити на цей сеанс",
+  "Deny": "Відхилити",
+  "Allowed": "Дозволено",
+  "Denied": "Відхилено",
+  "Expired": "Закінчився термін",
+  "Permission request": "Запит дозволу",
+  "Waiting for your approval": "Очікування вашого підтвердження",
+  "{count} files changed": {
+    "one": "Змінено {count} файл",
+    "few": "Змінено {count} файли",
+    "many": "Змінено {count} файлів",
+    "other": "Змінено {count} файлу"
+  },
+  "Restored {count} files": {
+    "one": "Відновлено {count} файл",
+    "few": "Відновлено {count} файли",
+    "many": "Відновлено {count} файлів",
+    "other": "Відновлено {count} файлу"
+  },
+  "Skipped {count} files changed since this turn:": {
+    "one": "Пропущено {count} файл, змінений після цього ходу:",
+    "few": "Пропущено {count} файли, змінені після цього ходу:",
+    "many": "Пропущено {count} файлів, змінених після цього ходу:",
+    "other": "Пропущено {count} файлу, зміненого після цього ходу:"
+  },
+  "Changes from this turn": "Зміни за цей хід",
+  "Changes undone": "Зміни скасовано",
+  "Undo changes?": "Скасувати зміни?",
+  "Undo the changes from this turn? Files changed afterwards are kept.": "Скасувати зміни за цей хід? Файли, змінені пізніше, буде збережено.",
+  "binary": "двійковий",
+  "Edit": "Змінити",
+  "Queued messages": "Повідомлення в черзі",
+  "Queue paused": "Чергу призупинено",
+  "Send next": "Надіслати наступне",
+  "Add to queue": "Додати до черги",
+  "Files cannot be moved back. Remove this message and attach them again.": "Файли не можна повернути назад. Видаліть це повідомлення й прикріпіть їх знову.",
+  "Clear the message field to edit this message.": "Очистьте поле повідомлення, щоб змінити це повідомлення.",
+  "{count} files": {
+    "one": "{count} файл",
+    "few": "{count} файли",
+    "many": "{count} файлів",
+    "other": "{count} файлу"
+  }
 }

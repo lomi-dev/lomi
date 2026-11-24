@@ -1453,6 +1453,7 @@
   "No models available.": "Нет доступных моделей.",
   "Message": "Сообщение",
   "Attach files": "Прикрепить файлы",
+  "No matching files": "Нет подходящих файлов",
   "Enter to send": "Enter — отправить",
   "{modifier} Enter to send": "{modifier} Enter — отправить",
   "Stop": "Остановить",
@@ -1528,6 +1529,8 @@
   "Allow full access?": "Разрешить полный доступ?",
   "New CLI threads will be able to run any command and edit files without asking you first. Use this only for projects you trust.": "Новые диалоги CLI смогут выполнять любые команды и редактировать файлы без предварительного вопроса. Используйте это только для проектов, которым вы доверяете.",
   "Allow full access": "Разрешить полный доступ",
+  "Stop the reply before changing permissions.": "Остановите ответ, прежде чем менять разрешения.",
+  "This thread will be able to run any command and edit files without asking you first. Use this only for projects you trust.": "Этот тред сможет выполнять любые команды и изменять файлы без предварительного запроса. Используйте это только для проектов, которым доверяете.",
   "Edit files": "Редактирование файлов",
   "Full access": "Полный доступ",
   "Project folder": "Папка проекта",
@@ -2365,5 +2368,60 @@
   "Connected": "Подключено",
   "can change": "может изменять",
   "read-only": "только чтение",
-  "Workspace layout only": "Только макет рабочей области"
+  "Workspace layout only": "Только макет рабочей области",
+  "Failed": "Не удалось",
+  "Thinking": "Думает",
+  "Thought": "Размышление",
+  "{count} steps": {
+    "one": "{count} шаг",
+    "few": "{count} шага",
+    "many": "{count} шагов",
+    "other": "{count} шага"
+  },
+  "Tokens: input {input}, output {output}": "Токены: вход {input}, выход {output}",
+  "{input} in, {output} out": "{input} вх., {output} вых.",
+  "Allow": "Разрешить",
+  "Allow for this session": "Разрешить на этот сеанс",
+  "Deny": "Отклонить",
+  "Allowed": "Разрешено",
+  "Denied": "Отклонено",
+  "Expired": "Истекло",
+  "Permission request": "Запрос разрешения",
+  "Waiting for your approval": "Ожидание вашего подтверждения",
+  "{count} files changed": {
+    "one": "Изменён {count} файл",
+    "few": "Изменено {count} файла",
+    "many": "Изменено {count} файлов",
+    "other": "Изменено {count} файла"
+  },
+  "Restored {count} files": {
+    "one": "Восстановлен {count} файл",
+    "few": "Восстановлено {count} файла",
+    "many": "Восстановлено {count} файлов",
+    "other": "Восстановлено {count} файла"
+  },
+  "Skipped {count} files changed since this turn:": {
+    "one": "Пропущен {count} файл, изменённый после этого хода:",
+    "few": "Пропущено {count} файла, изменённых после этого хода:",
+    "many": "Пропущено {count} файлов, изменённых после этого хода:",
+    "other": "Пропущено {count} файла, изменённых после этого хода:"
+  },
+  "Changes from this turn": "Изменения за этот ход",
+  "Changes undone": "Изменения отменены",
+  "Undo changes?": "Отменить изменения?",
+  "Undo the changes from this turn? Files changed afterwards are kept.": "Отменить изменения за этот ход? Файлы, изменённые позже, сохранятся.",
+  "binary": "двоичный",
+  "Edit": "Изменить",
+  "Queued messages": "Сообщения в очереди",
+  "Queue paused": "Очередь приостановлена",
+  "Send next": "Отправить следующее",
+  "Add to queue": "Добавить в очередь",
+  "Files cannot be moved back. Remove this message and attach them again.": "Файлы нельзя вернуть обратно. Удалите это сообщение и прикрепите их снова.",
+  "Clear the message field to edit this message.": "Очистите поле сообщения, чтобы изменить это сообщение.",
+  "{count} files": {
+    "one": "{count} файл",
+    "few": "{count} файла",
+    "many": "{count} файлов",
+    "other": "{count} файла"
+  }
 }

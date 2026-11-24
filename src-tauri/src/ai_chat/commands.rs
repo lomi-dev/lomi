@@ -490,6 +490,73 @@ pub(crate) async fn ai_thread_snapshot(
     blocking(move || chat.with(&app, |i| i.store.snapshot(&thread_id))).await
 }
 
+const MENTION_FILE_CAP: usize = 20_000;
+const MENTION_WALK_DEPTH: usize = 8;
+
+/// Bounded, symlink-free directory walk used outside Git work trees.
+fn walk_files(root: &std::path::Path) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut stack = vec![(root.to_path_buf(), String::new(), 0usize)];
+    while let Some((dir, prefix, depth)) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.starts_with('.')
+                || matches!(name.as_str(), "node_modules" | "target" | "dist" | "build")
+            {
+                continue;
+            }
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
+            let rel = format!("{prefix}{name}");
+            if kind.is_file() {
+                out.push(rel);
+                if out.len() >= MENTION_FILE_CAP {
+                    return out;
+                }
+            } else if kind.is_dir() && depth < MENTION_WALK_DEPTH {
+                stack.push((entry.path(), format!("{rel}/"), depth + 1));
+            }
+        }
+    }
+    out
+}
+
+/// Lists files under a CLI thread's working directory for `@` mentions.
+#[tauri::command]
+pub(crate) async fn ai_thread_files(
+    window: Window,
+    app: AppHandle,
+    state: State<'_, AiChat>,
+    thread_id: String,
+) -> Result<Vec<String>, String> {
+    crate::files::main_window(&window)?;
+    let chat = state.inner().clone();
+    blocking(move || {
+        let Some(cwd) = chat.with(&app, |i| i.store.thread(&thread_id))?.cwd else {
+            return Ok(Vec::new());
+        };
+        let root = std::path::Path::new(&cwd);
+        let mut files =
+            match crate::git::checked(root, &["ls-files", "-co", "--exclude-standard", "-z"]) {
+                Ok(bytes) => bytes
+                    .split(|b| *b == 0)
+                    .filter(|p| !p.is_empty())
+                    .take(MENTION_FILE_CAP)
+                    .map(|p| String::from_utf8_lossy(p).into_owned())
+                    .collect(),
+                Err(_) => walk_files(root),
+            };
+        files.sort_unstable();
+        files.dedup();
+        Ok(files)
+    })
+    .await
+}
+
 #[tauri::command]
 pub(crate) async fn ai_thread_create(
     window: Window,
@@ -605,13 +672,18 @@ pub(crate) async fn ai_thread_delete(
     crate::files::main_window(&window)?;
     let chat = state.inner().clone();
     blocking(move || {
-        chat.with(&app, |i| {
+        let cwd = chat.with(&app, |i| {
             // Without a running stream, leftover in-flight rows (e.g. after a panic) must not block deletion.
             if !chat.engine(&app)?.is_active(&request.thread_id)? {
                 i.store.interrupt_inflight(&request.thread_id, false)?;
             }
-            i.store.delete(&request)
+            let cwd = i.store.thread(&request.thread_id)?.cwd;
+            i.store.delete(&request)?;
+            Ok(cwd)
         })?;
+        let engine = chat.engine(&app)?;
+        engine.forget_session(&request.thread_id);
+        engine.remove_checkpoints(&request.thread_id, cwd.as_deref());
         emit_changed(&app, "threads", 0, Some(&request.thread_id));
         Ok(())
     })
@@ -628,6 +700,55 @@ pub(crate) async fn ai_thread_stop(
     crate::files::main_window(&window)?;
     let engine = state.engine(&app)?.clone();
     blocking(move || engine.stop(&thread_id)).await
+}
+
+/// Unified diff of one file changed by an assistant turn.
+#[tauri::command]
+pub(crate) async fn ai_turn_diff(
+    window: Window,
+    app: AppHandle,
+    state: State<'_, AiChat>,
+    thread_id: String,
+    message_id: String,
+    path: String,
+) -> Result<String, String> {
+    crate::files::main_window(&window)?;
+    let engine = state.engine(&app)?.clone();
+    blocking(move || engine.turn_diff(&thread_id, &message_id, &path)).await
+}
+
+/// Restores the files an assistant turn changed; an explicit UI action.
+#[tauri::command]
+pub(crate) async fn ai_turn_undo(
+    window: Window,
+    app: AppHandle,
+    state: State<'_, AiChat>,
+    thread_id: String,
+    message_id: String,
+) -> Result<lomi_chat::checkpoint::UndoReport, String> {
+    crate::files::main_window(&window)?;
+    let engine = state.engine(&app)?.clone();
+    let (report, revision) = {
+        let thread_id = thread_id.clone();
+        blocking(move || engine.turn_undo(&thread_id, &message_id)).await?
+    };
+    emit_changed(&app, "threads", revision, Some(&thread_id));
+    Ok(report)
+}
+
+/// Answers a tool-permission prompt of a running Claude turn.
+#[tauri::command]
+pub(crate) async fn ai_thread_respond(
+    window: Window,
+    app: AppHandle,
+    state: State<'_, AiChat>,
+    thread_id: String,
+    request_id: String,
+    decision: Decision,
+) -> Result<(), String> {
+    crate::files::main_window(&window)?;
+    let engine = state.engine(&app)?.clone();
+    blocking(move || engine.respond(&thread_id, &request_id, decision)).await
 }
 
 struct ChannelSink(Channel<ThreadStreamEvent>);

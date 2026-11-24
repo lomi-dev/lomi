@@ -3,13 +3,19 @@ import { Channel } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { api, errorMessage } from "../api";
 import { t } from "../i18n";
+import { mergeActivity, upsertActivity } from "./activity";
+import { enqueue, remove, type QueuedMessage } from "./send-queue";
 import type {
+  ApprovalDecision,
+  Activity,
   ChatItem,
+  Permissions,
   ThreadMessage,
   ThreadSendAccepted,
   ThreadSnapshot,
   ThreadStreamEvent,
   ThreadSummary,
+  TurnUndoResult,
 } from "./types";
 
 export interface LiveChunk {
@@ -23,6 +29,15 @@ export interface ThreadViewState {
   error: string;
   busy: boolean;
   live: ReadonlyMap<string, readonly LiveChunk[]>;
+  /** Activity received over the stream, cleared when the message is final. */
+  liveActivity: ReadonlyMap<string, readonly Activity[]>;
+  /**
+   * Follow-ups typed while a reply runs. Kept in memory with the view, so it
+   * survives remounts and tab switches but not an app restart.
+   */
+  queued: readonly QueuedMessage[];
+  /** The queue waits for an explicit "Send next" (stopped reply or failed send). */
+  paused: boolean;
 }
 interface ChangedPayload {
   scope: string;
@@ -56,7 +71,12 @@ class ThreadView {
     error: "",
     busy: false,
     live: new Map(),
+    liveActivity: new Map(),
+    queued: [],
+    paused: false,
   };
+  /** Whether a reply was running at the last queue check. */
+  wasRunning = false;
   private listeners = new Set<() => void>();
   private release?: () => void;
   private poll?: ReturnType<typeof setInterval>;
@@ -133,6 +153,7 @@ class ThreadView {
     this.frame = 0;
     const events = this.queue.splice(0);
     let live = this.state.live;
+    let liveActivity = this.state.liveActivity;
     let snapshot = this.state.snapshot;
     for (const event of events) {
       if (event.type === "delta") {
@@ -142,10 +163,20 @@ class ThreadView {
           { seq: event.seq, text: event.text },
         ]);
         live = next;
+      } else if (event.type === "activity") {
+        const next = new Map(liveActivity);
+        next.set(
+          event.messageId,
+          upsertActivity(next.get(event.messageId) ?? [], event.activity),
+        );
+        liveActivity = next;
       } else {
         const next = new Map(live);
         next.delete(event.message.messageId);
         live = next;
+        const nextActivity = new Map(liveActivity);
+        nextActivity.delete(event.message.messageId);
+        liveActivity = nextActivity;
         this.channels.delete(event.message.messageId);
         if (snapshot)
           snapshot = {
@@ -158,7 +189,7 @@ class ThreadView {
           };
       }
     }
-    this.update({ live, snapshot });
+    this.update({ live, liveActivity, snapshot });
   };
   async send(request: {
     operationId: string;
@@ -209,6 +240,15 @@ class ThreadView {
       this.update({ busy: false });
     }
   }
+  enqueue(item: QueuedMessage) {
+    this.update({ queued: enqueue(this.state.queued, item) });
+  }
+  dequeue(id: string) {
+    this.update({ queued: remove(this.state.queued, id) });
+  }
+  setPaused(paused: boolean) {
+    if (paused !== this.state.paused) this.update({ paused });
+  }
   async stop() {
     try {
       await api("ai_thread_stop", { threadId: this.threadId });
@@ -233,6 +273,9 @@ const emptyState: ThreadViewState = {
   error: "",
   busy: false,
   live: new Map(),
+  liveActivity: new Map(),
+  queued: [],
+  paused: false,
 };
 const emptyView = {
   subscribe: () => () => {},
@@ -252,6 +295,7 @@ export function useThreadView(threadId: string | null) {
 export function apiMessages(
   messages: readonly ThreadMessage[],
   live: ReadonlyMap<string, readonly LiveChunk[]>,
+  liveActivity: ReadonlyMap<string, readonly Activity[]> = new Map(),
 ): ChatItem[] {
   const items: ChatItem[] = [];
   let userText = "";
@@ -265,7 +309,9 @@ export function apiMessages(
         streaming: false,
         error: null,
         stopped: false,
-        tools: [],
+        activity: [],
+        usage: null,
+        changes: null,
         attachments: message.attachments,
         resend: null,
       });
@@ -289,7 +335,12 @@ export function apiMessages(
           ? message.error
           : null,
       stopped: message.state === "stopped",
-      tools: [],
+      activity: mergeActivity(
+        message.activity ?? [],
+        liveActivity.get(message.messageId) ?? [],
+      ),
+      usage: message.usage ?? null,
+      changes: message.changes ?? null,
       attachments: [],
       resend: failed ? userText : null,
     });
@@ -343,6 +394,7 @@ export const updateThread = (
     model?: string;
     /** Omitted keeps it; null clears it. */
     effort?: string | null;
+    permissions?: Permissions;
   },
 ) =>
   api<ThreadSummary>("ai_thread_update", {
@@ -353,6 +405,7 @@ export const updateThread = (
       instanceId: change.instanceId ?? null,
       model: change.model ?? null,
       ...(change.effort !== undefined && { effort: change.effort }),
+      ...(change.permissions && { permissions: change.permissions }),
     },
   });
 
@@ -368,12 +421,51 @@ export const removeThread = (
     request: { threadId: thread.threadId, expectedRevision: thread.revision },
   });
 
-/** Drafts survive tab remounts but not app restarts. */
+export const respondToApproval = (
+  threadId: string,
+  requestId: string,
+  decision: ApprovalDecision,
+) => api<void>("ai_thread_respond", { threadId, requestId, decision });
+
+export const turnDiff = (threadId: string, messageId: string, path: string) =>
+  api<string>("ai_turn_diff", { threadId, messageId, path });
+
+export const undoTurn = (threadId: string, messageId: string) =>
+  api<TurnUndoResult>("ai_turn_undo", { threadId, messageId });
+
+/** Drafts live in memory and are mirrored to localStorage, debounced. */
 const drafts = new Map<string, string>();
-export const getDraft = (tabId: string) => drafts.get(tabId) ?? "";
+const draftPrefix = "lomi.chat.draft.";
+const maxStoredDraft = 64 * 1024;
+const draftTimers = new Map<string, ReturnType<typeof setTimeout>>();
+export function getDraft(tabId: string) {
+  const known = drafts.get(tabId);
+  if (known !== undefined) return known;
+  try {
+    const stored = localStorage.getItem(draftPrefix + tabId) ?? "";
+    if (stored) drafts.set(tabId, stored);
+    return stored;
+  } catch {
+    return "";
+  }
+}
 export function setDraft(tabId: string, value: string) {
   if (value) drafts.set(tabId, value);
   else drafts.delete(tabId);
+  clearTimeout(draftTimers.get(tabId));
+  draftTimers.set(
+    tabId,
+    setTimeout(() => {
+      draftTimers.delete(tabId);
+      try {
+        if (value && value.length <= maxStoredDraft)
+          localStorage.setItem(draftPrefix + tabId, value);
+        else localStorage.removeItem(draftPrefix + tabId);
+      } catch {
+        // Storage may be unavailable or full; the in-memory draft still works.
+      }
+    }, 300),
+  );
 }
 
 export const threadTitle = (text: string) =>

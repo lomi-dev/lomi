@@ -1434,6 +1434,7 @@
   "No models available.": "No hay modelos disponibles.",
   "Message": "Mensaje",
   "Attach files": "Adjuntar archivos",
+  "No matching files": "No hay archivos coincidentes",
   "Enter to send": "Enter para enviar",
   "{modifier} Enter to send": "{modifier} Enter para enviar",
   "Stop": "Detener",
@@ -1508,6 +1509,8 @@
   "Allow full access?": "¿Permitir acceso completo?",
   "New CLI threads will be able to run any command and edit files without asking you first. Use this only for projects you trust.": "Las nuevas conversaciones de CLI podrán ejecutar cualquier comando y editar archivos sin preguntarte antes. Usa esto solo en proyectos de confianza.",
   "Allow full access": "Permitir acceso completo",
+  "Stop the reply before changing permissions.": "Detén la respuesta antes de cambiar los permisos.",
+  "This thread will be able to run any command and edit files without asking you first. Use this only for projects you trust.": "Este hilo podrá ejecutar cualquier comando y editar archivos sin preguntarte antes. Úsalo solo en proyectos de confianza.",
   "Edit files": "Editar archivos",
   "Full access": "Acceso completo",
   "Project folder": "Carpeta del proyecto",
@@ -2341,5 +2344,55 @@
   "Connected": "Conectado",
   "can change": "puede cambiar",
   "read-only": "solo lectura",
-  "Workspace layout only": "Solo diseño del espacio de trabajo"
+  "Workspace layout only": "Solo diseño del espacio de trabajo",
+  "Failed": "Fallido",
+  "Thinking": "Pensando",
+  "Thought": "Pensamiento",
+  "{count} steps": {
+    "one": "{count} paso",
+    "many": "{count} pasos",
+    "other": "{count} pasos"
+  },
+  "Tokens: input {input}, output {output}": "Tokens: entrada {input}, salida {output}",
+  "{input} in, {output} out": "{input} ent., {output} sal.",
+  "Allow": "Permitir",
+  "Allow for this session": "Permitir durante esta sesión",
+  "Deny": "Denegar",
+  "Allowed": "Permitido",
+  "Denied": "Denegado",
+  "Expired": "Caducado",
+  "Permission request": "Solicitud de permiso",
+  "Waiting for your approval": "Esperando tu aprobación",
+  "{count} files changed": {
+    "one": "{count} archivo modificado",
+    "many": "{count} de archivos modificados",
+    "other": "{count} archivos modificados"
+  },
+  "Restored {count} files": {
+    "one": "{count} archivo restaurado",
+    "many": "{count} de archivos restaurados",
+    "other": "{count} archivos restaurados"
+  },
+  "Skipped {count} files changed since this turn:": {
+    "one": "{count} archivo omitido, modificado desde este turno:",
+    "many": "{count} de archivos omitidos, modificados desde este turno:",
+    "other": "{count} archivos omitidos, modificados desde este turno:"
+  },
+  "Changes from this turn": "Cambios de este turno",
+  "Changes undone": "Cambios deshechos",
+  "Undo changes?": "¿Deshacer los cambios?",
+  "Undo the changes from this turn? Files changed afterwards are kept.": "¿Deshacer los cambios de este turno? Los archivos modificados después se conservan.",
+  "binary": "binario",
+  "Edit": "Editar",
+  "Queued messages": "Mensajes en cola",
+  "Queue paused": "Cola en pausa",
+  "Send next": "Enviar siguiente",
+  "Add to queue": "Añadir a la cola",
+  "Files cannot be moved back. Remove this message and attach them again.": "Los archivos no se pueden devolver. Elimina este mensaje y adjúntalos de nuevo.",
+  "Clear the message field to edit this message.": "Vacía el campo de mensaje para editar este mensaje.",
+  "{count} files": {
+    "one": "{count} archivo",
+    "many": "{count} archivos",
+    "other": "{count} archivos"
+  }
 }

@@ -137,13 +137,41 @@ or acronym.
 - CLI providers (Claude Code, Codex, Kimi, Antigravity) run the CLI installed
   on the system with the user's own login, config and version. Lomi never
   starts a login flow; it reads login state through each CLI's status command
-  (`ai_cli_status`). CLI threads share the API thread store and events: each
-  send spawns the CLI headless (own process group, explicit argv, no shell)
-  and resumes the CLI's own session id; Stop kills the process group.
+  (`ai_cli_status`). CLI threads share the API thread store and events. On
+  the desktop each thread keeps one long-lived CLI process (own process group,
+  explicit argv, no shell): Claude Code over bidirectional stream-json with
+  `--permission-prompt-tool stdio`, Codex over `codex app-server` JSON-RPC,
+  Antigravity and Kimi over ACP (`agy acp`, `kimi acp`). The process is reused
+  while model, effort, permissions, system prompt and folder stay the same,
+  resumes the CLI's own session id when restarted, is killed after 10 idle
+  minutes, on thread deletion and on exit. Stop interrupts the turn through
+  the protocol and kills the process group if it does not end within 5 s.
+  Tool permission prompts appear in the thread (allow, allow for the session,
+  deny); unanswered prompts expire at turn end. Read-only Claude threads always
+  pass plan mode plus a deny rule for Bash/Edit/Write/NotebookEdit, so the
+  user's own default mode never widens them. The Remote Host keeps one headless
+  process per send. Assistant messages store tool and reasoning activity
+  (`activity`, anchored at UTF-16 offsets of the text) and token usage
+  (`usage`) as additive nullable columns of schema version 1.
   Settings → Defaults sets the model, reasoning effort, fallback, permissions
   (read-only by default, edit, full access after confirmation) and workspace
   (project or a private empty folder) for new threads; each thread keeps the
-  values it was created with.
+  values it was created with. The composer changes a CLI thread's model,
+  effort and permissions between replies (full access after confirmation);
+  the warm process restarts with the resumed session. Read-only threads also
+  deny every write or command prompt inside Lomi, independently of the CLI.
+- Edit and full-access CLI turns in a Git work tree are bracketed by hidden
+  snapshot commits `refs/lomi/chat/<thread>/<message>/{before,after}` written
+  through a private index (never the user's index, HEAD, branches or stash;
+  skipped when the repository defines content filters or a snapshot times
+  out). The turn's changed files, per-file diffs (`ai_turn_diff`) and an
+  explicit, confirmed undo (`ai_turn_undo`, skipping files changed since the
+  turn) appear under the reply; deleting the thread removes its refs.
+- The composer offers `@` file mentions from `ai_thread_files` (Git
+  `ls-files` or a bounded walk of the thread folder), persists drafts per tab
+  in webview storage, and queues messages sent during a reply; the queue is
+  sent in order after the reply ends, pauses after Stop, and is not kept
+  across restarts.
 - Chat history is scoped to the workspace: threads store `workspace_id` and
   `ai_threads_list` returns that workspace's threads plus legacy threads
   without one. "New chat" asks for confirmation when the current chat has

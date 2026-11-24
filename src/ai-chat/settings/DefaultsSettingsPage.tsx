@@ -38,11 +38,12 @@ type Icon = ComponentType<{
   "aria-hidden"?: boolean;
 }>;
 
-const PERMISSIONS: { value: Permissions; label: string; icon: Icon }[] = [
-  { value: "read-only", label: msg("Read only"), icon: Eye },
-  { value: "edit", label: msg("Edit files"), icon: Pencil },
-  { value: "full", label: msg("Full access"), icon: ShieldAlert },
-];
+export const PERMISSIONS: { value: Permissions; label: string; icon: Icon }[] =
+  [
+    { value: "read-only", label: msg("Read only"), icon: Eye },
+    { value: "edit", label: msg("Edit files"), icon: Pencil },
+    { value: "full", label: msg("Full access"), icon: ShieldAlert },
+  ];
 const WORKSPACES: { value: Workspace; label: string; icon: Icon }[] = [
   { value: "project", label: msg("Project folder"), icon: Folder },
   { value: "private", label: msg("Private folder"), icon: Lock },

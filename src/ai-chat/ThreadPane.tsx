@@ -1,21 +1,32 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { errorMessage } from "../api";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { api, errorMessage } from "../api";
 import { useT } from "../i18n";
 import { History, Plus } from "../icons";
 import { newId, type ThreadTab } from "../model";
 import { IconButton, Modal } from "../ui";
 import { useAttachments } from "./attachment-store";
 import EffortSelect, { loadEfforts, useEfforts } from "./EffortSelect";
+import { hasPendingApproval } from "./activity";
 import { effortFor, initialEffort } from "./effort";
 import ProviderModelPicker, { type Choice } from "./ProviderModelPicker";
+import { decide, editable } from "./send-queue";
 import ThreadComposer from "./ThreadComposer";
 import ThreadHistory from "./ThreadHistory";
 import ThreadMessages from "./ThreadMessages";
+import ThreadPermissions from "./ThreadPermissions";
 import {
   apiMessages,
   createThread,
   getDraft,
   getThreadView,
+  respondToApproval,
   renameThread,
   updateThread,
   setDraft,
@@ -23,7 +34,7 @@ import {
   useThreadView,
 } from "./thread-runtime";
 import { providerDefault, useChatProviders } from "./providers";
-import type { ThreadSummary } from "./types";
+import type { ApprovalDecision, Permissions, ThreadSummary } from "./types";
 import "./thread.css";
 
 type TabChange = Partial<Pick<ThreadTab, "threadId" | "title">>;
@@ -42,7 +53,8 @@ export default function ThreadPane({
   onClose: () => void;
   onChange: (change: TabChange) => void;
 }) {
-  const { t } = useT();
+  const { t, tp } = useT();
+  const queueId = useId();
   const { entries, settings } = useChatProviders();
   const { view, state } = useThreadView(tab.threadId);
   const thread = state.snapshot?.thread;
@@ -120,14 +132,22 @@ export default function ThreadPane({
     efforts,
   );
   const items = useMemo(
-    () => apiMessages(state.snapshot?.messages ?? [], state.live),
-    [state.snapshot, state.live],
+    () =>
+      apiMessages(
+        state.snapshot?.messages ?? [],
+        state.live,
+        state.liveActivity,
+      ),
+    [state.snapshot, state.live, state.liveActivity],
   );
   const running =
     !!state.snapshot?.messages.some(
       (message) =>
         message.state === "streaming" || message.state === "dispatching",
     ) || state.busy;
+  const lastState = state.snapshot?.messages
+    .filter((message) => message.role === "assistant")
+    .at(-1)?.state;
   const blockReason =
     entry && !entry.available
       ? (entry.unavailableReason ?? t("This provider is unavailable."))
@@ -172,6 +192,18 @@ export default function ThreadPane({
       !entry?.available
     )
       return;
+    if (running && view && thread) {
+      // The backend takes one reply at a time; hold this one until it ends.
+      view.enqueue({
+        id: newId(),
+        text,
+        attachments: attach.items.filter((item) => ids.includes(item.id)),
+      });
+      attach.consume(ids);
+      op.current = undefined;
+      changeDraft("");
+      return;
+    }
     setError("");
     setSending(true);
     try {
@@ -217,6 +249,75 @@ export default function ThreadPane({
     }
   }
 
+  const draining = useRef(false);
+  async function sendQueued() {
+    const item = state.queued[0];
+    if (!view || !thread || !item || draining.current) return;
+    if (!entry?.available) return view.setPaused(true);
+    draining.current = true;
+    setError("");
+    setSending(true);
+    try {
+      await view.send({
+        operationId: item.id,
+        expectedRevision:
+          view.state.snapshot?.thread.revision ?? thread.revision,
+        instanceId: entry.instanceId,
+        model: value.model,
+        text: item.text,
+        attachments: item.attachments.map((file) => file.id),
+      });
+      view.dequeue(item.id);
+    } catch (cause) {
+      // Keep the entry at the head and wait for "Send next".
+      setError(errorMessage(cause));
+      view.setPaused(true);
+    } finally {
+      draining.current = false;
+      setSending(false);
+    }
+  }
+  // Runs on every state change; `decide` makes it idempotent.
+  useEffect(() => {
+    if (!view || !state.loaded || sending) return;
+    const action = decide({
+      wasRunning: view.wasRunning,
+      running,
+      lastState,
+      queued: state.queued.length,
+      paused: state.paused,
+    });
+    view.wasRunning = running;
+    if (action === "pause") view.setPaused(true);
+    else if (action === "send") void sendQueued();
+  });
+  const editQueued = (id: string) => {
+    const item = editable(
+      state.queued,
+      id,
+      !draft.trim() && !attach.items.length,
+    );
+    if (!item || !view) return;
+    view.dequeue(id);
+    edit(item.text);
+  };
+  const removeQueued = (id: string) => {
+    for (const file of state.queued.find((item) => item.id === id)
+      ?.attachments ?? [])
+      void api("ai_attachment_discard", { id: file.id }).catch(() => {});
+    view?.dequeue(id);
+  };
+
+  async function changePermissions(next: Permissions) {
+    if (!thread) return;
+    try {
+      await updateThread(thread, { permissions: next });
+      await view?.refresh();
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  }
+
   async function changeEffort(next: string | null) {
     if (!thread) return setEffortChoice(next);
     try {
@@ -239,6 +340,17 @@ export default function ThreadPane({
   }
 
   const stop = () => void view?.stop();
+  const threadId = tab.threadId;
+  const respond = useCallback(
+    (requestId: string, decision: ApprovalDecision) =>
+      threadId
+        ? respondToApproval(threadId, requestId, decision)
+        : Promise.resolve(),
+    [threadId],
+  );
+  const waiting = items.some(
+    (item) => item.streaming && hasPendingApproval(item.activity),
+  );
 
   async function commitRename() {
     const title = renaming?.trim();
@@ -339,7 +451,13 @@ export default function ThreadPane({
             </div>
           )}
           {!state.missing && (!!items.length || !fresh) && (
-            <ThreadMessages items={items} onEdit={edit} />
+            <ThreadMessages
+              items={items}
+              threadId={tab.threadId}
+              cwd={state.snapshot?.thread.cwd ?? projectPath}
+              onEdit={edit}
+              onRespond={respond}
+            />
           )}
           <div className="thread-dock">
             {blockReason && !state.missing && (
@@ -347,9 +465,84 @@ export default function ThreadPane({
                 {blockReason}
               </div>
             )}
+            {waiting && (
+              <div className="thread-notice" role="status">
+                {t("Waiting for your approval")}
+              </div>
+            )}
             {shownError && (
               <div className="thread-notice" role="alert">
                 {shownError}
+              </div>
+            )}
+            {state.queued.length > 0 && (
+              <div
+                className="thread-queue"
+                role="region"
+                aria-label={t("Queued messages")}
+              >
+                {state.paused && (
+                  <div className="thread-queue-paused" role="status">
+                    <span>{t("Queue paused")}</span>
+                    <button
+                      type="button"
+                      className="button"
+                      disabled={running || sending}
+                      onClick={() => view?.setPaused(false)}
+                    >
+                      {t("Send next")}
+                    </button>
+                  </div>
+                )}
+                <ul>
+                  {state.queued.map((item) => {
+                    const files = item.attachments.length;
+                    const composerEmpty = !draft.trim() && !attach.items.length;
+                    return (
+                      <li key={item.id} className="thread-queue-item">
+                        <span
+                          id={`${queueId}-${item.id}`}
+                          className="thread-queue-text"
+                        >
+                          {item.text || item.attachments[0]?.name}
+                        </span>
+                        {files > 0 && (
+                          <span className="thread-queue-files">
+                            {tp(files, "{count} file", "{count} files")}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          className="button"
+                          aria-describedby={`${queueId}-${item.id}`}
+                          disabled={files > 0 || !composerEmpty}
+                          title={
+                            files > 0
+                              ? t(
+                                  "Files cannot be moved back. Remove this message and attach them again.",
+                                )
+                              : !composerEmpty
+                                ? t(
+                                    "Clear the message field to edit this message.",
+                                  )
+                                : undefined
+                          }
+                          onClick={() => editQueued(item.id)}
+                        >
+                          {t("Edit")}
+                        </button>
+                        <button
+                          type="button"
+                          className="button"
+                          aria-describedby={`${queueId}-${item.id}`}
+                          onClick={() => removeQueued(item.id)}
+                        >
+                          {t("Remove")}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
               </div>
             )}
             {!state.missing && (
@@ -368,12 +561,18 @@ export default function ThreadPane({
                 sendKey={settings?.behavior.sendKey ?? "enter"}
                 placeholder={t("Message")}
                 focusKey={focusKey || undefined}
+                lastUserText={
+                  items
+                    .filter((item) => item.role === "user" && item.text)
+                    .at(-1)?.text
+                }
                 attachments={attach.items}
                 importing={attach.importing}
                 attachmentError={attach.error}
                 onPick={() => void attach.pick()}
                 onPasteImages={(files) => void attach.importImages(files)}
                 onRemoveAttachment={attach.remove}
+                mentionThreadId={threadKind === "cli" ? tab.threadId : null}
                 picker={
                   <ProviderModelPicker
                     entries={pickerEntries}
@@ -381,6 +580,15 @@ export default function ThreadPane({
                     onChange={(next) => void changeModel(next)}
                     disabled={running || sending}
                   />
+                }
+                permissions={
+                  thread?.kind === "cli" ? (
+                    <ThreadPermissions
+                      value={thread.permissions}
+                      disabled={running || sending}
+                      onChange={(next) => void changePermissions(next)}
+                    />
+                  ) : undefined
                 }
                 effort={
                   <EffortSelect

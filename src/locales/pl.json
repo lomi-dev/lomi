@@ -1453,6 +1453,7 @@
   "No models available.": "Brak dostępnych modeli.",
   "Message": "Wiadomość",
   "Attach files": "Załącz pliki",
+  "No matching files": "Brak pasujących plików",
   "Enter to send": "Enter, aby wysłać",
   "{modifier} Enter to send": "{modifier} Enter, aby wysłać",
   "Stop": "Zatrzymaj",
@@ -1528,6 +1529,8 @@
   "Allow full access?": "Zezwolić na pełny dostęp?",
   "New CLI threads will be able to run any command and edit files without asking you first. Use this only for projects you trust.": "Nowe wątki CLI będą mogły uruchamiać dowolne polecenia i edytować pliki bez pytania Cię o zgodę. Używaj tego tylko w projektach, którym ufasz.",
   "Allow full access": "Zezwól na pełny dostęp",
+  "Stop the reply before changing permissions.": "Zatrzymaj odpowiedź przed zmianą uprawnień.",
+  "This thread will be able to run any command and edit files without asking you first. Use this only for projects you trust.": "Ten wątek będzie mógł uruchamiać dowolne polecenia i edytować pliki bez pytania o zgodę. Używaj tego tylko w zaufanych projektach.",
   "Edit files": "Edycja plików",
   "Full access": "Pełny dostęp",
   "Project folder": "Folder projektu",
@@ -2365,5 +2368,60 @@
   "Connected": "Połączono",
   "can change": "może zmieniać",
   "read-only": "tylko odczyt",
-  "Workspace layout only": "Tylko układ obszaru roboczego"
+  "Workspace layout only": "Tylko układ obszaru roboczego",
+  "Failed": "Niepowodzenie",
+  "Thinking": "Myślenie",
+  "Thought": "Rozumowanie",
+  "{count} steps": {
+    "one": "{count} krok",
+    "few": "{count} kroki",
+    "many": "{count} kroków",
+    "other": "{count} kroku"
+  },
+  "Tokens: input {input}, output {output}": "Tokeny: wejście {input}, wyjście {output}",
+  "{input} in, {output} out": "{input} wej., {output} wyj.",
+  "Allow": "Zezwól",
+  "Allow for this session": "Zezwól w tej sesji",
+  "Deny": "Odmów",
+  "Allowed": "Zezwolono",
+  "Denied": "Odmówiono",
+  "Expired": "Wygasło",
+  "Permission request": "Prośba o uprawnienie",
+  "Waiting for your approval": "Oczekiwanie na Twoją zgodę",
+  "{count} files changed": {
+    "one": "{count} zmieniony plik",
+    "few": "{count} zmienione pliki",
+    "many": "{count} zmienionych plików",
+    "other": "{count} zmienionego pliku"
+  },
+  "Restored {count} files": {
+    "one": "Przywrócono {count} plik",
+    "few": "Przywrócono {count} pliki",
+    "many": "Przywrócono {count} plików",
+    "other": "Przywrócono {count} pliku"
+  },
+  "Skipped {count} files changed since this turn:": {
+    "one": "Pominięto {count} plik zmieniony po tej turze:",
+    "few": "Pominięto {count} pliki zmienione po tej turze:",
+    "many": "Pominięto {count} plików zmienionych po tej turze:",
+    "other": "Pominięto {count} pliku zmienionego po tej turze:"
+  },
+  "Changes from this turn": "Zmiany z tej tury",
+  "Changes undone": "Cofnięto zmiany",
+  "Undo changes?": "Cofnąć zmiany?",
+  "Undo the changes from this turn? Files changed afterwards are kept.": "Cofnąć zmiany z tej tury? Pliki zmienione później zostaną zachowane.",
+  "binary": "binarny",
+  "Edit": "Edytuj",
+  "Queued messages": "Wiadomości w kolejce",
+  "Queue paused": "Kolejka wstrzymana",
+  "Send next": "Wyślij następną",
+  "Add to queue": "Dodaj do kolejki",
+  "Files cannot be moved back. Remove this message and attach them again.": "Plików nie można przenieść z powrotem. Usuń tę wiadomość i załącz je ponownie.",
+  "Clear the message field to edit this message.": "Wyczyść pole wiadomości, aby edytować tę wiadomość.",
+  "{count} files": {
+    "one": "{count} plik",
+    "few": "{count} pliki",
+    "many": "{count} plików",
+    "other": "{count} pliku"
+  }
 }
