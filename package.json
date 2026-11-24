@@ -11,6 +11,7 @@
   "scripts": {
     "dev": "vite",
     "check": "tsc --noEmit",
+    "test": "node --test \"src/**/*.test.ts\"",
     "check:rust": "cargo check --manifest-path src-tauri/Cargo.toml --workspace --locked",
     "format": "prettier --write src *.ts *.json *.md .github/*.md .github/workflows/*.yml scripts/*.mjs docs/*.md releases/*.md themes vendor",
     "format:check": "prettier --check src *.ts *.json *.md .github/*.md .github/workflows/*.yml scripts/*.mjs docs/*.md releases/*.md themes vendor",

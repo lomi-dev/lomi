@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { sessionAccess } from "./agent-control-access";
+import { sessionAccess } from "./agent-control-access.ts";
 
 test("groups scopes into pairing areas with change level", () => {
   const areas = sessionAccess([
