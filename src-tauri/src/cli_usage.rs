@@ -2619,6 +2619,25 @@ fn parse_claude_usage(value: &Value) -> Result<Vec<UsageWindow>, FetchFailure> {
             }
         }
     }
+    // Per-model weekly allowances such as Fable: [{display_name, utilization, resets_at}].
+    let scoped = object.get("model_scoped").and_then(Value::as_array);
+    for bucket in scoped.into_iter().flatten().filter_map(Value::as_object) {
+        let Some(name) = bucket.get("display_name").and_then(Value::as_str) else {
+            continue;
+        };
+        let utilization = number_any(bucket, &["utilization"]).filter(|value| *value >= 0.0);
+        if let Some(utilization) = utilization {
+            windows.push(UsageWindow {
+                label: format!("Weekly {name}"),
+                remaining_percent: Some(remaining_percent(utilization)),
+                used: None,
+                limit: None,
+                unit: None,
+                resets_at: epoch_millis_any(bucket, &["resets_at", "resetsAt"]),
+                window_seconds: Some(ONE_WEEK),
+            });
+        }
+    }
     if windows.is_empty() {
         return Err(unrecognized_response());
     }
@@ -2746,4 +2765,25 @@ fn now_ms() -> i64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis().min(i64::MAX as u128) as i64)
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod claude_usage_tests {
+    use super::*;
+
+    #[test]
+    fn reads_model_scoped_fable_window() {
+        let value = serde_json::json!({
+            "seven_day": { "utilization": 18.4, "resets_at": "2026-07-24T08:59:00Z" },
+            "model_scoped": [
+                { "display_name": "Fable", "utilization": 73, "resets_at": "2026-07-24T08:59:00Z" },
+                { "display_name": "Ghost", "utilization": null, "resets_at": null }
+            ]
+        });
+        let windows = parse_claude_usage(&value).unwrap();
+        assert_eq!(windows.len(), 2);
+        assert_eq!(windows[1].label, "Weekly Fable");
+        assert_eq!(windows[1].remaining_percent, Some(27.0));
+        assert_eq!(windows[1].resets_at, windows[0].resets_at);
+    }
 }
