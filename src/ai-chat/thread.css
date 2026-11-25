@@ -170,8 +170,11 @@
   font-family: var(--font-family-mono);
   font-size: 0.9em;
 }
-.thread-msg-assistant[data-streaming] .thread-prose > :last-child::after,
-.thread-msg-assistant[data-streaming] .thread-prose:empty::after {
+/* Only the last prose part of a streaming reply shows the caret. */
+.thread-msg-assistant[data-streaming]
+  .thread-prose:last-child
+  > :last-child::after,
+.thread-msg-assistant[data-streaming] .thread-prose:last-child:empty::after {
   content: "";
   display: inline-block;
   width: 7px;
@@ -188,8 +191,10 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .thread-msg-assistant[data-streaming] .thread-prose > :last-child::after,
-  .thread-msg-assistant[data-streaming] .thread-prose:empty::after {
+  .thread-msg-assistant[data-streaming]
+    .thread-prose:last-child
+    > :last-child::after,
+  .thread-msg-assistant[data-streaming] .thread-prose:last-child:empty::after {
     animation: none;
   }
 }
@@ -296,14 +301,14 @@
   bottom: calc(100% + 6px);
   left: 0;
   z-index: 20;
-  max-height: 240px;
+  max-height: min(240px, 40vh);
   margin: 0;
   padding: var(--space-4);
   overflow-y: auto;
-  border: 1px solid var(--thread-line, var(--sheet-line, var(--color-outline)));
-  border-radius: 12px;
+  border: 1px solid var(--thread-line);
+  border-radius: var(--radius-menu);
   background: var(--color-surface-container-high);
-  box-shadow: 0 8px 28px rgb(0 0 0 / 0.25);
+  box-shadow: var(--shadow-menu);
   list-style: none;
 }
 .thread-mention,
@@ -897,8 +902,34 @@ button.thread-activity-row:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Fixed box so running to done does not shift the row. */
+.thread-activity-status {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+}
+/* Completed rows show no icon; keep only the hidden status text. */
+.thread-activity-item[data-status="completed"] .thread-activity-status {
+  width: 0;
+}
 .thread-activity-status[data-running] {
   animation: thread-pulse 1.2s ease-in-out infinite;
+}
+.thread-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.thread-activity-row:focus-visible,
+.thread-turn-file:focus-visible,
+.thread-turn-toggle:focus-visible {
+  outline: var(--focus-width) solid var(--lomi-focus, var(--color-primary));
+  outline-offset: 1px;
 }
 .thread-activity-chevron {
   flex: none;
@@ -907,11 +938,11 @@ button.thread-activity-row:hover {
 .thread-activity-row[aria-expanded="true"] .thread-activity-chevron {
   transform: rotate(90deg);
 }
-.thread-activity-item[data-status="failed"] .thread-activity-row {
+.thread-activity-item[data-status="failed"] .thread-activity-status {
   color: var(--color-error);
 }
 .thread-activity-panel {
-  margin: 2px 0 var(--space-6, 6px) var(--space-14);
+  margin: 2px 0 var(--space-6) var(--space-14);
 }
 .thread-activity-detail,
 .thread-diff pre {
@@ -933,11 +964,22 @@ button.thread-activity-row:hover {
   font-family: var(--font-family-mono);
   font-size: var(--font-size-12);
 }
-.thread-diff-line[data-sign="-"] {
+/* Same colors as the Git panel diff. */
+.thread-diff pre {
+  padding-inline: 0;
+}
+.thread-diff-line {
+  padding-inline: var(--space-8);
+}
+.thread-diff-line[data-sign="-"],
+.thread-diff-line[data-kind="del"] {
+  background: color-mix(in srgb, var(--color-error) 12%, transparent);
   color: var(--color-error);
 }
-.thread-diff-line[data-sign="+"] {
-  color: var(--thread-accent);
+.thread-diff-line[data-sign="+"],
+.thread-diff-line[data-kind="add"] {
+  background: color-mix(in srgb, var(--color-info) 12%, transparent);
+  color: var(--color-background-text);
 }
 .thread-turn-changes {
   margin-top: var(--space-8);
@@ -981,10 +1023,21 @@ button.thread-activity-row:hover {
   list-style: none;
 }
 .thread-turn-path {
+  display: flex;
   flex: 1;
   min-width: 0;
-  overflow-wrap: anywhere;
   font-family: var(--font-family-mono);
+  white-space: nowrap;
+}
+.thread-turn-dir {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.thread-turn-name {
+  flex: none;
+  color: var(--color-surface-text);
 }
 .thread-turn-status {
   width: 1.4em;
@@ -996,18 +1049,20 @@ button.thread-activity-row:hover {
   color: var(--color-error);
 }
 .thread-turn-status[data-status="added"] {
-  color: var(--thread-accent);
+  color: var(--color-info);
 }
 .thread-turn-add {
-  color: var(--thread-accent);
+  color: var(--color-info);
 }
 .thread-turn-del {
   color: var(--color-error);
 }
 .thread-turn-diff {
-  margin: 2px 0 var(--space-6, 6px) var(--space-14);
+  margin: 2px 0 var(--space-6) var(--space-14);
 }
+/* A grid column grows to the widest row, so row tints span the scroll width. */
 .thread-turn-diff pre {
+  display: grid;
   white-space: pre;
   overflow-wrap: normal;
 }
@@ -1015,21 +1070,30 @@ button.thread-activity-row:hover {
   display: grid;
   grid-template-columns: 4ch 4ch 1fr;
   gap: var(--space-8);
+  min-width: max-content;
 }
 .thread-diff-num {
   color: var(--color-muted-text);
   text-align: right;
   user-select: none;
 }
-.thread-diff-line[data-kind="del"] {
-  color: var(--color-error);
+.thread-diff-line[data-kind="hunk"] {
+  color: var(--color-info);
 }
-.thread-diff-line[data-kind="add"] {
-  color: var(--thread-accent);
-}
-.thread-diff-line[data-kind="hunk"],
 .thread-diff-line[data-kind="meta"] {
   color: var(--color-muted-text);
+}
+.thread-undo-result p {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+}
+.thread-undo-skipped {
+  margin: var(--space-4) 0 0;
+  padding-left: var(--space-16);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-11);
+  overflow-wrap: anywhere;
 }
 @media (prefers-reduced-motion: reduce) {
   .thread-turn-chevron {
@@ -1048,9 +1112,18 @@ button.thread-activity-row:hover {
   flex-direction: column;
   gap: var(--space-8);
   padding: var(--space-8) var(--space-12);
-  border: 1px solid var(--thread-line, var(--sheet-line, var(--color-outline)));
-  border-radius: 10px;
+  border: 1px solid
+    color-mix(in srgb, var(--color-warning) 55%, var(--color-outline));
+  border-radius: var(--radius-md);
   background: var(--color-surface-container);
+  box-shadow: inset 3px 0 0 var(--color-warning);
+}
+.thread-approval-label {
+  color: var(--color-muted-text);
+  font-size: var(--font-size-11);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 .thread-approval-head {
   display: flex;
@@ -1065,31 +1138,10 @@ button.thread-activity-row:hover {
   flex-wrap: wrap;
   gap: var(--space-8);
 }
-.thread-approval-button {
-  padding: 4px var(--space-12);
-  border: 1px solid var(--thread-line, var(--sheet-line, var(--color-outline)));
-  border-radius: 6px;
-  background: transparent;
-  color: var(--color-surface-text);
-  font: inherit;
+.thread-approval-actions .button {
+  min-height: 0;
+  padding: var(--space-4) var(--space-12);
   font-size: var(--font-size-12);
-  cursor: pointer;
-}
-.thread-approval-button:hover:not(:disabled) {
-  background: var(--color-surface-container-highest);
-}
-.thread-approval-primary,
-.thread-approval-primary:hover:not(:disabled) {
-  border-color: transparent;
-  background: var(--color-primary);
-  color: var(--color-primary-text);
-}
-.thread-approval-primary:hover:not(:disabled) {
-  opacity: 0.88;
-}
-.thread-approval-button:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
 .thread-approval-state {
   flex: none;

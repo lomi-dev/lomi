@@ -1435,6 +1435,7 @@
   "Message": "Mensaje",
   "Attach files": "Adjuntar archivos",
   "No matching files": "No hay archivos coincidentes",
+  "Loading files…": "Cargando archivos…",
   "Enter to send": "Enter para enviar",
   "{modifier} Enter to send": "{modifier} Enter para enviar",
   "Stop": "Detener",
@@ -2373,15 +2374,20 @@
     "many": "{count} de archivos restaurados",
     "other": "{count} archivos restaurados"
   },
-  "Skipped {count} files changed since this turn:": {
-    "one": "{count} archivo omitido, modificado desde este turno:",
-    "many": "{count} de archivos omitidos, modificados desde este turno:",
-    "other": "{count} archivos omitidos, modificados desde este turno:"
+  "Skipped {count} files changed since this reply:": {
+    "one": "{count} archivo omitido, modificado desde esta respuesta:",
+    "many": "{count} de archivos omitidos, modificados desde esta respuesta:",
+    "other": "{count} archivos omitidos, modificados desde esta respuesta:"
   },
-  "Changes from this turn": "Cambios de este turno",
+  "Changes from this reply": "Cambios de esta respuesta",
   "Changes undone": "Cambios deshechos",
   "Undo changes?": "¿Deshacer los cambios?",
-  "Undo the changes from this turn? Files changed afterwards are kept.": "¿Deshacer los cambios de este turno? Los archivos modificados después se conservan.",
+  "Restore {count} files to how they were before this reply? Files edited since then are left as they are.": {
+    "one": "¿Restaurar {count} archivo a como estaba antes de esta respuesta? Los archivos editados desde entonces se dejan como están.",
+    "many": "¿Restaurar {count} de archivos a como estaban antes de esta respuesta? Los archivos editados desde entonces se dejan como están.",
+    "other": "¿Restaurar {count} archivos a como estaban antes de esta respuesta? Los archivos editados desde entonces se dejan como están."
+  },
+  "Undo changes": "Deshacer cambios",
   "binary": "binario",
   "Edit": "Editar",
   "Queued messages": "Mensajes en cola",

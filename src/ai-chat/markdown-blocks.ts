@@ -31,11 +31,13 @@ export function splitBlocks(text: string): string[] {
       fence = { char: open[1][0], length: open[1].length };
     if (body.trim() || i === lines.length - 1) continue;
     let next = i + 1;
-    while (next < lines.length && !lines[next].trim()) next++;
+    let blanks = 0;
+    while (next < lines.length && !lines[next].trim())
+      blanks += lines[next++].length;
     if (next >= lines.length) continue;
     if (continuation.test(lines[next])) continue;
     // Absorb the whole run of blank lines into this block.
-    offset = lines.slice(0, next).join("").length;
+    offset += blanks;
     i = next - 1;
     blocks.push(text.slice(start, offset));
     start = offset;

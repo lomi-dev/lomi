@@ -1435,6 +1435,7 @@
   "Message": "Messaggio",
   "Attach files": "Allega file",
   "No matching files": "Nessun file corrispondente",
+  "Loading files…": "Caricamento dei file…",
   "Enter to send": "Invio per inviare",
   "{modifier} Enter to send": "{modifier} Invio per inviare",
   "Stop": "Interrompi",
@@ -2373,15 +2374,20 @@
     "many": "{count} di file ripristinati",
     "other": "{count} file ripristinati"
   },
-  "Skipped {count} files changed since this turn:": {
-    "one": "{count} file saltato, modificato dopo questo turno:",
-    "many": "{count} di file saltati, modificati dopo questo turno:",
-    "other": "{count} file saltati, modificati dopo questo turno:"
+  "Skipped {count} files changed since this reply:": {
+    "one": "{count} file saltato, modificato dopo questa risposta:",
+    "many": "{count} di file saltati, modificati dopo questa risposta:",
+    "other": "{count} file saltati, modificati dopo questa risposta:"
   },
-  "Changes from this turn": "Modifiche di questo turno",
+  "Changes from this reply": "Modifiche di questa risposta",
   "Changes undone": "Modifiche annullate",
   "Undo changes?": "Annullare le modifiche?",
-  "Undo the changes from this turn? Files changed afterwards are kept.": "Annullare le modifiche di questo turno? I file modificati in seguito vengono mantenuti.",
+  "Restore {count} files to how they were before this reply? Files edited since then are left as they are.": {
+    "one": "Ripristinare {count} file a com'era prima di questa risposta? I file modificati da allora restano come sono.",
+    "many": "Ripristinare {count} di file a com'erano prima di questa risposta? I file modificati da allora restano come sono.",
+    "other": "Ripristinare {count} file a com'erano prima di questa risposta? I file modificati da allora restano come sono."
+  },
+  "Undo changes": "Annulla modifiche",
   "binary": "binario",
   "Edit": "Modifica",
   "Queued messages": "Messaggi in coda",

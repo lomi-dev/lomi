@@ -1454,6 +1454,7 @@
   "Message": "Повідомлення",
   "Attach files": "Прикріпити файли",
   "No matching files": "Немає відповідних файлів",
+  "Loading files…": "Завантаження файлів…",
   "Enter to send": "Enter — надіслати",
   "{modifier} Enter to send": "{modifier} Enter — надіслати",
   "Stop": "Зупинити",
@@ -2400,16 +2401,22 @@
     "many": "Відновлено {count} файлів",
     "other": "Відновлено {count} файлу"
   },
-  "Skipped {count} files changed since this turn:": {
-    "one": "Пропущено {count} файл, змінений після цього ходу:",
-    "few": "Пропущено {count} файли, змінені після цього ходу:",
-    "many": "Пропущено {count} файлів, змінених після цього ходу:",
-    "other": "Пропущено {count} файлу, зміненого після цього ходу:"
+  "Skipped {count} files changed since this reply:": {
+    "one": "Пропущено {count} файл, змінений після цієї відповіді:",
+    "few": "Пропущено {count} файли, змінені після цієї відповіді:",
+    "many": "Пропущено {count} файлів, змінених після цієї відповіді:",
+    "other": "Пропущено {count} файлу, зміненого після цієї відповіді:"
   },
-  "Changes from this turn": "Зміни за цей хід",
+  "Changes from this reply": "Зміни за цю відповідь",
   "Changes undone": "Зміни скасовано",
   "Undo changes?": "Скасувати зміни?",
-  "Undo the changes from this turn? Files changed afterwards are kept.": "Скасувати зміни за цей хід? Файли, змінені пізніше, буде збережено.",
+  "Restore {count} files to how they were before this reply? Files edited since then are left as they are.": {
+    "one": "Повернути {count} файл до стану перед цією відповіддю? Файли, змінені відтоді, залишаться як є.",
+    "few": "Повернути {count} файли до стану перед цією відповіддю? Файли, змінені відтоді, залишаться як є.",
+    "many": "Повернути {count} файлів до стану перед цією відповіддю? Файли, змінені відтоді, залишаться як є.",
+    "other": "Повернути {count} файлу до стану перед цією відповіддю? Файли, змінені відтоді, залишаться як є."
+  },
+  "Undo changes": "Скасувати зміни",
   "binary": "двійковий",
   "Edit": "Змінити",
   "Queued messages": "Повідомлення в черзі",

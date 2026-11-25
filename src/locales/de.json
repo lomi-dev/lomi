@@ -1416,6 +1416,7 @@
   "Message": "Nachricht",
   "Attach files": "Dateien anhängen",
   "No matching files": "Keine passenden Dateien",
+  "Loading files…": "Dateien werden geladen…",
   "Enter to send": "Enter zum Senden",
   "{modifier} Enter to send": "{modifier} Enter zum Senden",
   "Stop": "Stopp",
@@ -2346,14 +2347,18 @@
     "one": "{count} Datei wiederhergestellt",
     "other": "{count} Dateien wiederhergestellt"
   },
-  "Skipped {count} files changed since this turn:": {
-    "one": "{count} Datei übersprungen, seit diesem Durchgang geändert:",
-    "other": "{count} Dateien übersprungen, seit diesem Durchgang geändert:"
+  "Skipped {count} files changed since this reply:": {
+    "one": "{count} Datei übersprungen, seit dieser Antwort geändert:",
+    "other": "{count} Dateien übersprungen, seit dieser Antwort geändert:"
   },
-  "Changes from this turn": "Änderungen aus diesem Durchgang",
+  "Changes from this reply": "Änderungen aus dieser Antwort",
   "Changes undone": "Änderungen rückgängig gemacht",
   "Undo changes?": "Änderungen rückgängig machen?",
-  "Undo the changes from this turn? Files changed afterwards are kept.": "Änderungen aus diesem Durchgang rückgängig machen? Danach geänderte Dateien bleiben erhalten.",
+  "Restore {count} files to how they were before this reply? Files edited since then are left as they are.": {
+    "one": "{count} Datei auf den Stand vor dieser Antwort zurücksetzen? Danach bearbeitete Dateien bleiben unverändert.",
+    "other": "{count} Dateien auf den Stand vor dieser Antwort zurücksetzen? Danach bearbeitete Dateien bleiben unverändert."
+  },
+  "Undo changes": "Änderungen rückgängig machen",
   "binary": "binär",
   "Edit": "Bearbeiten",
   "Queued messages": "Wartende Nachrichten",

@@ -75,6 +75,7 @@ import {
   waitForSessionSaves,
 } from "./api";
 import { detectCliProviders } from "./ai-chat/providers";
+import { deleteDraft } from "./ai-chat/thread-runtime";
 import useGit from "./useGit";
 import { SourceControlState } from "./source-control-state";
 import {
@@ -2136,6 +2137,8 @@ export default function Workbench() {
       ),
       workspace.id,
     );
+    for (const tab of current.tabs)
+      if (ids.has(tab.id) && tab.type === "thread") deleteDraft(tab.id);
     change((state) =>
       updateWorkspace(state, workspace.id, (workspace) =>
         removeTabs(

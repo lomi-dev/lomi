@@ -291,6 +291,15 @@ export function useThreadView(threadId: string | null) {
   return { view, state };
 }
 
+interface CachedItem {
+  chunks: readonly LiveChunk[] | undefined;
+  extra: readonly Activity[] | undefined;
+  resend: string;
+  item: ChatItem;
+}
+/** Keeps ChatItem identity while a message and its live inputs are unchanged. */
+const itemCache = new WeakMap<ThreadMessage, CachedItem>();
+
 /** Displayed API text: stored content plus live chunks newer than it. */
 export function apiMessages(
   messages: readonly ThreadMessage[],
@@ -300,52 +309,77 @@ export function apiMessages(
   const items: ChatItem[] = [];
   let userText = "";
   for (const message of messages) {
-    if (message.role === "user") {
-      userText = message.content;
-      items.push({
-        id: message.messageId,
-        role: "user",
-        text: message.content,
-        streaming: false,
-        error: null,
-        stopped: false,
-        activity: [],
-        usage: null,
-        changes: null,
-        attachments: message.attachments,
-        resend: null,
-      });
+    const user = message.role === "user";
+    if (user) userText = message.content;
+    const liveChunks = user ? undefined : live.get(message.messageId);
+    const extra = user ? undefined : liveActivity.get(message.messageId);
+    const hit = itemCache.get(message);
+    if (
+      hit &&
+      hit.chunks === liveChunks &&
+      hit.extra === extra &&
+      hit.resend === userText
+    ) {
+      items.push(hit.item);
       continue;
     }
-    const chunks = (live.get(message.messageId) ?? [])
-      .filter((chunk) => chunk.seq > message.streamSeq)
-      .sort((a, b) => a.seq - b.seq)
-      .filter((chunk, index, all) => chunk.seq !== all[index - 1]?.seq);
-    const failed =
-      message.state === "failed" || message.state === "interrupted";
-    items.push({
-      id: message.messageId,
-      role: "assistant",
-      text: message.content + chunks.map((chunk) => chunk.text).join(""),
-      streaming: active(message),
-      error: failed
-        ? (message.error ??
-          t("The response was interrupted; the partial reply was kept."))
-        : message.state === "completed"
-          ? message.error
-          : null,
-      stopped: message.state === "stopped",
-      activity: mergeActivity(
-        message.activity ?? [],
-        liveActivity.get(message.messageId) ?? [],
-      ),
-      usage: message.usage ?? null,
-      changes: message.changes ?? null,
-      attachments: [],
-      resend: failed ? userText : null,
+    const item = user
+      ? userItem(message)
+      : assistantItem(message, liveChunks ?? [], extra ?? [], userText);
+    itemCache.set(message, {
+      chunks: liveChunks,
+      extra,
+      resend: userText,
+      item,
     });
+    items.push(item);
   }
   return items;
+}
+
+const userItem = (message: ThreadMessage): ChatItem => ({
+  id: message.messageId,
+  role: "user",
+  text: message.content,
+  streaming: false,
+  error: null,
+  stopped: false,
+  activity: [],
+  usage: null,
+  changes: null,
+  attachments: message.attachments,
+  resend: null,
+});
+
+function assistantItem(
+  message: ThreadMessage,
+  liveChunks: readonly LiveChunk[],
+  extra: readonly Activity[],
+  userText: string,
+): ChatItem {
+  const chunks = liveChunks
+    .filter((chunk) => chunk.seq > message.streamSeq)
+    .sort((a, b) => a.seq - b.seq)
+    .filter((chunk, index, all) => chunk.seq !== all[index - 1]?.seq);
+  const failed = message.state === "failed" || message.state === "interrupted";
+  return {
+    id: message.messageId,
+    role: "assistant",
+    text: message.content + chunks.map((chunk) => chunk.text).join(""),
+    streaming: active(message),
+    error: failed
+      ? (message.error ??
+        t("The response was interrupted; the partial reply was kept."))
+      : message.state === "completed"
+        ? message.error
+        : null,
+    stopped: message.state === "stopped",
+    activity: mergeActivity(message.activity ?? [], extra),
+    usage: message.usage ?? null,
+    changes: message.changes ?? null,
+    attachments: [],
+    resend: failed ? userText : null,
+  };
 }
 
 export const listThreads = (project: string, workspaceId: string) =>
@@ -449,24 +483,45 @@ export function getDraft(tabId: string) {
     return "";
   }
 }
+/** Forgets the draft of a closed chat tab, including its stored copy. */
+export function deleteDraft(tabId: string) {
+  drafts.delete(tabId);
+  clearTimeout(draftTimers.get(tabId));
+  draftTimers.delete(tabId);
+  try {
+    localStorage.removeItem(draftPrefix + tabId);
+  } catch {
+    // Storage may be unavailable.
+  }
+}
 export function setDraft(tabId: string, value: string) {
   if (value) drafts.set(tabId, value);
   else drafts.delete(tabId);
   clearTimeout(draftTimers.get(tabId));
   draftTimers.set(
     tabId,
-    setTimeout(() => {
-      draftTimers.delete(tabId);
-      try {
-        if (value && value.length <= maxStoredDraft)
-          localStorage.setItem(draftPrefix + tabId, value);
-        else localStorage.removeItem(draftPrefix + tabId);
-      } catch {
-        // Storage may be unavailable or full; the in-memory draft still works.
-      }
-    }, 300),
+    setTimeout(() => writeDraft(tabId), 300),
   );
 }
+function writeDraft(tabId: string) {
+  draftTimers.delete(tabId);
+  const value = drafts.get(tabId);
+  try {
+    if (value && value.length <= maxStoredDraft)
+      localStorage.setItem(draftPrefix + tabId, value);
+    else localStorage.removeItem(draftPrefix + tabId);
+  } catch {
+    // Storage may be unavailable or full; the in-memory draft still works.
+  }
+}
+// Writes pending debounced drafts before the page goes away.
+if (typeof window !== "undefined")
+  window.addEventListener("pagehide", () => {
+    for (const [tabId, timer] of draftTimers) {
+      clearTimeout(timer);
+      writeDraft(tabId);
+    }
+  });
 
 export const threadTitle = (text: string) =>
   [...(text.trim().split(/\r?\n/)[0] || "New chat")].slice(0, 60).join("");

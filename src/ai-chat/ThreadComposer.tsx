@@ -77,19 +77,28 @@ export default function ThreadComposer({
   const field = useRef<HTMLTextAreaElement>(null);
   const listId = useId();
   const [caret, setCaret] = useState(0);
-  const [files, setFiles] = useState<readonly string[]>([]);
+  const [loaded, setLoaded] = useState<{
+    threadId: string;
+    list: readonly string[];
+  } | null>(null);
+  // Null while the list of the current thread is loading.
+  const files =
+    loaded && loaded.threadId === mentionThreadId ? loaded.list : null;
   const [dismissed, setDismissed] = useState(-1);
   const [index, setIndex] = useState(0);
   const pendingCaret = useRef<number | null>(null);
   const token = mentionThreadId ? mentionQuery(value, caret) : null;
   const open = !!token && dismissed !== token.start;
-  const matches = open ? rankFiles(files, token.query) : [];
+  const matches = open && files ? rankFiles(files, token.query) : [];
   const active = Math.min(index, matches.length - 1);
   const mentionLoaded = open && !!mentionThreadId;
+  useEffect(() => setDismissed(-1), [mentionThreadId]);
   useEffect(() => {
     if (!mentionLoaded || !mentionThreadId) return;
     let live = true;
-    void threadFiles(mentionThreadId).then((list) => live && setFiles(list));
+    void threadFiles(mentionThreadId).then(
+      (list) => live && setLoaded({ threadId: mentionThreadId, list }),
+    );
     return () => {
       live = false;
     };
@@ -99,7 +108,7 @@ export default function ThreadComposer({
       document
         .getElementById(`${listId}-${active}`)
         ?.scrollIntoView({ block: "nearest" });
-  }, [active, listId]);
+  }, [active, open, listId]);
   useLayoutEffect(() => {
     const at = pendingCaret.current;
     if (at === null) return;
@@ -234,7 +243,7 @@ export default function ThreadComposer({
         >
           {matches.length === 0 && (
             <li className="thread-mention-empty" role="presentation">
-              {t("No matching files")}
+              {files ? t("No matching files") : t("Loading files…")}
             </li>
           )}
           {matches.map((path, i) => {

@@ -206,6 +206,7 @@ function ApprovalCard({ activity, cwd }: { activity: Activity; cwd: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const allow = useRef<HTMLButtonElement>(null);
+  const card = useRef<HTMLLIElement>(null);
   const Icon = kindIcons[activity.kind];
   const diff = activity.diff
     ? lineDiff(activity.diff.before, activity.diff.after)
@@ -213,14 +214,21 @@ function ApprovalCard({ activity, cwd }: { activity: Activity; cwd: string }) {
   useEffect(() => {
     if (focusId !== approval.requestId) return;
     const active = document.activeElement;
-    // Never steal focus from other panels or from elsewhere in this one.
-    if (
-      !active ||
-      active === document.body ||
-      active.closest(".thread-composer")
-    )
-      allow.current?.focus();
+    // Never steal focus from the composer, other panels or this pane: a
+    // pending Enter keypress must not approve a command.
+    if (!active || active === document.body) allow.current?.focus();
   }, [focusId, approval.requestId]);
+  // Hand focus back to the composer when the answered card disappears.
+  useLayoutEffect(() => {
+    const element = card.current;
+    return () => {
+      if (!element?.contains(document.activeElement)) return;
+      element
+        .closest(".thread-pane")
+        ?.querySelector<HTMLTextAreaElement>(".thread-composer textarea")
+        ?.focus();
+    };
+  }, []);
   const answer = (decision: ApprovalDecision) => {
     setBusy(true);
     setError("");
@@ -234,10 +242,12 @@ function ApprovalCard({ activity, cwd }: { activity: Activity; cwd: string }) {
   };
   return (
     <li
+      ref={card}
       className="thread-activity-item thread-approval"
       role="group"
       aria-label={t("Permission request")}
     >
+      <div className="thread-approval-label">{t("Permission request")}</div>
       <div className="thread-approval-head">
         <Icon size={13} aria-hidden="true" />
         <span className="thread-activity-title" title={activity.title}>
@@ -267,7 +277,7 @@ function ApprovalCard({ activity, cwd }: { activity: Activity; cwd: string }) {
         <button
           ref={allow}
           type="button"
-          className="thread-approval-button thread-approval-primary"
+          className="button button-primary"
           disabled={busy}
           onClick={() => answer("allow")}
         >
@@ -276,7 +286,7 @@ function ApprovalCard({ activity, cwd }: { activity: Activity; cwd: string }) {
         {approval.canRemember && (
           <button
             type="button"
-            className="thread-approval-button"
+            className="button"
             disabled={busy}
             onClick={() => answer("allow_session")}
           >
@@ -285,7 +295,7 @@ function ApprovalCard({ activity, cwd }: { activity: Activity; cwd: string }) {
         )}
         <button
           type="button"
-          className="thread-approval-button"
+          className="button"
           disabled={busy}
           onClick={() => answer("deny")}
         >
@@ -312,20 +322,21 @@ function ActivityRow({ activity, cwd }: { activity: Activity; cwd: string }) {
     activity.status === "failed"
       ? CircleAlert
       : activity.status === "completed"
-        ? Check
+        ? null
         : Circle;
   const status = running
     ? t("Running")
     : activity.status === "failed"
       ? t("Failed")
       : t("Completed");
-  const bare = activity.kind === "reasoning" && !activity.detail;
-  const label = bare
+  // Backends send English reasoning titles; the label is always localized.
+  const reasoning = activity.kind === "reasoning";
+  const label = reasoning
     ? running
       ? t("Thinking")
       : t("Thought")
     : relativeTitle(activity.title, cwd);
-  const expandable = !bare && !!(activity.detail || activity.diff);
+  const expandable = !!(activity.detail || activity.diff);
   const diff =
     open && activity.diff
       ? lineDiff(activity.diff.before, activity.diff.after)
@@ -344,17 +355,17 @@ function ActivityRow({ activity, cwd }: { activity: Activity; cwd: string }) {
       <Icon size={13} aria-hidden="true" />
       <span
         className="thread-activity-title"
-        title={bare ? undefined : activity.title}
+        title={reasoning ? undefined : activity.title}
       >
         {label}
       </span>
-      <StatusIcon
-        size={12}
+      <span
         className="thread-activity-status"
         data-running={running || undefined}
-        aria-label={status}
-        role="img"
-      />
+      >
+        {StatusIcon && <StatusIcon size={12} aria-hidden="true" />}
+        <span className="thread-visually-hidden">{status}</span>
+      </span>
       {settled && (
         <span className="thread-approval-state" data-state={settled.state}>
           {settled.label}
@@ -477,6 +488,7 @@ const statusLetter = { added: "A", modified: "M", deleted: "D", renamed: "R" };
 
 /** Cached per message and path; the diff of a finished turn does not change. */
 const diffCache = new Map<string, string>();
+const maxCachedDiffs = 200;
 
 function FileDiffView({
   threadId,
@@ -496,6 +508,7 @@ function FileDiffView({
     let live = true;
     turnDiff(threadId, messageId, file.path)
       .then((value) => {
+        if (diffCache.size >= maxCachedDiffs) diffCache.clear();
         diffCache.set(key, value);
         if (live) setText(value);
       })
@@ -516,10 +529,13 @@ function FileDiffView({
         {t("Loading diff…")}
       </p>
     );
+  const parsed = parseUnifiedDiff(text);
+  // Git header lines before the first hunk carry no information here.
+  const firstHunk = parsed.findIndex((row) => row.kind === "hunk");
   return (
     <div className="thread-diff thread-turn-diff">
       <pre>
-        {parseUnifiedDiff(text).map((row, index) => (
+        {parsed.slice(Math.max(firstHunk, 0)).map((row, index) => (
           <div key={index} className="thread-diff-line" data-kind={row.kind}>
             <span className="thread-diff-num" aria-hidden="true">
               {row.oldLine ?? ""}
@@ -572,7 +588,7 @@ function TurnChangesCard({
   return (
     <section
       className="thread-turn-changes"
-      aria-label={t("Changes from this turn")}
+      aria-label={t("Changes from this reply")}
     >
       <div className="thread-turn-head">
         <button
@@ -594,11 +610,15 @@ function TurnChangesCard({
               "{count} files changed",
             )}
           </span>
-          <span className="thread-turn-add">+{additions}</span>
-          <span className="thread-turn-del">
-            {"\u2212"}
-            {deletions}
-          </span>
+          {additions > 0 && (
+            <span className="thread-turn-add">+{additions}</span>
+          )}
+          {deletions > 0 && (
+            <span className="thread-turn-del">
+              {"\u2212"}
+              {deletions}
+            </span>
+          )}
         </button>
         {changes.undone ? (
           <span className="thread-note">{t("Changes undone")}</span>
@@ -620,8 +640,9 @@ function TurnChangesCard({
         </p>
       )}
       {result && (
-        <div className="thread-note" role="status">
+        <div className="thread-note thread-undo-result" role="status">
           <p>
+            <Check size={12} aria-hidden="true" />
             {tp(
               result.restored.length,
               "Restored {count} file",
@@ -633,11 +654,11 @@ function TurnChangesCard({
               <p>
                 {tp(
                   result.skipped.length,
-                  "Skipped {count} file changed since this turn:",
-                  "Skipped {count} files changed since this turn:",
+                  "Skipped {count} file changed since this reply:",
+                  "Skipped {count} files changed since this reply:",
                 )}
               </p>
-              <ul>
+              <ul className="thread-undo-skipped">
                 {result.skipped.map((name) => (
                   <li key={name}>{name}</li>
                 ))}
@@ -660,16 +681,27 @@ function TurnChangesCard({
                 <span className="thread-turn-status" data-status={file.status}>
                   {statusLetter[file.status]}
                 </span>
-                <span className="thread-turn-path">{file.path}</span>
+                <span className="thread-turn-path" title={file.path}>
+                  <span className="thread-turn-dir">
+                    {file.path.slice(0, file.path.lastIndexOf("/") + 1)}
+                  </span>
+                  <span className="thread-turn-name">
+                    {file.path.slice(file.path.lastIndexOf("/") + 1)}
+                  </span>
+                </span>
                 {file.binary ? (
                   <span className="thread-note">{t("binary")}</span>
                 ) : (
                   <>
-                    <span className="thread-turn-add">+{file.additions}</span>
-                    <span className="thread-turn-del">
-                      {"\u2212"}
-                      {file.deletions}
-                    </span>
+                    {file.additions > 0 && (
+                      <span className="thread-turn-add">+{file.additions}</span>
+                    )}
+                    {file.deletions > 0 && (
+                      <span className="thread-turn-del">
+                        {"\u2212"}
+                        {file.deletions}
+                      </span>
+                    )}
                   </>
                 )}
               </button>
@@ -689,8 +721,10 @@ function TurnChangesCard({
           <div className="dialog-form dialog-layout">
             <div className="dialog-content">
               <p>
-                {t(
-                  "Undo the changes from this turn? Files changed afterwards are kept.",
+                {tp(
+                  changes.files.length,
+                  "Restore {count} file to how it was before this reply? Files edited since then are left as they are.",
+                  "Restore {count} files to how they were before this reply? Files edited since then are left as they are.",
                 )}
               </p>
             </div>
@@ -698,6 +732,7 @@ function TurnChangesCard({
               <button
                 type="button"
                 className="button"
+                autoFocus
                 onClick={() => setConfirm(false)}
               >
                 {t("Cancel")}
@@ -705,10 +740,9 @@ function TurnChangesCard({
               <button
                 type="button"
                 className="button button-primary"
-                autoFocus
                 onClick={() => void undo()}
               >
-                {t("Undo")}
+                {t("Undo changes")}
               </button>
             </div>
           </div>
@@ -800,6 +834,9 @@ export default function ThreadMessages({
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const last = items.at(-1);
+  useLayoutEffect(() => {
+    pinned.current = true;
+  }, [threadId]);
   const focusId =
     items.flatMap((item) => item.activity).find(isPending)?.approval
       ?.requestId ?? null;
@@ -826,7 +863,7 @@ export default function ThreadMessages({
         pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
       }}
     >
-      <div className="thread-column" role="log" aria-live="polite">
+      <div className="thread-column">
         <Approvals.Provider value={approvals}>
           {items.map((item) => (
             <Message

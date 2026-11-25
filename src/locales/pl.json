@@ -1454,6 +1454,7 @@
   "Message": "Wiadomość",
   "Attach files": "Załącz pliki",
   "No matching files": "Brak pasujących plików",
+  "Loading files…": "Wczytywanie plików…",
   "Enter to send": "Enter, aby wysłać",
   "{modifier} Enter to send": "{modifier} Enter, aby wysłać",
   "Stop": "Zatrzymaj",
@@ -2381,7 +2382,7 @@
   "Tokens: input {input}, output {output}": "Tokeny: wejście {input}, wyjście {output}",
   "{input} in, {output} out": "{input} wej., {output} wyj.",
   "Allow": "Zezwól",
-  "Allow for this session": "Zezwól w tej sesji",
+  "Allow for this session": "Zezwalaj w tej sesji",
   "Deny": "Odmów",
   "Allowed": "Zezwolono",
   "Denied": "Odmówiono",
@@ -2400,16 +2401,22 @@
     "many": "Przywrócono {count} plików",
     "other": "Przywrócono {count} pliku"
   },
-  "Skipped {count} files changed since this turn:": {
-    "one": "Pominięto {count} plik zmieniony po tej turze:",
-    "few": "Pominięto {count} pliki zmienione po tej turze:",
-    "many": "Pominięto {count} plików zmienionych po tej turze:",
-    "other": "Pominięto {count} pliku zmienionego po tej turze:"
+  "Skipped {count} files changed since this reply:": {
+    "one": "Pominięto {count} plik zmieniony po tej odpowiedzi:",
+    "few": "Pominięto {count} pliki zmienione po tej odpowiedzi:",
+    "many": "Pominięto {count} plików zmienionych po tej odpowiedzi:",
+    "other": "Pominięto {count} pliku zmienionego po tej odpowiedzi:"
   },
-  "Changes from this turn": "Zmiany z tej tury",
+  "Changes from this reply": "Zmiany z tej odpowiedzi",
   "Changes undone": "Cofnięto zmiany",
   "Undo changes?": "Cofnąć zmiany?",
-  "Undo the changes from this turn? Files changed afterwards are kept.": "Cofnąć zmiany z tej tury? Pliki zmienione później zostaną zachowane.",
+  "Restore {count} files to how they were before this reply? Files edited since then are left as they are.": {
+    "one": "Przywrócić {count} plik do stanu sprzed tej odpowiedzi? Pliki edytowane od tego czasu pozostaną bez zmian.",
+    "few": "Przywrócić {count} pliki do stanu sprzed tej odpowiedzi? Pliki edytowane od tego czasu pozostaną bez zmian.",
+    "many": "Przywrócić {count} plików do stanu sprzed tej odpowiedzi? Pliki edytowane od tego czasu pozostaną bez zmian.",
+    "other": "Przywrócić {count} pliku do stanu sprzed tej odpowiedzi? Pliki edytowane od tego czasu pozostaną bez zmian."
+  },
+  "Undo changes": "Cofnij zmiany",
   "binary": "binarny",
   "Edit": "Edytuj",
   "Queued messages": "Wiadomości w kolejce",
