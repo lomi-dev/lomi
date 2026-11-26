@@ -17,6 +17,7 @@ import remarkGfm from "remark-gfm";
 import { emit } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { errorMessage } from "../api";
+import { useSystemClock } from "../system-time";
 import { useT } from "../i18n";
 import { Modal } from "../ui";
 import {
@@ -943,13 +944,18 @@ type ResendHandler = (
   files: readonly { id: string }[],
 ) => boolean;
 
+/** Rewinds the chat to before a user message; the pane moves its text back to the composer. */
+type RewindHandler = (messageId: string, restoreFiles: boolean) => void;
+
 /** Failure notice with an action tailored to the error class; the raw error stays in details. */
 function ErrorNotice({
   item,
   provider,
   retryable,
   threadId,
-  onEdit,
+  userId,
+  locked,
+  onRewind,
   onResend,
 }: {
   item: ChatItemView;
@@ -957,7 +963,10 @@ function ErrorNotice({
   threadId: string | null;
   /** Only the last reply of the thread can be retried. */
   retryable: boolean;
-  onEdit: (text: string) => void;
+  /** The user message this reply answers. */
+  userId: string | null;
+  locked: boolean;
+  onRewind: RewindHandler;
   onResend: ResendHandler;
 }) {
   const { t, locale } = useT();
@@ -965,7 +974,7 @@ function ErrorNotice({
   const auto = armed?.messageId === item.id;
   const [now, setNow] = useState(() => Date.now());
   const retryAt = item.retryAtMs ?? null;
-  const edit = item.resend;
+  const edit = retryable && userId ? item.resend : null;
   const files = item.resendAttachments ?? noFiles;
   const resend = retryable ? item.resend : null;
   const left = retryAt === null ? 0 : retryAt - now;
@@ -1070,7 +1079,8 @@ function ErrorNotice({
         <button
           type="button"
           className="thread-link"
-          onClick={() => onEdit(edit)}
+          disabled={locked}
+          onClick={() => onRewind(userId!, false)}
         >
           {t("Edit and resend")}
         </button>
@@ -1085,13 +1095,161 @@ function ErrorNotice({
   );
 }
 
+/** Pencil plus confirmation for "Edit from here" on a user message. */
+function EditFromHere({
+  messageId,
+  lock,
+  files,
+  onRewind,
+}: {
+  messageId: string;
+  lock: "running" | "busy" | null;
+  /** Later replies have file changes that are not undone. */
+  files: boolean;
+  onRewind: RewindHandler;
+}) {
+  const { t } = useT();
+  const [confirm, setConfirm] = useState(false);
+  const label =
+    lock === "running"
+      ? t("Stop the reply before editing")
+      : t("Edit from here");
+  const go = (restoreFiles: boolean) => {
+    setConfirm(false);
+    onRewind(messageId, restoreFiles);
+  };
+  return (
+    <>
+      <button
+        type="button"
+        className="thread-msg-copy"
+        aria-label={label}
+        title={label}
+        disabled={!!lock}
+        onClick={() => setConfirm(true)}
+      >
+        <Pencil size={13} />
+      </button>
+      {confirm && (
+        <Modal title={t("Edit from here?")} onClose={() => setConfirm(false)}>
+          <div className="dialog-form dialog-layout">
+            <div className="dialog-content">
+              <p>
+                {t(
+                  "The chat goes back to before this message. The message and its attachments return to the composer so you can change and resend it. Later messages are removed.",
+                )}
+              </p>
+              {files && (
+                <p className="thread-note">
+                  {t(
+                    "Files changed by later replies are restored; files you changed since are skipped.",
+                  )}
+                </p>
+              )}
+            </div>
+            <div className="dialog-actions">
+              <button
+                type="button"
+                className="button"
+                onClick={() => setConfirm(false)}
+              >
+                {t("Cancel")}
+              </button>
+              <button
+                type="button"
+                className={files ? "button" : "button button-primary"}
+                autoFocus={!files}
+                disabled={!!lock}
+                onClick={() => go(false)}
+              >
+                {t("Rewind chat")}
+              </button>
+              {files && (
+                <button
+                  type="button"
+                  className="button button-primary"
+                  autoFocus
+                  disabled={!!lock}
+                  onClick={() => go(true)}
+                >
+                  {t("Rewind chat and files")}
+                </button>
+              )}
+            </div>
+          </div>
+        </Modal>
+      )}
+    </>
+  );
+}
+
+/** Send time and a copy button, revealed while the message is hovered. */
+function MessageMeta({
+  createdMs,
+  text,
+  edit,
+}: {
+  createdMs: number;
+  text: string;
+  /** Extra actions, shown for user messages. */
+  edit?: ReactNode;
+}) {
+  const { t, locale } = useT();
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(timer);
+  }, [copied]);
+  const clock = useSystemClock();
+  const date = new Date(createdMs);
+  return (
+    <div className="thread-msg-meta">
+      <time
+        dateTime={date.toISOString()}
+        title={date.toLocaleString(locale, {
+          dateStyle: "medium",
+          timeStyle: "short",
+          ...clock,
+        })}
+      >
+        {date.toLocaleTimeString(locale, {
+          hour: "numeric",
+          minute: "2-digit",
+          ...clock,
+        })}
+      </time>
+      {text && (
+        <button
+          type="button"
+          className="thread-msg-copy"
+          aria-label={copied ? t("Copied") : t("Copy message")}
+          title={copied ? t("Copied") : t("Copy message")}
+          onClick={() =>
+            void navigator.clipboard.writeText(text).then(
+              () => setCopied(true),
+              () => {},
+            )
+          }
+        >
+          {copied ? <Check size={13} /> : <Copy size={13} />}
+        </button>
+      )}
+      {edit}
+    </div>
+  );
+}
+
 const Message = memo(function Message({
   item,
   threadId,
   cwd,
   provider,
   retryable,
-  onEdit,
+  userId,
+  rewindFiles,
+  lock,
+  onRewind,
   onResend,
 }: {
   item: ChatItemView;
@@ -1099,7 +1257,12 @@ const Message = memo(function Message({
   cwd: string;
   provider: string;
   retryable: boolean;
-  onEdit: (text: string) => void;
+  /** For a reply: the user message before it. */
+  userId: string | null;
+  /** For a user message: later replies have changes that are not undone. */
+  rewindFiles: boolean;
+  lock: "running" | "busy" | null;
+  onRewind: RewindHandler;
   onResend: ResendHandler;
 }) {
   const { t } = useT();
@@ -1108,6 +1271,20 @@ const Message = memo(function Message({
       <div className="thread-msg thread-msg-user">
         <MessageAttachments attachments={item.attachments} />
         {item.text && <div className="thread-bubble">{item.text}</div>}
+        <MessageMeta
+          createdMs={item.createdMs}
+          text={item.text}
+          edit={
+            threadId && (
+              <EditFromHere
+                messageId={item.id}
+                lock={lock}
+                files={rewindFiles}
+                onRewind={onRewind}
+              />
+            )
+          }
+        />
       </div>
     );
   const parts = interleave(item.text, item.activity);
@@ -1136,7 +1313,9 @@ const Message = memo(function Message({
           provider={provider}
           threadId={threadId}
           retryable={retryable}
-          onEdit={onEdit}
+          userId={userId}
+          locked={!!lock}
+          onRewind={onRewind}
           onResend={onResend}
         />
       )}
@@ -1148,6 +1327,9 @@ const Message = memo(function Message({
         />
       )}
       {!item.streaming && item.usage && <UsageLine usage={item.usage} />}
+      {!item.streaming && (
+        <MessageMeta createdMs={item.createdMs} text={item.text} />
+      )}
     </div>
   );
 });
@@ -1160,7 +1342,8 @@ export default function ThreadMessages({
   hasMore,
   loadingEarlier,
   onLoadEarlier,
-  onEdit,
+  lock,
+  onRewind,
   onResend,
   onRespond,
 }: {
@@ -1172,7 +1355,9 @@ export default function ThreadMessages({
   hasMore: boolean;
   loadingEarlier: boolean;
   onLoadEarlier: () => void;
-  onEdit: (text: string) => void;
+  /** Why editing is unavailable: a reply is running, or a send/rewind is in progress. */
+  lock: "running" | "busy" | null;
+  onRewind: RewindHandler;
   onResend: ResendHandler;
   onRespond: ApprovalContext["respond"];
 }) {
@@ -1187,6 +1372,30 @@ export default function ThreadMessages({
   const last = items.at(-1);
   const lastReply = items.filter((item) => item.role === "assistant").at(-1);
   const firstId = items[0]?.id;
+  // Per item: the user message a reply answers, and whether later replies hold live file changes.
+  const links = useMemo(() => {
+    const out = items.map(() => ({
+      userId: null as string | null,
+      files: false,
+    }));
+    let user: string | null = null;
+    items.forEach((item, index) => {
+      if (item.role === "user") user = item.id;
+      else out[index].userId = user;
+    });
+    let later = false;
+    for (let index = items.length - 1; index >= 0; index--) {
+      const { role, changes } = items[index];
+      if (role === "user") out[index].files = later;
+      else if (
+        changes &&
+        !changes.undone &&
+        changes.files.some((f) => !f.undone)
+      )
+        later = true;
+    }
+    return out;
+  }, [items]);
   useLayoutEffect(() => {
     pinned.current = true;
     anchor.current = null;
@@ -1279,7 +1488,7 @@ export default function ThreadMessages({
           </button>
         )}
         <Approvals.Provider value={approvals}>
-          {items.map((item) => (
+          {items.map((item, index) => (
             <Message
               key={item.id}
               item={item}
@@ -1287,7 +1496,10 @@ export default function ThreadMessages({
               cwd={cwd}
               provider={provider}
               retryable={item.id === lastReply?.id}
-              onEdit={onEdit}
+              userId={links[index].userId}
+              rewindFiles={links[index].files}
+              lock={lock}
+              onRewind={onRewind}
               onResend={onResend}
             />
           ))}

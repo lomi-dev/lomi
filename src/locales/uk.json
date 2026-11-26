@@ -2485,5 +2485,20 @@
   "Hide until a newer version is released": "Приховати до виходу новішої версії",
   "Open a project to run this command.": "Відкрийте проєкт, щоб виконати цю команду.",
   "The terminal could not start the command.": "Термінал не зміг запустити команду.",
-  "Update it with the tool you installed it with": "Оновіть його інструментом, яким ви його встановили"
+  "Update it with the tool you installed it with": "Оновіть його інструментом, яким ви його встановили",
+  "Copy message": "Копіювати повідомлення",
+  "Edit from here": "Редагувати звідси",
+  "Stop the reply before editing": "Зупиніть відповідь перед редагуванням",
+  "Edit from here?": "Редагувати звідси?",
+  "The chat goes back to before this message. The message and its attachments return to the composer so you can change and resend it. Later messages are removed.": "Чат повернеться до стану до цього повідомлення. Повідомлення та його вкладення повернуться в поле введення, щоб ви могли змінити й надіслати його знову. Пізніші повідомлення буде видалено.",
+  "Files changed by later replies are restored; files you changed since are skipped.": "Файли, змінені пізнішими відповідями, буде відновлено; файли, які ви змінили після цього, буде пропущено.",
+  "Rewind chat": "Відкотити чат",
+  "Rewind chat and files": "Відкотити чат і файли",
+  "This agent can't rewind its own session, so the earlier conversation will be sent with your next message.": "Цей агент не може відкотити власну сесію, тому попередню розмову буде надіслано разом із вашим наступним повідомленням.",
+  "{count} files were not restored because they changed since.": {
+    "one": "{count} файл не відновлено, бо він змінився відтоді.",
+    "few": "{count} файлів не відновлено, бо вони змінилися відтоді.",
+    "many": "{count} файлів не відновлено, бо вони змінилися відтоді.",
+    "other": "{count} файлів не відновлено, бо вони змінилися відтоді."
+  }
 }

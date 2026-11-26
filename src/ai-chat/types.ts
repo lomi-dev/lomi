@@ -196,6 +196,13 @@ export interface TurnChanges {
   files: FileChange[];
   undone: boolean;
 }
+/** Result of `ai_thread_rewind`; `context` tells how the agent regains the earlier conversation. */
+export interface RewindReport {
+  thread: ThreadSummary;
+  restored: string[];
+  skipped: string[];
+  context: "native" | "fresh" | "replay" | "api";
+}
 export interface TurnUndoResult {
   restored: string[];
   skipped: string[];
@@ -296,4 +303,6 @@ export interface ChatItem {
   attachments: Attachment[];
   /** Text of the user message that produced a failed reply. */
   resend: string | null;
+  /** Epoch ms the message was stored. */
+  createdMs: number;
 }

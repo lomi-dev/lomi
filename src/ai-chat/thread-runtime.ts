@@ -19,6 +19,7 @@ import type {
   ChatItem,
   ErrorKind,
   Permissions,
+  RewindReport,
   ThreadMessage,
   ThreadSendAccepted,
   ThreadSnapshot,
@@ -478,6 +479,7 @@ const userItem = (message: ThreadMessage): ChatItem => ({
   changes: null,
   attachments: message.attachments,
   resend: null,
+  createdMs: message.createdMs,
 });
 
 function assistantItem(
@@ -506,6 +508,7 @@ function assistantItem(
     changes: message.changes ?? null,
     attachments: [],
     resend: failed ? userText : null,
+    createdMs: message.createdMs,
     resendAttachments: failed ? userFiles : undefined,
   };
 }
@@ -594,6 +597,14 @@ export const turnDiff = (threadId: string, messageId: string, path: string) =>
 
 export const undoTurn = (threadId: string, messageId: string) =>
   api<TurnUndoResult>("ai_turn_undo", { threadId, messageId });
+
+/** Removes the thread's messages from `messageId` on; optionally restores later replies' files. */
+export const rewindThread = (args: {
+  threadId: string;
+  messageId: string;
+  expectedRevision: number;
+  restoreFiles: boolean;
+}) => api<RewindReport>("ai_thread_rewind", args);
 
 /** Drafts live in memory and are mirrored to localStorage, debounced. */
 const drafts = new Map<string, string>();

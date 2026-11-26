@@ -114,7 +114,7 @@ web-sys = "=0.3.103"
 keyring = { version = "=3.6.3", features = ["windows-native"] }
 webview2-com = { version = "=0.38.2" }
 windows = { version = "=0.61.3", features = ["Win32_Foundation", "Win32_System_Com", "Win32_System_Com_StructuredStorage"] }
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Diagnostics_ToolHelp", "Win32_Security_Authorization", "Win32_System_Threading", "Win32_Storage_FileSystem", "Win32_System_LibraryLoader", "Win32_Graphics_Gdi", "Win32_System_RemoteDesktop", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Diagnostics_ToolHelp", "Win32_Security_Authorization", "Win32_System_Threading", "Win32_Storage_FileSystem", "Win32_System_LibraryLoader", "Win32_Graphics_Gdi", "Win32_System_RemoteDesktop", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_Globalization"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # Already used by tauri-plugin-notification; direct use reports clicks on an alert.
@@ -123,6 +123,6 @@ keyring = { version = "=3.6.3", features = ["apple-native"] }
 security-framework = "=3.7.0"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSImage", "NSResponder", "NSWindow", "NSView", "NSButton", "NSEvent", "block2"] }
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSDictionary", "NSURL", "NSError", "NSValue", "NSProcessInfo", "NSUUID", "NSURLRequest"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSDictionary", "NSURL", "NSError", "NSValue", "NSProcessInfo", "NSUUID", "NSURLRequest", "NSDateFormatter", "NSFormatter", "NSLocale"] }
 objc2-web-kit = { version = "=0.3.2", default-features = false, features = ["std", "WKWebView", "WKSnapshotConfiguration", "WKNavigation", "WKContentWorld", "WKUserScript", "WKUserContentController", "WKFrameInfo", "WKUIDelegate", "WKOpenPanelParameters", "WKSecurityOrigin", "WKWebViewConfiguration", "WKWebsiteDataStore", "block2", "objc2-app-kit"] }
 block2 = { version = "=0.6.2" }

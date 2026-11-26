@@ -794,6 +794,36 @@ pub(crate) async fn ai_turn_undo(
     Ok(report)
 }
 
+/// Rewinds a thread to just before a user message (an explicit "Edit from here"):
+/// later messages are deleted and, with `restore_files`, their file changes undone.
+#[tauri::command]
+pub(crate) async fn ai_thread_rewind(
+    window: Window,
+    app: AppHandle,
+    state: State<'_, AiChat>,
+    thread_id: String,
+    message_id: String,
+    expected_revision: u64,
+    restore_files: bool,
+) -> Result<lomi_chat::engine::RewindReport, String> {
+    crate::files::main_window(&window)?;
+    let engine = state.engine(&app)?.clone();
+    let request = ThreadRewind {
+        thread_id,
+        message_id,
+        expected_revision,
+        restore_files,
+    };
+    let report = blocking(move || engine.rewind(&request)).await?;
+    emit_changed(
+        &app,
+        "threads",
+        report.thread.revision,
+        Some(&report.thread.thread_id),
+    );
+    Ok(report)
+}
+
 /// Answers a tool-permission prompt of a running Claude turn.
 #[tauri::command]
 pub(crate) async fn ai_thread_respond(

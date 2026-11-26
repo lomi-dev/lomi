@@ -213,6 +213,15 @@ or acronym.
   no message text, gated by the notification settings). On macOS a clicked
   chat notification focuses the window and opens the thread
   (`mac-notification-sys` with `wait_for_click`, event `ai-thread-reveal`).
+- "Edit from here" on a user message (`ai_thread_rewind`, confirmed in a
+  dialog, refused while a reply runs) deletes that message and everything
+  after it, optionally undoing later turns' file checkpoints newest first,
+  and returns its text and attachment copies to the composer. Assistant rows
+  store the agent's own turn id (`native_turn`: Claude message uuid, Codex
+  turn id); the next send resumes Claude with `--resume-session-at` and
+  Codex with `thread/revert`. Agents or turns without one (ACP, older rows,
+  a failed revert) start a new session that receives the kept conversation
+  as bounded text. API threads rebuild their context from the database.
 - Chat history is scoped to the workspace: threads store `workspace_id` and
   `ai_threads_list` returns that workspace's threads plus legacy threads
   without one. "New chat" asks for confirmation when the current chat has

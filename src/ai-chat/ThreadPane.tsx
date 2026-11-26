@@ -35,13 +35,20 @@ import {
   steerUnknown,
   steerUnsupported,
   renameThread,
+  rewindThread,
   updateThread,
   setDraft,
   threadTitle,
   useThreadView,
 } from "./thread-runtime";
 import { providerDefault, useChatProviders } from "./providers";
-import type { ApprovalDecision, Permissions, ThreadSummary } from "./types";
+import type {
+  ApprovalDecision,
+  Attachment,
+  Permissions,
+  RewindReport,
+  ThreadSummary,
+} from "./types";
 import "./thread.css";
 
 type TabChange = Partial<Pick<ThreadTab, "threadId" | "title">>;
@@ -71,6 +78,10 @@ export default function ThreadPane({
   const [effortChoice, setEffortChoice] = useState<string | null>();
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
+  const [rewinding, setRewinding] = useState(false);
+  // Transient result of the last rewind; cleared by the next send.
+  const [rewound, setRewound] =
+    useState<Pick<RewindReport, "skipped" | "context">>();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [renaming, setRenaming] = useState<string>();
   const [focusKey, setFocusKey] = useState(0);
@@ -273,6 +284,7 @@ export default function ThreadPane({
       return;
     }
     setError("");
+    setRewound(undefined);
     setSending(true);
     try {
       let threadId = tab.threadId;
@@ -319,9 +331,17 @@ export default function ThreadPane({
 
   // Sends the text of a failed turn again; false while busy so the caller can wait.
   function resend(text: string, files: readonly { id: string }[]) {
-    if (!view || !thread || running || sending || !entry?.available)
+    if (
+      !view ||
+      !thread ||
+      running ||
+      sending ||
+      rewinding ||
+      !entry?.available
+    )
       return false;
     setError("");
+    setRewound(undefined);
     setSending(true);
     // Sent files are bound to their message; resend fresh copies.
     const copies = files.length
@@ -347,9 +367,52 @@ export default function ThreadPane({
     return true;
   }
 
+  // Rewinds before a user message and moves it (text, files) back to the composer.
+  async function rewind(messageId: string, restoreFiles: boolean) {
+    const item = items.find((entry) => entry.id === messageId);
+    if (!view || !thread || !item || running || sending || rewinding) return;
+    setError("");
+    setRewound(undefined);
+    setRewinding(true);
+    let copies: Attachment[] = [];
+    try {
+      // The rewind deletes the originals, so copy them first.
+      if (item.attachments.length)
+        copies = await copyAttachments(
+          thread.threadId,
+          item.attachments.map((file) => file.id),
+        );
+      const report = await rewindThread({
+        threadId: thread.threadId,
+        messageId,
+        expectedRevision:
+          view.state.snapshot?.thread.revision ?? thread.revision,
+        restoreFiles,
+      });
+      await view.refresh();
+      const typed = getDraft(tab.id);
+      if (item.text)
+        edit(typed.trim() ? `${typed}\n\n${item.text}` : item.text);
+      else setFocusKey((key) => key + 1);
+      attach.restore(copies);
+      setRewound(report);
+    } catch (cause) {
+      for (const file of copies)
+        void api("ai_attachment_discard", { id: file.id }).catch(() => {});
+      setError(errorMessage(cause));
+    } finally {
+      setRewinding(false);
+    }
+  }
+
   // Stable callbacks keep memoized messages from re-rendering on every token.
-  const latest = useRef({ resend, view });
-  latest.current = { resend, view };
+  const latest = useRef({ resend, view, rewind });
+  latest.current = { resend, view, rewind };
+  const onRewind = useCallback(
+    (messageId: string, restoreFiles: boolean) =>
+      void latest.current.rewind(messageId, restoreFiles),
+    [],
+  );
   const onResend = useCallback(
     (text: string, files: readonly { id: string }[]) =>
       latest.current.resend(text, files),
@@ -586,7 +649,8 @@ export default function ThreadPane({
               hasMore={!!state.snapshot?.hasMore}
               loadingEarlier={state.loadingEarlier}
               onLoadEarlier={loadEarlier}
-              onEdit={edit}
+              lock={running ? "running" : sending || rewinding ? "busy" : null}
+              onRewind={onRewind}
               onResend={onResend}
               onRespond={respond}
             />
@@ -605,6 +669,22 @@ export default function ThreadPane({
             {shownError && (
               <div className="thread-notice" role="alert">
                 {shownError}
+              </div>
+            )}
+            {rewound && rewound.skipped.length > 0 && (
+              <div className="thread-notice" role="status">
+                {tp(
+                  rewound.skipped.length,
+                  "{count} file was not restored because it changed since.",
+                  "{count} files were not restored because they changed since.",
+                )}
+              </div>
+            )}
+            {rewound?.context === "replay" && (
+              <div className="thread-notice" role="status">
+                {t(
+                  "This agent can't rewind its own session, so the earlier conversation will be sent with your next message.",
+                )}
               </div>
             )}
             {state.queued.length > 0 && (

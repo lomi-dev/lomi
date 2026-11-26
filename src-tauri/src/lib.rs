@@ -63,6 +63,7 @@ mod terminal;
 mod terminal_preferences;
 mod terminal_renderer;
 mod themes;
+mod time_format;
 mod updater;
 #[cfg(windows)]
 mod windows_instance;
@@ -354,6 +355,7 @@ pub fn run() {
                 ai_chat::ai_thread_stop,
                 ai_chat::ai_turn_diff,
                 ai_chat::ai_turn_undo,
+                ai_chat::ai_thread_rewind,
                 ai_chat::ai_thread_respond,
                 ai_chat::ai_thread_attach,
                 ai_chat::ai_thread_steer,
@@ -468,6 +470,7 @@ pub fn run() {
                 browser::agent_browser_interact,
                 browser::servers::local_web_servers,
                 app_info,
+                time_format::system_hour12,
                 settings_window::about_info,
                 updater::update_environment,
                 updater::check_app_update,

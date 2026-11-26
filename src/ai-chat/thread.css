@@ -1494,3 +1494,46 @@ button.thread-activity-row:hover {
 .composer-pill.ProseMirror-selectednode {
   border-color: var(--thread-accent);
 }
+
+/* Send time and copy button under each message, shown while it is hovered.
+   The row keeps its height when hidden so revealing it never shifts the list. */
+.thread-msg-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: 22px;
+  color: var(--color-muted-text);
+  font-size: var(--font-size-11);
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+.thread-msg:hover .thread-msg-meta,
+.thread-msg-meta:focus-within {
+  opacity: 1;
+}
+.thread-msg-copy {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm);
+  color: inherit;
+}
+.thread-msg-copy:hover {
+  background: color-mix(in srgb, var(--color-surface-text) 6%, transparent);
+  color: var(--color-surface-text);
+}
+@media (prefers-reduced-motion: reduce) {
+  .thread-msg-meta {
+    transition: none;
+  }
+}
+
+.thread-msg-copy:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.thread-msg-copy:disabled:hover {
+  background: none;
+  color: inherit;
+}

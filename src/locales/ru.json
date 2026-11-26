@@ -2485,5 +2485,20 @@
   "Hide until a newer version is released": "Скрыть до выхода более новой версии",
   "Open a project to run this command.": "Откройте проект, чтобы выполнить эту команду.",
   "The terminal could not start the command.": "Терминалу не удалось запустить команду.",
-  "Update it with the tool you installed it with": "Обновите его тем инструментом, которым вы его установили"
+  "Update it with the tool you installed it with": "Обновите его тем инструментом, которым вы его установили",
+  "Copy message": "Копировать сообщение",
+  "Edit from here": "Редактировать отсюда",
+  "Stop the reply before editing": "Остановите ответ перед редактированием",
+  "Edit from here?": "Редактировать отсюда?",
+  "The chat goes back to before this message. The message and its attachments return to the composer so you can change and resend it. Later messages are removed.": "Чат вернётся к состоянию до этого сообщения. Сообщение и его вложения вернутся в поле ввода, чтобы вы могли изменить и отправить его снова. Более поздние сообщения будут удалены.",
+  "Files changed by later replies are restored; files you changed since are skipped.": "Файлы, изменённые более поздними ответами, будут восстановлены; файлы, которые вы изменили после этого, будут пропущены.",
+  "Rewind chat": "Откатить чат",
+  "Rewind chat and files": "Откатить чат и файлы",
+  "This agent can't rewind its own session, so the earlier conversation will be sent with your next message.": "Этот агент не может откатить собственную сессию, поэтому предыдущий диалог будет отправлен вместе с вашим следующим сообщением.",
+  "{count} files were not restored because they changed since.": {
+    "one": "{count} файл не восстановлен, так как он изменился с тех пор.",
+    "few": "{count} файлов не восстановлено, так как они изменились с тех пор.",
+    "many": "{count} файлов не восстановлено, так как они изменились с тех пор.",
+    "other": "{count} файлов не восстановлено, так как они изменились с тех пор."
+  }
 }

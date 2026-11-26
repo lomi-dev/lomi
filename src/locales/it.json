@@ -2455,5 +2455,19 @@
   "Hide until a newer version is released": "Nascondi finché non esce una versione più recente",
   "Open a project to run this command.": "Apri un progetto per eseguire questo comando.",
   "The terminal could not start the command.": "Il terminale non è riuscito ad avviare il comando.",
-  "Update it with the tool you installed it with": "Aggiornalo con lo strumento con cui l’hai installato"
+  "Update it with the tool you installed it with": "Aggiornalo con lo strumento con cui l’hai installato",
+  "Copy message": "Copia messaggio",
+  "Edit from here": "Modifica da qui",
+  "Stop the reply before editing": "Interrompi la risposta prima di modificare",
+  "Edit from here?": "Modificare da qui?",
+  "The chat goes back to before this message. The message and its attachments return to the composer so you can change and resend it. Later messages are removed.": "La chat torna a prima di questo messaggio. Il messaggio e i suoi allegati tornano nel campo di scrittura, così puoi modificarlo e inviarlo di nuovo. I messaggi successivi vengono rimossi.",
+  "Files changed by later replies are restored; files you changed since are skipped.": "I file modificati dalle risposte successive vengono ripristinati; i file che hai modificato da allora vengono saltati.",
+  "Rewind chat": "Riavvolgi la chat",
+  "Rewind chat and files": "Riavvolgi chat e file",
+  "This agent can't rewind its own session, so the earlier conversation will be sent with your next message.": "Questo agente non può riavvolgere la propria sessione, quindi la conversazione precedente verrà inviata con il tuo prossimo messaggio.",
+  "{count} files were not restored because they changed since.": {
+    "one": "{count} file non è stato ripristinato perché è cambiato da allora.",
+    "many": "{count} file non sono stati ripristinati perché sono cambiati da allora.",
+    "other": "{count} file non sono stati ripristinati perché sono cambiati da allora."
+  }
 }

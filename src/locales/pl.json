@@ -2485,5 +2485,20 @@
   "Hide until a newer version is released": "Ukryj do wydania nowszej wersji",
   "Open a project to run this command.": "Otwórz projekt, aby uruchomić to polecenie.",
   "The terminal could not start the command.": "Terminal nie mógł uruchomić polecenia.",
-  "Update it with the tool you installed it with": "Zaktualizuj to narzędziem, którym zostało zainstalowane"
+  "Update it with the tool you installed it with": "Zaktualizuj to narzędziem, którym zostało zainstalowane",
+  "Copy message": "Kopiuj wiadomość",
+  "Edit from here": "Edytuj od tego miejsca",
+  "Stop the reply before editing": "Zatrzymaj odpowiedź przed edycją",
+  "Edit from here?": "Edytować od tego miejsca?",
+  "The chat goes back to before this message. The message and its attachments return to the composer so you can change and resend it. Later messages are removed.": "Czat wraca do stanu sprzed tej wiadomości. Wiadomość i jej załączniki wracają do pola wiadomości, aby można je było zmienić i wysłać ponownie. Późniejsze wiadomości zostaną usunięte.",
+  "Files changed by later replies are restored; files you changed since are skipped.": "Pliki zmienione przez późniejsze odpowiedzi zostaną przywrócone; pliki zmienione przez Ciebie od tego czasu zostaną pominięte.",
+  "Rewind chat": "Cofnij czat",
+  "Rewind chat and files": "Cofnij czat i pliki",
+  "This agent can't rewind its own session, so the earlier conversation will be sent with your next message.": "Ten agent nie potrafi cofnąć własnej sesji, więc wcześniejsza rozmowa zostanie wysłana razem z Twoją następną wiadomością.",
+  "{count} files were not restored because they changed since.": {
+    "one": "{count} plik nie został przywrócony, bo zmienił się od tego czasu.",
+    "few": "{count} pliki nie zostały przywrócone, bo zmieniły się od tego czasu.",
+    "many": "{count} plików nie zostało przywróconych, bo zmieniły się od tego czasu.",
+    "other": "{count} plików nie zostało przywróconych, bo zmieniły się od tego czasu."
+  }
 }
