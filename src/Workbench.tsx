@@ -1,4 +1,5 @@
 import { newThreadTab, updateThread } from "./model";
+import { pruneChatUsage } from "./chat-usage";
 import { workMode } from "./onboarding-state";
 import { useRemoteWorkspaces } from "./remote-workspaces";
 import RemoteWorkspaceStatus from "./RemoteWorkspaceStatus";
@@ -331,6 +332,18 @@ export default function Workbench() {
       ),
     [selected?.tab],
   );
+  useEffect(() => {
+    if (!session) return;
+    const ids = new Set<string>();
+    for (const project of session.projects)
+      for (const workspace of project.workspaces)
+        for (const tab of workspace.tabs) {
+          ids.add(tab.id);
+          if ("layout" in tab)
+            for (const pane of layoutPanes(tab.layout)) ids.add(pane.id);
+        }
+    pruneChatUsage(ids);
+  }, [session]);
   const sharedActiveWorkspaceId = selected?.workspace.id;
   const sharedActiveWorkspaceName = selected?.workspace.name;
   const sharedActiveProject = session?.projects.find((project) =>

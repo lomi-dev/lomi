@@ -1,18 +1,27 @@
 import { isCliAgent, type AgentUsageTarget } from "./agent-usage.ts";
 
-// Chat panes showing a CLI provider, keyed by tab id. Their usage is read as if
+// Chat panes using a CLI provider, keyed by tab id. Their usage is read as if
 // that CLI ran in a terminal; pid 0 tells native code there is no process.
+// Entries outlive the pane's mount (only the active tab is mounted) and are
+// removed when the chat switches to an API provider or leaves the session.
 const chats = new Map<string, string>();
 const listeners = new Set<() => void>();
+const notify = () => listeners.forEach((listener) => listener());
 
 export function registerChatUsage(tabId: string, cli: string | null) {
-  if (!cli || !isCliAgent(cli)) return () => {};
-  chats.set(tabId, cli);
-  listeners.forEach((listener) => listener());
-  return () => {
-    chats.delete(tabId);
-    listeners.forEach((listener) => listener());
-  };
+  const next = cli && isCliAgent(cli) ? cli : undefined;
+  if (chats.get(tabId) === next) return;
+  if (next) chats.set(tabId, next);
+  else chats.delete(tabId);
+  notify();
+}
+
+/** Drops chats whose tab or pane id no longer exists. */
+export function pruneChatUsage(live: ReadonlySet<string>) {
+  let changed = false;
+  for (const id of chats.keys())
+    if (!live.has(id)) changed = chats.delete(id) || changed;
+  if (changed) notify();
 }
 
 export function subscribeChatUsage(listener: () => void) {

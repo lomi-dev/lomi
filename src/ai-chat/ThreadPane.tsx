@@ -151,7 +151,11 @@ export default function ThreadPane({
   const value = choice ?? fallback;
   const entry = entries.find((item) => item.instanceId === value.instanceId);
   const usageCli = entry?.kind === "cli" ? entry.cli : null;
-  useEffect(() => registerChatUsage(tab.id, usageCli), [tab.id, usageCli]);
+  useEffect(() => {
+    // No cleanup: usage stays visible while the chat runs in a background tab.
+    // Skipped until providers load so a remount never clears the entry.
+    if (entries.length) registerChatUsage(tab.id, usageCli);
+  }, [tab.id, usageCli, entries.length]);
   const efforts = useEfforts(entry, value.model);
   const effort = effortFor(
     thread
