@@ -14,14 +14,23 @@ export interface Choice {
 }
 
 const cliModels = new Map<CliAgent, Promise<CliModel[]>>();
+// Settled lists, read synchronously on mount to avoid an empty first render.
+const loadedCliModels = new Map<CliAgent, CliModel[]>();
+export const cachedCliModels = (cli: CliAgent) => loadedCliModels.get(cli);
 export function loadCliModels(cli: CliAgent, refresh = false) {
   if (refresh) cliModels.delete(cli);
   let models = cliModels.get(cli);
   if (!models) {
-    models = api<CliModel[]>("ai_cli_models", { cli }).catch(() => {
-      cliModels.delete(cli);
-      return [];
-    });
+    models = api<CliModel[]>("ai_cli_models", { cli }).then(
+      (list) => {
+        loadedCliModels.set(cli, list);
+        return list;
+      },
+      () => {
+        cliModels.delete(cli);
+        return [];
+      },
+    );
     cliModels.set(cli, models);
   }
   return models;
@@ -29,11 +38,13 @@ export function loadCliModels(cli: CliAgent, refresh = false) {
 
 /** Model ids offered for an entry; CLI lists come from the installed CLI. */
 export function useEntryModels(entry: ProviderEntry | undefined) {
-  const [fetched, setFetched] = useState<CliModel[]>([]);
   const cli = entry?.cli ?? null;
+  const [fetched, setFetched] = useState<CliModel[]>(
+    () => (cli && loadedCliModels.get(cli)) || [],
+  );
   useEffect(() => {
     let live = true;
-    setFetched([]);
+    setFetched((cli && loadedCliModels.get(cli)) || []);
     if (cli) void loadCliModels(cli).then((next) => live && setFetched(next));
     return () => {
       live = false;
@@ -56,7 +67,9 @@ interface ModelOption {
 
 /** Pickable models (with display names) for every entry, keyed by instance id. */
 function useModelGroups(entries: readonly ProviderEntry[]) {
-  const [cli, setCli] = useState<Partial<Record<CliAgent, CliModel[]>>>({});
+  const [cli, setCli] = useState<Partial<Record<CliAgent, CliModel[]>>>(() =>
+    Object.fromEntries(loadedCliModels),
+  );
   const clis = [
     ...new Set(entries.flatMap((entry) => (entry.cli ? [entry.cli] : []))),
   ];

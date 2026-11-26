@@ -156,13 +156,20 @@ export interface DetectResult {
 export const detectCliProviders = () =>
   api<DetectResult>("ai_providers_detect");
 
+// Last known values, so a remounted chat pane renders its final layout at once
+// instead of an empty composer while the requests below are in flight.
+let lastSettings: ChatSettings | undefined;
+let lastStatuses: CliStatuses = {};
+
 export function useChatProviders() {
-  const [settings, setSettings] = useState<ChatSettings>();
-  const [statuses, setStatuses] = useState<CliStatuses>({});
+  const [settings, setSettings] = useState(() => lastSettings);
+  const [statuses, setStatuses] = useState(() => lastStatuses);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const keepSettings = useCallback((next: ChatSettings) => {
+    if (!lastSettings || next.revision >= lastSettings.revision)
+      lastSettings = next;
     setSettings((current) =>
       !current || next.revision >= current.revision ? next : current,
     );
@@ -188,19 +195,19 @@ export function useChatProviders() {
   const refreshStatus = useCallback(async (cli: CliAgent) => {
     try {
       const next = await api<CliStatus>("ai_cli_status", { cli });
+      lastStatuses = { ...lastStatuses, [cli]: next };
       setStatuses((current) => ({ ...current, [cli]: next }));
     } catch (cause) {
-      setStatuses((current) => ({
-        ...current,
-        [cli]: {
-          cli,
-          binaryPath: null,
-          version: null,
-          signedIn: null,
-          plan: null,
-          error: errorMessage(cause),
-        },
-      }));
+      const failed: CliStatus = {
+        cli,
+        binaryPath: null,
+        version: null,
+        signedIn: null,
+        plan: null,
+        error: errorMessage(cause),
+      };
+      lastStatuses = { ...lastStatuses, [cli]: failed };
+      setStatuses((current) => ({ ...current, [cli]: failed }));
     }
   }, []);
   // Statuses are queried on mount, when the CLI set changes and on window focus.

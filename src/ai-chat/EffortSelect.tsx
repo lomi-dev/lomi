@@ -3,7 +3,7 @@ import type { CliAgent } from "../cli-agents";
 import { msg, t, useT } from "../i18n";
 import { Gauge } from "../icons";
 import Select from "../Select";
-import { loadCliModels } from "./ProviderModelPicker";
+import { cachedCliModels, loadCliModels } from "./ProviderModelPicker";
 import type { ProviderEntry } from "./types";
 
 const EFFORT_LABELS: Record<string, string> = {
@@ -24,12 +24,16 @@ export const loadEfforts = (cli: CliAgent, model: string) =>
     (models) => models.find((item) => item.id === model)?.efforts ?? [],
   );
 
+const cachedEfforts = (cli: CliAgent | null, model: string) =>
+  (cli && cachedCliModels(cli)?.find((item) => item.id === model)?.efforts) ||
+  [];
+
 export function useEfforts(entry: ProviderEntry | undefined, model: string) {
-  const [efforts, setEfforts] = useState<string[]>([]);
   const cli = entry?.cli ?? null;
+  const [efforts, setEfforts] = useState(() => cachedEfforts(cli, model));
   useEffect(() => {
     let live = true;
-    setEfforts([]);
+    setEfforts(cachedEfforts(cli, model));
     if (cli && model)
       void loadEfforts(cli, model).then((next) => live && setEfforts(next));
     return () => {
