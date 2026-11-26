@@ -1711,6 +1711,27 @@ svg {
   border-radius: 50%;
   background: var(--lomi-success, var(--terminal-green));
 }
+.thread-status-dot {
+  flex: 0 0 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+.thread-status-dot[data-state="running"] {
+  background: var(--color-info);
+  animation: terminal-activity-pulse 1.2s ease-in-out infinite;
+}
+.thread-status-dot[data-state="waiting"] {
+  background: var(--color-warning);
+}
+.thread-status-dot[data-state="unseen"] {
+  background: var(--color-accent-text);
+}
+@media (prefers-reduced-motion: reduce) {
+  .thread-status-dot[data-state="running"] {
+    animation: none;
+  }
+}
 .workspace-empty {
   margin: 0;
   padding: var(--space-24) var(--space-12);

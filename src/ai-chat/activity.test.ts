@@ -3,14 +3,19 @@ import test from "node:test";
 import {
   collapseGroup,
   compactNumber,
+  formatCountdown,
   hasPendingApproval,
   interleave,
   lineDiff,
   mergeActivity,
+  mergedHasMore,
+  mergeMessages,
   relativeTitle,
+  liveText,
+  seedLive,
   upsertActivity,
 } from "./activity.ts";
-import type { Activity } from "./types.ts";
+import type { Activity, ThreadMessage } from "./types.ts";
 
 const act = (
   id: string,
@@ -129,4 +134,88 @@ test("hasPendingApproval detects only pending prompts", () => {
   });
   assert.equal(hasPendingApproval([act("a", 0), withState("pending")]), true);
   assert.equal(hasPendingApproval([act("a", 0), withState("allowed")]), false);
+});
+
+const msg = (seq: number) => ({ messageId: `m${seq}`, seq }) as ThreadMessage;
+
+test("mergeMessages keeps older pages before the fresh window", () => {
+  const merged = mergeMessages([msg(1), msg(2), msg(3)], [msg(3), msg(4)]);
+  assert.deepEqual(
+    merged.map((m) => m.seq),
+    [1, 2, 3, 4],
+  );
+  assert.deepEqual(mergeMessages([msg(1)], []), []);
+});
+
+test("mergedHasMore trusts the fresh window only when it reaches back", () => {
+  const current = { messages: [msg(1), msg(2)], hasMore: false };
+  assert.equal(
+    mergedHasMore(current, { messages: [msg(2), msg(3)], hasMore: true }),
+    false,
+  );
+  assert.equal(
+    mergedHasMore(
+      { messages: [msg(5)], hasMore: true },
+      { messages: [msg(3)], hasMore: false },
+    ),
+    false,
+  );
+  assert.equal(mergedHasMore(current, { messages: [msg(2)] }), false);
+});
+
+test("collapseGroup never collapses notices", () => {
+  const notice = { ...act("n", 0), kind: "notice" as const };
+  const group = [act("a", 0), act("b", 0), act("c", 0), act("d", 0), notice];
+  const { collapsed, visible } = collapseGroup(group);
+  assert.equal(collapsed.length, 4);
+  assert.deepEqual(visible, [notice]);
+});
+
+test("formatCountdown", () => {
+  assert.equal(formatCountdown(-5), "0:00");
+  assert.equal(formatCountdown(61_000), "1:01");
+  assert.equal(formatCountdown(59_001), "1:00");
+  assert.equal(formatCountdown(3_725_000), "1:02:05");
+});
+
+test("seedLive keeps only the text beyond the stored content", () => {
+  const chunk = seedLive(
+    { content: "Hel", streamSeq: 2 },
+    { seq: 5, content: "Hello" },
+  );
+  assert.deepEqual(chunk, {
+    seq: 5,
+    text: "lo",
+    marks: [[5, 0]],
+    base: "Hel",
+  });
+});
+
+test("seedLive without newer text has no marks and rejects divergence", () => {
+  assert.deepEqual(
+    seedLive({ content: "Hi", streamSeq: 5 }, { seq: 5, content: "Hi" }),
+    { seq: 5, text: "", marks: [], base: "Hi" },
+  );
+  assert.equal(
+    seedLive({ content: "Hx", streamSeq: 1 }, { seq: 5, content: "Hi" }),
+    null,
+  );
+});
+
+test("liveText does not duplicate seeded text once a snapshot overlaps it", () => {
+  const chunk = seedLive(
+    { content: "Hel", streamSeq: 2 },
+    { seq: 5, content: "Hello" },
+  )!;
+  assert.equal(liveText({ content: "Hel", streamSeq: 2 }, chunk), "Hello");
+  // A later snapshot stored "Hell" (seq 4), between the seed base and live.seq.
+  assert.equal(liveText({ content: "Hell", streamSeq: 4 }, chunk), "Hello");
+  assert.equal(liveText({ content: "Hello", streamSeq: 5 }, chunk), "Hello");
+  const next = {
+    ...chunk,
+    seq: 6,
+    text: "lo!",
+    marks: [...chunk.marks, [6, 2]] as const,
+  };
+  assert.equal(liveText({ content: "Hello", streamSeq: 5 }, next), "Hello!");
 });

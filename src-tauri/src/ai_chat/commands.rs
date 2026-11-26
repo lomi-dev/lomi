@@ -7,7 +7,7 @@ use super::{
     store::{self, *},
     AiChat,
 };
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 use tauri::{ipc::Channel, AppHandle, State, Window};
 use zeroize::Zeroizing;
 
@@ -484,10 +484,67 @@ pub(crate) async fn ai_thread_snapshot(
     app: AppHandle,
     state: State<'_, AiChat>,
     thread_id: String,
+    limit: Option<usize>,
 ) -> Result<ThreadSnapshot, String> {
     crate::files::main_window(&window)?;
     let chat = state.inner().clone();
-    blocking(move || chat.with(&app, |i| i.store.snapshot(&thread_id))).await
+    blocking(move || chat.with(&app, |i| i.store.snapshot_limited(&thread_id, limit))).await
+}
+
+/// Up to `limit` messages older than `before_seq`, oldest first.
+#[tauri::command]
+pub(crate) async fn ai_thread_messages_before(
+    window: Window,
+    app: AppHandle,
+    state: State<'_, AiChat>,
+    thread_id: String,
+    before_seq: u64,
+    limit: usize,
+) -> Result<MessagePage, String> {
+    crate::files::main_window(&window)?;
+    let chat = state.inner().clone();
+    blocking(move || {
+        chat.with(&app, |i| {
+            i.store.messages_before(&thread_id, before_seq, limit)
+        })
+    })
+    .await
+}
+
+/// The in-memory state of a thread's streaming reply, for a client that subscribed
+/// to the stream first: it drops deltas with `seq` up to the returned one.
+#[tauri::command]
+pub(crate) async fn ai_thread_live(
+    window: Window,
+    app: AppHandle,
+    state: State<'_, AiChat>,
+    thread_id: String,
+) -> Result<Option<ThreadLive>, String> {
+    crate::files::main_window(&window)?;
+    Ok(state.engine(&app)?.live(&thread_id))
+}
+
+/// Run state of the threads `ai_threads_list` returns for a workspace.
+#[tauri::command]
+pub(crate) async fn ai_threads_status(
+    window: Window,
+    app: AppHandle,
+    state: State<'_, AiChat>,
+    project: String,
+    workspace_id: String,
+) -> Result<Vec<ThreadStatus>, String> {
+    crate::files::main_window(&window)?;
+    let chat = state.inner().clone();
+    let engine = chat.engine(&app)?.clone();
+    let threads =
+        blocking(move || chat.with(&app, |i| i.store.list(&project, &workspace_id))).await?;
+    Ok(threads
+        .into_iter()
+        .map(|t| ThreadStatus {
+            state: engine.run_state(&t.thread_id),
+            thread_id: t.thread_id,
+        })
+        .collect())
 }
 
 const MENTION_FILE_CAP: usize = 20_000;
@@ -717,7 +774,7 @@ pub(crate) async fn ai_turn_diff(
     blocking(move || engine.turn_diff(&thread_id, &message_id, &path)).await
 }
 
-/// Restores the files an assistant turn changed; an explicit UI action.
+/// Restores the files an assistant turn changed (only `paths` when given); an explicit UI action.
 #[tauri::command]
 pub(crate) async fn ai_turn_undo(
     window: Window,
@@ -725,12 +782,13 @@ pub(crate) async fn ai_turn_undo(
     state: State<'_, AiChat>,
     thread_id: String,
     message_id: String,
+    paths: Option<Vec<String>>,
 ) -> Result<lomi_chat::checkpoint::UndoReport, String> {
     crate::files::main_window(&window)?;
     let engine = state.engine(&app)?.clone();
     let (report, revision) = {
         let thread_id = thread_id.clone();
-        blocking(move || engine.turn_undo(&thread_id, &message_id)).await?
+        blocking(move || engine.turn_undo(&thread_id, &message_id, paths)).await?
     };
     emit_changed(&app, "threads", revision, Some(&thread_id));
     Ok(report)
@@ -757,6 +815,67 @@ impl EventSink for ChannelSink {
     fn send(&self, event: ThreadStreamEvent) {
         let _ = self.0.send(event);
     }
+
+    fn try_send(&self, event: ThreadStreamEvent) -> bool {
+        self.0.send(event).is_ok()
+    }
+}
+
+/// Subscribes `on_event` to the running turn of a thread and returns its state so
+/// far (`None` when no turn runs); events after `live.seq` follow on the channel.
+#[tauri::command]
+pub(crate) async fn ai_thread_attach(
+    window: Window,
+    app: AppHandle,
+    state: State<'_, AiChat>,
+    thread_id: String,
+    on_event: Channel<ThreadStreamEvent>,
+) -> Result<Option<ThreadLive>, String> {
+    crate::files::main_window(&window)?;
+    Ok(state
+        .engine(&app)?
+        .attach(&thread_id, Arc::new(ChannelSink(on_event))))
+}
+
+/// Adds a message to the running turn. Fails with `steer_unsupported` when the CLI
+/// cannot take it; the caller then queues the message.
+#[tauri::command]
+pub(crate) async fn ai_thread_steer(
+    window: Window,
+    app: AppHandle,
+    state: State<'_, AiChat>,
+    thread_id: String,
+    text: String,
+) -> Result<(), String> {
+    crate::files::main_window(&window)?;
+    state.engine(&app)?.steer(&thread_id, text).await
+}
+
+/// Answers a pending question of a running turn by item id; `null` declines it.
+#[tauri::command]
+pub(crate) async fn ai_thread_answer(
+    window: Window,
+    app: AppHandle,
+    state: State<'_, AiChat>,
+    thread_id: String,
+    request_id: String,
+    answers: Option<HashMap<String, Vec<String>>>,
+) -> Result<(), String> {
+    crate::files::main_window(&window)?;
+    let engine = state.engine(&app)?.clone();
+    blocking(move || engine.answer(&thread_id, &request_id, answers)).await
+}
+
+/// Slash commands the thread's CLI reported; empty before its session started.
+#[tauri::command]
+pub(crate) async fn ai_thread_commands(
+    window: Window,
+    app: AppHandle,
+    state: State<'_, AiChat>,
+    thread_id: String,
+) -> Result<Vec<ThreadCommand>, String> {
+    crate::files::main_window(&window)?;
+    Ok(state.engine(&app)?.commands(&thread_id))
 }
 
 #[tauri::command]

@@ -27,9 +27,9 @@ impl AiChat {
             .app_data_dir()
             .map_err(|_| "Chat storage is unavailable.")?
             .join("ai-chat");
-        let (keys, changed) = (app.clone(), app.clone());
+        let (keys, changed, status) = (app.clone(), app.clone(), app.clone());
         Ok(self.engine.get_or_init(|| {
-            Engine::new(
+            let engine = Engine::new(
                 root,
                 Hooks {
                     api_key: Box::new(move |id| read_key(&keys, id)),
@@ -38,7 +38,15 @@ impl AiChat {
                     }),
                     resolve_cli: Box::new(lomi_chat::cli_bin::resolve),
                 },
-            )
+            );
+            engine.on_status(move |thread_id, state| {
+                let _ = status.emit_to(
+                    EventTarget::webview("main"),
+                    "ai-thread-status",
+                    serde_json::json!({"threadId": thread_id, "state": state}),
+                );
+            });
+            engine
         }))
     }
 

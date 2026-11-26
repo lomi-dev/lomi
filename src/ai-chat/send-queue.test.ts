@@ -33,11 +33,11 @@ test("enqueue keeps order and remove drops by id", () => {
   assert.deepEqual(remove(queue, "a"), [b]);
 });
 
-test("editable needs an empty composer and no files", () => {
+test("editable needs an empty composer", () => {
   const queue = [a, b];
   assert.equal(editable(queue, "a", true), a);
   assert.equal(editable(queue, "a", false), undefined);
-  assert.equal(editable(queue, "b", true), undefined);
+  assert.equal(editable(queue, "b", true), b);
   assert.equal(editable(queue, "x", true), undefined);
 });
 

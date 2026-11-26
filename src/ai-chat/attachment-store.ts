@@ -92,6 +92,11 @@ export function useAttachments(tabId: string) {
       store((current) => current.filter((item) => !ids.includes(item.id))),
     [store],
   );
+  /** Puts already imported files back, e.g. from an edited queued message. */
+  const restore = useCallback(
+    (files: Attachment[]) => store((current) => [...current, ...files]),
+    [store],
+  );
   return {
     items,
     importing,
@@ -102,5 +107,6 @@ export function useAttachments(tabId: string) {
     importImages,
     remove,
     consume,
+    restore,
   };
 }

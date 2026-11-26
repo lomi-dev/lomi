@@ -47,6 +47,7 @@ export const productIcons = {
   Lock: ["lock"],
   LayoutGrid: ["layout"],
   ListX: ["clear-all"],
+  ListPlus: ["list-unordered"],
   Maximize2: ["screen-full"],
   Menu: ["menu"],
   Minimize2: ["screen-normal"],

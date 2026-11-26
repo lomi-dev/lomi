@@ -13,7 +13,8 @@ import { newId, type ThreadTab } from "../model";
 import { IconButton, Modal } from "../ui";
 import { useAttachments } from "./attachment-store";
 import EffortSelect, { loadEfforts, useEfforts } from "./EffortSelect";
-import { hasPendingApproval } from "./activity";
+import { hasPendingApproval, isPendingQuestion } from "./activity";
+import { isNewCommand } from "./commands";
 import { effortFor, initialEffort } from "./effort";
 import ProviderModelPicker, { type Choice } from "./ProviderModelPicker";
 import { decide, editable } from "./send-queue";
@@ -26,7 +27,11 @@ import {
   createThread,
   getDraft,
   getThreadView,
+  answerQuestion,
   respondToApproval,
+  steerThread,
+  steerUnknown,
+  steerUnsupported,
   renameThread,
   updateThread,
   setDraft,
@@ -72,6 +77,7 @@ export default function ThreadPane({
   const pane = useRef<HTMLElement>(null);
   const attach = useAttachments(tab.id);
   const { importPaths } = attach;
+  const steering = useRef(false);
   const op = useRef<{ key: string; id: string } | undefined>(undefined);
   const operation = (key: string) =>
     (op.current = op.current?.key === key ? op.current : { key, id: newId() })
@@ -95,6 +101,26 @@ export default function ThreadPane({
     element.addEventListener("thread-file-drag", listener);
     return () => element.removeEventListener("thread-file-drag", listener);
   }, [importPaths]);
+  // Workbench shortcuts (focus message field, open model picker) arrive here.
+  useEffect(() => {
+    const element = pane.current;
+    if (!element) return;
+    const listener = (event: Event) => {
+      const command = (event as CustomEvent<string>).detail;
+      if (command === "focusChat")
+        element
+          .querySelector<HTMLTextAreaElement>(".thread-composer textarea")
+          ?.focus();
+      else
+        element
+          .querySelector<HTMLButtonElement>(
+            ".thread-picker-trigger:not(:disabled)",
+          )
+          ?.click();
+    };
+    element.addEventListener("thread-command", listener);
+    return () => element.removeEventListener("thread-command", listener);
+  }, []);
   useEffect(() => {
     if (
       thread &&
@@ -172,6 +198,9 @@ export default function ThreadPane({
     if (getDraft(tab.id).trim() === text) changeDraft("");
   };
 
+  // Steering is offered for the CLIs that accept messages mid-turn.
+  const steerable = entry?.cli === "claude" || entry?.cli === "codex";
+
   // A CLI session is bound to its CLI; an API thread cannot move to a CLI.
   const threadKind = thread
     ? entries.find((item) => item.instanceId === thread.instanceId)?.kind
@@ -182,9 +211,14 @@ export default function ThreadPane({
       ? entries.filter((item) => item.instanceId === thread.instanceId)
       : entries.filter((item) => item.kind !== "cli");
 
-  async function send() {
+  async function send(forceQueue = false) {
     const text = draft.trim();
     const ids = attach.items.map((item) => item.id);
+    if (isNewCommand(text) && !ids.length) {
+      op.current = undefined;
+      changeDraft("");
+      return newChat();
+    }
     if (
       (!text && !ids.length) ||
       attach.importing ||
@@ -193,6 +227,32 @@ export default function ThreadPane({
     )
       return;
     if (running && view && thread) {
+      if (steerable && !forceQueue && text && !ids.length) {
+        if (steering.current) return;
+        steering.current = true;
+        // Clear first so a second Enter cannot resend it; text typed meanwhile stays.
+        op.current = undefined;
+        changeDraft("");
+        try {
+          await steerThread(thread.threadId, text);
+          return;
+        } catch (cause) {
+          const code = errorMessage(cause);
+          if (code === steerUnknown)
+            return setError(t("The message may not have reached the agent."));
+          if (code !== steerUnsupported) {
+            // Definite failure: give the text back without wiping new typing.
+            const typed = getDraft(tab.id);
+            changeDraft(typed.trim() ? `${text}\n${typed}` : text);
+            return setError(code);
+          }
+          // Unsupported: queue it like any follow-up (the draft is already clear).
+          view.enqueue({ id: newId(), text, attachments: [] });
+          return;
+        } finally {
+          steering.current = false;
+        }
+      }
       // The backend takes one reply at a time; hold this one until it ends.
       view.enqueue({
         id: newId(),
@@ -249,6 +309,40 @@ export default function ThreadPane({
     }
   }
 
+  // Sends the text of a failed turn again; false while busy so the caller can wait.
+  function resend(text: string, files: readonly { id: string }[]) {
+    if (!view || !thread || running || sending || !entry?.available)
+      return false;
+    setError("");
+    setSending(true);
+    view
+      .send({
+        operationId: newId(),
+        expectedRevision:
+          view.state.snapshot?.thread.revision ?? thread.revision,
+        instanceId: entry.instanceId,
+        model: value.model,
+        text,
+        attachments: files.map((file) => file.id),
+      })
+      .catch((cause) => setError(errorMessage(cause)))
+      .finally(() => setSending(false));
+    return true;
+  }
+
+  // Stable callbacks keep memoized messages from re-rendering on every token.
+  const latest = useRef({ resend, view });
+  latest.current = { resend, view };
+  const onResend = useCallback(
+    (text: string, files: readonly { id: string }[]) =>
+      latest.current.resend(text, files),
+    [],
+  );
+  const loadEarlier = useCallback(
+    () => void latest.current.view?.loadEarlier(),
+    [],
+  );
+
   const draining = useRef(false);
   async function sendQueued() {
     const item = state.queued[0];
@@ -299,6 +393,7 @@ export default function ThreadPane({
     );
     if (!item || !view) return;
     view.dequeue(id);
+    attach.restore(item.attachments);
     edit(item.text);
   };
   const removeQueued = (id: string) => {
@@ -348,8 +443,18 @@ export default function ThreadPane({
         : Promise.resolve(),
     [threadId],
   );
+  const answer = useCallback(
+    (requestId: string, answers: Record<string, string[]> | null) =>
+      threadId
+        ? answerQuestion(threadId, requestId, answers)
+        : Promise.resolve(),
+    [threadId],
+  );
   const waiting = items.some(
     (item) => item.streaming && hasPendingApproval(item.activity),
+  );
+  const waitingAnswer = items.some(
+    (item) => item.streaming && item.activity.some(isPendingQuestion),
   );
 
   async function commitRename() {
@@ -455,8 +560,17 @@ export default function ThreadPane({
               items={items}
               threadId={tab.threadId}
               cwd={state.snapshot?.thread.cwd ?? projectPath}
+              provider={
+                entries.find((item) => item.instanceId === thread?.instanceId)
+                  ?.label ?? ""
+              }
+              hasMore={!!state.snapshot?.hasMore}
+              loadingEarlier={state.loadingEarlier}
+              onLoadEarlier={loadEarlier}
               onEdit={edit}
+              onResend={onResend}
               onRespond={respond}
+              onAnswer={answer}
             />
           )}
           <div className="thread-dock">
@@ -468,6 +582,11 @@ export default function ThreadPane({
             {waiting && (
               <div className="thread-notice" role="status">
                 {t("Waiting for your approval")}
+              </div>
+            )}
+            {waitingAnswer && (
+              <div className="thread-notice" role="status">
+                {t("Waiting for your answer")}
               </div>
             )}
             {shownError && (
@@ -515,17 +634,13 @@ export default function ThreadPane({
                           type="button"
                           className="button"
                           aria-describedby={`${queueId}-${item.id}`}
-                          disabled={files > 0 || !composerEmpty}
+                          disabled={!composerEmpty}
                           title={
-                            files > 0
+                            !composerEmpty
                               ? t(
-                                  "Files cannot be moved back. Remove this message and attach them again.",
+                                  "Clear the message field to edit this message.",
                                 )
-                              : !composerEmpty
-                                ? t(
-                                    "Clear the message field to edit this message.",
-                                  )
-                                : undefined
+                              : undefined
                           }
                           onClick={() => editQueued(item.id)}
                         >
@@ -549,7 +664,7 @@ export default function ThreadPane({
               <ThreadComposer
                 value={draft}
                 onChange={changeDraft}
-                onSend={() => void send()}
+                onSend={(queue) => void send(queue)}
                 onStop={stop}
                 running={running}
                 disabled={
@@ -573,6 +688,9 @@ export default function ThreadPane({
                 onPasteImages={(files) => void attach.importImages(files)}
                 onRemoveAttachment={attach.remove}
                 mentionThreadId={threadKind === "cli" ? tab.threadId : null}
+                steerable={steerable}
+                commandThreadId={threadKind === "cli" ? tab.threadId : null}
+                commandsKey={`${items.length}:${running}`}
                 picker={
                   <ProviderModelPicker
                     entries={pickerEntries}

@@ -131,6 +131,20 @@ export const actions = [
     shortcut: "Ctrl+Shift+KeyN",
   },
   {
+    id: "focusChat",
+    label: msg("Focus chat message"),
+    description: msg("Move focus to the message field of the active chat."),
+    group: msg("Tabs"),
+    shortcut: "Ctrl+Shift+KeyJ",
+  },
+  {
+    id: "chatModelPicker",
+    label: msg("Choose chat model"),
+    description: msg("Open the model picker of the active chat."),
+    group: msg("Tabs"),
+    shortcut: "Ctrl+Shift+KeyK",
+  },
+  {
     id: "closeTab",
     label: msg("Close tab"),
     description: msg("Close the active tab and all its terminals."),

@@ -109,6 +109,13 @@ export type ActivityKind =
   | "execute"
   | "fetch"
   | "agent"
+  /**
+   * System note; `title` is a stable key: "context_reset" | "checkpoint_unavailable" |
+   * "context_compacted" | "steer" (`detail` is then the message sent mid-turn).
+   */
+  | "notice"
+  /** A question for the user; see `Activity.question`. */
+  | "question"
   | "other";
 export type ActivityStatus = "running" | "completed" | "failed";
 export interface ActivityDiff {
@@ -123,6 +130,36 @@ export interface Approval {
   state: ApprovalState;
   canRemember: boolean;
 }
+export type QuestionState = "pending" | "answered" | "declined" | "expired";
+export interface QuestionOption {
+  label: string;
+  description: string;
+}
+export interface QuestionItem {
+  /** Key of the answer (Claude: the question text). */
+  id: string;
+  header: string;
+  question: string;
+  options: QuestionOption[];
+  multiSelect: boolean;
+  /** Free text is accepted besides the options. */
+  allowOther: boolean;
+  /** The answer is a secret; it is never stored. */
+  secret?: boolean;
+}
+export interface Question {
+  requestId: string;
+  items: QuestionItem[];
+  state: QuestionState;
+  /** Chosen labels or free text by item id; secret answers are never stored. */
+  answers?: Record<string, string[]>;
+}
+/** A slash command of the thread's CLI, sent as plain message text. */
+export interface ThreadCommand {
+  name: string;
+  description: string;
+  argumentHint: string;
+}
 export interface Activity {
   id: string;
   kind: ActivityKind;
@@ -134,6 +171,8 @@ export interface Activity {
   diff: ActivityDiff | null;
   /** Absent when no permission prompt happened. */
   approval?: Approval;
+  /** Present on `question` activities. */
+  question?: Question;
 }
 export interface Usage {
   inputTokens: number;
@@ -148,6 +187,10 @@ export interface FileChange {
   additions: number;
   deletions: number;
   binary: boolean;
+  /** The turn's own edit activities touched this path. */
+  agent: boolean;
+  /** Restored by a selective undo. */
+  undone: boolean;
 }
 export interface TurnChanges {
   files: FileChange[];
@@ -157,6 +200,13 @@ export interface TurnUndoResult {
   restored: string[];
   skipped: string[];
 }
+export type ErrorKind =
+  | "auth"
+  | "rate_limit"
+  | "network"
+  | "missing_cli"
+  | "context_length"
+  | "other";
 export interface ThreadMessage {
   messageId: string;
   seq: number;
@@ -168,6 +218,10 @@ export interface ThreadMessage {
   streamSeq: number;
   stopReason: string | null;
   error: string | null;
+  /** Class of `error` on a failed turn. */
+  errorKind?: ErrorKind | null;
+  /** Epoch ms at which a rate limit resets, when reported. */
+  retryAtMs?: number | null;
   createdMs: number;
   attachments: Attachment[];
   /** Missing on data stored before activity existed. */
@@ -179,6 +233,25 @@ export interface ThreadMessage {
 export interface ThreadSnapshot {
   thread: ThreadSummary;
   messages: ThreadMessage[];
+  /** Older messages exist beyond a `limit`ed snapshot. */
+  hasMore?: boolean;
+}
+export interface MessagePage {
+  /** Oldest first. */
+  messages: ThreadMessage[];
+  hasMore: boolean;
+}
+/** In-memory state of the streaming reply; drop deltas with `seq <= live.seq`. */
+export interface ThreadLive {
+  messageId: string;
+  seq: number;
+  content: string;
+  activity: Activity[];
+}
+export type RunState = "idle" | "running" | "waiting";
+export interface ThreadStatus {
+  threadId: string;
+  state: RunState;
 }
 export interface ThreadSendAccepted {
   thread: ThreadSummary;

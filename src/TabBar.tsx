@@ -20,6 +20,7 @@ import type { Tab, TabCloseAction, TabDropSide } from "./model";
 import { tabTitle } from "./model";
 import { useTabDrag } from "./tab-drag";
 import { useT } from "./i18n";
+import { ThreadStatusDot } from "./thread-status";
 import { IconButton } from "./ui";
 import TabContextMenu from "./TabContextMenu";
 import type { TabMenuAnchor } from "./TabContextMenu";
@@ -353,6 +354,9 @@ export default function TabBar({
                   <Terminal size={14} />
                 )}
                 <span>{tabTitle(tab)}</span>
+                {tab.type === "thread" && (
+                  <ThreadStatusDot threadIds={[tab.threadId]} />
+                )}
                 {modified?.has(tab.id) && (
                   <span
                     className="tab-modified"

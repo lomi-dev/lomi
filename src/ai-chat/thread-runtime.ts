@@ -3,12 +3,21 @@ import { Channel } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { api, errorMessage } from "../api";
 import { t } from "../i18n";
-import { mergeActivity, upsertActivity } from "./activity";
+import {
+  liveText,
+  mergeActivity,
+  mergedHasMore,
+  mergeMessages,
+  seedLive,
+  upsertActivity,
+} from "./activity";
 import { enqueue, remove, type QueuedMessage } from "./send-queue";
 import type {
   ApprovalDecision,
   Activity,
+  Attachment,
   ChatItem,
+  ErrorKind,
   Permissions,
   ThreadMessage,
   ThreadSendAccepted,
@@ -18,17 +27,33 @@ import type {
   TurnUndoResult,
 } from "./types";
 
+/** Streamed text of one message: appended deltas and the last seq seen. */
 export interface LiveChunk {
   seq: number;
   text: string;
+  /** Seq and text offset of each delta, so stored content can be skipped exactly. */
+  marks: readonly (readonly [seq: number, start: number])[];
+  /** Stored content when a seeded attach began; `text` continues it. */
+  base?: string;
 }
+/** A rendered message plus the typed failure class (see ThreadMessage). */
+export type ChatItemView = ChatItem & {
+  errorKind?: ErrorKind | null;
+  retryAtMs?: number | null;
+  /** Files of the user message that produced a failed reply. */
+  resendAttachments?: Attachment[];
+};
+/** ChatItem.error placeholder; ThreadMessages translates it at render time. */
+export const INTERRUPTED_ERROR = "\0interrupted";
 export interface ThreadViewState {
   snapshot?: ThreadSnapshot;
   loaded: boolean;
   missing: boolean;
   error: string;
   busy: boolean;
-  live: ReadonlyMap<string, readonly LiveChunk[]>;
+  /** An older page is being fetched. */
+  loadingEarlier: boolean;
+  live: ReadonlyMap<string, LiveChunk>;
   /** Activity received over the stream, cleared when the message is final. */
   liveActivity: ReadonlyMap<string, readonly Activity[]>;
   /**
@@ -70,6 +95,7 @@ class ThreadView {
     missing: false,
     error: "",
     busy: false,
+    loadingEarlier: false,
     live: new Map(),
     liveActivity: new Map(),
     queued: [],
@@ -105,6 +131,8 @@ class ThreadView {
         this.release?.();
         clearInterval(this.poll);
         this.poll = undefined;
+        this.tried.clear();
+        this.retried.clear();
       }
     };
   };
@@ -114,22 +142,112 @@ class ThreadView {
     this.syncPoll();
     for (const listener of this.listeners) listener();
   }
-  /** Polls while a message streams without a channel (e.g. after reopening). */
+  /** Message ids already tried with `threadAttach` since the last poll tick. */
+  private tried = new Set<string>();
+  /** Messages whose first empty attach already got its quick second try. */
+  private retried = new Set<string>();
+  /**
+   * Attaches to a turn that streams without a channel of this webview (e.g.
+   * after reopening); a slow poll remains only while attaching is impossible.
+   */
   private syncPoll() {
-    const orphan = this.state.snapshot?.messages.some(
+    const orphan = this.state.snapshot?.messages.find(
       (message) => active(message) && !this.channels.has(message.messageId),
     );
-    if (orphan && this.listeners.size && !this.poll)
-      this.poll = setInterval(() => void this.refresh(), 1000);
-    else if (!orphan && this.poll) {
+    if (orphan && this.listeners.size) {
+      if (!this.tried.has(orphan.messageId)) this.attach(orphan);
+      this.poll ??= setInterval(() => {
+        this.tried.clear();
+        void this.refresh();
+      }, 5000);
+    } else if (!orphan && this.poll) {
       clearInterval(this.poll);
       this.poll = undefined;
     }
   }
+  private attach(message: ThreadMessage) {
+    this.tried.add(message.messageId);
+    const onEvent = new Channel<ThreadStreamEvent>();
+    // Hold events until the returned state is seeded, so seq filtering applies.
+    let early: ThreadStreamEvent[] | null = [];
+    onEvent.onmessage = (event) => {
+      if (early) {
+        early.push(event);
+        return;
+      }
+      this.queue.push(event);
+      this.frame ||= requestAnimationFrame(this.flush);
+    };
+    threadAttach(this.threadId, onEvent).then(
+      (live) => {
+        if (!live) {
+          // The turn may not be attachable yet; try once soon, then the slow poll.
+          if (this.retried.has(message.messageId)) return;
+          this.retried.add(message.messageId);
+          setTimeout(() => {
+            if (!this.listeners.size) return;
+            this.tried.delete(message.messageId);
+            void this.refresh().then(() => this.syncPoll());
+          }, 300);
+          return;
+        }
+        this.channels.add(live.messageId);
+        const stored = this.state.snapshot?.messages.find(
+          (item) => item.messageId === live.messageId,
+        );
+        const chunk = stored && seedLive(stored, live);
+        const liveMap = new Map(this.state.live);
+        if (chunk) liveMap.set(live.messageId, chunk);
+        const activityMap = new Map(this.state.liveActivity);
+        let activity = activityMap.get(live.messageId) ?? [];
+        for (const item of live.activity)
+          activity = upsertActivity(activity, item);
+        activityMap.set(live.messageId, activity);
+        this.update({ live: liveMap, liveActivity: activityMap });
+        this.queue.push(...early!);
+        early = null;
+        if (this.queue.length) this.flush();
+      },
+      () => {},
+    );
+  }
   private accept(snapshot: ThreadSnapshot) {
     const current = this.state.snapshot;
     if (current && snapshot.thread.revision < current.thread.revision) return;
-    this.update({ snapshot, loaded: true, missing: false, error: "" });
+    // Fresh windows cover only the newest messages; keep loaded older pages.
+    const merged: ThreadSnapshot = {
+      ...snapshot,
+      messages: mergeMessages(current?.messages ?? [], snapshot.messages),
+      hasMore: mergedHasMore(current, snapshot),
+    };
+    this.update({ snapshot: merged, loaded: true, missing: false, error: "" });
+  }
+  /** Prepends the next page of older messages. */
+  async loadEarlier() {
+    const current = this.state.snapshot;
+    const first = current?.messages[0];
+    if (!current || !first || !current.hasMore || this.state.loadingEarlier)
+      return;
+    this.update({ loadingEarlier: true });
+    try {
+      const page = await threadMessagesBefore(this.threadId, first.seq, 50);
+      const latest = this.state.snapshot ?? current;
+      const oldest = latest.messages[0]?.seq ?? Infinity;
+      this.update({
+        snapshot: {
+          ...latest,
+          messages: [
+            ...page.messages.filter((message) => message.seq < oldest),
+            ...latest.messages,
+          ],
+          hasMore: page.hasMore,
+        },
+      });
+    } catch (cause) {
+      this.update({ error: errorMessage(cause) });
+    } finally {
+      this.update({ loadingEarlier: false });
+    }
   }
   seed(thread: ThreadSummary) {
     if (!this.state.snapshot)
@@ -137,11 +255,7 @@ class ThreadView {
   }
   async refresh() {
     try {
-      this.accept(
-        await api<ThreadSnapshot>("ai_thread_snapshot", {
-          threadId: this.threadId,
-        }),
-      );
+      this.accept(await threadSnapshotLimited(this.threadId, 100));
     } catch (cause) {
       const message = errorMessage(cause);
       if (/not found|no such|deleted/i.test(message))
@@ -157,11 +271,17 @@ class ThreadView {
     let snapshot = this.state.snapshot;
     for (const event of events) {
       if (event.type === "delta") {
+        const known = live.get(event.messageId);
+        // Replayed or out-of-order deltas are dropped by seq.
+        if (known && event.seq <= known.seq) continue;
         const next = new Map(live);
-        next.set(event.messageId, [
-          ...(next.get(event.messageId) ?? []),
-          { seq: event.seq, text: event.text },
-        ]);
+        const text = known?.text ?? "";
+        next.set(event.messageId, {
+          seq: event.seq,
+          text: text + event.text,
+          marks: [...(known?.marks ?? []), [event.seq, text.length]],
+          base: known?.base,
+        });
         live = next;
       } else if (event.type === "activity") {
         const next = new Map(liveActivity);
@@ -180,6 +300,7 @@ class ThreadView {
         this.channels.delete(event.message.messageId);
         if (snapshot)
           snapshot = {
+            ...snapshot,
             thread: event.thread,
             messages: snapshot.messages.map((message) =>
               message.messageId === event.message.messageId
@@ -272,6 +393,7 @@ const emptyState: ThreadViewState = {
   missing: false,
   error: "",
   busy: false,
+  loadingEarlier: false,
   live: new Map(),
   liveActivity: new Map(),
   queued: [],
@@ -292,10 +414,11 @@ export function useThreadView(threadId: string | null) {
 }
 
 interface CachedItem {
-  chunks: readonly LiveChunk[] | undefined;
+  chunks: LiveChunk | undefined;
   extra: readonly Activity[] | undefined;
   resend: string;
-  item: ChatItem;
+  files: Attachment[];
+  item: ChatItemView;
 }
 /** Keeps ChatItem identity while a message and its live inputs are unchanged. */
 const itemCache = new WeakMap<ThreadMessage, CachedItem>();
@@ -303,14 +426,18 @@ const itemCache = new WeakMap<ThreadMessage, CachedItem>();
 /** Displayed API text: stored content plus live chunks newer than it. */
 export function apiMessages(
   messages: readonly ThreadMessage[],
-  live: ReadonlyMap<string, readonly LiveChunk[]>,
+  live: ReadonlyMap<string, LiveChunk>,
   liveActivity: ReadonlyMap<string, readonly Activity[]> = new Map(),
-): ChatItem[] {
-  const items: ChatItem[] = [];
+): ChatItemView[] {
+  const items: ChatItemView[] = [];
   let userText = "";
+  let userFiles: Attachment[] = [];
   for (const message of messages) {
     const user = message.role === "user";
-    if (user) userText = message.content;
+    if (user) {
+      userText = message.content;
+      userFiles = message.attachments;
+    }
     const liveChunks = user ? undefined : live.get(message.messageId);
     const extra = user ? undefined : liveActivity.get(message.messageId);
     const hit = itemCache.get(message);
@@ -318,18 +445,20 @@ export function apiMessages(
       hit &&
       hit.chunks === liveChunks &&
       hit.extra === extra &&
-      hit.resend === userText
+      hit.resend === userText &&
+      hit.files === userFiles
     ) {
       items.push(hit.item);
       continue;
     }
     const item = user
       ? userItem(message)
-      : assistantItem(message, liveChunks ?? [], extra ?? [], userText);
+      : assistantItem(message, liveChunks, extra ?? [], userText, userFiles);
     itemCache.set(message, {
       chunks: liveChunks,
       extra,
       resend: userText,
+      files: userFiles,
       item,
     });
     items.push(item);
@@ -353,32 +482,31 @@ const userItem = (message: ThreadMessage): ChatItem => ({
 
 function assistantItem(
   message: ThreadMessage,
-  liveChunks: readonly LiveChunk[],
+  liveChunks: LiveChunk | undefined,
   extra: readonly Activity[],
   userText: string,
-): ChatItem {
-  const chunks = liveChunks
-    .filter((chunk) => chunk.seq > message.streamSeq)
-    .sort((a, b) => a.seq - b.seq)
-    .filter((chunk, index, all) => chunk.seq !== all[index - 1]?.seq);
+  userFiles: Attachment[],
+): ChatItemView {
   const failed = message.state === "failed" || message.state === "interrupted";
   return {
     id: message.messageId,
     role: "assistant",
-    text: message.content + chunks.map((chunk) => chunk.text).join(""),
+    text: liveText(message, liveChunks),
     streaming: active(message),
     error: failed
-      ? (message.error ??
-        t("The response was interrupted; the partial reply was kept."))
+      ? (message.error ?? INTERRUPTED_ERROR)
       : message.state === "completed"
         ? message.error
         : null,
+    errorKind: failed ? message.errorKind : null,
+    retryAtMs: failed ? message.retryAtMs : null,
     stopped: message.state === "stopped",
     activity: mergeActivity(message.activity ?? [], extra),
     usage: message.usage ?? null,
     changes: message.changes ?? null,
     attachments: [],
     resend: failed ? userText : null,
+    resendAttachments: failed ? userFiles : undefined,
   };
 }
 
@@ -525,3 +653,71 @@ if (typeof window !== "undefined")
 
 export const threadTitle = (text: string) =>
   [...(text.trim().split(/\r?\n/)[0] || "New chat")].slice(0, 60).join("");
+
+import type {
+  MessagePage,
+  ThreadLive,
+  ThreadSnapshot as LimitedSnapshot,
+  ThreadStatus,
+  TurnUndoResult as FilesUndoResult,
+} from "./types";
+
+/** The newest `limit` messages of a thread (`hasMore` tells if older ones exist). */
+export const threadSnapshotLimited = (threadId: string, limit: number) =>
+  api<LimitedSnapshot>("ai_thread_snapshot", { threadId, limit });
+
+/** Up to `limit` messages older than `beforeSeq`, oldest first. */
+export const threadMessagesBefore = (
+  threadId: string,
+  beforeSeq: number,
+  limit: number,
+) =>
+  api<MessagePage>("ai_thread_messages_before", { threadId, beforeSeq, limit });
+
+/** Subscribe to the stream first, then call this and drop deltas with `seq <= live.seq`. */
+export const threadLive = (threadId: string) =>
+  api<ThreadLive | null>("ai_thread_live", { threadId });
+
+export const threadsStatus = (project: string, workspaceId: string) =>
+  api<ThreadStatus[]>("ai_threads_status", { project, workspaceId });
+
+/** Fires on every run-state change of any thread (idle, running, waiting). */
+export const listenThreadStatus = (cb: (status: ThreadStatus) => void) =>
+  listen<ThreadStatus>("ai-thread-status", (e) => cb(e.payload));
+
+/** Undoes only the given files (each must be recorded for the turn). */
+export const undoTurnFiles = (
+  threadId: string,
+  messageId: string,
+  paths: string[],
+) => api<FilesUndoResult>("ai_turn_undo", { threadId, messageId, paths });
+
+import type { ThreadCommand, ThreadStreamEvent as StreamEvent } from "./types";
+
+/**
+ * Subscribes `onEvent` to the running turn of a thread and returns its state so
+ * far (drop deltas with `seq <= live.seq`), or null when no turn runs.
+ */
+export const threadAttach = (threadId: string, onEvent: Channel<StreamEvent>) =>
+  api<ThreadLive | null>("ai_thread_attach", { threadId, onEvent });
+
+/** Stable error of `steerThread` when the message must be queued instead. */
+export const steerUnsupported = "steer_unsupported";
+
+/** Stable error of `steerThread` when delivery could not be confirmed. */
+export const steerUnknown = "steer_unknown";
+
+/** Adds a message to the running turn; rejects with `steerUnsupported` to queue it. */
+export const steerThread = (threadId: string, text: string) =>
+  api<void>("ai_thread_steer", { threadId, text });
+
+/** Answers a pending question by item id; null declines it. */
+export const answerQuestion = (
+  threadId: string,
+  requestId: string,
+  answers: Record<string, string[]> | null,
+) => api<void>("ai_thread_answer", { threadId, requestId, answers });
+
+/** Slash commands of the thread's CLI; empty before its session started. */
+export const threadCommands = (threadId: string) =>
+  api<ThreadCommand[]>("ai_thread_commands", { threadId });

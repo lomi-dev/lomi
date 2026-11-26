@@ -277,3 +277,30 @@ pub fn notify_agent(
     forwarded?;
     Ok(requested)
 }
+
+/// Local alert for an AI chat thread. The body is a fixed phrase, never message text.
+#[tauri::command]
+pub fn notify_thread(
+    window: Window,
+    app: tauri::AppHandle,
+    kind: NotificationKind,
+    title: String,
+    body: String,
+) -> Result<bool, String> {
+    main_window(&window)?;
+    if matches!(kind, NotificationKind::Info) {
+        return Err("Info notifications are reserved for application events.".into());
+    }
+    let title: String = title
+        .chars()
+        .filter(|c| !c.is_control())
+        .take(100)
+        .collect();
+    if title.is_empty() || body.chars().count() > 100 || body.chars().any(char::is_control) {
+        return Err("Invalid notification text.".into());
+    }
+    let (requested, recorded) =
+        crate::push::terminal_local::deliver(&app, &window, kind, None, None, &title, &body)?;
+    recorded?;
+    Ok(requested)
+}

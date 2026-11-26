@@ -22,6 +22,7 @@ import {
 } from "./icons";
 import type { LayoutPane, Project, Tab, Workspace } from "./model";
 import { layoutPanes, tabTitle } from "./model";
+import { ThreadStatusDot } from "./thread-status";
 import type { GitRepositoryScan } from "./api";
 import type { WorkspaceAppearance } from "./workspace-appearance";
 import ContextMenu from "./ContextMenu";
@@ -373,6 +374,11 @@ export default function Workspaces({
                       />
                       <span className="workspace-name">{workspace.name}</span>
                       {hasUnread && <WorkspaceNotificationDot />}
+                      <ThreadStatusDot
+                        threadIds={workspaceItems.map((item) =>
+                          item.type === "thread" ? item.threadId : null,
+                        )}
+                      />
                       {shared && (
                         <span
                           className="workspace-remote-status"
@@ -755,6 +761,9 @@ function WorkspaceOpenItem({
         <WorkspaceItemIcon item={item} agent={agent} activity={activity} />
         <span className="workspace-item-label">{title}</span>
         {unread && <WorkspaceNotificationDot />}
+        {item.type === "thread" && (
+          <ThreadStatusDot threadIds={[item.threadId]} />
+        )}
       </button>
     </li>
   );

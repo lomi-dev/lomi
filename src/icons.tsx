@@ -96,6 +96,7 @@ export const Link = product("Link", Lucide.Link);
 export const Lock = product("Lock", Lucide.Lock);
 export const LayoutGrid = product("LayoutGrid", Lucide.LayoutGrid);
 export const ListX = product("ListX", Lucide.ListX);
+export const ListPlus = product("ListPlus", Lucide.ListPlus);
 export const Maximize2 = product("Maximize2", Lucide.Maximize2);
 export const Menu = product("Menu", Lucide.Menu);
 export const Minimize2 = product("Minimize2", Lucide.Minimize2);

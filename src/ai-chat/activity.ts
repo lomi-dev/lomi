@@ -1,4 +1,5 @@
-import type { Activity } from "./types.ts";
+import type { Activity, ThreadLive, ThreadMessage } from "./types.ts";
+import type { LiveChunk } from "./thread-runtime.ts";
 
 export type Part =
   { type: "text"; text: string } | { type: "group"; activities: Activity[] };
@@ -72,19 +73,66 @@ export const isPending = (item: Activity) => item.approval?.state === "pending";
 export const hasPendingApproval = (activities: readonly Activity[]) =>
   activities.some(isPending);
 
+export const isPendingQuestion = (item: Activity) =>
+  item.question?.state === "pending";
+
+/**
+ * Live text of an attached turn. `live.content` is the full accumulated text
+ * while the stored message may hold only a prefix, so only the remainder is
+ * kept and one mark at `live.seq` lets later stored snapshots skip it exactly.
+ * Null when the stored content is not a prefix (the next snapshot decides).
+ */
+export function seedLive(
+  message: Pick<ThreadMessage, "content" | "streamSeq">,
+  live: Pick<ThreadLive, "seq" | "content">,
+): LiveChunk | null {
+  if (!live.content.startsWith(message.content)) return null;
+  const text = live.content.slice(message.content.length);
+  return {
+    seq: live.seq,
+    text,
+    marks: live.seq > message.streamSeq && text ? [[live.seq, 0]] : [],
+    base: message.content,
+  };
+}
+
+/** Displayed text: stored content plus the live text it does not contain yet. */
+export function liveText(
+  message: Pick<ThreadMessage, "content" | "streamSeq">,
+  chunk: LiveChunk | undefined,
+): string {
+  if (!chunk) return message.content;
+  // A seeded chunk is a continuation of `base`; a newer snapshot may already hold part of it.
+  if (chunk.base !== undefined) {
+    const full = chunk.base + chunk.text;
+    if (full.startsWith(message.content)) return full;
+  }
+  // Only deltas newer than the stored content; earlier ones are already in it.
+  const start = chunk.marks.find(([seq]) => seq > message.streamSeq)?.[1];
+  return message.content + (start === undefined ? "" : chunk.text.slice(start));
+}
+
 /** Completed activities beyond `limit` collapse; running, failed and pending stay. */
 export function collapseGroup(
   group: readonly Activity[],
   limit = 3,
 ): { collapsed: Activity[]; visible: Activity[] } {
   const done = group.filter(
-    (item) => item.status === "completed" && !isPending(item),
+    (item) =>
+      item.status === "completed" &&
+      !isPending(item) &&
+      !isPendingQuestion(item) &&
+      item.kind !== "notice",
   );
   if (done.length <= limit) return { collapsed: [], visible: [...group] };
   return {
     collapsed: done,
     visible: group.filter(
-      (item) => item.status !== "completed" || isPending(item),
+      (item) =>
+        item.status !== "completed" ||
+        isPending(item) ||
+        isPendingQuestion(item) ||
+        item.kind === "notice",
     ),
   };
 }
@@ -134,4 +182,41 @@ export function compactNumber(value: number, locale?: string): string {
     notation: "compact",
     maximumFractionDigits: 1,
   }).format(value);
+}
+
+/**
+ * Replaces the newest window with a fresh one while keeping older pages that
+ * were loaded earlier (anything before the fresh window's first seq).
+ */
+export function mergeMessages(
+  current: readonly ThreadMessage[],
+  next: readonly ThreadMessage[],
+): ThreadMessage[] {
+  const first = next[0]?.seq;
+  if (first === undefined) return [...next];
+  return [...current.filter((message) => message.seq < first), ...next];
+}
+
+/** Whether older messages exist after merging a fresh window into `current`. */
+export function mergedHasMore(
+  current:
+    { messages: readonly ThreadMessage[]; hasMore?: boolean } | undefined,
+  next: { messages: readonly ThreadMessage[]; hasMore?: boolean },
+): boolean | undefined {
+  const reaches =
+    !current?.messages.length ||
+    !next.messages.length ||
+    next.messages[0].seq <= current.messages[0].seq;
+  return reaches && next.hasMore !== undefined
+    ? next.hasMore
+    : current?.hasMore;
+}
+
+/** Remaining time as m:ss or h:mm:ss, rounded up to whole seconds. */
+export function formatCountdown(ms: number): string {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = String(total % 60).padStart(2, "0");
+  return h ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
 }

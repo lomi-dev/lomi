@@ -17,17 +17,14 @@ export const enqueue = (
 export const remove = (queue: readonly QueuedMessage[], id: string) =>
   queue.filter((item) => item.id !== id);
 
-/**
- * Entry to move back into the composer. Files cannot return to the composer,
- * and a non-empty composer would be overwritten; both refuse.
- */
+/** Entry to move back into the composer; a non-empty composer would be overwritten. */
 export function editable(
   queue: readonly QueuedMessage[],
   id: string,
   composerEmpty: boolean,
 ) {
   const item = queue.find((entry) => entry.id === id);
-  return item && composerEmpty && !item.attachments.length ? item : undefined;
+  return composerEmpty ? item : undefined;
 }
 
 /**

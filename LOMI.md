@@ -171,7 +171,25 @@ or acronym.
   `ls-files` or a bounded walk of the thread folder), persists drafts per tab
   in webview storage, and queues messages sent during a reply; the queue is
   sent in order after the reply ends, pauses after Stop, and is not kept
-  across restarts.
+  across restarts. While a Claude Code or Codex reply runs, Enter steers the
+  message into the running turn (`ai_thread_steer`; Claude stdin user line,
+  Codex `turn/steer`) and Alt+Enter queues it; unsupported agents queue.
+  `/` lists the agent's commands (`ai_thread_commands`: Claude initialize
+  list, ACP `availableCommands`, Codex `compact` via `thread/compact/start`)
+  plus Lomi's local `/new`.
+- Agent questions (Claude `AskUserQuestion`, Codex `requestUserInput`) render
+  as answer cards (`ai_thread_answer`); answers are validated against the
+  asked ids and secret answers are never stored. Reopened views attach to a
+  running turn (`ai_thread_attach`) instead of polling; threads load in pages
+  (`ai_thread_snapshot` limit, `ai_thread_messages_before`). Failed replies
+  carry `error_kind` (auth, rate_limit with `retry_at_ms`, network,
+  missing_cli, context_length, other) for tailored actions and an opt-in
+  automatic resume. Notice activities report a lost session context, an
+  unavailable undo checkpoint, steers and compaction. Undo can target chosen
+  files; files touched by the agent's edit tools are preselected. Thread run
+  state (`ai_threads_status`, event `ai-thread-status`) drives tab and
+  sidebar dots and OS notifications (generic title, no message text, gated by
+  the notification settings).
 - Chat history is scoped to the workspace: threads store `workspace_id` and
   `ai_threads_list` returns that workspace's threads plus legacy threads
   without one. "New chat" asks for confirmation when the current chat has

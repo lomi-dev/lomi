@@ -167,6 +167,7 @@ import { useWindowZoom, changeWindowZoom } from "./useWindowZoom";
 import { openExternalFile, type ResolvedExternalFile } from "./external-files";
 import { useExternalFiles } from "./useExternalFiles";
 import TabBar from "./TabBar";
+import { useThreadStatus } from "./thread-status";
 import SettingsDialog from "./SettingsDialog";
 import { useSettingsTab } from "./useSettingsTab";
 import FileEditorStatus from "./FileEditorStatus";
@@ -1197,6 +1198,7 @@ export default function Workbench() {
     setPaneNotice,
   );
   const agentUsage = useAgentUsage();
+  useThreadStatus(session);
   const agentNotifications = useAgentNotifications(
     session,
     setError,
@@ -2356,6 +2358,16 @@ export default function Workbench() {
         case "newChat":
           addChat();
           break;
+        case "focusChat":
+        case "chatModelPicker":
+          // The thread pane handles the command (see ThreadPane.tsx).
+          if (panel?.type === "thread")
+            document
+              .querySelector(`[data-thread-tab-id="${panel.id}"]`)
+              ?.dispatchEvent(
+                new CustomEvent("thread-command", { detail: action }),
+              );
+          break;
         case "closeTab":
           closeTab(tab.id);
           break;
@@ -3219,6 +3231,7 @@ export default function Workbench() {
 
     if (!(await prepareAndroidRemoval(closeIds))) return;
     if (pane.type === "terminal") closeWorkspaceTerminals([id], workspace.id);
+    if (pane.type === "thread") deleteDraft(id);
     change(
       (state) =>
         updateTab(state, current.id, (tab) => {

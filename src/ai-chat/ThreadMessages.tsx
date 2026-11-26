@@ -5,15 +5,17 @@ import {
   memo,
   useContext,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import type { ReactNode } from "react";
+import type { ReactNode, RefObject } from "react";
 import Markdown from "react-markdown";
 import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { emit } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { errorMessage } from "../api";
 import { useT } from "../i18n";
@@ -27,6 +29,7 @@ import {
   FileDiff,
   FileText,
   Globe,
+  Info,
   Layers,
   MessageSquare,
   Pencil,
@@ -39,12 +42,20 @@ import { MessageAttachments } from "./Attachments";
 import { highlightCode } from "./code-highlight";
 import type { HighlightSpan } from "./code-highlight";
 import { splitBlocks } from "./markdown-blocks";
-import { turnDiff, undoTurn } from "./thread-runtime";
+import {
+  INTERRUPTED_ERROR,
+  turnDiff,
+  undoTurn,
+  undoTurnFiles,
+  type ChatItemView,
+} from "./thread-runtime";
 import { parseUnifiedDiff } from "./unified-diff";
 import {
   collapseGroup,
   compactNumber,
+  formatCountdown,
   isPending,
+  isPendingQuestion,
   interleave,
   lineDiff,
   relativeTitle,
@@ -53,8 +64,9 @@ import type {
   Activity,
   ActivityKind,
   ApprovalDecision,
-  ChatItem,
+  Attachment,
   FileChange,
+  QuestionItem,
   TurnChanges,
   TurnUndoResult,
   Usage,
@@ -186,18 +198,40 @@ const kindIcons: Record<ActivityKind, typeof Terminal> = {
   execute: Terminal,
   fetch: Globe,
   agent: Layers,
+  notice: Info,
+  question: MessageSquare,
   other: Puzzle,
 };
 
 interface ApprovalContext {
   respond: (requestId: string, decision: ApprovalDecision) => Promise<void>;
+  /** Answers a pending question by item id; null declines it. */
+  answer: (
+    requestId: string,
+    answers: Record<string, string[]> | null,
+  ) => Promise<void>;
   /** requestId of the first pending card; it may take focus on appearing. */
   focusId: string | null;
 }
 const Approvals = createContext<ApprovalContext>({
   respond: () => Promise.resolve(),
+  answer: () => Promise.resolve(),
   focusId: null,
 });
+
+/** Hands focus back to the composer when a card that held it disappears. */
+function useFocusBack(card: RefObject<HTMLElement | null>) {
+  useLayoutEffect(() => {
+    const element = card.current;
+    return () => {
+      if (!element?.contains(document.activeElement)) return;
+      element
+        .closest(".thread-pane")
+        ?.querySelector<HTMLTextAreaElement>(".thread-composer textarea")
+        ?.focus();
+    };
+  }, [card]);
+}
 
 function ApprovalCard({ activity, cwd }: { activity: Activity; cwd: string }) {
   const { t } = useT();
@@ -218,17 +252,7 @@ function ApprovalCard({ activity, cwd }: { activity: Activity; cwd: string }) {
     // pending Enter keypress must not approve a command.
     if (!active || active === document.body) allow.current?.focus();
   }, [focusId, approval.requestId]);
-  // Hand focus back to the composer when the answered card disappears.
-  useLayoutEffect(() => {
-    const element = card.current;
-    return () => {
-      if (!element?.contains(document.activeElement)) return;
-      element
-        .closest(".thread-pane")
-        ?.querySelector<HTMLTextAreaElement>(".thread-composer textarea")
-        ?.focus();
-    };
-  }, []);
+  useFocusBack(card);
   const answer = (decision: ApprovalDecision) => {
     setBusy(true);
     setError("");
@@ -311,11 +335,244 @@ function ApprovalCard({ activity, cwd }: { activity: Activity; cwd: string }) {
   );
 }
 
+// Secret answers (passwords) are masked and never echoed back.
+const isSecret = (item: QuestionItem) => !!item.secret;
+
+/** Pending question: one group per item with options and optional free text. */
+function QuestionCard({ activity }: { activity: Activity }) {
+  const { t } = useT();
+  const { answer, focusId } = useContext(Approvals);
+  const question = activity.question!;
+  const name = useId();
+  const [chosen, setChosen] = useState<Record<string, string[]>>({});
+  const [other, setOther] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const card = useRef<HTMLLIElement>(null);
+  useFocusBack(card);
+  useEffect(() => {
+    if (focusId !== question.requestId) return;
+    const active = document.activeElement;
+    // Same rule as approvals: never steal focus from the composer or other panels.
+    if (!active || active === document.body)
+      card.current?.querySelector<HTMLElement>("input")?.focus();
+  }, [focusId, question.requestId]);
+  const answers = Object.fromEntries(
+    question.items.map((item) => [
+      item.id,
+      [...(chosen[item.id] ?? []), other[item.id]?.trim() ?? ""].filter(
+        Boolean,
+      ),
+    ]),
+  );
+  const ready = question.items.every((item) => answers[item.id].length > 0);
+  const submit = (value: Record<string, string[]> | null) => {
+    setBusy(true);
+    setError("");
+    answer(question.requestId, value).then(
+      () => setBusy(false),
+      (cause) => {
+        setBusy(false);
+        setError(errorMessage(cause));
+      },
+    );
+  };
+  return (
+    <li
+      ref={card}
+      className="thread-activity-item thread-approval"
+      role="group"
+      aria-label={t("Question from the agent")}
+    >
+      <div className="thread-approval-label">
+        {t("Question from the agent")}
+      </div>
+      {question.items.map((item) => {
+        const group = `${name}-${item.id}`;
+        const type = item.multiSelect ? "checkbox" : "radio";
+        return (
+          <fieldset key={item.id} className="thread-question-item">
+            <legend>
+              {item.header && (
+                <span className="thread-question-header">{item.header}</span>
+              )}
+              {item.question}
+            </legend>
+            {item.options.map((option) => (
+              <label key={option.label} className="thread-question-option">
+                <input
+                  type={type}
+                  name={group}
+                  disabled={busy}
+                  checked={(chosen[item.id] ?? []).includes(option.label)}
+                  onChange={(event) => {
+                    const on = event.target.checked;
+                    setChosen((prev) => {
+                      const had = prev[item.id] ?? [];
+                      return {
+                        ...prev,
+                        [item.id]: item.multiSelect
+                          ? on
+                            ? [...had, option.label]
+                            : had.filter((label) => label !== option.label)
+                          : [option.label],
+                      };
+                    });
+                    if (!item.multiSelect)
+                      setOther((prev) => ({ ...prev, [item.id]: "" }));
+                  }}
+                />
+                <span>
+                  {option.label}
+                  {option.description && <small>{option.description}</small>}
+                </span>
+              </label>
+            ))}
+            {(item.allowOther || !item.options.length) && (
+              <input
+                type={isSecret(item) ? "password" : "text"}
+                autoComplete="off"
+                className="thread-question-other"
+                aria-label={t("Other answer")}
+                placeholder={t("Other…")}
+                disabled={busy}
+                value={other[item.id] ?? ""}
+                onChange={(event) => {
+                  setOther((prev) => ({
+                    ...prev,
+                    [item.id]: event.target.value,
+                  }));
+                  if (!item.multiSelect)
+                    setChosen((prev) => ({ ...prev, [item.id]: [] }));
+                }}
+              />
+            )}
+          </fieldset>
+        );
+      })}
+      <div className="thread-approval-actions">
+        <button
+          type="button"
+          className="button button-primary"
+          disabled={busy || !ready}
+          onClick={() => submit(answers)}
+        >
+          {t("Submit")}
+        </button>
+        <button
+          type="button"
+          className="button"
+          disabled={busy}
+          onClick={() => submit(null)}
+        >
+          {t("Decline")}
+        </button>
+      </div>
+      {error && (
+        <div className="thread-notice" role="alert">
+          {error}
+        </div>
+      )}
+    </li>
+  );
+}
+
+/** Answered, declined or expired question, one compact line per item. */
+function QuestionSummary({ activity }: { activity: Activity }) {
+  const { t } = useT();
+  const question = activity.question!;
+  const state =
+    question.state === "answered"
+      ? t("Answered")
+      : question.state === "declined"
+        ? t("Declined")
+        : t("Expired");
+  return (
+    <li className="thread-activity-item thread-info-item">
+      {question.items.map((item) => (
+        <div key={item.id} className="thread-info-row">
+          <MessageSquare size={13} aria-hidden="true" />
+          <span className="thread-question-asked">{item.question}</span>
+          {isSecret(item)
+            ? question.state === "answered" && <strong>••••</strong>
+            : !!question.answers?.[item.id]?.length && (
+                <strong>{question.answers[item.id].join(", ")}</strong>
+              )}
+        </div>
+      ))}
+      <div className="thread-info-row">
+        <span
+          className="thread-approval-state"
+          data-state={question.state === "answered" ? undefined : "denied"}
+        >
+          {state}
+        </span>
+      </div>
+    </li>
+  );
+}
+
+/** System note (stable machine title) shown as a subtle translated info row. */
+function NoticeRow({ activity }: { activity: Activity }) {
+  const { t } = useT();
+  const [open, setOpen] = useState(false);
+  // A message sent into the running turn reads like a compact user message.
+  if (activity.title === "steer")
+    return (
+      <li className="thread-activity-item thread-steer">
+        <span className="thread-steer-label">{t("Sent to the agent")}</span>
+        <span className="thread-steer-text">{activity.detail}</span>
+      </li>
+    );
+  const text =
+    activity.title === "context_reset"
+      ? t(
+          "The previous session could not be resumed, so the agent started fresh without earlier context.",
+        )
+      : activity.title === "resume_failed"
+        ? t(
+            "The session could not be resumed; your next message starts a new one.",
+          )
+        : activity.title === "checkpoint_unavailable"
+          ? t("Undo is unavailable for this reply.")
+          : activity.title === "context_compacted"
+            ? t("The conversation context was compacted.")
+            : t("Notice");
+  return (
+    <li className="thread-activity-item thread-info-item">
+      <div className="thread-info-row">
+        <Info size={13} aria-hidden="true" />
+        <span>{text}</span>
+        {activity.detail && (
+          <button
+            type="button"
+            className="thread-link"
+            aria-expanded={open}
+            onClick={() => setOpen(!open)}
+          >
+            {t("Details")}
+          </button>
+        )}
+      </div>
+      {open && activity.detail && (
+        <pre className="thread-activity-detail">{activity.detail}</pre>
+      )}
+    </li>
+  );
+}
+
 function ActivityRow({ activity, cwd }: { activity: Activity; cwd: string }) {
   const { t } = useT();
   const [open, setOpen] = useState(false);
   if (isPending(activity))
     return <ApprovalCard activity={activity} cwd={cwd} />;
+  if (activity.kind === "notice") return <NoticeRow activity={activity} />;
+  if (activity.question)
+    return isPendingQuestion(activity) ? (
+      <QuestionCard activity={activity} />
+    ) : (
+      <QuestionSummary activity={activity} />
+    );
   const Icon = kindIcons[activity.kind];
   const running = activity.status === "running";
   const StatusIcon =
@@ -569,16 +826,32 @@ function TurnChangesCard({
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<TurnUndoResult | null>(null);
+  const [restored, setRestored] = useState<ReadonlySet<string>>(new Set());
+  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
   const [error, setError] = useState("");
   if (!changes.files.length) return null;
+  const isUndone = (file: FileChange) => file.undone || restored.has(file.path);
+  const remaining = changes.files.filter((file) => !isUndone(file));
   const additions = changes.files.reduce((sum, f) => sum + f.additions, 0);
   const deletions = changes.files.reduce((sum, f) => sum + f.deletions, 0);
+  const openConfirm = () => {
+    // Files outside the agent's edit tools may hold the user's own work.
+    setPicked(
+      new Set(remaining.filter((file) => file.agent).map((file) => file.path)),
+    );
+    setConfirm(true);
+  };
   const undo = async () => {
     setConfirm(false);
     setBusy(true);
     setError("");
     try {
-      setResult(await undoTurn(threadId, messageId));
+      const all = remaining.every((file) => picked.has(file.path));
+      const next = all
+        ? await undoTurn(threadId, messageId)
+        : await undoTurnFiles(threadId, messageId, [...picked]);
+      setResult(next);
+      setRestored((known) => new Set([...known, ...next.restored]));
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
@@ -620,14 +893,14 @@ function TurnChangesCard({
             </span>
           )}
         </button>
-        {changes.undone ? (
+        {changes.undone || !remaining.length ? (
           <span className="thread-note">{t("Changes undone")}</span>
         ) : (
           <button
             type="button"
             className="thread-link"
-            disabled={busy || !!result}
-            onClick={() => setConfirm(true)}
+            disabled={busy}
+            onClick={openConfirm}
           >
             <Undo2 size={12} aria-hidden="true" />
             {t("Undo")}
@@ -670,7 +943,7 @@ function TurnChangesCard({
       {open && (
         <ul className="thread-turn-files">
           {changes.files.map((file) => (
-            <li key={file.path}>
+            <li key={file.path} data-undone={isUndone(file) || undefined}>
               <button
                 type="button"
                 className="thread-turn-file"
@@ -689,6 +962,9 @@ function TurnChangesCard({
                     {file.path.slice(file.path.lastIndexOf("/") + 1)}
                   </span>
                 </span>
+                {isUndone(file) && (
+                  <span className="thread-note">{t("Undone")}</span>
+                )}
                 {file.binary ? (
                   <span className="thread-note">{t("binary")}</span>
                 ) : (
@@ -721,12 +997,44 @@ function TurnChangesCard({
           <div className="dialog-form dialog-layout">
             <div className="dialog-content">
               <p>
-                {tp(
-                  changes.files.length,
-                  "Restore {count} file to how it was before this reply? Files edited since then are left as they are.",
-                  "Restore {count} files to how they were before this reply? Files edited since then are left as they are.",
+                {t(
+                  "Choose the files to restore to how they were before this reply. Files edited since then are left as they are.",
                 )}
               </p>
+              <ul className="thread-undo-pick">
+                {changes.files.map((file) => (
+                  <li key={file.path} data-undone={isUndone(file) || undefined}>
+                    <label>
+                      <input
+                        type="checkbox"
+                        disabled={isUndone(file)}
+                        checked={picked.has(file.path)}
+                        onChange={(event) =>
+                          setPicked((known) => {
+                            const next = new Set(known);
+                            if (event.target.checked) next.add(file.path);
+                            else next.delete(file.path);
+                            return next;
+                          })
+                        }
+                      />
+                      <span className="thread-turn-path" title={file.path}>
+                        {file.path}
+                      </span>
+                      {isUndone(file) && (
+                        <span className="thread-note">{t("Undone")}</span>
+                      )}
+                    </label>
+                    {!file.agent && !isUndone(file) && (
+                      <p className="thread-note">
+                        {t(
+                          "Changed outside the agent's edit tools (by a command or by you)",
+                        )}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
             </div>
             <div className="dialog-actions">
               <button
@@ -740,6 +1048,7 @@ function TurnChangesCard({
               <button
                 type="button"
                 className="button button-primary"
+                disabled={!picked.size}
                 onClick={() => void undo()}
               >
                 {t("Undo changes")}
@@ -752,16 +1061,175 @@ function TurnChangesCard({
   );
 }
 
+/** Opens Settings → Chat AI → Providers in the main view. */
+const openProviders = () =>
+  void emit("settings-page-changed", "chat-providers");
+
+const noFiles: Attachment[] = [];
+
+/** Starts a resend; false while the thread is busy. */
+type ResendHandler = (
+  text: string,
+  files: readonly { id: string }[],
+) => boolean;
+
+/** Failure notice with an action tailored to the error class; the raw error stays in details. */
+function ErrorNotice({
+  item,
+  provider,
+  retryable,
+  onEdit,
+  onResend,
+}: {
+  item: ChatItemView;
+  provider: string;
+  /** Only the last reply of the thread can be retried. */
+  retryable: boolean;
+  onEdit: (text: string) => void;
+  onResend: ResendHandler;
+}) {
+  const { t, locale } = useT();
+  const [auto, setAuto] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const retryAt = item.retryAtMs ?? null;
+  const edit = item.resend;
+  // Attachments bind to one message only, so a reply with files can't be resent as is.
+  const files = noFiles;
+  const resend =
+    retryable && !item.resendAttachments?.length ? item.resend : null;
+  const left = retryAt === null ? 0 : retryAt - now;
+  useEffect(() => {
+    if (!auto) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [auto]);
+  useEffect(() => {
+    if (!auto || retryAt === null || !resend || retryAt > now) return;
+    // A busy thread refuses; stay armed and try again on the next tick.
+    if (onResend(resend, files)) setAuto(false);
+  }, [auto, retryAt, now, resend, files, onResend]);
+  const raw =
+    item.error === INTERRUPTED_ERROR
+      ? t("The response was interrupted; the partial reply was kept.")
+      : item.error!;
+  const name = provider || t("the provider");
+  let message = raw;
+  let action: ReactNode = null;
+  switch (item.errorKind) {
+    case "auth":
+      message = t("Sign in to {provider} to continue.", { provider: name });
+      action = (
+        <button type="button" className="thread-link" onClick={openProviders}>
+          {t("Open provider settings")}
+        </button>
+      );
+      break;
+    case "missing_cli":
+      message = t("The {cli} CLI was not found.", { cli: name });
+      action = (
+        <button type="button" className="thread-link" onClick={openProviders}>
+          {t("Open provider settings")}
+        </button>
+      );
+      break;
+    case "rate_limit":
+      message =
+        t("Usage limit reached.") +
+        (retryAt === null
+          ? ""
+          : " " +
+            t("Resets at {time}", {
+              time: new Date(retryAt).toLocaleTimeString(locale, {
+                timeStyle: "short",
+              }),
+            }));
+      if (resend && retryAt !== null)
+        action = auto ? (
+          <>
+            <span aria-live="off">
+              {t("Resuming in {time}", { time: formatCountdown(left) })}
+            </span>
+            <button
+              type="button"
+              className="thread-link"
+              onClick={() => setAuto(false)}
+            >
+              {t("Cancel")}
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            className="thread-link"
+            onClick={() => {
+              setNow(Date.now());
+              setAuto(true);
+            }}
+          >
+            {t("Resume automatically")}
+          </button>
+        );
+      break;
+    case "network":
+      message = t("Network error.");
+      if (resend)
+        action = (
+          <button
+            type="button"
+            className="thread-link"
+            onClick={() => onResend(resend, files)}
+          >
+            {t("Retry")}
+          </button>
+        );
+      break;
+    case "context_length":
+      message = t(
+        "The conversation is too long for this model. Start a new chat or compact it.",
+      );
+      break;
+  }
+  const typed = message !== raw;
+  return (
+    <div className="thread-notice" role="alert">
+      <CircleAlert size={14} aria-hidden="true" />
+      <span title={raw}>{message}</span>
+      {action}
+      {edit && (
+        <button
+          type="button"
+          className="thread-link"
+          onClick={() => onEdit(edit)}
+        >
+          {t("Edit and resend")}
+        </button>
+      )}
+      {typed && (
+        <details className="thread-notice-details">
+          <summary>{t("Error details")}</summary>
+          <pre>{raw}</pre>
+        </details>
+      )}
+    </div>
+  );
+}
+
 const Message = memo(function Message({
   item,
   threadId,
   cwd,
+  provider,
+  retryable,
   onEdit,
+  onResend,
 }: {
-  item: ChatItem;
+  item: ChatItemView;
   threadId: string | null;
   cwd: string;
+  provider: string;
+  retryable: boolean;
   onEdit: (text: string) => void;
+  onResend: ResendHandler;
 }) {
   const { t } = useT();
   if (item.role === "user")
@@ -792,19 +1260,13 @@ const Message = memo(function Message({
       })}
       {item.stopped && <p className="thread-note">{t("Stopped.")}</p>}
       {item.error && (
-        <div className="thread-notice" role="alert">
-          <CircleAlert size={14} aria-hidden="true" />
-          <span>{item.error}</span>
-          {item.resend && (
-            <button
-              type="button"
-              className="thread-link"
-              onClick={() => onEdit(item.resend!)}
-            >
-              {t("Edit and resend")}
-            </button>
-          )}
-        </div>
+        <ErrorNotice
+          item={item}
+          provider={provider}
+          retryable={retryable}
+          onEdit={onEdit}
+          onResend={onResend}
+        />
       )}
       {!item.streaming && item.changes && threadId && (
         <TurnChangesCard
@@ -822,32 +1284,67 @@ export default function ThreadMessages({
   items,
   threadId,
   cwd,
+  provider,
+  hasMore,
+  loadingEarlier,
+  onLoadEarlier,
   onEdit,
+  onResend,
   onRespond,
+  onAnswer,
 }: {
-  items: readonly ChatItem[];
+  items: readonly ChatItemView[];
   threadId: string | null;
   cwd: string;
+  /** Label of the thread's provider, used in error messages. */
+  provider: string;
+  hasMore: boolean;
+  loadingEarlier: boolean;
+  onLoadEarlier: () => void;
   onEdit: (text: string) => void;
+  onResend: ResendHandler;
   onRespond: ApprovalContext["respond"];
+  onAnswer: ApprovalContext["answer"];
 }) {
+  const { t } = useT();
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
+  /** Scroll geometry captured before older messages are prepended. */
+  const anchor = useRef<{ height: number; top: number } | null>(null);
   const last = items.at(-1);
+  const lastReply = items.filter((item) => item.role === "assistant").at(-1);
+  const firstId = items[0]?.id;
   useLayoutEffect(() => {
     pinned.current = true;
+    anchor.current = null;
   }, [threadId]);
+  const loadEarlier = () => {
+    const element = scroller.current;
+    if (!element || loadingEarlier) return;
+    anchor.current = { height: element.scrollHeight, top: element.scrollTop };
+    onLoadEarlier();
+  };
+  // Keep the viewport on the same message after a page is prepended.
+  useLayoutEffect(() => {
+    const element = scroller.current;
+    const saved = anchor.current;
+    if (!element || !saved) return;
+    anchor.current = null;
+    element.scrollTop = saved.top + element.scrollHeight - saved.height;
+  }, [firstId]);
+  const first = items
+    .flatMap((item) => item.activity)
+    .find((item) => isPending(item) || isPendingQuestion(item));
   const focusId =
-    items.flatMap((item) => item.activity).find(isPending)?.approval
-      ?.requestId ?? null;
+    first?.approval?.requestId ?? first?.question?.requestId ?? null;
   const approvals = useMemo(
-    () => ({ respond: onRespond, focusId }),
-    [onRespond, focusId],
+    () => ({ respond: onRespond, answer: onAnswer, focusId }),
+    [onRespond, onAnswer, focusId],
   );
   const tail = `${last?.text.length}:${last?.activity
     .map(
       (item) =>
-        `${item.status}${item.approval?.state ?? ""}${item.detail?.length ?? 0}`,
+        `${item.status}${item.approval?.state ?? ""}${item.question?.state ?? ""}${item.detail?.length ?? 0}`,
     )
     .join()}`;
   useLayoutEffect(() => {
@@ -861,9 +1358,20 @@ export default function ThreadMessages({
       onScroll={(event) => {
         const el = event.currentTarget;
         pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+        if (hasMore && el.scrollTop < 80) loadEarlier();
       }}
     >
       <div className="thread-column">
+        {hasMore && (
+          <button
+            type="button"
+            className="button thread-earlier"
+            disabled={loadingEarlier}
+            onClick={loadEarlier}
+          >
+            {loadingEarlier ? t("Loading…") : t("Load earlier messages")}
+          </button>
+        )}
         <Approvals.Provider value={approvals}>
           {items.map((item) => (
             <Message
@@ -871,7 +1379,10 @@ export default function ThreadMessages({
               item={item}
               threadId={threadId}
               cwd={cwd}
+              provider={provider}
+              retryable={item.id === lastReply?.id}
               onEdit={onEdit}
+              onResend={onResend}
             />
           ))}
         </Approvals.Provider>

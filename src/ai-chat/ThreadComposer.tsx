@@ -2,11 +2,13 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { api, macOS } from "../api";
 import { useT } from "../i18n";
-import { ArrowUp, Paperclip, Square } from "../icons";
+import { ArrowUp, ListPlus, Paperclip, Square } from "../icons";
 import { IconButton } from "../ui";
 import { PendingAttachments } from "./Attachments";
+import { applyCommand, rankCommands, slashQuery } from "./commands";
 import { applyMention, mentionQuery, rankFiles } from "./mentions";
-import type { Attachment } from "./types";
+import { threadCommands } from "./thread-runtime";
+import type { Attachment, ThreadCommand } from "./types";
 
 const FILE_CACHE_MS = 30_000;
 const fileCache = new Map<
@@ -48,10 +50,14 @@ export default function ThreadComposer({
   onPasteImages,
   onRemoveAttachment,
   mentionThreadId,
+  steerable,
+  commandThreadId,
+  commandsKey,
 }: {
   value: string;
   onChange: (value: string) => void;
-  onSend: () => void;
+  /** `queue` forces queueing instead of steering into the running reply. */
+  onSend: (queue: boolean) => void;
   onStop: () => void;
   running: boolean;
   disabled: boolean;
@@ -72,6 +78,12 @@ export default function ThreadComposer({
   onRemoveAttachment: (id: string) => void;
   /** Enables `@file` mentions for this (CLI) thread. */
   mentionThreadId?: string | null;
+  /** While running, plain send steers into the reply (Alt+Enter queues). */
+  steerable?: boolean;
+  /** CLI thread whose slash commands are listed besides the built-ins. */
+  commandThreadId?: string | null;
+  /** Changing this reloads the command list (e.g. after a completed turn). */
+  commandsKey?: string;
 }) {
   const { t } = useT();
   const field = useRef<HTMLTextAreaElement>(null);
@@ -87,11 +99,72 @@ export default function ThreadComposer({
   const [dismissed, setDismissed] = useState(-1);
   const [index, setIndex] = useState(0);
   const pendingCaret = useRef<number | null>(null);
-  const token = mentionThreadId ? mentionQuery(value, caret) : null;
-  const open = !!token && dismissed !== token.start;
-  const matches = open && files ? rankFiles(files, token.query) : [];
+  const mention = mentionThreadId ? mentionQuery(value, caret) : null;
+  const slash = slashQuery(value, caret);
+  const start = slash !== null ? 0 : mention?.start;
+  const open = start !== undefined && dismissed !== start;
+  // A dismissal ends with its token, so the next `/` or `@` opens the popup again.
+  useEffect(() => {
+    if (start === undefined) setDismissed(-1);
+  }, [start]);
+  const [commands, setCommands] = useState<{
+    key: string;
+    list: readonly ThreadCommand[];
+  } | null>(null);
+  const commandKey = `${commandThreadId}:${commandsKey}`;
+  const builtins: ThreadCommand[] = [
+    { name: "new", description: t("Start a new chat"), argumentHint: "" },
+  ];
+  const commandList = [
+    ...builtins,
+    ...(commands?.key === commandKey ? commands.list : []).filter(
+      (command) => !builtins.some((item) => item.name === command.name),
+    ),
+  ];
+  // Popup rows: label, muted hint and the insertion they perform.
+  const matches: {
+    key: string;
+    label: string;
+    hint: string;
+    exact: boolean;
+    run: () => void;
+  }[] = !open
+    ? []
+    : slash !== null
+      ? rankCommands(commandList, slash).map((command) => ({
+          key: command.name,
+          label: `/${command.name}`,
+          hint: [command.argumentHint, command.description]
+            .filter(Boolean)
+            .join(" "),
+          exact: command.name === slash,
+          run: () => insertCommand(command.name),
+        }))
+      : files && mention
+        ? rankFiles(files, mention.query).map((path) => {
+            const slashAt = path.lastIndexOf("/") + 1;
+            return {
+              key: path,
+              label: path.slice(slashAt),
+              hint: path.slice(0, slashAt),
+              exact: false,
+              run: () => insert(path),
+            };
+          })
+        : [];
   const active = Math.min(index, matches.length - 1);
-  const mentionLoaded = open && !!mentionThreadId;
+  const mentionLoaded = open && slash === null && !!mentionThreadId;
+  const commandsWanted = open && slash !== null && !!commandThreadId;
+  useEffect(() => {
+    if (!commandsWanted || !commandThreadId) return;
+    let live = true;
+    const done = (list: readonly ThreadCommand[]) =>
+      live && setCommands({ key: commandKey, list });
+    threadCommands(commandThreadId).then(done, () => done([]));
+    return () => {
+      live = false;
+    };
+  }, [commandsWanted, commandThreadId, commandKey]);
   useEffect(() => setDismissed(-1), [mentionThreadId]);
   useEffect(() => {
     if (!mentionLoaded || !mentionThreadId) return;
@@ -115,6 +188,13 @@ export default function ThreadComposer({
     pendingCaret.current = null;
     field.current?.setSelectionRange(at, at);
   }, [value]);
+  function insertCommand(name: string) {
+    const next = applyCommand(value, caret, name);
+    pendingCaret.current = next.caret;
+    setCaret(next.caret);
+    onChange(next.text);
+    field.current?.focus();
+  }
   function insert(path: string) {
     const next = applyMention(value, caret, path);
     pendingCaret.current = next.caret;
@@ -153,10 +233,10 @@ export default function ThreadComposer({
         value={value}
         placeholder={placeholder}
         aria-label={t("Message")}
-        role={mentionThreadId ? "combobox" : undefined}
-        aria-autocomplete={mentionThreadId ? "list" : undefined}
-        aria-haspopup={mentionThreadId ? "listbox" : undefined}
-        aria-expanded={mentionThreadId ? open : undefined}
+        role="combobox"
+        aria-autocomplete="list"
+        aria-haspopup="listbox"
+        aria-expanded={open}
         aria-controls={open ? listId : undefined}
         aria-activedescendant={
           open && active >= 0 ? `${listId}-${active}` : undefined
@@ -186,7 +266,7 @@ export default function ThreadComposer({
             );
             if (event.key === "Escape") {
               event.preventDefault();
-              setDismissed(token.start);
+              setDismissed(start);
               return;
             }
             if (matches.length && plain) {
@@ -196,9 +276,11 @@ export default function ThreadComposer({
                 setIndex((active + step + matches.length) % matches.length);
                 return;
               }
-              if (event.key === "Enter" || event.key === "Tab") {
+              // A fully typed command is sent, not completed again.
+              const send = event.key === "Enter" && matches[active].exact;
+              if ((event.key === "Enter" || event.key === "Tab") && !send) {
                 event.preventDefault();
-                insert(matches[active]);
+                matches[active].run();
                 return;
               }
             }
@@ -229,40 +311,48 @@ export default function ThreadComposer({
           )
             return;
           const mod = macOS ? event.metaKey : event.ctrlKey;
-          if (sendKey === "enter" ? event.altKey || mod : !mod) return;
+          // Alt+Enter queues a message in both send modes.
+          const queue = running && event.altKey;
+          if (
+            sendKey === "enter"
+              ? mod || (event.altKey && !running)
+              : !mod && !queue
+          )
+            return;
           event.preventDefault();
-          if (canSend) onSend();
+          if (canSend) onSend(queue);
         }}
       />
       {open && (
         <ul
           id={listId}
           role="listbox"
-          aria-label={t("Project files")}
+          aria-label={slash !== null ? t("Slash commands") : t("Project files")}
           className="thread-mentions"
         >
           {matches.length === 0 && (
             <li className="thread-mention-empty" role="presentation">
-              {files ? t("No matching files") : t("Loading files…")}
+              {slash !== null
+                ? t("No matching commands")
+                : files
+                  ? t("No matching files")
+                  : t("Loading files…")}
             </li>
           )}
-          {matches.map((path, i) => {
-            const slash = path.lastIndexOf("/") + 1;
-            return (
-              <li
-                key={path}
-                id={`${listId}-${i}`}
-                role="option"
-                aria-selected={i === active}
-                className="thread-mention"
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => insert(path)}
-              >
-                <span>{path.slice(slash)}</span>
-                <code>{path.slice(0, slash)}</code>
-              </li>
-            );
-          })}
+          {matches.map((match, i) => (
+            <li
+              key={match.key}
+              id={`${listId}-${i}`}
+              role="option"
+              aria-selected={i === active}
+              className="thread-mention"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={match.run}
+            >
+              <span>{match.label}</span>
+              <code data-slash={slash !== null || undefined}>{match.hint}</code>
+            </li>
+          ))}
         </ul>
       )}
       <div className="thread-composer-bar">
@@ -277,9 +367,11 @@ export default function ThreadComposer({
         {effort}
         {permissions}
         <span className="thread-composer-hint">
-          {sendKey === "enter"
-            ? t("Enter to send")
-            : t("{modifier} Enter to send", { modifier })}
+          {running && steerable
+            ? t("Sends to the running agent")
+            : sendKey === "enter"
+              ? t("Enter to send")
+              : t("{modifier} Enter to send", { modifier })}
         </span>
         {running && (
           <IconButton
@@ -290,11 +382,26 @@ export default function ThreadComposer({
             <Square size={12} fill="currentColor" />
           </IconButton>
         )}
+        {running && steerable && (
+          <IconButton
+            title={t("Add to queue ({shortcut})", { shortcut: "Alt+Enter" })}
+            disabled={!canSend}
+            onClick={() => onSend(true)}
+          >
+            <ListPlus size={16} />
+          </IconButton>
+        )}
         <IconButton
-          title={running ? t("Add to queue") : t("Send")}
+          title={
+            running
+              ? steerable
+                ? t("Send now (steer)")
+                : t("Add to queue")
+              : t("Send")
+          }
           className="thread-send"
           disabled={!canSend}
-          onClick={onSend}
+          onClick={() => onSend(false)}
         >
           <ArrowUp size={16} />
         </IconButton>
