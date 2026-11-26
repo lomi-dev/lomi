@@ -18,7 +18,7 @@
     color 480ms ease-out;
 }
 :root:not([data-appearance="light"]) .onboarding {
-  background: #0e0e11;
+  background: #000000;
 }
 .onboarding[data-leaving] .onboarding-aurora {
   opacity: 1;
@@ -276,7 +276,7 @@
 .onboarding-preview i {
   inset: 10% 6% 10% 30%;
   background: #24242a;
-  box-shadow: inset 0 0 0 1px #34343c;
+  box-shadow: inset 0 0 0 1px #262626;
 }
 .onboarding-preview b {
   top: 14%;
@@ -286,9 +286,9 @@
   border-radius: 2px;
   background: #4a4a54;
   box-shadow:
-    0 10px 0 #34343c,
-    0 20px 0 #34343c,
-    0 30px 0 #34343c;
+    0 10px 0 #262626,
+    0 20px 0 #262626,
+    0 30px 0 #262626;
 }
 .onboarding-preview::after {
   content: "";

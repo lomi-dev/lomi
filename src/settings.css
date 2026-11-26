@@ -646,11 +646,11 @@
   border-radius: 9px;
   background:
     linear-gradient(#b9f500, #b9f500) 86% 18% / 7px 7px no-repeat,
-    linear-gradient(#34343c, #34343c) 10% 18% / 18% 4px no-repeat,
-    linear-gradient(#27272d, #27272d) 10% 32% / 18% 4px no-repeat,
-    linear-gradient(#27272d, #27272d) 10% 46% / 18% 4px no-repeat,
-    linear-gradient(#1f1f24, #1f1f24) 88% 50% / 62% 72% no-repeat,
-    #0e0e11;
+    linear-gradient(#262626, #262626) 10% 18% / 18% 4px no-repeat,
+    linear-gradient(#1a1a1a, #1a1a1a) 10% 32% / 18% 4px no-repeat,
+    linear-gradient(#1a1a1a, #1a1a1a) 10% 46% / 18% 4px no-repeat,
+    linear-gradient(#121212, #1f1f24) 88% 50% / 62% 72% no-repeat,
+    #000000;
 }
 .settings-dialog
   .theme-appearance-options
@@ -667,7 +667,7 @@
   .theme-appearance-options
   label:has(input[value="system"])::before {
   background:
-    linear-gradient(105deg, transparent 50%, #0e0e11 50%),
+    linear-gradient(105deg, transparent 50%, #000000 50%),
     linear-gradient(#9696a2, #9696a2) 10% 18% / 18% 4px no-repeat,
     linear-gradient(#dcdce2, #dcdce2) 10% 32% / 18% 4px no-repeat,
     linear-gradient(#ffffff, #ffffff) 88% 50% / 62% 72% no-repeat,

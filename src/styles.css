@@ -1419,7 +1419,7 @@ svg {
 }
 .workspace-list-heading:hover,
 .workspace-list-heading.is-menu-open {
-  background: var(--color-surface-container);
+  background: color-mix(in srgb, var(--color-surface-text) 4%, transparent);
 }
 .workspace-list-item {
   display: flex;
@@ -1535,7 +1535,7 @@ svg {
   line-height: 18px;
 }
 .workspace-list-entry.is-active > .workspace-list-heading {
-  background: var(--lomi-selected, var(--color-surface-container-high));
+  background: color-mix(in srgb, var(--color-surface-text) 6%, transparent);
 }
 .workspace-list-entry.is-active .workspace-name {
   font-weight: 600;
@@ -1693,11 +1693,11 @@ svg {
   text-align: left;
 }
 .workspace-open-item:hover {
-  background: var(--color-surface-variant);
+  background: color-mix(in srgb, var(--color-surface-text) 4%, transparent);
   color: var(--color-surface-text);
 }
 .workspace-open-item[aria-current="true"] {
-  background: var(--color-surface-container);
+  background: color-mix(in srgb, var(--color-surface-text) 8%, transparent);
   color: var(--color-surface-text);
   font-weight: 600;
 }
@@ -7120,6 +7120,10 @@ body {
   border: var(--border-width) solid var(--color-outline);
   border-radius: var(--radius-pane);
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+  /* Same-color outline over the border: straight edges stay identical, while
+     the anti-aliased corner arcs composite twice and no longer fade out. */
+  outline: var(--border-width) solid var(--color-outline);
+  outline-offset: calc(var(--border-width) * -1);
 }
 .terminal-pane,
 .terminal-stage .split-child {
