@@ -167,6 +167,12 @@ or acronym.
   out). The turn's changed files, per-file diffs (`ai_turn_diff`) and an
   explicit, confirmed undo (`ai_turn_undo`, skipping files changed since the
   turn) appear under the reply; deleting the thread removes its refs.
+  Folders outside Git use a private shadow repository
+  (`app_data/ai-chat/checkpoints/<sha256 of folder>.git`, default excludes
+  such as `node_modules/`, skipped above 20,000 files or 200 MB with a
+  notice; nested Git repositories are not covered). A shadow without
+  checkpoints is deleted, otherwise garbage-collected after a thread delete;
+  shadows of folders that no longer exist are removed at startup.
 - The composer is a Tiptap editor (plain-text contract: chosen `@` files and
   `/` commands show as pills and serialize to `@path` / `/name`). It offers
   `@` file mentions from `ai_thread_files` (Git
