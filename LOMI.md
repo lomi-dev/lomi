@@ -170,7 +170,11 @@ or acronym.
   Folders outside Git use a private shadow repository
   (`app_data/ai-chat/checkpoints/<sha256 of folder>.git`, default excludes
   such as `node_modules/`, skipped above 20,000 files or 200 MB with a
-  notice; nested Git repositories are not covered). A shadow without
+  notice). Git repositories nested in the chat folder (breadth-first, depth
+  4, at most 32, heavy folders skipped) get the same refs; the stored
+  checkpoint is then a JSON map of repository path to commit (a plain sha
+  when there is none), and changes, diffs and undo are routed per
+  repository with folder-relative paths. A shadow without
   checkpoints is deleted, otherwise garbage-collected after a thread delete;
   shadows of folders that no longer exist are removed at startup.
 - The composer is a Tiptap editor (plain-text contract: chosen `@` files and
