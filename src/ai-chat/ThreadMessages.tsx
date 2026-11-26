@@ -5,7 +5,6 @@ import {
   memo,
   useContext,
   useEffect,
-  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -49,6 +48,7 @@ import {
   undoTurnFiles,
   type ChatItemView,
 } from "./thread-runtime";
+import { arm, disarm, useAutoResume } from "./auto-resume";
 import { parseUnifiedDiff } from "./unified-diff";
 import {
   collapseGroup,
@@ -205,17 +205,11 @@ const kindIcons: Record<ActivityKind, typeof Terminal> = {
 
 interface ApprovalContext {
   respond: (requestId: string, decision: ApprovalDecision) => Promise<void>;
-  /** Answers a pending question by item id; null declines it. */
-  answer: (
-    requestId: string,
-    answers: Record<string, string[]> | null,
-  ) => Promise<void>;
   /** requestId of the first pending card; it may take focus on appearing. */
   focusId: string | null;
 }
 const Approvals = createContext<ApprovalContext>({
   respond: () => Promise.resolve(),
-  answer: () => Promise.resolve(),
   focusId: null,
 });
 
@@ -227,7 +221,7 @@ function useFocusBack(card: RefObject<HTMLElement | null>) {
       if (!element?.contains(document.activeElement)) return;
       element
         .closest(".thread-pane")
-        ?.querySelector<HTMLTextAreaElement>(".thread-composer textarea")
+        ?.querySelector<HTMLElement>(".thread-composer .ProseMirror")
         ?.focus();
     };
   }, [card]);
@@ -338,141 +332,17 @@ function ApprovalCard({ activity, cwd }: { activity: Activity; cwd: string }) {
 // Secret answers (passwords) are masked and never echoed back.
 const isSecret = (item: QuestionItem) => !!item.secret;
 
-/** Pending question: one group per item with options and optional free text. */
-function QuestionCard({ activity }: { activity: Activity }) {
+/** Pending question: it is answered in the composer below. */
+function QuestionPending() {
   const { t } = useT();
-  const { answer, focusId } = useContext(Approvals);
-  const question = activity.question!;
-  const name = useId();
-  const [chosen, setChosen] = useState<Record<string, string[]>>({});
-  const [other, setOther] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const card = useRef<HTMLLIElement>(null);
-  useFocusBack(card);
-  useEffect(() => {
-    if (focusId !== question.requestId) return;
-    const active = document.activeElement;
-    // Same rule as approvals: never steal focus from the composer or other panels.
-    if (!active || active === document.body)
-      card.current?.querySelector<HTMLElement>("input")?.focus();
-  }, [focusId, question.requestId]);
-  const answers = Object.fromEntries(
-    question.items.map((item) => [
-      item.id,
-      [...(chosen[item.id] ?? []), other[item.id]?.trim() ?? ""].filter(
-        Boolean,
-      ),
-    ]),
-  );
-  const ready = question.items.every((item) => answers[item.id].length > 0);
-  const submit = (value: Record<string, string[]> | null) => {
-    setBusy(true);
-    setError("");
-    answer(question.requestId, value).then(
-      () => setBusy(false),
-      (cause) => {
-        setBusy(false);
-        setError(errorMessage(cause));
-      },
-    );
-  };
   return (
-    <li
-      ref={card}
-      className="thread-activity-item thread-approval"
-      role="group"
-      aria-label={t("Question from the agent")}
-    >
-      <div className="thread-approval-label">
-        {t("Question from the agent")}
+    <li className="thread-activity-item thread-info-item">
+      <div className="thread-info-row">
+        <MessageSquare size={13} aria-hidden="true" />
+        <span className="thread-question-asked">
+          {t("Answer the agent's question below")}
+        </span>
       </div>
-      {question.items.map((item) => {
-        const group = `${name}-${item.id}`;
-        const type = item.multiSelect ? "checkbox" : "radio";
-        return (
-          <fieldset key={item.id} className="thread-question-item">
-            <legend>
-              {item.header && (
-                <span className="thread-question-header">{item.header}</span>
-              )}
-              {item.question}
-            </legend>
-            {item.options.map((option) => (
-              <label key={option.label} className="thread-question-option">
-                <input
-                  type={type}
-                  name={group}
-                  disabled={busy}
-                  checked={(chosen[item.id] ?? []).includes(option.label)}
-                  onChange={(event) => {
-                    const on = event.target.checked;
-                    setChosen((prev) => {
-                      const had = prev[item.id] ?? [];
-                      return {
-                        ...prev,
-                        [item.id]: item.multiSelect
-                          ? on
-                            ? [...had, option.label]
-                            : had.filter((label) => label !== option.label)
-                          : [option.label],
-                      };
-                    });
-                    if (!item.multiSelect)
-                      setOther((prev) => ({ ...prev, [item.id]: "" }));
-                  }}
-                />
-                <span>
-                  {option.label}
-                  {option.description && <small>{option.description}</small>}
-                </span>
-              </label>
-            ))}
-            {(item.allowOther || !item.options.length) && (
-              <input
-                type={isSecret(item) ? "password" : "text"}
-                autoComplete="off"
-                className="thread-question-other"
-                aria-label={t("Other answer")}
-                placeholder={t("Other…")}
-                disabled={busy}
-                value={other[item.id] ?? ""}
-                onChange={(event) => {
-                  setOther((prev) => ({
-                    ...prev,
-                    [item.id]: event.target.value,
-                  }));
-                  if (!item.multiSelect)
-                    setChosen((prev) => ({ ...prev, [item.id]: [] }));
-                }}
-              />
-            )}
-          </fieldset>
-        );
-      })}
-      <div className="thread-approval-actions">
-        <button
-          type="button"
-          className="button button-primary"
-          disabled={busy || !ready}
-          onClick={() => submit(answers)}
-        >
-          {t("Submit")}
-        </button>
-        <button
-          type="button"
-          className="button"
-          disabled={busy}
-          onClick={() => submit(null)}
-        >
-          {t("Decline")}
-        </button>
-      </div>
-      {error && (
-        <div className="thread-notice" role="alert">
-          {error}
-        </div>
-      )}
     </li>
   );
 }
@@ -569,7 +439,7 @@ function ActivityRow({ activity, cwd }: { activity: Activity; cwd: string }) {
   if (activity.kind === "notice") return <NoticeRow activity={activity} />;
   if (activity.question)
     return isPendingQuestion(activity) ? (
-      <QuestionCard activity={activity} />
+      <QuestionPending />
     ) : (
       <QuestionSummary activity={activity} />
     );
@@ -1078,36 +948,32 @@ function ErrorNotice({
   item,
   provider,
   retryable,
+  threadId,
   onEdit,
   onResend,
 }: {
   item: ChatItemView;
   provider: string;
+  threadId: string | null;
   /** Only the last reply of the thread can be retried. */
   retryable: boolean;
   onEdit: (text: string) => void;
   onResend: ResendHandler;
 }) {
   const { t, locale } = useT();
-  const [auto, setAuto] = useState(false);
+  const armed = useAutoResume(threadId ?? "");
+  const auto = armed?.messageId === item.id;
   const [now, setNow] = useState(() => Date.now());
   const retryAt = item.retryAtMs ?? null;
   const edit = item.resend;
-  // Attachments bind to one message only, so a reply with files can't be resent as is.
-  const files = noFiles;
-  const resend =
-    retryable && !item.resendAttachments?.length ? item.resend : null;
+  const files = item.resendAttachments ?? noFiles;
+  const resend = retryable ? item.resend : null;
   const left = retryAt === null ? 0 : retryAt - now;
   useEffect(() => {
     if (!auto) return;
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [auto]);
-  useEffect(() => {
-    if (!auto || retryAt === null || !resend || retryAt > now) return;
-    // A busy thread refuses; stay armed and try again on the next tick.
-    if (onResend(resend, files)) setAuto(false);
-  }, [auto, retryAt, now, resend, files, onResend]);
   const raw =
     item.error === INTERRUPTED_ERROR
       ? t("The response was interrupted; the partial reply was kept.")
@@ -1143,7 +1009,8 @@ function ErrorNotice({
                 timeStyle: "short",
               }),
             }));
-      if (resend && retryAt !== null)
+      // Attachments bind to one message, so only a text-only turn resumes unattended.
+      if (resend && retryAt !== null && threadId && !files.length)
         action = auto ? (
           <>
             <span aria-live="off">
@@ -1152,7 +1019,7 @@ function ErrorNotice({
             <button
               type="button"
               className="thread-link"
-              onClick={() => setAuto(false)}
+              onClick={() => disarm(threadId)}
             >
               {t("Cancel")}
             </button>
@@ -1163,7 +1030,11 @@ function ErrorNotice({
             className="thread-link"
             onClick={() => {
               setNow(Date.now());
-              setAuto(true);
+              arm(threadId, {
+                messageId: item.id,
+                retryAtMs: retryAt,
+                text: resend,
+              });
             }}
           >
             {t("Resume automatically")}
@@ -1263,6 +1134,7 @@ const Message = memo(function Message({
         <ErrorNotice
           item={item}
           provider={provider}
+          threadId={threadId}
           retryable={retryable}
           onEdit={onEdit}
           onResend={onResend}
@@ -1291,7 +1163,6 @@ export default function ThreadMessages({
   onEdit,
   onResend,
   onRespond,
-  onAnswer,
 }: {
   items: readonly ChatItemView[];
   threadId: string | null;
@@ -1304,11 +1175,13 @@ export default function ThreadMessages({
   onEdit: (text: string) => void;
   onResend: ResendHandler;
   onRespond: ApprovalContext["respond"];
-  onAnswer: ApprovalContext["answer"];
 }) {
   const { t } = useT();
   const scroller = useRef<HTMLDivElement>(null);
+  const column = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
+  /** Last seen scrollTop: only a move up (the user) unpins, growth below never does. */
+  const lastTop = useRef(0);
   /** Scroll geometry captured before older messages are prepended. */
   const anchor = useRef<{ height: number; top: number } | null>(null);
   const last = items.at(-1);
@@ -1332,14 +1205,12 @@ export default function ThreadMessages({
     anchor.current = null;
     element.scrollTop = saved.top + element.scrollHeight - saved.height;
   }, [firstId]);
-  const first = items
-    .flatMap((item) => item.activity)
-    .find((item) => isPending(item) || isPendingQuestion(item));
   const focusId =
-    first?.approval?.requestId ?? first?.question?.requestId ?? null;
+    items.flatMap((item) => item.activity).find(isPending)?.approval
+      ?.requestId ?? null;
   const approvals = useMemo(
-    () => ({ respond: onRespond, answer: onAnswer, focusId }),
-    [onRespond, onAnswer, focusId],
+    () => ({ respond: onRespond, focusId }),
+    [onRespond, focusId],
   );
   const tail = `${last?.text.length}:${last?.activity
     .map(
@@ -1347,21 +1218,56 @@ export default function ThreadMessages({
         `${item.status}${item.approval?.state ?? ""}${item.question?.state ?? ""}${item.detail?.length ?? 0}`,
     )
     .join()}`;
+  // The user's own action (a sent message, an answered question) always
+  // brings the view back to the bottom, even after reading further up.
+  const lastUserId = items.filter((item) => item.role === "user").at(-1)?.id;
+  // Only the latest reply: loading older pages must not move the view.
+  const answered = (lastReply?.activity ?? []).filter(
+    (item) => item.question && item.question.state !== "pending",
+  ).length;
+  useLayoutEffect(() => {
+    pinned.current = true;
+    const element = scroller.current;
+    if (element) element.scrollTop = element.scrollHeight;
+  }, [lastUserId, answered]);
+  // Stop is the user's action too: show the stopped reply's end.
+  const stoppedId = lastReply?.stopped ? lastReply.id : null;
+  useLayoutEffect(() => {
+    const element = scroller.current;
+    if (!stoppedId || !element) return;
+    pinned.current = true;
+    element.scrollTop = element.scrollHeight;
+  }, [stoppedId]);
   useLayoutEffect(() => {
     const element = scroller.current;
     if (element && pinned.current) element.scrollTop = element.scrollHeight;
   }, [items.length, tail]);
+  // Heights also change without new text (highlighting, the composer growing, layout of
+  // offscreen messages): keep a pinned view at the bottom whenever anything resizes.
+  useEffect(() => {
+    const element = scroller.current;
+    if (!element || !column.current) return;
+    const observer = new ResizeObserver(() => {
+      if (pinned.current) element.scrollTop = element.scrollHeight;
+    });
+    observer.observe(element);
+    observer.observe(column.current);
+    return () => observer.disconnect();
+  }, []);
   return (
     <div
       ref={scroller}
       className="thread-scroll"
       onScroll={(event) => {
         const el = event.currentTarget;
-        pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+        if (el.scrollHeight - el.scrollTop - el.clientHeight < 48)
+          pinned.current = true;
+        else if (el.scrollTop < lastTop.current) pinned.current = false;
+        lastTop.current = el.scrollTop;
         if (hasMore && el.scrollTop < 80) loadEarlier();
       }}
     >
-      <div className="thread-column">
+      <div ref={column} className="thread-column">
         {hasMore && (
           <button
             type="button"

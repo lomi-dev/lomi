@@ -7368,3 +7368,36 @@ h3 {
     animation: none;
   }
 }
+
+/* CLI update notice: the trigger reuses the integration chip; its menu opens
+   upward from the status bar. */
+.cli-updates {
+  position: relative;
+}
+.cli-updates-trigger {
+  gap: var(--space-4);
+}
+.cli-updates-menu {
+  top: auto;
+  left: auto;
+  right: 0;
+  bottom: calc(100% + var(--space-6));
+  width: max-content;
+  max-width: 360px;
+}
+.cli-updates-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-4) var(--space-6);
+  font-size: var(--font-size-12);
+}
+.cli-updates-name {
+  flex: 1;
+  color: var(--color-surface-text);
+}
+.cli-updates-version {
+  color: var(--color-surface-variant-text);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-11);
+}

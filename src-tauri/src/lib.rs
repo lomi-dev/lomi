@@ -17,6 +17,7 @@ mod cli_launch;
 mod cli_mcp;
 mod cli_notifications;
 mod cli_titles;
+mod cli_updates;
 mod cli_usage;
 mod credential_store;
 
@@ -329,6 +330,7 @@ pub fn run() {
                 cli_integrations::inspect_mcp_clients,
                 cli_integrations::install_mcp_client,
                 cli_launch::installed_agent_clis,
+                cli_updates::check_cli_updates,
                 ai_chat::ai_chat_settings,
                 ai_chat::ai_provider_create,
                 ai_chat::ai_provider_update,
@@ -361,6 +363,7 @@ pub fn run() {
                 ai_chat::ai_attachment_import_paths,
                 ai_chat::ai_attachment_import_bytes,
                 ai_chat::ai_attachment_discard,
+                ai_chat::ai_attachment_copy,
                 ai_chat::ai_attachment_preview,
                 agent_control::agent_control_state,
                 agent_control::agent_control_startup_state,

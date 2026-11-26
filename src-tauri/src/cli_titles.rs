@@ -892,6 +892,31 @@ fn usage_auth_argument_override(cli: TitleCli, arguments: &[&[u8]]) -> bool {
     })
 }
 
+/// Usage paths for a CLI that Lomi spawns itself (chat threads): the app's own
+/// environment is what the chat engine hands to the CLI, and no argv exists to
+/// carry an auth override.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(crate) fn usage_default_paths(
+    executable: Option<PathBuf>,
+) -> Result<UsageProcessPaths, String> {
+    use std::os::unix::ffi::OsStrExt;
+    let entries = std::env::vars_os()
+        .map(|(name, value)| [name.as_bytes(), b"=", value.as_bytes()].concat())
+        .collect::<Vec<_>>();
+    let mut paths =
+        UsageProcessPaths::from_entries(&entries.iter().map(Vec::as_slice).collect::<Vec<_>>());
+    paths.executable = executable;
+    paths.has_auth_argument_override = false;
+    Ok(paths)
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+pub(crate) fn usage_default_paths(
+    _executable: Option<PathBuf>,
+) -> Result<UsageProcessPaths, String> {
+    Err("Native account usage is currently available on Linux and macOS.".into())
+}
+
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
 pub(crate) fn usage_process_paths(_process: TitleProcess) -> Result<UsageProcessPaths, String> {
     Err("Native account usage is currently available on Linux and macOS.".into())

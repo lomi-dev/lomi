@@ -167,29 +167,42 @@ or acronym.
   out). The turn's changed files, per-file diffs (`ai_turn_diff`) and an
   explicit, confirmed undo (`ai_turn_undo`, skipping files changed since the
   turn) appear under the reply; deleting the thread removes its refs.
-- The composer offers `@` file mentions from `ai_thread_files` (Git
+- The composer is a Tiptap editor (plain-text contract: chosen `@` files and
+  `/` commands show as pills and serialize to `@path` / `/name`). It offers
+  `@` file mentions from `ai_thread_files` (Git
   `ls-files` or a bounded walk of the thread folder), persists drafts per tab
   in webview storage, and queues messages sent during a reply; the queue is
   sent in order after the reply ends, pauses after Stop, and is not kept
   across restarts. While a Claude Code or Codex reply runs, Enter steers the
   message into the running turn (`ai_thread_steer`; Claude stdin user line,
   Codex `turn/steer`) and Alt+Enter queues it; unsupported agents queue.
+  Claude runs with `--replay-user-messages`: a steer replayed before the
+  `result` joined the turn, one replayed after it queued a second turn whose
+  text continues the reply; only a steer never replayed drops the process.
   `/` lists the agent's commands (`ai_thread_commands`: Claude initialize
   list, ACP `availableCommands`, Codex `compact` via `thread/compact/start`)
-  plus Lomi's local `/new`.
+  plus Lomi's local `/new`; the last list per agent and project is cached in
+  the chat database (`command_cache`), so new chats show it before a session
+  starts.
 - Agent questions (Claude `AskUserQuestion`, Codex `requestUserInput`) render
-  as answer cards (`ai_thread_answer`); answers are validated against the
+  as answer cards. Codex initializes with `experimentalApi` and runs
+  read-only turns in plan mode (`collaborationMode`), the only mode in which
+  it asks questions (`ai_thread_answer`); answers are validated against the
   asked ids and secret answers are never stored. Reopened views attach to a
   running turn (`ai_thread_attach`) instead of polling; threads load in pages
   (`ai_thread_snapshot` limit, `ai_thread_messages_before`). Failed replies
   carry `error_kind` (auth, rate_limit with `retry_at_ms`, network,
   missing_cli, context_length, other) for tailored actions and an opt-in
-  automatic resume. Notice activities report a lost session context, an
+  automatic resume that lives in a module store (`auto-resume.ts`) and fires
+  even when the pane is closed. Retrying a reply whose message had files
+  sends fresh copies (`ai_attachment_copy`, same thread only). Notice activities report a lost session context, an
   unavailable undo checkpoint, steers and compaction. Undo can target chosen
   files; files touched by the agent's edit tools are preselected. Thread run
-  state (`ai_threads_status`, event `ai-thread-status`) drives tab and
-  sidebar dots and OS notifications (generic title, no message text, gated by
-  the notification settings).
+  state (`ai_threads_status`, event `ai-thread-status`) drives tab (also
+  split terminal tabs) and sidebar dots and OS notifications (generic title,
+  no message text, gated by the notification settings). On macOS a clicked
+  chat notification focuses the window and opens the thread
+  (`mac-notification-sys` with `wait_for_click`, event `ai-thread-reveal`).
 - Chat history is scoped to the workspace: threads store `workspace_id` and
   `ai_threads_list` returns that workspace's threads plus legacy threads
   without one. "New chat" asks for confirmation when the current chat has
@@ -269,6 +282,17 @@ or acronym.
   agy's supplied JSON state, reading current conversation names from its local
   annotation files without starting the GUI or reading transcripts. Never
   configure a CLI silently or restart it automatically.
+- `src/CliUpdates.tsx` shows an "update available" notice in the status bar for
+  outdated agent CLIs. `src-tauri/src/cli_updates.rs` runs `<cli> --version` and
+  compares it with the latest version from npm (`registry.npmjs.org`), PyPI
+  (vibe, hermes) or Cursor's install script; only the package name is sent.
+  Homebrew installs (`Cellar`/`Caskroom` paths) use `brew outdated --json=v2`
+  instead, so freshness depends on brew's local tap state. The update command
+  follows the canonical install path (brew, native self-updater, npm, pnpm, bun,
+  pipx, uv); an unknown installer is reported without an Update button. agy and
+  kiro have no version feed and are not checked. Results are cached for 6 hours.
+  Updating is user-initiated: Update opens a new terminal tab and types the
+  command there; Lomi never updates a CLI silently.
 - `src/NotificationCenter.tsx` exposes the local notification inbox from the
   titlebar account menu for signed-in and signed-out users. Arrivals show no
   toasts; the signed-in avatar shows an unread count capped at `9+`, and the

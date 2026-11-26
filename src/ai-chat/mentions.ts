@@ -56,17 +56,6 @@ export function rankFiles(
     .map((item) => item.file);
 }
 
-/** Replaces the token before the caret with `@path ` (backticked if spaced). */
-export function applyMention(
-  text: string,
-  caret: number,
-  path: string,
-): { text: string; caret: number } {
-  const token = mentionQuery(text, caret);
-  if (!token) return { text, caret };
-  const ref = /\s/.test(path) ? `@\`${path}\` ` : `@${path} `;
-  return {
-    text: text.slice(0, token.start) + ref + text.slice(caret),
-    caret: token.start + ref.length,
-  };
-}
+/** Text form of a file reference: `@path`, backticked if the path has spaces. */
+export const mentionRef = (path: string) =>
+  /\s/.test(path) ? `@\`${path}\`` : `@${path}`;

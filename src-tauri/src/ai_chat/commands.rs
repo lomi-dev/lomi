@@ -872,10 +872,13 @@ pub(crate) async fn ai_thread_commands(
     window: Window,
     app: AppHandle,
     state: State<'_, AiChat>,
-    thread_id: String,
+    thread_id: Option<String>,
+    instance_id: String,
+    project: String,
 ) -> Result<Vec<ThreadCommand>, String> {
     crate::files::main_window(&window)?;
-    Ok(state.engine(&app)?.commands(&thread_id))
+    let engine = state.engine(&app)?.clone();
+    blocking(move || Ok(engine.commands(thread_id.as_deref(), &instance_id, &project))).await
 }
 
 #[tauri::command]
@@ -1067,6 +1070,20 @@ pub(crate) async fn ai_attachment_discard(
     crate::files::main_window(&window)?;
     let chat = state.inner().clone();
     blocking(move || chat.with(&app, |i| i.store.attachment_discard(&id))).await
+}
+
+/// Copies sent attachments of a thread into new unsent ones for a resend.
+#[tauri::command]
+pub(crate) async fn ai_attachment_copy(
+    window: Window,
+    app: AppHandle,
+    state: State<'_, AiChat>,
+    thread_id: String,
+    ids: Vec<String>,
+) -> Result<Vec<Attachment>, String> {
+    crate::files::main_window(&window)?;
+    let chat = state.inner().clone();
+    blocking(move || chat.with(&app, |i| i.store.attachment_copy(&thread_id, &ids))).await
 }
 
 #[tauri::command]

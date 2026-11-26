@@ -22,6 +22,7 @@ import {
   worstRemainingWindow,
   validRemainingPercent,
 } from "./agent-usage";
+import { subscribeChatUsage, withChatTargets } from "./chat-usage";
 import { cliNames } from "./cli-agents";
 import type { CliAgent } from "./cli-agents";
 import type { TerminalContext } from "./terminal-runtime";
@@ -43,6 +44,9 @@ interface PendingRefresh {
 }
 
 const staleAfterMs = 45_000;
+
+const currentTargets = (contexts: Record<string, TerminalContext>) =>
+  withChatTargets(agentUsageTargets(contexts));
 
 function sameProcess(
   left: { id: string; process: { cli: string; pid: number } },
@@ -214,8 +218,8 @@ export function useAgentUsage() {
   const [now, setNow] = useState(Date.now());
 
   const refresh = useCallback((force = false): Promise<void> => {
-    const currentTargets = agentUsageTargets(contexts.current);
-    if (!native || currentTargets.length === 0) {
+    const targetsNow = currentTargets(contexts.current);
+    if (!native || targetsNow.length === 0) {
       return Promise.resolve();
     }
 
@@ -225,7 +229,7 @@ export function useAgentUsage() {
       return Promise.resolve();
     }
 
-    const currentSignature = agentUsageSignature(currentTargets);
+    const currentSignature = agentUsageSignature(targetsNow);
     const currentEpoch = epoch.current;
     if (inFlight.current) {
       if (inFlight.current.epoch !== currentEpoch || force) {
@@ -243,7 +247,7 @@ export function useAgentUsage() {
     request.promise = (async () => {
       try {
         const received: AgentUsageEntry[] = [];
-        for (const batch of agentUsageTargetBatches(currentTargets)) {
+        for (const batch of agentUsageTargetBatches(targetsNow)) {
           const result = await api<UsageReply>("inspect_cli_usage", {
             targets: batch,
             force,
@@ -257,7 +261,7 @@ export function useAgentUsage() {
           received.push(...result.entries);
         }
 
-        const latestTargets = agentUsageTargets(contexts.current);
+        const latestTargets = currentTargets(contexts.current);
         const accepted = received.filter((entry) =>
           latestTargets.some((target) => sameProcess(target, entry)),
         );
@@ -293,7 +297,7 @@ export function useAgentUsage() {
       !native ||
       authorization.current ||
       target.process.cli !== "cursor" ||
-      !agentUsageTargets(contexts.current).some((current) =>
+      !currentTargets(contexts.current).some((current) =>
         sameProcess(current, target),
       )
     )
@@ -342,9 +346,8 @@ export function useAgentUsage() {
     }
   }, []);
 
-  const observe = useCallback((next: Record<string, TerminalContext>) => {
-    contexts.current = next;
-    const nextTargets = agentUsageTargets(next);
+  const sync = useCallback(() => {
+    const nextTargets = currentTargets(contexts.current);
     const nextSignature = agentUsageSignature(nextTargets);
     if (nextSignature === signature.current) return;
 
@@ -368,10 +371,20 @@ export function useAgentUsage() {
     }
   }, []);
 
+  const observe = useCallback(
+    (next: Record<string, TerminalContext>) => {
+      contexts.current = next;
+      sync();
+    },
+    [sync],
+  );
+
+  useEffect(() => subscribeChatUsage(sync), [sync]);
+
   useEffect(() => {
     alive.current = true;
     const focused = () => {
-      if (agentUsageTargets(contexts.current).length)
+      if (currentTargets(contexts.current).length)
         void refreshRef.current(false);
     };
     focused();

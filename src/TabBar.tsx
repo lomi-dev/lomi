@@ -17,7 +17,7 @@ import {
   X,
 } from "./icons";
 import type { Tab, TabCloseAction, TabDropSide } from "./model";
-import { tabTitle } from "./model";
+import { layoutPanes, tabTitle } from "./model";
 import { useTabDrag } from "./tab-drag";
 import { useT } from "./i18n";
 import { ThreadStatusDot } from "./thread-status";
@@ -354,8 +354,16 @@ export default function TabBar({
                   <Terminal size={14} />
                 )}
                 <span>{tabTitle(tab)}</span>
-                {tab.type === "thread" && (
-                  <ThreadStatusDot threadIds={[tab.threadId]} />
+                {(tab.type === "thread" || tab.type === "terminal") && (
+                  <ThreadStatusDot
+                    threadIds={
+                      tab.type === "thread"
+                        ? [tab.threadId]
+                        : layoutPanes(tab.layout).flatMap((pane) =>
+                            pane.type === "thread" ? [pane.threadId] : [],
+                          )
+                    }
+                  />
                 )}
                 {modified?.has(tab.id) && (
                   <span

@@ -701,6 +701,10 @@ import type { ThreadCommand, ThreadStreamEvent as StreamEvent } from "./types";
 export const threadAttach = (threadId: string, onEvent: Channel<StreamEvent>) =>
   api<ThreadLive | null>("ai_thread_attach", { threadId, onEvent });
 
+/** Copies sent attachments of a thread into unsent ones, so a failed turn can be resent. */
+export const copyAttachments = (threadId: string, ids: string[]) =>
+  api<Attachment[]>("ai_attachment_copy", { threadId, ids });
+
 /** Stable error of `steerThread` when the message must be queued instead. */
 export const steerUnsupported = "steer_unsupported";
 
@@ -718,6 +722,13 @@ export const answerQuestion = (
   answers: Record<string, string[]> | null,
 ) => api<void>("ai_thread_answer", { threadId, requestId, answers });
 
-/** Slash commands of the thread's CLI; empty before its session started. */
-export const threadCommands = (threadId: string) =>
-  api<ThreadCommand[]>("ai_thread_commands", { threadId });
+/** Where slash commands come from: a thread, or the agent and project of a new chat. */
+export type CommandSource = {
+  threadId: string | null;
+  instanceId: string;
+  project: string;
+};
+
+/** Slash commands of the thread's CLI, or the ones it last reported in the project. */
+export const threadCommands = (source: CommandSource) =>
+  api<ThreadCommand[]>("ai_thread_commands", source);

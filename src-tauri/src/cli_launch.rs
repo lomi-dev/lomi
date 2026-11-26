@@ -187,6 +187,13 @@ pub(crate) fn resolve_cli(
 }
 
 pub(crate) fn installed_local_clis(shells: &Shells) -> Result<HashSet<TitleCli>, String> {
+    Ok(installed_local_cli_paths(shells)?.into_keys().collect())
+}
+
+/// Resolved executable of every installed CLI, as seen by the user's login shell.
+pub(crate) fn installed_local_cli_paths(
+    shells: &Shells,
+) -> Result<HashMap<TitleCli, PathBuf>, String> {
     let profile = shells
         .profiles
         .iter()
@@ -197,7 +204,8 @@ pub(crate) fn installed_local_clis(shells: &Shells) -> Result<HashSet<TitleCli>,
         .ok_or("No supported local shell is available to detect installed CLI clients.")?;
     Ok(
         resolve_all(profile, &profile.home, &shells.integration, None)?
-            .into_keys()
+            .into_iter()
+            .map(|(cli, found)| (cli, found.program))
             .collect(),
     )
 }

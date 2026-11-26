@@ -232,10 +232,7 @@ async fn inspect_target(
     target: UsageTarget,
     force: bool,
 ) -> UsageEntry {
-    if terminals
-        .check_title_process(&target.id, target.process)
-        .is_err()
-    {
+    if !terminal_process_is_current(terminals, &target.id, target.process) {
         return empty_entry(
             target,
             UsageStatus::Error,
@@ -251,10 +248,8 @@ async fn inspect_target(
     }
 
     let process = target.process;
-    let paths = match tauri::async_runtime::spawn_blocking(move || {
-        cli_titles::usage_process_paths(process)
-    })
-    .await
+    let id = target.id.clone();
+    let paths = match tauri::async_runtime::spawn_blocking(move || usage_paths(&id, process)).await
     {
         Ok(paths) => paths,
         Err(_) => {
@@ -267,7 +262,7 @@ async fn inspect_target(
         }
     };
 
-    if terminals.check_title_process(&target.id, process).is_err() {
+    if !terminal_process_is_current(terminals, &target.id, process) {
         return empty_entry(
             target,
             UsageStatus::Error,
@@ -331,7 +326,7 @@ async fn inspect_target(
         }
     };
 
-    if terminals.check_title_process(&target.id, process).is_err() {
+    if !terminal_process_is_current(terminals, &target.id, process) {
         return empty_entry(
             target,
             UsageStatus::Error,
@@ -745,11 +740,11 @@ async fn verify_agy_context_current(
     expected_key: &CacheKey,
     expected_generation: u64,
 ) -> Option<u64> {
-    let paths =
-        tauri::async_runtime::spawn_blocking(move || cli_titles::usage_process_paths(process))
-            .await
-            .ok()?
-            .ok()?;
+    let owned_id = id.to_owned();
+    let paths = tauri::async_runtime::spawn_blocking(move || usage_paths(&owned_id, process))
+        .await
+        .ok()?
+        .ok()?;
     if !terminal_process_is_current(terminals, id, process) {
         return None;
     }
@@ -2084,8 +2079,29 @@ async fn invalidate_namespace_if_generation(
         .retain(|key, weak| &key.namespace != namespace || weak.strong_count() > 0);
 }
 
+/// Chat threads are identified as `chat:<tab id>` with pid 0: no terminal process exists to verify.
+fn is_chat_target(id: &str, process: TitleProcess) -> bool {
+    process.pid == 0
+        && id.strip_prefix("chat:").is_some_and(|tab| {
+            (1..=64).contains(&tab.len())
+                && tab
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+        })
+}
+
 fn terminal_process_is_current(terminals: &Terminals, id: &str, process: TitleProcess) -> bool {
-    terminals.check_title_process(id, process).is_ok()
+    is_chat_target(id, process) || terminals.check_title_process(id, process).is_ok()
+}
+
+fn usage_paths(id: &str, process: TitleProcess) -> Result<UsageProcessPaths, String> {
+    if is_chat_target(id, process) {
+        // Same binary lookup and inherited environment as the chat engine's CLI spawn.
+        let name = format!("{:?}", process.cli).to_lowercase();
+        cli_titles::usage_default_paths(crate::cli_bin::resolve(&name))
+    } else {
+        cli_titles::usage_process_paths(process)
+    }
 }
 
 async fn verify_credentials_current(
@@ -2096,11 +2112,11 @@ async fn verify_credentials_current(
     expected_key: &CacheKey,
     expected_generation: u64,
 ) -> Option<u64> {
-    let paths =
-        tauri::async_runtime::spawn_blocking(move || cli_titles::usage_process_paths(process))
-            .await
-            .ok()?
-            .ok()?;
+    let owned_id = id.to_owned();
+    let paths = tauri::async_runtime::spawn_blocking(move || usage_paths(&owned_id, process))
+        .await
+        .ok()?
+        .ok()?;
     if !terminal_process_is_current(terminals, id, process) {
         return None;
     }
@@ -2765,6 +2781,36 @@ fn now_ms() -> i64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis().min(i64::MAX as u128) as i64)
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod chat_target_tests {
+    use super::*;
+
+    #[test]
+    fn validates_chat_target_ids() {
+        let claude = |pid| TitleProcess {
+            cli: TitleCli::Claude,
+            pid,
+        };
+        assert!(is_chat_target("chat:abc-123_X", claude(0)));
+        assert!(!is_chat_target("chat:abc", claude(7)));
+        assert!(!is_chat_target("chat:", claude(0)));
+        assert!(!is_chat_target("chat:a/b", claude(0)));
+        assert!(!is_chat_target(
+            &format!("chat:{}", "a".repeat(65)),
+            claude(0)
+        ));
+        assert!(!is_chat_target("term-1", claude(0)));
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn default_paths_use_app_environment() {
+        let paths = cli_titles::usage_default_paths(None).unwrap();
+        assert!(!paths.has_auth_argument_override);
+        assert_eq!(paths.home, std::env::var_os("HOME").map(PathBuf::from));
+    }
 }
 
 #[cfg(test)]

@@ -3491,6 +3491,7 @@ dependencies = [
  "lomi-remote-crypto",
  "lomi-remote-protocol",
  "lomi-terminal",
+ "mac-notification-sys",
  "notify",
  "objc2",
  "objc2-app-kit",

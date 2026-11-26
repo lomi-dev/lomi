@@ -272,6 +272,7 @@ pub fn notify_agent(
         pane_id.as_deref(),
         title,
         &context,
+        None,
     )?;
     recorded?;
     forwarded?;
@@ -286,6 +287,7 @@ pub fn notify_thread(
     kind: NotificationKind,
     title: String,
     body: String,
+    thread_id: Option<String>,
 ) -> Result<bool, String> {
     main_window(&window)?;
     if matches!(kind, NotificationKind::Info) {
@@ -299,8 +301,21 @@ pub fn notify_thread(
     if title.is_empty() || body.chars().count() > 100 || body.chars().any(char::is_control) {
         return Err("Invalid notification text.".into());
     }
-    let (requested, recorded) =
-        crate::push::terminal_local::deliver(&app, &window, kind, None, None, &title, &body)?;
+    // A click brings the window forward and opens the thread.
+    let on_click = thread_id.map(|id| {
+        let app = app.clone();
+        Box::new(move || {
+            if let Some(main) = app.get_window("main") {
+                let _ = main.unminimize();
+                let _ = main.show();
+                let _ = main.set_focus();
+            }
+            let _ = app.emit_to("main", "ai-thread-reveal", id);
+        }) as Box<dyn FnOnce() + Send>
+    });
+    let (requested, recorded) = crate::push::terminal_local::deliver(
+        &app, &window, kind, None, None, &title, &body, on_click,
+    )?;
     recorded?;
     Ok(requested)
 }

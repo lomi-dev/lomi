@@ -9,6 +9,7 @@ import {
 import { api, errorMessage } from "../api";
 import { useT } from "../i18n";
 import { History, Plus } from "../icons";
+import { registerChatUsage } from "../chat-usage";
 import { newId, type ThreadTab } from "../model";
 import { IconButton, Modal } from "../ui";
 import { useAttachments } from "./attachment-store";
@@ -29,6 +30,7 @@ import {
   getThreadView,
   answerQuestion,
   respondToApproval,
+  copyAttachments,
   steerThread,
   steerUnknown,
   steerUnsupported,
@@ -109,7 +111,7 @@ export default function ThreadPane({
       const command = (event as CustomEvent<string>).detail;
       if (command === "focusChat")
         element
-          .querySelector<HTMLTextAreaElement>(".thread-composer textarea")
+          .querySelector<HTMLElement>(".thread-composer .ProseMirror")
           ?.focus();
       else
         element
@@ -148,6 +150,8 @@ export default function ThreadPane({
   }, [thread, entries, settings]);
   const value = choice ?? fallback;
   const entry = entries.find((item) => item.instanceId === value.instanceId);
+  const usageCli = entry?.kind === "cli" ? entry.cli : null;
+  useEffect(() => registerChatUsage(tab.id, usageCli), [tab.id, usageCli]);
   const efforts = useEfforts(entry, value.model);
   const effort = effortFor(
     thread
@@ -315,16 +319,25 @@ export default function ThreadPane({
       return false;
     setError("");
     setSending(true);
-    view
-      .send({
-        operationId: newId(),
-        expectedRevision:
-          view.state.snapshot?.thread.revision ?? thread.revision,
-        instanceId: entry.instanceId,
-        model: value.model,
-        text,
-        attachments: files.map((file) => file.id),
-      })
+    // Sent files are bound to their message; resend fresh copies.
+    const copies = files.length
+      ? copyAttachments(
+          thread.threadId,
+          files.map((file) => file.id),
+        )
+      : Promise.resolve([]);
+    copies
+      .then((fresh) =>
+        view.send({
+          operationId: newId(),
+          expectedRevision:
+            view.state.snapshot?.thread.revision ?? thread.revision,
+          instanceId: entry.instanceId,
+          model: value.model,
+          text,
+          attachments: fresh.map((file) => file.id),
+        }),
+      )
       .catch((cause) => setError(errorMessage(cause)))
       .finally(() => setSending(false));
     return true;
@@ -453,9 +466,11 @@ export default function ThreadPane({
   const waiting = items.some(
     (item) => item.streaming && hasPendingApproval(item.activity),
   );
-  const waitingAnswer = items.some(
-    (item) => item.streaming && item.activity.some(isPendingQuestion),
-  );
+  const pendingQuestion =
+    items
+      .filter((item) => item.streaming)
+      .flatMap((item) => item.activity)
+      .find(isPendingQuestion)?.question ?? null;
 
   async function commitRename() {
     const title = renaming?.trim();
@@ -570,7 +585,6 @@ export default function ThreadPane({
               onEdit={edit}
               onResend={onResend}
               onRespond={respond}
-              onAnswer={answer}
             />
           )}
           <div className="thread-dock">
@@ -582,11 +596,6 @@ export default function ThreadPane({
             {waiting && (
               <div className="thread-notice" role="status">
                 {t("Waiting for your approval")}
-              </div>
-            )}
-            {waitingAnswer && (
-              <div className="thread-notice" role="status">
-                {t("Waiting for your answer")}
               </div>
             )}
             {shownError && (
@@ -688,9 +697,18 @@ export default function ThreadPane({
                 onPasteImages={(files) => void attach.importImages(files)}
                 onRemoveAttachment={attach.remove}
                 mentionThreadId={threadKind === "cli" ? tab.threadId : null}
-                steerable={steerable}
-                commandThreadId={threadKind === "cli" ? tab.threadId : null}
+                commandSource={
+                  (thread ? threadKind : entry?.kind) === "cli"
+                    ? {
+                        threadId: tab.threadId,
+                        instanceId: thread?.instanceId ?? value.instanceId,
+                        project: projectPath,
+                      }
+                    : null
+                }
                 commandsKey={`${items.length}:${running}`}
+                question={pendingQuestion}
+                onAnswer={answer}
                 picker={
                   <ProviderModelPicker
                     entries={pickerEntries}

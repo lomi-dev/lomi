@@ -116,6 +116,7 @@ export function useThreadStatus(session: Session | undefined) {
           kind: finished ? "finished" : "attention",
           title: t("Lomi chat"),
           body: finished ? t("Reply finished") : t("Needs your approval"),
+          threadId,
         }).catch(() => {});
     };
     let alive = true;

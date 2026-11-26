@@ -56,6 +56,8 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* Pinning is handled in code; browser scroll anchoring would fight it. */
+  overflow-anchor: none;
 }
 .thread-column,
 .thread-dock {
@@ -272,29 +274,6 @@
   border-radius: 16px;
   background: var(--color-surface-container);
 }
-.thread-composer:focus-within {
-  border-color: color-mix(
-    in srgb,
-    var(--thread-accent) 60%,
-    var(--thread-line, var(--sheet-line, var(--color-outline)))
-  );
-}
-.thread-composer textarea {
-  width: 100%;
-  min-height: calc(1lh + var(--space-4));
-  max-height: 220px;
-  padding: var(--space-4) var(--space-4) 0;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  resize: none;
-  box-sizing: border-box;
-}
-.thread-composer textarea:focus-visible {
-  outline: 0;
-}
 .thread-mentions {
   position: absolute;
   right: 0;
@@ -328,30 +307,66 @@
 .thread-mention:hover {
   background: var(--color-surface-container-highest);
 }
-.thread-mention span {
+.thread-mention-group {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.thread-mention-section {
+  padding: var(--space-6) var(--space-8) var(--space-2);
+  color: var(--color-muted-text);
+  font-size: var(--font-size-11);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.thread-mention-name {
   flex: none;
   max-width: 60%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* Command descriptions are prose, not paths. */
-.thread-mention code[data-slash] {
-  font-family: inherit;
-  font-size: var(--font-size-12);
-}
-.thread-question-asked {
+.thread-mention-badge {
+  flex: none;
+  padding: 0 var(--space-6);
+  border-radius: 6px;
+  background: var(--color-surface-container-highest);
   color: var(--color-muted-text);
+  font-size: var(--font-size-11);
 }
 .thread-mention code {
+  flex: none;
+  color: var(--color-muted-text);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-11);
+}
+.thread-mention-hint {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   color: var(--color-muted-text);
-  font-family: var(--font-family-mono);
-  font-size: var(--font-size-11);
+  font-size: var(--font-size-12);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* File paths are monospace. */
+.thread-mention-hint[data-path] {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-11);
+}
+.thread-mention-footer {
+  position: sticky;
+  bottom: calc(-1 * var(--space-4));
+  background: var(--color-surface-container-high);
+  margin-top: var(--space-4);
+  padding: var(--space-6) var(--space-8) var(--space-2);
+  border-top: 1px solid var(--thread-line);
+  color: var(--color-muted-text);
+  font-size: var(--font-size-11);
+}
+.thread-question-asked {
+  color: var(--color-muted-text);
 }
 .thread-mention-empty {
   color: var(--color-muted-text);
@@ -361,14 +376,9 @@
   align-items: center;
   gap: var(--space-8);
 }
-.thread-composer-hint {
+.thread-composer-spacer {
   flex: 1 1 0;
   min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  color: var(--color-muted-text);
-  font-size: var(--font-size-11);
-  text-align: right;
 }
 /* IconButton replaces its base class when given className, so this is self-contained. */
 .thread-send {
@@ -511,6 +521,7 @@
   color: var(--color-surface-text);
   font: inherit;
   font-size: var(--font-size-13);
+  line-height: 1.35;
   text-align: left;
   cursor: pointer;
 }
@@ -1265,54 +1276,166 @@ button.thread-activity-row:hover {
   text-decoration: line-through;
 }
 
-.thread-question-item {
+.thread-composer-editor[hidden] {
+  display: none;
+}
+.thread-question:focus {
+  outline: 0;
+}
+.thread-question {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
   min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  font-size: var(--font-size-12);
+  /* Room between the last option and the Decline/Submit bar. */
+  padding: var(--space-4) var(--space-4) var(--space-12);
 }
-.thread-question-item legend {
-  margin-bottom: var(--space-4);
-  padding: 0;
-  color: var(--color-surface-text);
-}
-.thread-question-header {
-  margin-right: var(--space-8);
+.thread-question-step {
+  padding-left: var(--space-4);
   color: var(--color-muted-text);
   font-size: var(--font-size-11);
-  font-weight: 600;
-  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+}
+.thread-question-text {
+  margin: 0;
+  color: var(--color-surface-text);
+  font-size: var(--font-size-14);
+  font-weight: 500;
+  line-height: 1.4;
+}
+.thread-question-multi {
+  margin: 0;
+  color: var(--color-muted-text);
+  font-size: var(--font-size-12);
+}
+.thread-question-options {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: min(280px, 45vh);
+  margin: var(--space-4) calc(-1 * var(--space-4)) 0;
+  overflow-y: auto;
 }
 .thread-question-option {
   display: flex;
   align-items: flex-start;
-  gap: var(--space-8);
-}
-.thread-question-option input {
-  margin-top: 2px;
-}
-.thread-question-option small {
-  display: block;
-  color: var(--color-muted-text);
-  font-size: var(--font-size-11);
-}
-.thread-question-other {
-  min-height: 28px;
-  padding: 0 var(--space-8);
-  border: 1px solid var(--color-outline);
-  border-radius: 8px;
-  background: var(--color-surface);
+  gap: var(--space-10, 10px);
+  padding: 7px var(--space-8);
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
   color: var(--color-surface-text);
   font: inherit;
+  font-size: var(--font-size-13);
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 120ms ease-out,
+    border-color 120ms ease-out;
 }
-.thread-question-other:focus-visible,
-.thread-question-option input:focus-visible {
-  outline: var(--focus-width) solid var(--lomi-focus, var(--color-primary));
-  outline-offset: 1px;
+.thread-question-option:hover,
+.thread-question-option:focus-visible,
+.thread-question-own:focus-within {
+  background: var(--color-surface-container-high);
+  outline: 0;
+}
+.thread-question-option[aria-checked="true"],
+.thread-question-own[data-on] {
+  border-color: color-mix(in srgb, var(--color-primary) 45%, transparent);
+  background: color-mix(in srgb, var(--color-primary) 9%, transparent);
+}
+.thread-question-key {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--color-outline);
+  border-radius: 6px;
+  color: var(--color-muted-text);
+  font-size: var(--font-size-11);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.thread-question-option:hover > .thread-question-key,
+.thread-question-option:focus-visible > .thread-question-key,
+.thread-question-own:focus-within > .thread-question-key {
+  border-color: color-mix(in srgb, var(--color-muted-text) 55%, transparent);
+  color: var(--color-surface-text);
+}
+/* Selected wins over the hover/focus look above. */
+.thread-question-option[aria-checked="true"] > .thread-question-key,
+.thread-question-own[data-on] > .thread-question-key {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+}
+.thread-question-label {
+  flex: 1;
+  min-width: 0;
+  padding-top: 1px;
+}
+.thread-question-label small {
+  display: block;
+  margin-top: 1px;
+  color: var(--color-muted-text);
+  font-size: var(--font-size-12);
+}
+.thread-question-check {
+  flex: none;
+  margin-top: 3px;
+  color: var(--color-primary);
+}
+.thread-question-own {
+  align-items: center;
+  cursor: text;
+}
+.thread-question-own input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-surface-text);
+  font: inherit;
+  outline: 0;
+}
+.thread-question-own input::placeholder {
+  color: var(--color-muted-text);
+}
+/* Decline/Back and Submit share one pill shape; only the fill differs. */
+.thread-decline,
+.thread-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  height: 30px;
+  padding: 0 var(--space-12);
+  border: 0;
+  border-radius: 15px;
+  font: inherit;
+  font-size: var(--font-size-12);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 120ms ease-out,
+    color 120ms ease-out;
+}
+.thread-decline {
+  background: transparent;
+  color: var(--color-muted-text);
+}
+.thread-decline:hover:not(:disabled) {
+  background: var(--color-surface-container-high);
+  color: var(--color-surface-text);
+}
+.thread-submit:disabled {
+  opacity: 1;
+  background: var(--color-surface-container-high);
+  color: var(--color-muted-text);
+  cursor: default;
 }
 
 /* A message steered into the running turn. */
@@ -1335,4 +1458,39 @@ button.thread-activity-row:hover {
 .thread-steer-text {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+.thread-composer .ProseMirror {
+  min-height: calc(1lh + var(--space-4));
+  max-height: 220px;
+  padding: var(--space-4) var(--space-4) 0;
+  overflow-y: auto;
+  outline: 0;
+  box-sizing: border-box;
+}
+.thread-composer .ProseMirror p {
+  margin: 0;
+}
+.thread-composer .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: var(--color-muted-text);
+  pointer-events: none;
+}
+.composer-pill {
+  display: inline-block;
+  max-width: 240px;
+  padding: 0 var(--space-6, 6px);
+  border: 1px solid var(--thread-line);
+  border-radius: 10px;
+  background: var(--color-surface);
+  font-size: var(--font-size-12, 12px);
+  vertical-align: baseline;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.composer-pill.ProseMirror-selectednode {
+  border-color: var(--thread-accent);
 }

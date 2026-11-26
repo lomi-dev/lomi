@@ -205,6 +205,7 @@ import {
 import { useCliIntegrations } from "./CliIntegrations";
 import { useAgentNotifications } from "./AgentNotifications";
 
+import { useCliUpdates } from "./CliUpdates";
 import { loadInstalledAgentClis } from "./installed-agent-clis";
 import {
   absoluteFilePath,
@@ -1197,6 +1198,7 @@ export default function Workbench() {
     setError,
     setPaneNotice,
   );
+  const cliUpdates = useCliUpdates((command) => runInNewTab(command), setError);
   const agentUsage = useAgentUsage();
   useThreadStatus(session);
   const agentNotifications = useAgentNotifications(
@@ -1356,6 +1358,33 @@ export default function Workbench() {
     },
     onError: setError,
   });
+  // A click on a chat notification opens the thread wherever it lives.
+  const revealThread = useRef<(threadId: string) => void>(() => {});
+  revealThread.current = (threadId) => {
+    for (const project of session?.projects ?? [])
+      for (const workspace of project.workspaces)
+        for (const tab of workspace.tabs) {
+          const pane = (
+            tab.type === "terminal" ? layoutPanes(tab.layout) : [tab]
+          ).find(
+            (item) => item.type === "thread" && item.threadId === threadId,
+          );
+          if (pane)
+            return void selectProject(project.path, {
+              workspaceId: workspace.id,
+              tabId: tab.id,
+              paneId: pane.id,
+              revealPane: true,
+            });
+        }
+  };
+  useEffect(() => {
+    if (!native) return;
+    const stop = listen<string>("ai-thread-reveal", (event) =>
+      revealThread.current(event.payload),
+    );
+    return () => void stop.then((unlisten) => unlisten());
+  }, []);
   useEffect(() => {
     if (!native) return;
     const stop = listen("plugin-restart-request", () => {
@@ -2067,6 +2096,36 @@ export default function Workbench() {
         activeTabId: added.id,
       }));
     });
+  // Opens a visible terminal tab and types the command once its shell runs.
+  const runInNewTab = (command: string) => {
+    if (!selected) throw new Error(t("Open a project to run this command."));
+    const { project, workspace, tab } = selected;
+    const added = newTab(
+      project.path,
+      info?.platform !== "windows" && tab.type === "terminal"
+        ? tab.profileId
+        : defaultProfileId,
+      t("Terminal {number}", { number: workspace.tabs.length + 1 }),
+    );
+    const paneId = panes(added.layout)[0].id;
+    if (sharedHostBackend) stageSharedHostCreate(paneId, { kind: "create" });
+    change((state) =>
+      updateWorkspace(state, workspace.id, (current) => ({
+        ...current,
+        tabs: [...current.tabs, added],
+        activeTabId: added.id,
+      })),
+    );
+    void (async () => {
+      for (let waited = 0; waited < 20_000; waited += 50) {
+        const runtime = runningTerminal(paneId);
+        if (runtime?.getSnapshot().status === "running")
+          return runtime.execute(command);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      setError(t("The terminal could not start the command."));
+    })();
+  };
   const changeThread = (
     id: string,
     patch: Parameters<typeof updateThread>[2],
@@ -4431,6 +4490,8 @@ export default function Workbench() {
             {pluginSidebarToggles}
             <Slot name="statusbar" />
             {cliIntegrations.bar}
+            {/* Updates run in a local terminal: not offered for a shared Host's projects. */}
+            {!sharedHostBackend && cliUpdates.bar}
             {sharedHostBackend &&
               sharedWorkspaceStreamStatus?.workspaceId === workspace.id && (
                 <span
