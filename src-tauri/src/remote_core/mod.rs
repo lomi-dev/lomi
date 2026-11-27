@@ -11,9 +11,9 @@ mod engine;
 mod vault;
 
 use crate::auth::controller::CoreIdentity;
-use engine::{CoreState, Engine, Exchange, NameHint, Out, Status};
+use engine::{CoreState, Engine, Exchange, Ids, NameHint, Out, Status, RETRY_MS};
 use futures_util::{SinkExt, StreamExt};
-use lomi_remote_core::directory::{Directory, NONCE_LEN};
+use lomi_remote_core::directory::Directory;
 use lomi_remote_core::link::Now;
 use serde::Serialize;
 use std::sync::Mutex;
@@ -21,10 +21,13 @@ use std::time::{Duration, Instant};
 use tauri::{ipc::Channel as IpcChannel, Manager, State, Webview, Window};
 use tokio::sync::{mpsc, oneshot};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
-use vault::{FileVault, KeyringStore, Vault, KEY_ID};
+use vault::{FileVault, KeyringStore, Vault};
 
-const RETRY_MS: [u64; 5] = [1_000, 2_000, 5_000, 10_000, 30_000];
 const WIPE_RETRY: Duration = Duration::from_secs(5);
+/// Least time between two session exchanges that the user or a repeated start asks for.
+const USER_SESSION_INTERVAL: Duration = Duration::from_secs(30);
+/// A wipe command reports failure when the vault does not confirm in this time.
+const WIPE_CONFIRM: Duration = Duration::from_secs(10);
 const MAX_NAME_HINTS: usize = 512;
 const MAX_NAME_BYTES: usize = 256;
 
@@ -43,7 +46,7 @@ fn valid_hash(hash: &str) -> bool {
 /// The legacy channel endpoint (`/v2/relay`) and the device link (`/relay`) share an origin.
 fn link_url(endpoint: &str) -> Option<String> {
     let mut url = tauri::Url::parse(endpoint).ok()?;
-    if url.scheme() != "wss" && url.scheme() != "ws" {
+    if url.scheme() != "wss" {
         return None;
     }
     url.set_path("/relay");
@@ -83,6 +86,43 @@ enum Io {
     Closed(u64),
     /// Session exchange result: (epoch, user, status, body) or a local error code.
     Session(u64, Result<(String, u16, Vec<u8>), String>),
+    Vault(VaultEvent),
+}
+
+/// Keychain and file calls can block (a Secret Service prompt, a locked keychain), so one
+/// worker thread performs them in order and the actor never waits for it.
+enum VaultJob {
+    Load(String),
+    Persist(Ids, Directory),
+    Wipe,
+}
+
+enum VaultEvent {
+    Loaded(Result<Option<(Ids, Directory)>, ()>),
+    Wiped(bool),
+}
+
+fn vault_worker(
+    mut vault: Box<dyn Vault>,
+    jobs: std::sync::mpsc::Receiver<VaultJob>,
+    io: mpsc::UnboundedSender<Io>,
+) {
+    while let Ok(job) = jobs.recv() {
+        let event = match job {
+            VaultJob::Load(user) => Some(VaultEvent::Loaded(
+                vault::open_for(&mut *vault, &user).map_err(|_| ()),
+            )),
+            VaultJob::Persist(ids, dir) => {
+                // Best effort: the next change seals again.
+                let _ = vault::persist(&mut *vault, &ids, &dir);
+                None
+            }
+            VaultJob::Wipe => Some(VaultEvent::Wiped(vault.wipe().is_ok())),
+        };
+        if let Some(event) = event {
+            let _ = io.send(Io::Vault(event));
+        }
+    }
 }
 
 enum SockCmd {
@@ -146,7 +186,7 @@ fn keyring_service() -> String {
 struct Actor {
     auth: crate::auth::AuthController,
     engine: Engine,
-    vault: Box<dyn Vault>,
+    vault: std::sync::mpsc::Sender<VaultJob>,
     link: String,
     subs: Vec<IpcChannel<CoreEvent>>,
     clock: Instant,
@@ -159,7 +199,11 @@ struct Actor {
     inflight: bool,
     epoch: u64,
     attempt: usize,
-    stopped_retries: usize,
+    last_cycle: Option<Instant>,
+    cache_requested: bool,
+    wipe_inflight: bool,
+    wipe_queued: bool,
+    wipe_waiters: Vec<oneshot::Sender<bool>>,
     retry_at: Option<Instant>,
     wipe_retry_at: Option<Instant>,
 }
@@ -175,10 +219,13 @@ impl Actor {
         let mut seed = [0u8; 8];
         let _ = ring::rand::SystemRandom::new().fill(&mut seed);
         let (io_tx, io_rx) = mpsc::unbounded_channel();
+        let (vault_tx, vault_rx) = std::sync::mpsc::channel();
+        let worker_io = io_tx.clone();
+        std::thread::spawn(move || vault_worker(vault, vault_rx, worker_io));
         Self {
             auth,
             engine: Engine::new(hash, u64::from_le_bytes(seed)),
-            vault,
+            vault: vault_tx,
             link,
             subs: Vec::new(),
             clock: Instant::now(),
@@ -191,7 +238,11 @@ impl Actor {
             inflight: false,
             epoch: 0,
             attempt: 0,
-            stopped_retries: 0,
+            last_cycle: None,
+            cache_requested: false,
+            wipe_inflight: false,
+            wipe_queued: false,
+            wipe_waiters: Vec::new(),
             retry_at: None,
             wipe_retry_at: None,
         }
@@ -270,13 +321,11 @@ impl Actor {
                     self.started = true;
                     self.load_cache();
                 }
-                if !self.cycle
-                    && matches!(
-                        self.engine.state().status,
-                        Status::Idle | Status::SignedOut | Status::LinkDown | Status::Cached
-                    )
-                {
-                    self.request_session(None);
+                if matches!(
+                    self.engine.state().status,
+                    Status::Idle | Status::SignedOut | Status::LinkDown | Status::Cached
+                ) {
+                    self.user_session();
                 }
             }
             Cmd::AuthChanged => self.auth_changed(),
@@ -284,10 +333,10 @@ impl Actor {
                 let outs = self.engine.set_names(&hints, self.now());
                 self.apply(outs);
             }
-            Cmd::Renew => self.request_session(None),
+            Cmd::Renew => self.user_session(),
             Cmd::Wipe(reply) => {
                 self.wipe(Status::SignedOut);
-                let _ = reply.send(self.wipe_retry_at.is_none());
+                self.wipe_waiters.push(reply);
             }
         }
     }
@@ -302,9 +351,10 @@ impl Actor {
                 if self.engine.ids().is_some_and(|ids| ids.user != user) {
                     self.wipe(Status::Idle);
                 }
-                if !self.cycle
-                    && matches!(self.engine.state().status, Status::Idle | Status::SignedOut)
-                {
+                if !self.cache_requested {
+                    self.load_cache();
+                }
+                if matches!(self.engine.state().status, Status::Idle | Status::SignedOut) {
                     self.request_session(None);
                 }
             }
@@ -312,26 +362,18 @@ impl Actor {
         }
     }
 
-    /// Opens the directory from device memory for the signed-in user; anything else is wiped.
+    /// Asks the vault worker for the directory of the signed-in user; a signed-out device
+    /// has its leftovers wiped. Repeated when the identity first becomes known.
     fn load_cache(&mut self) {
         match self.auth.remote_core_identity() {
             CoreIdentity::User(user) => {
-                let Ok(Some(stored)) = self.vault.load() else {
-                    return;
-                };
-                let vault::Stored { ids, key, blob } = stored;
-                let opened = (ids.user == user)
-                    .then(|| Directory::open(&blob, &ids.account, &ids.device, &[key], KEY_ID).ok())
-                    .flatten();
-                match opened {
-                    Some(dir) => {
-                        let outs = self.engine.load_cache(dir, ids, self.now());
-                        self.apply(outs);
-                    }
-                    None => self.wipe_vault(),
-                }
+                self.cache_requested = true;
+                let _ = self.vault.send(VaultJob::Load(user));
             }
-            CoreIdentity::SignedOut => self.wipe_vault(),
+            CoreIdentity::SignedOut => {
+                self.cache_requested = true;
+                self.wipe_vault();
+            }
             CoreIdentity::Unknown => {}
         }
     }
@@ -341,19 +383,71 @@ impl Actor {
         self.inflight = false;
         self.cycle = false;
         self.retry_at = None;
+        self.last_cycle = None;
+        self.cache_requested = false;
         let outs = self.engine.wipe(status, self.now());
         self.apply(outs);
     }
 
     fn wipe_vault(&mut self) {
-        self.wipe_retry_at = match self.vault.wipe() {
-            Ok(()) => None,
-            // Something may remain (keychain locked): never leave it, retry.
-            Err(_) => Some(Instant::now() + WIPE_RETRY),
-        };
+        self.wipe_retry_at = None;
+        if self.wipe_inflight {
+            self.wipe_queued = true;
+        } else {
+            self.wipe_inflight = true;
+            let _ = self.vault.send(VaultJob::Wipe);
+        }
+    }
+
+    fn vault_event(&mut self, event: VaultEvent) {
+        match event {
+            VaultEvent::Loaded(Ok(Some((ids, dir)))) => {
+                // Signed out or another user while the key was being read: show nothing.
+                let current = matches!(
+                    self.auth.remote_core_identity(),
+                    CoreIdentity::User(ref user) if *user == ids.user
+                );
+                if current {
+                    let outs = self.engine.load_cache(dir, ids, self.now());
+                    self.apply(outs);
+                } else {
+                    self.wipe_vault();
+                }
+            }
+            VaultEvent::Loaded(Ok(None)) => {}
+            // Unreadable store: never keep what cannot be read.
+            VaultEvent::Loaded(Err(())) => self.wipe_vault(),
+            VaultEvent::Wiped(ok) => {
+                self.wipe_inflight = false;
+                if ok && self.wipe_queued {
+                    self.wipe_queued = false;
+                    return self.wipe_vault();
+                }
+                self.wipe_queued = false;
+                for waiter in self.wipe_waiters.drain(..) {
+                    let _ = waiter.send(ok);
+                }
+                if !ok {
+                    // Something may remain (keychain locked): never leave it, retry.
+                    self.wipe_retry_at = Some(Instant::now() + WIPE_RETRY);
+                }
+            }
+        }
     }
 
     // ---- session exchange and token renewal ----
+
+    /// A start or renew asked by the UI: spaced like the core spaces its own renewals, so
+    /// a page that keeps asking cannot hammer the server.
+    fn user_session(&mut self) {
+        if self
+            .last_cycle
+            .is_some_and(|at| at.elapsed() < USER_SESSION_INTERVAL)
+        {
+            return;
+        }
+        self.request_session(None);
+    }
 
     /// Single flight; the core already spaces its own renewal requests.
     fn request_session(&mut self, delay: Option<Duration>) {
@@ -361,6 +455,7 @@ impl Actor {
             return;
         }
         self.cycle = true;
+        self.last_cycle = Some(Instant::now());
         self.attempt = 0;
         let outs = self.engine.begin_exchange(self.now());
         self.apply(outs);
@@ -413,9 +508,6 @@ impl Actor {
             self.attempt += 1;
             self.retry_at = Some(Instant::now() + Duration::from_millis(ms));
         } else {
-            if exchange == Exchange::Done {
-                self.stopped_retries = 0;
-            }
             self.cycle = false;
             let outs = self.engine.end_exchange(self.now());
             self.apply(outs);
@@ -433,6 +525,7 @@ impl Actor {
                 }
                 return;
             }
+            Io::Vault(event) => return self.vault_event(event),
             Io::Open(gen) if self.socket.as_ref().is_some_and(|s| s.0 == gen) => {
                 self.engine.on_open(now)
             }
@@ -465,9 +558,7 @@ impl Actor {
                 Out::Persist => self.persist(),
                 Out::WipeVault => self.wipe_vault(),
                 Out::NeedToken => self.request_session(None),
-                Out::NeedTokenLater => {
-                    let ms = RETRY_MS[self.stopped_retries.min(RETRY_MS.len() - 1)];
-                    self.stopped_retries += 1;
+                Out::NeedTokenLater(ms) => {
                     self.request_session(Some(Duration::from_millis(ms)));
                 }
                 Out::State(state) => self.broadcast(CoreEvent::State { state }),
@@ -485,20 +576,8 @@ impl Actor {
     }
 
     fn persist(&mut self) {
-        use ring::rand::SecureRandom;
-        let Some(ids) = self.engine.ids().cloned() else {
-            return;
-        };
-        let Ok(key) = self.vault.key(&ids) else {
-            return;
-        };
-        let mut nonce = [0u8; NONCE_LEN];
-        if ring::rand::SystemRandom::new().fill(&mut nonce).is_err() {
-            return;
-        }
-        if let Some(blob) = self.engine.seal(&key, nonce) {
-            // Best effort: the next change seals again.
-            let _ = self.vault.write(&ids, &blob);
+        if let Some((ids, dir)) = self.engine.snapshot() {
+            let _ = self.vault.send(VaultJob::Persist(ids, dir));
         }
     }
 
@@ -624,8 +703,8 @@ pub(crate) async fn remote_v2_core_wipe(
     let (reply, done) = oneshot::channel();
     tx.send(Cmd::Wipe(reply))
         .map_err(|_| "Remote core is unavailable.")?;
-    match done.await {
-        Ok(true) => Ok(()),
+    match tokio::time::timeout(WIPE_CONFIRM, done).await {
+        Ok(Ok(true)) => Ok(()),
         _ => Err("The Remote directory could not be fully erased yet.".into()),
     }
 }
@@ -653,6 +732,7 @@ mod tests {
             Some("wss://127.0.0.1:9443/relay")
         );
         assert!(link_url("https://relay.lomi.dev/v2/relay").is_none());
+        assert!(link_url("ws://relay.lomi.dev/v2/relay").is_none());
         assert!(link_url("not a url").is_none());
     }
 }

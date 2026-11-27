@@ -6,7 +6,10 @@
 //! the list is "fresh" only while the link is ready and recently heard from, and a link
 //! that stays unconfirmed for [`DEGRADED_AFTER_MS`] re-enables the old inventory path.
 
-use lomi_remote_core::directory::{Directory, Effect, Key, NONCE_LEN};
+use lomi_remote_core::directory::Directory;
+use lomi_remote_core::directory::Effect;
+#[cfg(test)]
+use lomi_remote_core::directory::{Key, NONCE_LEN};
 use lomi_remote_core::link::{Link, LinkConfig, LinkEvent, Now, Output, StopReason};
 use lomi_remote_core::session::{
     self, Credential, DeviceState, RelayToken, SessionError, SessionOutcome,
@@ -21,6 +24,8 @@ pub const DEGRADED_AFTER_MS: u64 = 2 * SILENCE_MS;
 /// twice within the minimum interval. Both are enforced by the core.
 pub const REFRESH_LEAD_MS: u64 = 60_000;
 pub const MIN_REFRESH_INTERVAL_MS: u64 = 30_000;
+/// Backoff for a link that stopped without an automatic retry (relay rejected the token).
+pub const RETRY_MS: [u64; 5] = [1_000, 2_000, 5_000, 10_000, 30_000];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -102,8 +107,8 @@ pub enum Out {
     WipeVault,
     /// Fetch a new link token now (single flight; the core already spaced the request).
     NeedToken,
-    /// The link stopped without an automatic retry: fetch a new token with backoff.
-    NeedTokenLater,
+    /// The link stopped without an automatic retry: fetch a new token after this many ms.
+    NeedTokenLater(u64),
     State(CoreState),
     Mark(&'static str, Option<(&'static str, u64)>),
 }
@@ -124,6 +129,7 @@ pub struct Engine {
     emitted: Option<CoreState>,
     unfresh_since: Option<u64>,
     touched: bool,
+    stopped_retries: usize,
     contract_hash: String,
 }
 
@@ -142,6 +148,7 @@ impl Engine {
             emitted: None,
             unfresh_since: None,
             touched: false,
+            stopped_retries: 0,
             contract_hash: contract_hash.to_owned(),
         }
     }
@@ -163,6 +170,12 @@ impl Engine {
         session::session_request(&self.contract_hash, &Credential::Cookie).body
     }
 
+    /// A copy for the vault worker to seal; sealing never blocks the actor.
+    pub fn snapshot(&self) -> Option<(Ids, Directory)> {
+        Some((self.ids.clone()?, self.dir.clone()?))
+    }
+
+    #[cfg(test)]
     pub fn seal(&self, key: &Key, nonce: [u8; NONCE_LEN]) -> Option<Vec<u8>> {
         self.dir.as_ref()?.seal(key, nonce).ok()
     }
@@ -170,6 +183,15 @@ impl Engine {
     /// Shows the directory read from device memory before any network.
     pub fn load_cache(&mut self, dir: Directory, ids: Ids, now: Now) -> Vec<Out> {
         let mut out = Vec::new();
+        if self.dir.is_some() {
+            // The session answer won the race; the cache is older than what is shown.
+            return out;
+        }
+        if self.account_mismatch(&ids.account) {
+            // The page expects another account: the remembered list is not shown.
+            out.push(Out::WipeVault);
+            return out;
+        }
         self.state.account_id = Some(ids.account.clone());
         self.dir = Some(dir);
         self.ids = Some(ids);
@@ -249,11 +271,7 @@ impl Engine {
             DeviceState::Unregistered => "unregistered".to_owned(),
         };
         let account = r.account.id.clone();
-        if self
-            .expected_account
-            .as_deref()
-            .is_some_and(|e| !e.eq_ignore_ascii_case(&account))
-        {
+        if self.account_mismatch(&account) {
             // The bearer belongs to another account than the page believes: keep nothing.
             self.wipe_into(Status::SignedOut, now, out);
             return Exchange::Final;
@@ -294,12 +312,17 @@ impl Engine {
         Exchange::Done
     }
 
+    fn account_mismatch(&self, account: &str) -> bool {
+        self.expected_account
+            .as_deref()
+            .is_some_and(|e| !e.eq_ignore_ascii_case(account))
+    }
+
     fn supply_token(&mut self, token: RelayToken, now: Now, out: &mut Vec<Out>) {
         let outputs = if self.link.is_ready() {
-            match self.link.refresh_token(token.clone(), now) {
-                Ok(outputs) => outputs,
-                Err(_) => self.link.start(token, now),
-            }
+            // A refused refresh is not turned into a reconnect: the core asks again after
+            // its minimum interval, or the link ends and reconnects by itself.
+            self.link.refresh_token(token, now).unwrap_or_default()
         } else {
             self.link.start(token, now)
         };
@@ -363,6 +386,7 @@ impl Engine {
             LinkEvent::Ready { state, .. } => {
                 let effect = self.dir.as_mut().map(|d| d.apply_ready_state(&state));
                 if self.merge(effect, now, out) {
+                    self.stopped_retries = 0;
                     self.state.status = Status::LinkReady;
                     out.push(Out::Mark("link-ready", None));
                 }
@@ -381,7 +405,9 @@ impl Engine {
             LinkEvent::Stopped(StopReason::Requested) => {}
             LinkEvent::Stopped(_) => {
                 self.link_down();
-                out.push(Out::NeedTokenLater);
+                let ms = RETRY_MS[self.stopped_retries.min(RETRY_MS.len() - 1)];
+                self.stopped_retries += 1;
+                out.push(Out::NeedTokenLater(ms));
             }
             LinkEvent::Disconnected { .. } => self.link_down(),
             LinkEvent::Stale { .. }
@@ -827,5 +853,90 @@ mod tests {
         let e = Engine::new(HASH, 5);
         let body: Value = serde_json::from_slice(&e.session_body()).unwrap();
         assert_eq!(body, json!({ "contractHash": HASH }));
+    }
+
+    #[test]
+    fn a_relay_that_rejects_the_link_is_retried_with_growing_delays() {
+        let mut e = Engine::new(HASH, 6);
+        let body = session_body("acc-1", "dev-1", true);
+        let reject = frame::encode_frame(
+            &Frame::ReadyErr {
+                code: frame::ReadyErrorCode::AuthFailed,
+                older: None,
+            },
+            frame::MAX_FRAME_BYTES,
+        )
+        .unwrap();
+        let mut delays = Vec::new();
+        for round in 0..7u64 {
+            let t = round * 100;
+            let (exchange, out) = e.on_session(200, &body, "u1", at(t));
+            assert_eq!(
+                exchange,
+                Exchange::Done,
+                "a Done answer must not reset the backoff"
+            );
+            assert!(has(&out, &Out::Connect));
+            e.on_open(at(t + 1));
+            let out = e.on_message(&reject, at(t + 2));
+            delays.extend(out.iter().filter_map(|o| match o {
+                Out::NeedTokenLater(ms) => Some(*ms),
+                _ => None,
+            }));
+        }
+        assert_eq!(
+            delays,
+            [1_000, 2_000, 5_000, 10_000, 30_000, 30_000, 30_000]
+        );
+        // Reaching READY resets it: the next rejection starts again at 1 s.
+        e.on_session(200, &body, "u1", at(900));
+        e.on_open(at(901));
+        e.on_message(&ready_frame(1_300_000), at(902));
+        e.on_close(at(903));
+        let mut now = 904;
+        let mut out = e.tick(at(now));
+        while !has(&out, &Out::Connect) {
+            now += 500;
+            out = e.tick(at(now));
+        }
+        e.on_open(at(now));
+        let out = e.on_message(&reject, at(now + 1));
+        assert!(has(&out, &Out::NeedTokenLater(1_000)));
+    }
+
+    #[test]
+    fn repeated_session_answers_on_a_ready_link_never_reconnect() {
+        let mut e = connected("u1");
+        for t in 1..5 {
+            let (_, out) =
+                e.on_session(200, &session_body("acc-1", "dev-1", true), "u1", at(40 + t));
+            assert!(!has(&out, &Out::Connect) && !has(&out, &Out::Close));
+        }
+    }
+
+    #[test]
+    fn cache_of_another_expected_account_is_wiped_not_shown_and_a_late_cache_is_ignored() {
+        let dir = || Directory::new("acc-1", "dev-1");
+        let ids = || Ids {
+            account: "acc-1".into(),
+            device: "dev-1".into(),
+            user: "u1".into(),
+        };
+        let mut e = Engine::new(HASH, 8);
+        e.set_expected_account(Some("ACC-9".into()));
+        let out = e.load_cache(dir(), ids(), at(0));
+        assert_eq!(out, vec![Out::WipeVault]);
+        assert!(e.ids().is_none());
+
+        e.set_expected_account(Some("ACC-1".into()));
+        assert!(has(
+            &e.load_cache(dir(), ids(), at(1)),
+            &Out::Mark("core-list-cached", Some(("hosts", 0)))
+        ));
+        // Case-insensitive match; a second (late) cache does not replace what is shown.
+        assert!(e.load_cache(dir(), ids(), at(2)).is_empty());
+
+        let mut e = connected("u1");
+        assert!(e.load_cache(dir(), ids(), at(50)).is_empty());
     }
 }

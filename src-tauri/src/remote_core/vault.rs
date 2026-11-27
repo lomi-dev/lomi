@@ -1,8 +1,10 @@
 //! Encrypted-at-rest memory of the Host directory. The sealed blob lives in
 //! `app_data/remote-core/directory.bin`; its 256-bit key lives only in the OS keychain.
 //! Wiping destroys the key first, so a copied blob is unreadable afterwards (logout,
-//! revoke, account change). The envelope binds the blob to the Remote account, device and
-//! local desktop user; the core's AEAD binds it again (associated data).
+//! revoke, account change). The core's AEAD binds the blob to the Remote account and
+//! device. The local desktop user is not in the AEAD's associated data (the core has no
+//! extra field), so it is stored with the key in the keychain item and compared with the
+//! envelope on load: a swapped file cannot be attributed to another user.
 
 use super::engine::Ids;
 use lomi_remote_core::directory::Key;
@@ -105,6 +107,18 @@ fn hex(bytes: &[u8]) -> Zeroizing<String> {
     Zeroizing::new(bytes.iter().map(|b| format!("{b:02x}")).collect())
 }
 
+fn secret(key: &[u8; 32], user: &str) -> Zeroizing<String> {
+    let mut text = hex(key);
+    text.push('\n');
+    text.push_str(user);
+    text
+}
+
+fn parse_secret(text: &str) -> Option<(Zeroizing<[u8; 32]>, String)> {
+    let (key, user) = text.split_once('\n')?;
+    Some((unhex(key)?, user.to_owned()))
+}
+
 fn unhex(text: &str) -> Option<Zeroizing<[u8; 32]>> {
     if text.len() != 64 || !text.bytes().all(|b| b.is_ascii_hexdigit()) {
         return None;
@@ -152,10 +166,13 @@ impl<S: SecretStore> Vault for FileVault<S> {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(_) => return Err(VaultError),
         };
-        let key = self.secrets.get()?;
-        let parsed = decode_envelope(&bytes).zip(key.as_deref().and_then(|k| unhex(k)));
-        let Some(((ids, blob), key)) = parsed else {
-            // No key or no readable envelope: the blob can never be shown, so it goes.
+        let secret = self.secrets.get()?;
+        let parsed =
+            decode_envelope(&bytes).zip(secret.as_ref().map(|t| t.as_str()).and_then(parse_secret));
+        let Some(((ids, blob), (key, _))) =
+            parsed.filter(|((ids, _), (_, user))| ids.user == *user)
+        else {
+            // No key, an unreadable envelope or another user's key: it can never be shown.
             self.wipe()?;
             return Ok(None);
         };
@@ -173,7 +190,7 @@ impl<S: SecretStore> Vault for FileVault<S> {
         if self.key_ids.as_ref() != Some(ids) || self.key.is_none() {
             let key = Self::random_key()?;
             // The key is stored before any blob it will seal exists.
-            self.secrets.set(&hex(&*key))?;
+            self.secrets.set(&secret(&key, &ids.user))?;
             self.key = Some(key);
             self.key_ids = Some(ids.clone());
         }
@@ -182,28 +199,63 @@ impl<S: SecretStore> Vault for FileVault<S> {
     }
 
     fn write(&mut self, ids: &Ids, blob: &[u8]) -> Result<(), VaultError> {
+        use crate::storage_guard::{atomic, private, reject_link};
         let parent = self.path.parent().ok_or(VaultError)?;
+        reject_link(parent).map_err(|_| VaultError)?;
         std::fs::create_dir_all(parent).map_err(|_| VaultError)?;
-        let tmp = self.path.with_extension("tmp");
-        std::fs::write(&tmp, encode_envelope(ids, blob)).map_err(|_| VaultError)?;
-        std::fs::rename(&tmp, &self.path).map_err(|_| VaultError)
+        private(parent, true).map_err(|_| VaultError)?;
+        // Private file, link rejection, fsync of file and directory.
+        atomic(&self.path, &encode_envelope(ids, blob)).map_err(|_| VaultError)
     }
 
     fn wipe(&mut self) -> Result<(), VaultError> {
         self.key = None;
         self.key_ids = None;
         let key = self.secrets.delete();
-        let tmp = std::fs::remove_file(self.path.with_extension("tmp"));
         let file = std::fs::remove_file(&self.path);
         let gone = |r: std::io::Result<()>| {
             r.is_ok() || matches!(r, Err(ref e) if e.kind() == std::io::ErrorKind::NotFound)
         };
-        if key.is_ok() && gone(tmp) && gone(file) {
+        if key.is_ok() && gone(file) {
             Ok(())
         } else {
             Err(VaultError)
         }
     }
+}
+
+/// Opens the stored directory for `user`; anything unreadable or owned by another user is wiped.
+pub fn open_for(
+    vault: &mut dyn Vault,
+    user: &str,
+) -> Result<Option<(Ids, lomi_remote_core::directory::Directory)>, VaultError> {
+    use lomi_remote_core::directory::Directory;
+    let Some(Stored { ids, key, blob }) = vault.load()? else {
+        return Ok(None);
+    };
+    let opened = (ids.user == user)
+        .then(|| Directory::open(&blob, &ids.account, &ids.device, &[key], KEY_ID).ok())
+        .flatten();
+    match opened {
+        Some(dir) => Ok(Some((ids, dir))),
+        None => vault.wipe().map(|()| None),
+    }
+}
+
+/// Seals `dir` with the key of `ids` (created on first use) and stores it.
+pub fn persist(
+    vault: &mut dyn Vault,
+    ids: &Ids,
+    dir: &lomi_remote_core::directory::Directory,
+) -> Result<(), VaultError> {
+    use ring::rand::SecureRandom;
+    let key = vault.key(ids)?;
+    let mut nonce = [0u8; lomi_remote_core::directory::NONCE_LEN];
+    ring::rand::SystemRandom::new()
+        .fill(&mut nonce)
+        .map_err(|_| VaultError)?;
+    let blob = dir.seal(&key, nonce).map_err(|_| VaultError)?;
+    vault.write(ids, &blob)
 }
 
 #[cfg(test)]
@@ -317,5 +369,57 @@ pub mod tests {
             !path.exists(),
             "the blob is removed even when the keychain refuses"
         );
+    }
+
+    #[test]
+    fn persisted_directory_opens_only_for_its_user_and_is_wiped_for_others() {
+        use lomi_remote_core::directory::Directory;
+        let secrets = MemSecrets::default();
+        let path = temp("open-for");
+        let mut vault = FileVault::new(path.clone(), secrets.clone());
+        persist(&mut vault, &ids("u1"), &Directory::new("acc", "dev")).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600);
+        }
+
+        let mut fresh = FileVault::new(path.clone(), secrets.clone());
+        let (got, _) = open_for(&mut fresh, "u1").unwrap().unwrap();
+        assert_eq!(got, ids("u1"));
+
+        let mut other = FileVault::new(path.clone(), secrets.clone());
+        assert!(open_for(&mut other, "u2").unwrap().is_none());
+        assert!(!path.exists() && secrets.value.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn a_swapped_envelope_user_does_not_match_the_keychain_user() {
+        let secrets = MemSecrets::default();
+        let path = temp("swap");
+        let mut vault = FileVault::new(path.clone(), secrets.clone());
+        vault.key(&ids("u1")).unwrap();
+        vault.write(&ids("u1"), b"x").unwrap();
+        // Same file claiming another user, key still bound to u1 in the keychain.
+        std::fs::write(&path, encode_envelope(&ids("u2"), b"x")).unwrap();
+        assert!(FileVault::new(path.clone(), secrets)
+            .load()
+            .unwrap()
+            .is_none());
+        assert!(!path.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlinked_directory_is_refused() {
+        let secrets = MemSecrets::default();
+        let path = temp("link");
+        let real = path.parent().unwrap().with_extension("real");
+        std::fs::create_dir_all(&real).unwrap();
+        std::os::unix::fs::symlink(&real, path.parent().unwrap()).unwrap();
+        let mut vault = FileVault::new(path, secrets);
+        vault.key(&ids("u")).unwrap();
+        assert!(vault.write(&ids("u"), b"x").is_err());
     }
 }
