@@ -448,6 +448,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Same surface, border, radius and items as the effort and permission selects. */
 .thread-picker-menu {
   position: absolute;
   top: auto;
@@ -456,90 +457,101 @@
   z-index: 20;
   display: flex;
   flex-direction: column;
-  width: 320px;
+  width: min(280px, calc(100vw - 16px));
   padding: 0;
   overflow: hidden;
-  border: 1px solid var(--thread-line, var(--sheet-line, var(--color-outline)));
-  border-radius: 12px;
-  background: var(--color-surface-container-high);
-  box-shadow: 0 8px 28px rgb(0 0 0 / 0.25);
-}
-.thread-picker-menu .thread-picker-search {
-  width: 100%;
-  min-height: 0;
-  padding: var(--space-10) var(--space-12);
-  border: 0;
-  border-bottom: 1px solid
-    var(--thread-line, var(--sheet-line, var(--color-outline)));
-  border-radius: 0;
-  background: transparent;
+  border: var(--menu-border-width) solid var(--color-outline);
+  border-radius: var(--radius-menu);
+  background: var(--menu-background);
   color: var(--color-surface-text);
-  font: inherit;
-  font-size: var(--font-size-13);
-  box-shadow: none;
-  outline: none;
+  box-shadow: var(--shadow-menu);
+  font: var(--font-size-12) / 1.4 var(--font-family);
 }
-.thread-picker-groups {
-  max-height: 320px;
-  padding: var(--space-4) var(--space-6) var(--space-6);
-  overflow-y: auto;
+.thread-picker-menu.has-providers {
+  width: min(460px, calc(100vw - 16px));
 }
-.thread-picker-groups section + section {
-  margin-top: var(--space-4);
-}
-.thread-picker-groups h3 {
+/* Fixed height from the longest list (36px rows + padding), capped, so picking
+   another provider swaps the list without moving the menu. */
+.thread-picker-body {
   display: flex;
-  align-items: center;
-  gap: var(--space-6);
-  margin: 0;
-  padding: var(--space-8) var(--space-8) var(--space-4);
-  color: var(--color-muted-text);
-  font-size: var(--font-size-11);
-  font-weight: 500;
+  height: min(calc(var(--picker-rows) * 36px + 2 * var(--menu-padding)), 360px);
 }
-.thread-picker-groups h3 .cli-agent-icon,
-.thread-picker-groups h3 .cli-agent-icon > svg {
-  flex: 0 0 13px;
-  width: 13px;
-  height: 13px;
-}
-.thread-picker-groups ul {
+.thread-picker-body ul {
   margin: 0;
-  padding: 0;
+  padding: var(--menu-padding);
   list-style: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
-.thread-picker-groups button {
+.thread-picker-providers {
+  flex: 0 0 168px;
+  border-right: var(--menu-border-width) solid var(--color-outline);
+}
+.thread-picker-models {
+  flex: 1;
+  min-width: 0;
+}
+.thread-picker-body button {
   display: flex;
   align-items: center;
-  gap: var(--space-8);
+  gap: var(--menu-item-gap);
   width: 100%;
   min-height: 32px;
-  padding: 0 var(--space-8);
+  padding: var(--menu-item-padding);
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--color-surface-text);
   font: inherit;
-  font-size: var(--font-size-13);
-  line-height: 1.35;
   text-align: left;
   cursor: pointer;
 }
-.thread-picker-groups button:hover,
-.thread-picker-groups button:focus-visible {
+.thread-picker-body button:hover,
+.thread-picker-body button:focus-visible {
   background: var(--color-surface-container-highest);
   outline: none;
 }
-.thread-picker-groups .thread-picker-name {
-  flex: none;
-  max-width: 60%;
+.thread-picker-body button[aria-pressed="true"],
+.thread-picker-body button[aria-current="true"] {
+  background: var(--color-surface-container-high);
+  color: var(--color-background-text);
+}
+.thread-picker-body .cli-agent-icon,
+.thread-picker-body .cli-agent-icon > svg {
+  flex: 0 0 15px;
+  width: 15px;
+  height: 15px;
+}
+.thread-picker-name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.thread-picker-groups code {
+.thread-picker-providers .thread-picker-name {
   flex: 1;
+}
+/* Marks the provider of the current model while browsing another one. */
+.thread-picker-dot {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-accent-text);
+}
+.thread-picker-count {
+  flex: none;
+  color: var(--color-muted-text);
+  font-size: var(--font-size-11);
+  font-variant-numeric: tabular-nums;
+}
+.thread-picker-model {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
   min-width: 0;
+}
+.thread-picker-model code {
   overflow: hidden;
   color: var(--color-muted-text);
   font-family: var(--font-family-mono);
@@ -547,10 +559,12 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.thread-picker-groups button > svg {
+.thread-picker-body button {
+  min-height: 36px;
+}
+.thread-picker-models button > svg {
   flex: none;
-  margin-left: auto;
-  color: var(--color-surface-text);
+  color: var(--color-accent-text);
 }
 .thread-picker-empty {
   margin: 0;

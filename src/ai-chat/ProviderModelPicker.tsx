@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { api } from "../api";
 import { useT } from "../i18n";
 import type { CliAgent } from "../cli-agents";
@@ -23,7 +23,10 @@ export function loadCliModels(cli: CliAgent, refresh = false) {
   if (!models) {
     models = api<CliModel[]>("ai_cli_models", { cli }).then(
       (list) => {
-        loadedCliModels.set(cli, list);
+        // An empty list is usually transient (a CLI rewriting its model cache, a slow
+        // probe), so it is not kept: the next load asks the CLI again.
+        if (list.length) loadedCliModels.set(cli, list);
+        else cliModels.delete(cli);
         return list;
       },
       () => {
@@ -66,7 +69,7 @@ interface ModelOption {
 }
 
 /** Pickable models (with display names) for every entry, keyed by instance id. */
-function useModelGroups(entries: readonly ProviderEntry[]) {
+function useModelGroups(entries: readonly ProviderEntry[], open: boolean) {
   const [cli, setCli] = useState<Partial<Record<CliAgent, CliModel[]>>>(() =>
     Object.fromEntries(loadedCliModels),
   );
@@ -83,7 +86,8 @@ function useModelGroups(entries: readonly ProviderEntry[]) {
     return () => {
       live = false;
     };
-  }, [key]);
+    // Reopening the picker retries CLIs whose list was empty.
+  }, [key, open]);
   const groups = new Map<string, ModelOption[]>();
   for (const entry of entries) {
     if (!entry.cli) {
@@ -122,8 +126,7 @@ export default function ProviderModelPicker({
 }) {
   const { t } = useT();
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const groups = useModelGroups(entries);
+  const groups = useModelGroups(entries, open);
   const entry = entries.find((item) => item.instanceId === value.instanceId);
   const own = groups.get(value.instanceId) ?? [];
   const first = own[0]?.id;
@@ -132,23 +135,23 @@ export default function ProviderModelPicker({
       onChange({ instanceId: entry.instanceId, model: first });
   }, [value.model, first, entry, onChange]);
   const current = own.find((model) => model.id === value.model);
-  const needle = query.trim().toLowerCase();
   const visible = entries
     .filter((item) => item.available)
-    .map((item) => ({
-      item,
-      models: (groups.get(item.instanceId) ?? []).filter(
-        (model) =>
-          !needle ||
-          model.label.toLowerCase().includes(needle) ||
-          model.id.toLowerCase().includes(needle) ||
-          item.label.toLowerCase().includes(needle),
-      ),
-    }))
+    .map((item) => ({ item, models: groups.get(item.instanceId) ?? [] }))
     .filter((group) => group.models.length > 0);
-  const close = () => {
-    setOpen(false);
-    setQuery("");
+  // Provider whose models fill the right column; follows the selection when opened.
+  const [browse, setBrowse] = useState(value.instanceId);
+  const shown =
+    visible.find((group) => group.item.instanceId === browse) ?? visible[0];
+  const close = () => setOpen(false);
+  // Sized for the longest list so switching providers never resizes (and moves) the menu.
+  const rows = Math.max(
+    visible.length > 1 ? visible.length : 0,
+    ...visible.map((group) => group.models.length),
+  );
+  const pick = (instanceId: string, model: string) => {
+    onChange({ instanceId, model });
+    close();
   };
   return (
     <div className="thread-picker">
@@ -160,7 +163,11 @@ export default function ProviderModelPicker({
         aria-haspopup="dialog"
         aria-expanded={open}
         title={entry ? `${entry.label} · ${value.model}` : undefined}
-        onClick={() => (open ? close() : setOpen(true))}
+        onClick={() => {
+          if (open) return close();
+          setBrowse(value.instanceId);
+          setOpen(true);
+        }}
       >
         {entry && <ProviderIcon kind={entry.kind} cli={entry.cli} />}
         <span className="thread-picker-label">
@@ -169,70 +176,75 @@ export default function ProviderModelPicker({
         <ChevronDown size={13} aria-hidden="true" />
       </button>
       {open && (
-        <Menu className="thread-picker-menu" onClose={close}>
-          <input
-            className="thread-picker-search"
-            type="search"
-            autoFocus
-            aria-label={t("Search models")}
-            placeholder={t("Search models")}
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key !== "Enter") return;
-              const hit = visible[0];
-              if (!hit) return;
-              event.preventDefault();
-              onChange({
-                instanceId: hit.item.instanceId,
-                model: hit.models[0].id,
-              });
-              close();
-            }}
-          />
-          <div className="thread-picker-groups">
-            {visible.length === 0 && (
-              <p className="thread-picker-empty">
-                {needle ? t("No models match.") : t("No models available.")}
-              </p>
-            )}
-            {visible.map(({ item, models }) => (
-              <section key={item.instanceId} aria-label={item.label}>
-                <h3>
-                  <ProviderIcon kind={item.kind} cli={item.cli} />
-                  {item.label}
-                </h3>
-                <ul>
-                  {models.map((model) => {
-                    const active =
-                      item.instanceId === value.instanceId &&
-                      model.id === value.model;
-                    return (
-                      <li key={model.id}>
-                        <button
-                          type="button"
-                          aria-current={active || undefined}
-                          onClick={() => {
-                            onChange({
-                              instanceId: item.instanceId,
-                              model: model.id,
-                            });
-                            close();
-                          }}
-                        >
+        <Menu
+          className={`thread-picker-menu${visible.length > 1 ? " has-providers" : ""}`}
+          onClose={close}
+        >
+          {!shown ? (
+            <p className="thread-picker-empty">{t("No models available.")}</p>
+          ) : (
+            <div
+              className="thread-picker-body"
+              style={{ "--picker-rows": rows } as CSSProperties}
+            >
+              {visible.length > 1 && (
+                <ul
+                  className="thread-picker-providers"
+                  aria-label={t("Providers")}
+                >
+                  {visible.map(({ item, models }) => (
+                    <li key={item.instanceId}>
+                      <button
+                        type="button"
+                        aria-pressed={item.instanceId === shown.item.instanceId}
+                        onClick={() => setBrowse(item.instanceId)}
+                      >
+                        <ProviderIcon kind={item.kind} cli={item.cli} />
+                        <span className="thread-picker-name">{item.label}</span>
+                        {item.instanceId === value.instanceId && (
+                          <span
+                            className="thread-picker-dot"
+                            aria-hidden="true"
+                          />
+                        )}
+                        <span className="thread-picker-count">
+                          {models.length}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <ul
+                className="thread-picker-models"
+                aria-label={shown.item.label}
+              >
+                {shown.models.map((model) => {
+                  const active =
+                    shown.item.instanceId === value.instanceId &&
+                    model.id === value.model;
+                  return (
+                    <li key={model.id}>
+                      <button
+                        type="button"
+                        aria-current={active || undefined}
+                        title={model.id}
+                        onClick={() => pick(shown.item.instanceId, model.id)}
+                      >
+                        <span className="thread-picker-model">
                           <span className="thread-picker-name">
                             {model.label}
                           </span>
                           {model.label !== model.id && <code>{model.id}</code>}
-                          {active && <Check size={14} aria-hidden="true" />}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </section>
-            ))}
-          </div>
+                        </span>
+                        {active && <Check size={14} aria-hidden="true" />}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
         </Menu>
       )}
     </div>
