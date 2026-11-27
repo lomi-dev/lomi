@@ -50,6 +50,7 @@ mod macos;
 mod native_file_effects;
 mod native_git_effects;
 
+mod onboarding_state;
 mod plugins;
 mod project_sources;
 mod project_write_guard;
@@ -475,6 +476,8 @@ pub fn run() {
                 browser::servers::local_web_servers,
                 app_info,
                 time_format::system_hour12,
+                onboarding_state::load_onboarding_state,
+                onboarding_state::save_onboarding_state,
                 settings_window::about_info,
                 updater::update_environment,
                 updater::check_app_update,

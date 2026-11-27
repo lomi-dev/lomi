@@ -1,11 +1,11 @@
 import { PluginsProvider } from "./plugins/PluginsProvider";
 import { useT } from "./i18n";
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { KeybindingsProvider } from "./KeybindingsProvider";
 import { ThemeProvider } from "./ThemeProvider";
 import { EditorPreferencesProvider } from "./EditorPreferencesProvider";
 import ReadyWindow from "./ReadyWindow";
-import { onboardingDone } from "./onboarding-state";
+import { loadOnboardingState, onboardingDone } from "./onboarding-state";
 import { useWindowFullscreen } from "./useWindowFullscreen";
 
 import { TerminalPreferencesProvider } from "./TerminalPreferencesProvider";
@@ -16,7 +16,18 @@ const Onboarding = lazy(() => import("./Onboarding"));
 export default function App() {
   const { t } = useT();
   useWindowFullscreen();
-  const [onboarding, setOnboarding] = useState(() => !onboardingDone());
+  // Decided after the native copy is merged, so lost webview storage does not
+  // bring onboarding back for someone who finished it.
+  const [onboarding, setOnboarding] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void loadOnboardingState().then(
+      () => live && setOnboarding(!onboardingDone()),
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
   return (
     <ThemeProvider>
       <PluginsProvider>
