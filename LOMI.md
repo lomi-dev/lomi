@@ -260,6 +260,20 @@ or acronym.
 - `src-tauri/src/storage_guard.rs` owns the shared owner lock (`owner.lock`),
   private atomic writes and link rejection used by auth, push, notifications,
   files and Chat AI storage.
+- Local dictation (Cargo feature `stt`, off by default; plan in the sibling
+  `stt/` folder) records natively with cpal in `src-tauri/src/stt/` and
+  transcribes in the `lomi-stt-worker` sidecar, the only binary that links
+  `transcribe-cpp`/ggml (`crates/lomi-stt-worker`, outside the workspace, built
+  by `pnpm stt:worker`; `tauri.stt.conf.json` adds it and the macOS
+  audio-input entitlement). `crates/lomi-stt` holds the engine-free protocol,
+  DSP and VAD gate. Audio stays in memory, never on disk, in logs or in the
+  inbox; transcripts are not logged. Recording starts only from a local
+  gesture in main (status-bar mic, `toggleDictation`); never expose the
+  `stt_*` commands to MCP, Remote or browser views. The target is the chat or
+  terminal panel active at start. Inserted text is stripped of all C0/C1
+  controls; terminals get a bracketed paste without Enter, the composer a text
+  node. Escape cancels only during a session. Silence stops a session after
+  30 s and every session after 5 min.
 - MCP tools use the shared `lomi-mcp` catalog and native authenticated
   connection; preserve Agent control pairing, grants, cancellation and
   revocation. Browser child views remain excluded by the global trusted-app
