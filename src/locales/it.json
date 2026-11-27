@@ -2469,5 +2469,6 @@
     "one": "{count} file non è stato ripristinato perché è cambiato da allora.",
     "many": "{count} file non sono stati ripristinati perché sono cambiati da allora.",
     "other": "{count} file non sono stati ripristinati perché sono cambiati da allora."
-  }
+  },
+  "Item actions": "Azioni elemento"
 }

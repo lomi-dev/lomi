@@ -2469,5 +2469,6 @@
     "one": "{count} archivo no se restauró porque ha cambiado desde entonces.",
     "many": "{count} archivos no se restauraron porque han cambiado desde entonces.",
     "other": "{count} archivos no se restauraron porque han cambiado desde entonces."
-  }
+  },
+  "Item actions": "Acciones del elemento"
 }

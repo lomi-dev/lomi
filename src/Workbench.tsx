@@ -118,6 +118,7 @@ import {
   tabsToClose,
   tabTitle,
   updateDirectories,
+  renameTabItem,
   updateTab,
   updateFile,
   updateWorkspace,
@@ -3031,6 +3032,24 @@ export default function Workbench() {
           })
         }
         onDelete={deleteWorkspace}
+        onRenameItem={(tabId, itemId, title) =>
+          setDialog({
+            type: "name",
+            title: t("Rename"),
+            initial: title,
+            submit: (name) =>
+              change((state) => renameTabItem(state, tabId, itemId, name)),
+          })
+        }
+        onCloseItem={async (path, workspaceId, tabId, itemId) => {
+          // closeTab and closePane act on the selection, so select the item first.
+          await selectProject(path, { workspaceId, tabId, paneId: itemId });
+          const state = currentSession.current;
+          const tab = state && active(state)?.tab;
+          if (tab?.id !== tabId) return;
+          if (tab.type === "terminal") await closePane(itemId);
+          else await closeTab(tabId);
+        }}
       />
     </Sidebar>
   );

@@ -84,6 +84,8 @@ export default function Workspaces({
   onRename,
   onAppearanceChange,
   onDelete,
+  onRenameItem,
+  onCloseItem,
   remote,
 }: {
   projects: Project[];
@@ -128,6 +130,14 @@ export default function Workspaces({
     appearance?: WorkspaceAppearance,
   ) => void;
   onDelete: (workspace: Workspace) => void;
+  /** Rename or close one open item (a tab, or a pane of a terminal tab). */
+  onRenameItem: (tabId: string, itemId: string, title: string) => void;
+  onCloseItem: (
+    path: string,
+    workspaceId: string,
+    tabId: string,
+    itemId: string,
+  ) => void;
 }) {
   const { t, tp } = useT();
   const [menu, setMenu] = useState<{ id: string; x: number; y: number }>();
@@ -516,6 +526,17 @@ export default function Workspaces({
                               item.id,
                             )
                           }
+                          onRename={(title) =>
+                            onRenameItem(ownerTab.id, item.id, title)
+                          }
+                          onClose={() =>
+                            onCloseItem(
+                              project.path,
+                              workspace.id,
+                              ownerTab.id,
+                              item.id,
+                            )
+                          }
                         />
                       );
                     },
@@ -703,6 +724,8 @@ function WorkspaceOpenItem({
   active,
   onSelect,
   onReveal,
+  onRename,
+  onClose,
 }: {
   item: Tab | LayoutPane;
   ownerTab: Tab;
@@ -713,8 +736,12 @@ function WorkspaceOpenItem({
   active: boolean;
   onSelect: () => void;
   onReveal: () => void;
+  onRename: (title: string) => void;
+  onClose: () => void;
 }) {
   const { t } = useT();
+  const [menu, setMenu] = useState<{ x: number; y: number }>();
+  const button = useRef<HTMLButtonElement>(null);
   const runtime = useSyncExternalStore(subscribeTerminalLifecycle, () =>
     item.type === "terminal" ? runningTerminal(item.id) : undefined,
   );
@@ -724,11 +751,13 @@ function WorkspaceOpenItem({
   );
   const title =
     item.type === "terminal"
-      ? (cliTerminalDisplayTitle(
+      ? (item.customTitle ??
+        cliTerminalDisplayTitle(
           snapshot?.title,
           snapshot?.foregroundProgram,
           agent,
-        ) ?? t("Terminal {number}", { number: (terminalIndex ?? 0) + 1 }))
+        ) ??
+        t("Terminal {number}", { number: (terminalIndex ?? 0) + 1 }))
       : tabTitle(item);
   const ownerTabTitle = tabTitle(ownerTab);
   const detail =
@@ -755,8 +784,25 @@ function WorkspaceOpenItem({
         data-workspace-pane-id={item.id}
         data-owner-tab-id={ownerTab.id}
         title={`${title}${title === detail ? "" : `\n${detail}`}\n${t("Tab: {title}", { title: ownerTabTitle })}`}
+        ref={button}
+        aria-haspopup="menu"
+        aria-expanded={!!menu}
         onClick={onSelect}
         onDoubleClick={onReveal}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          setMenu({ x: event.clientX, y: event.clientY });
+        }}
+        onKeyDown={(event) => {
+          if (
+            event.key === "ContextMenu" ||
+            (event.shiftKey && event.key === "F10")
+          ) {
+            event.preventDefault();
+            const bounds = event.currentTarget.getBoundingClientRect();
+            setMenu({ x: bounds.left, y: bounds.bottom });
+          }
+        }}
       >
         <WorkspaceItemIcon item={item} agent={agent} activity={activity} />
         <span className="workspace-item-label">{title}</span>
@@ -765,6 +811,21 @@ function WorkspaceOpenItem({
           <ThreadStatusDot threadIds={[item.threadId]} />
         )}
       </button>
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          label={t("Item actions")}
+          actions={[
+            { label: t("Rename…"), run: () => onRename(title) },
+            { label: t("Delete"), danger: true, run: onClose },
+          ]}
+          onClose={() => {
+            setMenu(undefined);
+            button.current?.focus({ preventScroll: true });
+          }}
+        />
+      )}
     </li>
   );
 }

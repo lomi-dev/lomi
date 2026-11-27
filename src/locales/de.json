@@ -2438,5 +2438,6 @@
   "{count} files were not restored because they changed since.": {
     "one": "{count} Datei wurde nicht wiederhergestellt, weil sie sich seitdem geändert hat.",
     "other": "{count} Dateien wurden nicht wiederhergestellt, weil sie sich seitdem geändert haben."
-  }
+  },
+  "Item actions": "Elementaktionen"
 }

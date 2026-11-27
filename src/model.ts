@@ -31,6 +31,8 @@ export interface Pane {
   id: string;
   cwd: string;
   profileId?: string;
+  /** Name given in the workspace list; replaces the shell's title there. */
+  customTitle?: string;
 }
 export interface Split {
   type: "split";
@@ -1062,6 +1064,34 @@ export function updateTab(
     })),
   };
 }
+/** Names a workspace-list item: the tab itself or one pane of a terminal tab.
+ * A tab's only pane also names the tab, so the tab strip shows the same name. */
+export function renameTabItem(
+  session: Session,
+  tabId: string,
+  itemId: string,
+  title: string,
+): Session {
+  const rename = (layout: Layout): Layout =>
+    layout.type === "split"
+      ? {
+          ...layout,
+          first: rename(layout.first),
+          second: rename(layout.second),
+        }
+      : layout.id === itemId
+        ? ({ ...layout, customTitle: title } as LayoutPane)
+        : layout;
+  return updateTab(session, tabId, (tab) =>
+    tab.type !== "terminal"
+      ? ({ ...tab, customTitle: title } as Tab)
+      : {
+          ...tab,
+          ...(tab.layout.type === "split" ? {} : { customTitle: title }),
+          layout: rename(tab.layout),
+        },
+  );
+}
 export function openCommitTab(
   session: Session,
   workspaceId: string,
@@ -1527,6 +1557,9 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
       cwd: string(node.cwd, cwd),
       ...(typeof node.profileId === "string"
         ? { profileId: node.profileId }
+        : {}),
+      ...(string(node.customTitle, "")
+        ? { customTitle: node.customTitle as string }
         : {}),
     };
   };

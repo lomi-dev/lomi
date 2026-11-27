@@ -2500,5 +2500,6 @@
     "few": "{count} pliki nie zostały przywrócone, bo zmieniły się od tego czasu.",
     "many": "{count} plików nie zostało przywróconych, bo zmieniły się od tego czasu.",
     "other": "{count} plików nie zostało przywróconych, bo zmieniły się od tego czasu."
-  }
+  },
+  "Item actions": "Działania elementu"
 }
