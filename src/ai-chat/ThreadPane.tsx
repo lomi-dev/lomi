@@ -220,14 +220,15 @@ export default function ThreadPane({
   // Steering is offered for the CLIs that accept messages mid-turn.
   const steerable = entry?.cli === "claude" || entry?.cli === "codex";
 
-  // A CLI session is bound to its CLI; an API thread cannot move to a CLI.
+  // A CLI chat can move to another CLI (it gets the conversation as text);
+  // API and CLI chats store different histories, so neither moves to the other kind.
   const threadKind = thread
     ? entries.find((item) => item.instanceId === thread.instanceId)?.kind
     : undefined;
   const pickerEntries = !thread
     ? entries
     : threadKind === "cli"
-      ? entries.filter((item) => item.instanceId === thread.instanceId)
+      ? entries.filter((item) => item.kind === "cli")
       : entries.filter((item) => item.kind !== "cli");
 
   async function send(forceQueue = false) {

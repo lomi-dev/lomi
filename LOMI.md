@@ -235,6 +235,10 @@ or acronym.
   Codex with `thread/revert`. Agents or turns without one (ACP, older rows,
   a failed revert) start a new session that receives the kept conversation
   as bounded text. API threads rebuild their context from the database.
+- The model picker of a CLI chat lists every CLI provider. Sending with
+  another CLI moves the thread to it: the engine clears the native session
+  and the new agent receives the conversation so far as bounded text, as
+  after a rewind. API and CLI chats never move to the other kind.
 - Chat history is scoped to the workspace: threads store `workspace_id` and
   `ai_threads_list` returns that workspace's threads plus legacy threads
   without one. "New chat" asks for confirmation when the current chat has
