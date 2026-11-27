@@ -29,6 +29,19 @@ or acronym.
   Never switch backends after an operation has started or replay an uncertain
   Host effect locally. Preserve pending Host journals and writer participants
   for explicit recovery in a Host-enabled build.
+- The shared Remote core (`lomi-remote-core`, plan-1.0 P2.19) runs natively in
+  `src-tauri/src/remote_core/` (`remote-host` feature, and the build pins
+  `LOMI_REMOTE_CONTRACT_HASH`; the UI switch is `LOMI_REMOTE_CORE=1` at
+  `vite build`). A sans-I/O `engine` owns the link and the Host directory; the
+  actor performs `POST /remote/session` with the desktop bearer (never in the
+  webview), the relay link (`/relay` on the pinned relay origin) and keeps the
+  sealed directory in `app_data/remote-core/directory.bin` with its key in the
+  OS keychain. Sign-out, revoke, another local user or Remote account destroy
+  key and blob. The list is fresh only while the link is ready and heard from
+  within 8 s; 16 s without confirmation sets `degraded`, which re-enables the
+  inventory reads. Token renewal uses the core's lead and minimum interval. The
+  webview reads state through `remote_v2_core_*` commands; `src/remote-core-instance.ts`
+  replaces Remote Web's `core/instance` in that bundle so there is one core.
 - Plain CSS defines the interface and theme in `src/styles.css`.
 - `src/model.ts` owns the persisted layout and pure layout transformations.
   Workspace tabs are terminals with pane layouts, file editors with project-relative
