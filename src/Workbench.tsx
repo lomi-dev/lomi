@@ -1,5 +1,6 @@
 import { newThreadTab, updateThread } from "./model";
 import MicStatusButton from "./stt/MicStatusButton";
+import { dictationShortcut } from "./stt/stt-shortcut";
 import type { DictationTarget } from "./stt/stt-runtime";
 import { pruneChatUsage } from "./chat-usage";
 import { workMode } from "./onboarding-state";
@@ -2531,6 +2532,8 @@ export default function Workbench() {
           !action?.includes(".") &&
           !inEditor &&
           !settingsAction &&
+          // Dictation mostly targets the chat composer, a contenteditable.
+          action !== "toggleDictation" &&
           !(
             action === "terminalOverview" &&
             event.target instanceof Element &&
@@ -2625,6 +2628,8 @@ export default function Workbench() {
       event.preventDefault();
       event.stopPropagation();
       if (event.repeat) return;
+      if (action === "toggleDictation")
+        return dictationShortcut(event.code, dictationTarget);
       execute(action);
     };
     window.addEventListener("keydown", keyboard, true);

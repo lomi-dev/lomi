@@ -1,9 +1,11 @@
 // Dictation session state outside React; the native side owns the audio.
 import { Channel } from "@tauri-apps/api/core";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { api } from "../api";
 import { t } from "../i18n";
 import { runningTerminal } from "../terminal-runtime";
-import { sanitizeDictation } from "./stt-insert";
+import { getDraft, setDraft } from "../ai-chat/thread-runtime";
+import { sanitizeDictation, spaceForInsert } from "./stt-insert";
 
 export type DictationTarget =
   { kind: "thread"; id: string } | { kind: "terminal"; id: string };
@@ -16,6 +18,8 @@ export type DictationState = {
   level: number;
   startedAt: number;
   message?: string;
+  /** Text whose target closed while recording; copied only on request. */
+  unsent?: string;
 };
 
 type NativeEvent =
@@ -27,7 +31,9 @@ type NativeEvent =
   | { type: "cancelled" };
 
 let state: DictationState = { phase: "idle", level: 0, startedAt: 0 };
-let session: { id?: number; target: DictationTarget } | undefined;
+// `id` arrives after stt_start resolves; earlier Stop/Cancel requests wait in `pending`.
+let session:
+  { id?: number; target: DictationTarget; pending?: "stop" } | undefined;
 const listeners = new Set<() => void>();
 
 export const dictationState = () => state;
@@ -47,6 +53,10 @@ function errorMessage(code: string, fallback: string) {
       return t("Download a speech model to dictate");
     case "busy":
       return t("Dictation is already running");
+    case "permission-denied":
+      return t(
+        "Lomi has no access to the microphone. Allow it in system settings.",
+      );
     case "no-device":
       return t("No microphone was found");
     case "silent-input":
@@ -81,7 +91,11 @@ export async function startDictation(target: DictationTarget) {
   if (session) return;
   session = { target };
   window.addEventListener("keydown", onEscape, true);
-  set({ phase: "starting", level: 0, message: undefined });
+  set({ phase: "starting", level: 0, message: undefined, unsent: undefined });
+  if (target.kind === "thread")
+    threadElement(target.id)?.dispatchEvent(
+      new CustomEvent("thread-dictation-start"),
+    );
   const events = new Channel<NativeEvent>();
   const current = session;
   events.onmessage = (event) => {
@@ -96,10 +110,19 @@ export async function startDictation(target: DictationTarget) {
       case "transcribing":
         set({ phase: "transcribing", level: 0 });
         break;
-      case "result":
-        deliver(current.target, event.text);
-        end({ phase: "idle" });
+      case "result": {
+        const text = sanitizeDictation(event.text);
+        if (!text || deliver(current.target, text)) end({ phase: "idle" });
+        else
+          end({
+            phase: "error",
+            message: t(
+              "The dictation target was closed. Click to copy the text.",
+            ),
+            unsent: text,
+          });
         break;
+      }
       case "error":
         end({
           phase: "error",
@@ -112,7 +135,11 @@ export async function startDictation(target: DictationTarget) {
     }
   };
   try {
-    current.id = await api<number>("stt_start", { events });
+    const id = await api<number>("stt_start", { events });
+    current.id = id;
+    // Cancelled before the native session existed: stop it now.
+    if (session !== current) void api("stt_cancel", { id }).catch(() => {});
+    else if (current.pending) stopDictation();
   } catch (error) {
     if (session === current)
       end({
@@ -123,8 +150,9 @@ export async function startDictation(target: DictationTarget) {
 }
 
 export function stopDictation() {
-  if (session?.id !== undefined)
-    void api("stt_stop", { id: session.id }).catch(() => {});
+  if (!session) return;
+  if (session.id === undefined) session.pending = "stop";
+  else void api("stt_stop", { id: session.id }).catch(() => {});
 }
 
 export function cancelDictation() {
@@ -134,16 +162,31 @@ export function cancelDictation() {
   else end({ phase: "idle" });
 }
 
+const threadElement = (id: string) =>
+  document.querySelector(`[data-thread-tab-id="${CSS.escape(id)}"]`);
+
+/** Copies text whose target was closed, then clears the error. */
+export async function copyUnsent() {
+  if (!state.unsent) return;
+  await writeText(state.unsent);
+  set({ phase: "idle", message: undefined, unsent: undefined });
+}
+
 /** Inserts at the target captured when the session started. */
-function deliver(target: DictationTarget, raw: string) {
-  const text = sanitizeDictation(raw);
-  if (!text) return;
+function deliver(target: DictationTarget, text: string): boolean {
   if (target.kind === "terminal") {
+    const terminal = runningTerminal(target.id);
     // Pasted, never executed: Enter is not appended.
-    runningTerminal(target.id)?.insertText(text);
-    return;
+    terminal?.insertText(text);
+    return !!terminal;
   }
-  document
-    .querySelector(`[data-thread-tab-id="${CSS.escape(target.id)}"]`)
-    ?.dispatchEvent(new CustomEvent("thread-dictation", { detail: text }));
+  const pane = threadElement(target.id);
+  if (pane)
+    pane.dispatchEvent(new CustomEvent("thread-dictation", { detail: text }));
+  // The thread was switched away from: keep the words in its draft.
+  else {
+    const draft = getDraft(target.id);
+    setDraft(target.id, draft + spaceForInsert(draft, text, ""));
+  }
+  return true;
 }

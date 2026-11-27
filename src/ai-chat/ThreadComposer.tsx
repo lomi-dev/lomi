@@ -3,6 +3,7 @@ import { HardBreak } from "@tiptap/extension-hard-break";
 import { Paragraph } from "@tiptap/extension-paragraph";
 import { Text } from "@tiptap/extension-text";
 import { Placeholder, UndoRedo } from "@tiptap/extensions";
+import type { Transaction } from "@tiptap/pm/state";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -411,10 +412,29 @@ export default function ThreadComposer({
   useEffect(() => {
     const host = editor?.view.dom.closest("[data-thread-tab-id]");
     if (!editor || !host) return;
+    // Where the cursor was when dictation started, mapped through every edit
+    // made while recording, so typing on does not move the insertion point.
+    let anchor: { from: number; to: number } | undefined;
+    const track = ({ transaction }: { transaction: Transaction }) => {
+      if (anchor)
+        anchor = {
+          from: transaction.mapping.map(anchor.from, -1),
+          to: transaction.mapping.map(anchor.to, 1),
+        };
+    };
+    const start = () => {
+      const { from, to } = editor.state.selection;
+      anchor = { from, to };
+    };
     const listener = (event: Event) => {
       const text = (event as CustomEvent<string>).detail;
-      const { from, to } = editor.state.selection;
       const doc = editor.state.doc;
+      // A replaced draft (sent message, history recall) can shrink the doc.
+      const end = doc.content.size;
+      const at = anchor ?? editor.state.selection;
+      anchor = undefined;
+      const from = Math.min(at.from, end);
+      const to = Math.min(Math.max(at.to, from), end);
       const before = doc.textBetween(Math.max(0, from - 1), from);
       const after = doc.textBetween(to, Math.min(doc.content.size, to + 1));
       // A text node, never an HTML string: dictated "<b>" stays literal.
@@ -427,8 +447,14 @@ export default function ThreadComposer({
         )
         .run();
     };
+    editor.on("transaction", track);
+    host.addEventListener("thread-dictation-start", start);
     host.addEventListener("thread-dictation", listener);
-    return () => host.removeEventListener("thread-dictation", listener);
+    return () => {
+      editor.off("transaction", track);
+      host.removeEventListener("thread-dictation-start", start);
+      host.removeEventListener("thread-dictation", listener);
+    };
   }, [editor]);
   const canSend =
     !disabled && !importing && (!!value.trim() || attachments.length > 0);

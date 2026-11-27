@@ -2482,5 +2482,9 @@
   "Starting the microphone…": "Avvio del microfono…",
   "Dictate": "Detta",
   "Click into an AI chat or a terminal to dictate": "Fai clic in una chat IA o in un terminale per dettare",
-  "Dictation started": "Dettatura avviata"
+  "Dictation started": "Dettatura avviata",
+  "Toggle dictation": "Attiva/disattiva dettatura",
+  "Dictate into the active chat or terminal. Tap to start and stop, or hold to talk.": "Detta nella chat o nel terminale attivo. Premi per avviare e terminare oppure tieni premuto mentre parli.",
+  "Lomi has no access to the microphone. Allow it in system settings.": "Lomi non ha accesso al microfono. Consentilo nelle impostazioni di sistema.",
+  "The dictation target was closed. Click to copy the text.": "La destinazione della dettatura è stata chiusa. Fai clic per copiare il testo."
 }

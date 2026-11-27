@@ -131,6 +131,15 @@ export const actions = [
     shortcut: "Ctrl+Shift+KeyN",
   },
   {
+    id: "toggleDictation",
+    label: msg("Toggle dictation"),
+    description: msg(
+      "Dictate into the active chat or terminal. Tap to start and stop, or hold to talk.",
+    ),
+    group: msg("Workspace"),
+    shortcut: "Ctrl+Shift+KeyM",
+  },
+  {
     id: "focusChat",
     label: msg("Focus chat message"),
     description: msg("Move focus to the message field of the active chat."),

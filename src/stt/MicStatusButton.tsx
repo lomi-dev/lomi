@@ -4,6 +4,7 @@ import { useT } from "../i18n";
 import { LoaderCircle, Mic, MicOff } from "../icons";
 import { IconButton } from "../ui";
 import {
+  copyUnsent,
   dictationState,
   startDictation,
   stopDictation,
@@ -29,8 +30,13 @@ export default function MicStatusButton({
   const [available, setAvailable] = useState(false);
   // Builds without the `stt` feature have no such command: the button stays hidden.
   useEffect(() => {
-    api<{ available: boolean }>("stt_status").then(
-      (status) => setAvailable(status.available),
+    api<{ available: boolean; modelReady: boolean }>("stt_status").then(
+      (status) => {
+        setAvailable(status.available);
+        // Warm the engine so the first dictation does not wait for GPU setup.
+        if (status.available && status.modelReady)
+          void api("stt_prepare").catch(() => {});
+      },
       () => setAvailable(false),
     );
   }, []);
@@ -57,6 +63,7 @@ export default function MicStatusButton({
 
   function click() {
     if (recording) return stopDictation();
+    if (state.unsent) return void copyUnsent().catch(() => {});
     if (busy) return;
     const next = target();
     if (!next) {
