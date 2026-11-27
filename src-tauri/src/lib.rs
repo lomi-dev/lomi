@@ -630,6 +630,8 @@ pub fn run() {
                 #[cfg(feature = "stt")]
                 stt::stt_cancel,
                 #[cfg(feature = "stt")]
+                stt::stt_retry,
+                #[cfg(feature = "stt")]
                 stt::models::stt_list_models,
                 #[cfg(feature = "stt")]
                 stt::models::stt_download_model,

@@ -86,6 +86,7 @@ fn validate_page(page: Option<&str>) -> Result<(), String> {
                 | "themes"
                 | "plugins"
                 | "terminal"
+                | "speech"
                 | "about"
                 | "android"
                 | "account"

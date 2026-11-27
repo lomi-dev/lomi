@@ -24,7 +24,7 @@ pub struct Worker {
     pending: VecDeque<Response>,
     /// Recent worker diagnostics, kept for error reports instead of a log file.
     stderr: Arc<Mutex<VecDeque<String>>>,
-    loaded: Option<PathBuf>,
+    loaded: Option<(PathBuf, Acceleration)>,
 }
 
 pub fn binary() -> Result<PathBuf, String> {
@@ -106,21 +106,26 @@ impl Worker {
     }
 
     /// Loads `model` unless it is already the loaded one.
-    pub fn ensure_loaded(&mut self, model: &Path, vad: Option<&Path>) -> Result<(), String> {
-        if self.loaded.as_deref() == Some(model) {
+    pub fn ensure_loaded(
+        &mut self,
+        model: &Path,
+        vad: Option<&Path>,
+        acceleration: Acceleration,
+    ) -> Result<(), String> {
+        if self.loaded.as_ref() == Some(&(model.to_path_buf(), acceleration)) {
             return Ok(());
         }
         self.send(
             &Request::Load {
                 model: model.to_string_lossy().into_owned(),
                 vad: vad.map(|p| p.to_string_lossy().into_owned()),
-                acceleration: Acceleration::Auto,
+                acceleration,
             },
             &[],
         )?;
         match self.recv(LOAD_TIMEOUT)? {
             Response::Loaded { .. } => {
-                self.loaded = Some(model.to_path_buf());
+                self.loaded = Some((model.to_path_buf(), acceleration));
                 Ok(())
             }
             Response::Error { message, .. } => Err(message),

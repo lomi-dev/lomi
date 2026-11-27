@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use lomi_stt::dsp::{is_digital_silence, LevelMeter};
-use lomi_stt::protocol::{pcm_to_bytes, Request, Response};
+use lomi_stt::protocol::{pcm_to_bytes, Acceleration, ErrorKind, Request, Response};
 use lomi_stt::SAMPLE_RATE;
 use serde::Serialize;
 use tauri::ipc::Channel;
@@ -43,6 +43,37 @@ struct Inner {
     worker: Option<Worker>,
     active: Option<(u64, Sender<Control>)>,
     next_id: u64,
+    /// Set after the GPU failed once; kept until Lomi restarts.
+    cpu_only: bool,
+    /// Audio of the last failed recognition, so a retry needs no new speech.
+    retry: Option<Retry>,
+}
+
+struct Retry {
+    audio: Vec<f32>,
+    model: PathBuf,
+    vad: Option<PathBuf>,
+    until: Instant,
+}
+
+/// Failed-recognition audio is dropped after this, never written anywhere.
+const RETRY_KEEP: Duration = Duration::from_secs(120);
+
+enum Failure {
+    /// Engine crash, hang or GPU fault: the same audio may succeed on CPU.
+    Retryable(String),
+    /// The engine answered with an error; retrying the same input is pointless.
+    Final(Option<Box<Worker>>, String),
+}
+
+impl Inner {
+    fn acceleration(&self) -> Acceleration {
+        if self.cpu_only {
+            Acceleration::Cpu
+        } else {
+            Acceleration::Auto
+        }
+    }
 }
 
 enum Control {
@@ -70,8 +101,7 @@ pub enum Event {
     Cancelled,
 }
 
-// shortcut: the first downloaded model in catalog order is used until the
-// Speech settings page (E3) stores a chosen model.
+/// The first downloaded model in catalog order.
 fn ready_model(dir: &std::path::Path) -> Option<PathBuf> {
     lomi_stt::catalog::models()
         .iter()
@@ -122,10 +152,16 @@ pub fn stt_start(
     app: tauri::AppHandle,
     state: State<'_, Stt>,
     events: Channel<Event>,
+    model_id: Option<String>,
 ) -> Result<u64, String> {
     main_window(&window)?;
     let dir = models_dir(&app)?;
-    let model = ready_model(&dir).ok_or("no-model")?;
+    // Only catalog ids are accepted; a missing choice falls back to any ready model.
+    let chosen = model_id
+        .and_then(|id| lomi_stt::catalog::find(&id))
+        .filter(|m| m.role == "asr" && models::is_ready(&dir, m))
+        .map(|m| models::path(&dir, m));
+    let model = chosen.or_else(|| ready_model(&dir)).ok_or("no-model")?;
     let vad_model = lomi_stt::catalog::vad();
     let vad = models::is_ready(&dir, vad_model).then(|| models::path(&dir, vad_model));
     let mut inner = state.0.lock().map_err(|_| "busy")?;
@@ -136,13 +172,15 @@ pub fn stt_start(
     let id = inner.next_id;
     let (control, controls) = mpsc::channel();
     inner.active = Some((id, control));
+    let acceleration = inner.acceleration();
+    inner.retry = None;
     drop(inner);
     let shared = state.0.clone();
     std::thread::Builder::new()
         .name("stt-session".into())
         .spawn(move || {
             let worker = shared.lock().ok().and_then(|mut i| i.worker.take());
-            let worker = run_session(worker, model, vad, controls, &events);
+            let worker = run_session(worker, model, vad, acceleration, controls, &events, &shared);
             if let Ok(mut inner) = shared.lock() {
                 inner.worker = worker;
                 if inner
@@ -209,8 +247,10 @@ fn run_session(
     worker: Option<Worker>,
     model: PathBuf,
     vad: Option<PathBuf>,
+    acceleration: Acceleration,
     controls: mpsc::Receiver<Control>,
     events: &Channel<Event>,
+    shared: &Mutex<Inner>,
 ) -> Option<Worker> {
     let emit = |event: Event| {
         let _ = events.send(event);
@@ -240,16 +280,20 @@ fn run_session(
 
     // The model loads while the user is already speaking; audio waits here.
     let (loaded_tx, loaded) = mpsc::channel();
+    let (load_model, load_vad) = (model.clone(), vad.clone());
     std::thread::spawn(move || {
-        let result = worker
-            .map_or_else(Worker::spawn, Ok)
-            .and_then(|mut w| w.ensure_loaded(&model, vad.as_deref()).map(|()| w));
+        let result = worker.map_or_else(Worker::spawn, Ok).and_then(|mut w| {
+            w.ensure_loaded(&load_model, load_vad.as_deref(), acceleration)
+                .map(|()| w)
+        });
         let _ = loaded_tx.send(result);
     });
 
     let mut worker: Option<Worker> = None;
     let mut load_error = None;
     let mut pending: Vec<f32> = Vec::new();
+    // Everything captured, for a replay on a fresh worker (bounded by MAX_SAMPLES).
+    let mut recorded: Vec<f32> = Vec::new();
     let mut total = 0usize;
     let mut heard = false;
     let mut device_lost = false;
@@ -301,6 +345,7 @@ fn run_session(
                 }
                 total += pcm.len();
                 pending.extend_from_slice(&pcm);
+                recorded.extend_from_slice(&pcm);
             }
             Ok(Chunk::Lost(message)) => {
                 eprintln!("lomi: microphone lost: {message}");
@@ -336,64 +381,163 @@ fn run_session(
         return worker.and_then(cancel);
     }
     emit(Event::Transcribing);
-    let mut worker = match worker {
-        Some(w) => w,
-        None => match load_error.map_or_else(
-            || {
-                loaded
-                    .recv()
-                    .unwrap_or_else(|_| Err("The speech engine did not start.".into()))
-            },
-            Err,
-        ) {
-            Ok(mut w) => {
-                if begin(&mut w).and_then(|()| feed(&mut w, &pending)).is_err() {
-                    fail(
-                        "engine-failed",
-                        "The speech engine stopped unexpectedly.".into(),
-                    );
-                    return None;
-                }
-                w
-            }
-            Err(message) => {
-                fail("engine-failed", message);
-                return None;
-            }
-        },
+    let first = match worker {
+        // Fed while recording; only the finish is left.
+        Some(w) => Ok(w),
+        None => load_error
+            .map_or_else(
+                || {
+                    loaded
+                        .recv()
+                        .unwrap_or_else(|_| Err("The speech engine did not start.".into()))
+                },
+                Err,
+            )
+            .and_then(|mut w| {
+                begin(&mut w)?;
+                feed(&mut w, &recorded)?;
+                Ok(w)
+            })
+            .map_err(Failure::Retryable),
     };
-    if worker.send(&Request::Finish, &[]).is_err() {
-        fail(
-            "engine-failed",
-            "The speech engine stopped unexpectedly.".into(),
-        );
-        return None;
-    }
-    match worker.recv(RESULT_TIMEOUT) {
-        Ok(Response::Result { text, .. }) if text.is_empty() => {
+    let outcome = match first.and_then(finish) {
+        Err(Failure::Retryable(message)) if acceleration != Acceleration::Cpu => {
+            eprintln!("lomi: speech engine failed, retrying on CPU: {message}");
+            if let Ok(mut inner) = shared.lock() {
+                inner.cpu_only = true;
+            }
+            replay(&model, vad.as_deref(), &recorded, Acceleration::Cpu)
+        }
+        other => other,
+    };
+    report(outcome, device_lost, events, shared, || Retry {
+        audio: recorded,
+        model,
+        vad,
+        until: Instant::now() + RETRY_KEEP,
+    })
+}
+
+/// Sends the recognition outcome to the webview; keeps audio for a manual retry.
+fn report(
+    outcome: Result<(Worker, String), Failure>,
+    device_lost: bool,
+    events: &Channel<Event>,
+    shared: &Mutex<Inner>,
+    retry: impl FnOnce() -> Retry,
+) -> Option<Worker> {
+    let fail = |code: &'static str, message: String| {
+        let _ = events.send(Event::Error { code, message });
+    };
+    match outcome {
+        Ok((worker, text)) if text.is_empty() => {
             fail("no-speech", "Nothing was heard.".into());
             Some(worker)
         }
-        Ok(Response::Result { text, .. }) => {
-            emit(Event::Result { text, device_lost });
+        Ok((worker, text)) => {
+            let _ = events.send(Event::Result { text, device_lost });
             Some(worker)
         }
-        Ok(Response::Error { message, .. }) => {
+        Err(Failure::Final(worker, message)) => {
             fail("engine-failed", message);
-            Some(worker)
+            worker.map(|w| *w)
         }
-        Ok(other) => {
-            fail(
-                "engine-failed",
-                format!("Unexpected engine reply: {other:?}"),
-            );
-            None
-        }
-        Err(message) => {
-            fail("engine-failed", message);
+        Err(Failure::Retryable(message)) => {
+            if let Ok(mut inner) = shared.lock() {
+                inner.retry = Some(retry());
+            }
+            fail("engine-retry", message);
             None
         }
     }
+}
+
+/// Recognizes `audio` on a fresh worker.
+fn replay(
+    model: &std::path::Path,
+    vad: Option<&std::path::Path>,
+    audio: &[f32],
+    acceleration: Acceleration,
+) -> Result<(Worker, String), Failure> {
+    let mut worker = Worker::spawn().map_err(Failure::Retryable)?;
+    worker
+        .ensure_loaded(model, vad, acceleration)
+        .and_then(|()| begin(&mut worker))
+        .and_then(|()| feed(&mut worker, audio))
+        .map_err(Failure::Retryable)?;
+    finish(worker)
+}
+
+fn finish(mut worker: Worker) -> Result<(Worker, String), Failure> {
+    worker
+        .send(&Request::Finish, &[])
+        .map_err(Failure::Retryable)?;
+    match worker.recv(RESULT_TIMEOUT) {
+        Ok(Response::Result { text, .. }) => Ok((worker, text)),
+        Ok(Response::Error {
+            kind: ErrorKind::GpuFault,
+            message,
+        }) => Err(Failure::Retryable(message)),
+        Ok(Response::Error { message, .. }) => Err(Failure::Final(Some(Box::new(worker)), message)),
+        Ok(other) => Err(Failure::Final(
+            None,
+            format!("Unexpected engine reply: {other:?}"),
+        )),
+        Err(message) => Err(Failure::Retryable(message)),
+    }
+}
+
+/// Recognizes the audio kept from the last failed attempt.
+#[tauri::command]
+pub fn stt_retry(
+    window: Window,
+    state: State<'_, Stt>,
+    events: Channel<Event>,
+) -> Result<u64, String> {
+    main_window(&window)?;
+    let mut inner = state.0.lock().map_err(|_| "busy")?;
+    if inner.active.is_some() {
+        return Err("busy".into());
+    }
+    let retry = inner
+        .retry
+        .take()
+        .filter(|r| r.until > Instant::now())
+        .ok_or("expired")?;
+    let acceleration = inner.acceleration();
+    inner.next_id += 1;
+    let id = inner.next_id;
+    // A retry cannot be stopped or cancelled; the sender only marks activity.
+    inner.active = Some((id, mpsc::channel().0));
+    drop(inner);
+    let shared = state.0.clone();
+    std::thread::Builder::new()
+        .name("stt-retry".into())
+        .spawn(move || {
+            let _ = events.send(Event::Transcribing);
+            let outcome = replay(
+                &retry.model,
+                retry.vad.as_deref(),
+                &retry.audio,
+                acceleration,
+            );
+            let worker = report(outcome, false, &events, &shared, || Retry {
+                until: Instant::now() + RETRY_KEEP,
+                ..retry
+            });
+            if let Ok(mut inner) = shared.lock() {
+                inner.worker = worker;
+                if inner
+                    .active
+                    .as_ref()
+                    .is_some_and(|(active, _)| *active == id)
+                {
+                    inner.active = None;
+                }
+            }
+        })
+        .map_err(|e| e.to_string())?;
+    Ok(id)
 }
 
 fn begin(worker: &mut Worker) -> Result<(), String> {
