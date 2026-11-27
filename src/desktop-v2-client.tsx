@@ -11,6 +11,7 @@ import {
   remoteAuthSessionKey,
 } from "./desktop-remote-account";
 import { native } from "./api";
+import { getCoreClient } from "./remote-core-instance";
 import {
   createDesktopRemoteV2PlatformAdapter,
   desktopRemoteV2AccountId,
@@ -118,6 +119,12 @@ export function DesktopRemoteV2Client({
         lookupGeneration.current += 1;
     };
   }, [available, authSessionKey, currentAuthState, lookupRequest]);
+
+  // Remote core build: start the native session exchange once the account is confirmed.
+  useEffect(() => {
+    if (accountState === "ready" && accountId)
+      void getCoreClient()?.connect(accountId);
+  }, [accountState, accountId]);
 
   const enableWorkspaceAccess = useCallback(async () => {
     const current = authState;

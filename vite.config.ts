@@ -23,8 +23,37 @@ for (const path of [
   }
 }
 
+// The shared Remote core runs natively (src-tauri/src/remote_core). With LOMI_REMOTE_CORE=1
+// the shared Remote Web panel reads it through src/remote-core-instance.ts instead of its
+// own WASM worker, so there is one source of truth for the Host list.
+const remoteCore = process.env.LOMI_REMOTE_CORE === "1";
+const nativeCoreInstance = fileURLToPath(
+  new URL("./src/remote-core-instance.ts", import.meta.url),
+);
+
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  define: { __LOMI_REMOTE_CORE__: JSON.stringify(remoteCore) },
+  plugins: [
+    react(),
+    tailwindcss(),
+    {
+      name: "lomi-native-remote-core",
+      enforce: "pre",
+      async resolveId(source, importer, options) {
+        if (!remoteCore || !importer || !source.endsWith("/instance"))
+          return null;
+        const resolved = await this.resolve(source, importer, {
+          ...options,
+          skipSelf: true,
+        });
+        return resolved?.id
+          .replace(/\\/g, "/")
+          .endsWith("/remote-web/src/core/instance.ts")
+          ? nativeCoreInstance
+          : null;
+      },
+    },
+  ],
   resolve: {
     // Shared Remote Web source runs inside this application's React renderer.
     // Resolve its hooks through the same React instance, even when the sibling
