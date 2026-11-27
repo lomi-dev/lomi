@@ -598,7 +598,7 @@ type Ws =
     tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
 #[cfg(debug_assertions)]
-async fn dial(url: &str) -> Option<Ws> {
+pub(crate) async fn dial(url: &str) -> Option<Ws> {
     // A set but unusable dev CA fails closed: no connection at all.
     let connector = crate::dev_ca::relay_connector().ok()?;
     let (ws, _) = connect_async_tls_with_config(url, None, false, connector)
@@ -608,7 +608,7 @@ async fn dial(url: &str) -> Option<Ws> {
 }
 
 #[cfg(not(debug_assertions))]
-async fn dial(url: &str) -> Option<Ws> {
+pub(crate) async fn dial(url: &str) -> Option<Ws> {
     connect_async(url).await.ok().map(|(ws, _)| ws)
 }
 

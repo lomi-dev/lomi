@@ -47,7 +47,22 @@ use tokio::{
     sync::{mpsc, oneshot},
     time::{sleep_until, timeout, Instant as TokioInstant},
 };
-use tokio_tungstenite::{connect_async, tungstenite::Message};
+use tokio_tungstenite::tungstenite::Message;
+
+/// Same dialer as the core link, so debug `remote-host` builds honour the dev CA.
+#[cfg(feature = "remote-host")]
+use crate::remote_core::dial as dial_relay;
+#[cfg(not(feature = "remote-host"))]
+async fn dial_relay(
+    url: &str,
+) -> Option<
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+> {
+    tokio_tungstenite::connect_async(url)
+        .await
+        .ok()
+        .map(|(ws, _)| ws)
+}
 use zeroize::Zeroize;
 
 const RECORDS_VERSION: u32 = 1;
@@ -1573,10 +1588,10 @@ async fn establish_native_relay(
 > {
     let endpoint = option_env!("LOMI_HOST_RELAY_ENDPOINT")
         .ok_or("Remote relay is not configured for this build.")?;
-    let (mut socket, _) = timeout(Duration::from_secs(10), connect_async(endpoint))
+    let mut socket = timeout(Duration::from_secs(10), dial_relay(endpoint))
         .await
         .map_err(|_| "The secure relay connection timed out.")?
-        .map_err(|_| "The secure relay connection could not be opened.")?;
+        .ok_or("The secure relay connection could not be opened.")?;
     let admission = WssAdmissionFrame { channel_id, ticket };
     let authentication = serde_json::to_string(&admission)
         .map_err(|_| "The one-use relay admission could not be encoded.")?;
