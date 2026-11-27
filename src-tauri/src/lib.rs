@@ -252,6 +252,8 @@ pub fn run() {
             app.manage(remote_core::RemoteCore::default());
             #[cfg(feature = "stt")]
             app.manage(stt::Stt::default());
+            #[cfg(feature = "stt")]
+            app.manage(stt::models::Downloads::default());
             external_files::enqueue(
                 app.handle(),
                 external_files::arguments(
@@ -622,9 +624,19 @@ pub fn run() {
                 #[cfg(feature = "stt")]
                 stt::stt_start,
                 #[cfg(feature = "stt")]
+                stt::stt_prepare,
+                #[cfg(feature = "stt")]
                 stt::stt_stop,
                 #[cfg(feature = "stt")]
                 stt::stt_cancel,
+                #[cfg(feature = "stt")]
+                stt::models::stt_list_models,
+                #[cfg(feature = "stt")]
+                stt::models::stt_download_model,
+                #[cfg(feature = "stt")]
+                stt::models::stt_cancel_download,
+                #[cfg(feature = "stt")]
+                stt::models::stt_delete_model,
                 cli_titles::inspect_cli_titles,
                 cli_usage::inspect_cli_usage,
                 cli_usage::authorize_cursor_usage_keychain,

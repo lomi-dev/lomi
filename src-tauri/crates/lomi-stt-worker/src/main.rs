@@ -13,9 +13,10 @@ use lomi_stt::protocol::{
     bytes_to_pcm, read_frame, write_frame, Acceleration, DeviceInfo, ErrorKind, Request, Response,
     PROTOCOL_VERSION,
 };
+use lomi_stt::vad::{GateEvent, VadGate, VadParams, FRAME_SAMPLES};
 use lomi_stt::SAMPLE_RATE;
 use transcribe_cpp::{
-    Backend, CancelToken, Feature, Model, ModelOptions, RunOptions, Session, VadOptions,
+    Backend, CancelToken, Feature, Model, ModelOptions, RunOptions, Session, VadOptions, VadSession,
 };
 
 /// Five minutes of audio plus margin for the stop tail.
@@ -108,7 +109,12 @@ struct Engine {
     filter_silence: bool,
     audio: Vec<f32>,
     active: bool,
+    /// Live speech edges for the parent's auto-stop timer.
+    speech: Option<(VadSession, VadGate)>,
 }
+
+// The gate needs frame audio only to re-emit it; edges come from the probabilities.
+static SILENT_FRAME: [f32; FRAME_SAMPLES] = [0.0; FRAME_SAMPLES];
 
 impl Engine {
     fn handle(
@@ -142,6 +148,10 @@ impl Engine {
                     ..Default::default()
                 };
                 self.filter_silence = filter_silence;
+                self.speech = self.vad.as_ref().and_then(|vad| {
+                    let session = vad.vad_session().ok()?;
+                    Some((session, VadGate::new(VadParams::default())))
+                });
                 self.audio.clear();
                 self.active = true;
                 cancel.reset();
@@ -154,7 +164,7 @@ impl Engine {
                 match bytes_to_pcm(payload) {
                     Ok(pcm) if self.audio.len() + pcm.len() <= MAX_SESSION_SAMPLES => {
                         self.audio.extend_from_slice(&pcm);
-                        None
+                        self.speech_edge(&pcm)
                     }
                     Ok(_) => Some(error(ErrorKind::Input, "session audio limit exceeded")),
                     Err(e) => Some(error(ErrorKind::Input, &e.to_string())),
@@ -174,6 +184,27 @@ impl Engine {
                 Some(Response::Cancelled)
             }
         }
+    }
+
+    /// The latest speech start/end in `pcm`, if any. VAD errors only disable
+    /// the live edges; the recording itself is unaffected.
+    fn speech_edge(&mut self, pcm: &[f32]) -> Option<Response> {
+        let (session, gate) = self.speech.as_mut()?;
+        let Ok(scored) = session.stream_feed(pcm) else {
+            self.speech = None;
+            return None;
+        };
+        let mut edge = None;
+        for prob in scored.probs {
+            for event in gate.push(&SILENT_FRAME, prob) {
+                match event {
+                    GateEvent::Start => edge = Some(true),
+                    GateEvent::End => edge = Some(false),
+                    GateEvent::Speech(_) => {}
+                }
+            }
+        }
+        edge.map(|active| Response::Speech { active })
     }
 
     fn load(&mut self, path: &str, vad: Option<&str>, acceleration: Acceleration) -> Response {

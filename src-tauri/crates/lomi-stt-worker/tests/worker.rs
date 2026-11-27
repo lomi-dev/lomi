@@ -16,6 +16,7 @@ struct Worker {
     child: Child,
     stdin: Option<ChildStdin>,
     stdout: BufReader<ChildStdout>,
+    speech_started: bool,
 }
 
 impl Worker {
@@ -32,6 +33,7 @@ impl Worker {
             child,
             stdin,
             stdout,
+            speech_started: false,
         };
         match worker.recv() {
             Response::Hello { protocol, .. } => assert_eq!(protocol, PROTOCOL_VERSION),
@@ -44,8 +46,14 @@ impl Worker {
         write_frame(self.stdin.as_mut().unwrap(), request, payload).unwrap();
     }
 
+    /// Next reply; live speech edges are recorded and skipped.
     fn recv(&mut self) -> Response {
-        read_frame::<Response>(&mut self.stdout).unwrap().unwrap().0
+        loop {
+            match read_frame::<Response>(&mut self.stdout).unwrap().unwrap().0 {
+                Response::Speech { active } => self.speech_started |= active,
+                other => return other,
+            }
+        }
     }
 
     fn load(&mut self) {
@@ -176,6 +184,7 @@ fn transcribes_speech_and_cancel_discards_audio() {
         } => {
             assert!(!text.is_empty());
             assert!(speech_ms > 0);
+            assert!(worker.speech_started, "no live speech start reported");
         }
         other => panic!("expected result, got {other:?}"),
     }

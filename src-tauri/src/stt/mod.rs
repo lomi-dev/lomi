@@ -5,6 +5,8 @@
 //! reports progress through a `Channel`.
 
 mod capture;
+pub mod models;
+mod permission;
 mod worker;
 
 use std::path::PathBuf;
@@ -23,8 +25,6 @@ use crate::files::main_window;
 use capture::{Capture, Chunk};
 use worker::Worker;
 
-const MODEL_FILE: &str = "parakeet-ultra-Q8_0.gguf";
-const VAD_FILE: &str = "silero-vad-v6.2-F32.gguf";
 const MAX_SAMPLES: usize = 5 * 60 * SAMPLE_RATE as usize;
 /// Keeps the last syllable that is still in flight when Stop is pressed.
 const STOP_TAIL: Duration = Duration::from_millis(250);
@@ -32,6 +32,8 @@ const STOP_TAIL: Duration = Duration::from_millis(250);
 const FEED_SAMPLES: usize = SAMPLE_RATE as usize / 10;
 const RESULT_TIMEOUT: Duration = Duration::from_secs(300);
 const CANCEL_TIMEOUT: Duration = Duration::from_secs(2);
+/// A forgotten microphone must not keep recording the room.
+const SILENCE_STOP: Duration = Duration::from_secs(30);
 
 #[derive(Default)]
 pub struct Stt(Arc<Mutex<Inner>>);
@@ -68,6 +70,27 @@ pub enum Event {
     Cancelled,
 }
 
+// shortcut: the first downloaded model in catalog order is used until the
+// Speech settings page (E3) stores a chosen model.
+fn ready_model(dir: &std::path::Path) -> Option<PathBuf> {
+    lomi_stt::catalog::models()
+        .iter()
+        .find(|m| m.role == "asr" && models::is_ready(dir, m))
+        .map(|m| models::path(dir, m))
+}
+
+impl Stt {
+    /// Stops the idle engine so its model file can be removed.
+    fn unload(&self) -> Result<(), String> {
+        let mut inner = self.0.lock().map_err(|_| "busy")?;
+        if inner.active.is_some() {
+            return Err("busy".into());
+        }
+        inner.worker = None;
+        Ok(())
+    }
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Status {
@@ -89,7 +112,7 @@ pub fn stt_status(window: Window, app: tauri::AppHandle) -> Result<Status, Strin
     main_window(&window)?;
     Ok(Status {
         available: worker::binary().is_ok(),
-        model_ready: models_dir(&app)?.join(MODEL_FILE).is_file(),
+        model_ready: ready_model(&models_dir(&app)?).is_some(),
     })
 }
 
@@ -102,11 +125,9 @@ pub fn stt_start(
 ) -> Result<u64, String> {
     main_window(&window)?;
     let dir = models_dir(&app)?;
-    let model = dir.join(MODEL_FILE);
-    if !model.is_file() {
-        return Err("no-model".into());
-    }
-    let vad = Some(dir.join(VAD_FILE)).filter(|p| p.is_file());
+    let model = ready_model(&dir).ok_or("no-model")?;
+    let vad_model = lomi_stt::catalog::vad();
+    let vad = models::is_ready(&dir, vad_model).then(|| models::path(&dir, vad_model));
     let mut inner = state.0.lock().map_err(|_| "busy")?;
     if inner.active.is_some() {
         return Err("busy".into());
@@ -135,6 +156,30 @@ pub fn stt_start(
         })
         .map_err(|e| e.to_string())?;
     Ok(id)
+}
+
+/// Starts the engine process ahead of the first dictation: its first launch
+/// compiles GPU shaders, which can take tens of seconds.
+#[tauri::command]
+pub fn stt_prepare(window: Window, state: State<'_, Stt>) -> Result<(), String> {
+    main_window(&window)?;
+    {
+        let inner = state.0.lock().map_err(|_| "busy")?;
+        if inner.worker.is_some() || inner.active.is_some() || worker::binary().is_err() {
+            return Ok(());
+        }
+    }
+    let shared = state.0.clone();
+    std::thread::spawn(move || {
+        let Ok(spawned) = Worker::spawn() else { return };
+        if let Ok(mut inner) = shared.lock() {
+            // A session that started meanwhile spawned its own worker.
+            if inner.worker.is_none() && inner.active.is_none() {
+                inner.worker = Some(spawned);
+            }
+        }
+    });
+    Ok(())
 }
 
 #[tauri::command]
@@ -174,6 +219,13 @@ fn run_session(
         emit(Event::Error { code, message });
     };
 
+    if permission::ensure() == permission::Access::Denied {
+        fail(
+            "permission-denied",
+            "Lomi has no access to the microphone.".into(),
+        );
+        return worker;
+    }
     let (audio_tx, audio) = mpsc::channel();
     let capture = match Capture::start(move |chunk| {
         let _ = audio_tx.send(chunk);
@@ -203,6 +255,8 @@ fn run_session(
     let mut device_lost = false;
     let mut meter = LevelMeter::default();
     let mut stop_at: Option<Instant> = None;
+    // Without a VAD there are no speech edges, so only the 5 min limit applies.
+    let mut quiet_since = Some(Instant::now());
     let mut capture = Some(capture);
 
     loop {
@@ -258,6 +312,12 @@ fn run_session(
             Err(RecvTimeoutError::Disconnected) => {}
         }
         if let Some(w) = worker.as_mut() {
+            for speaking in w.speech_edges() {
+                quiet_since = (!speaking).then(Instant::now);
+            }
+            if stop_at.is_none() && quiet_since.is_some_and(|q| q.elapsed() >= SILENCE_STOP) {
+                stop_at = Some(Instant::now());
+            }
             if pending.len() >= FEED_SAMPLES || (finished && !pending.is_empty()) {
                 let frames = std::mem::take(&mut pending);
                 if feed(w, &frames).is_err() {

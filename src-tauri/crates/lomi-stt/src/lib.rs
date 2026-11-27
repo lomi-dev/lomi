@@ -2,6 +2,7 @@
 //!
 //! Audio is 16 kHz mono f32 in [-1, 1] everywhere past `dsp`.
 
+pub mod catalog;
 pub mod dsp;
 pub mod protocol;
 pub mod vad;

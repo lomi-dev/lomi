@@ -20,6 +20,8 @@ pub struct Worker {
     child: Child,
     stdin: BufWriter<ChildStdin>,
     responses: Receiver<Response>,
+    /// Replies that arrived while only speech edges were being read.
+    pending: VecDeque<Response>,
     /// Recent worker diagnostics, kept for error reports instead of a log file.
     stderr: Arc<Mutex<VecDeque<String>>>,
     loaded: Option<PathBuf>,
@@ -93,6 +95,7 @@ impl Worker {
             child,
             stdin,
             responses,
+            pending: VecDeque::new(),
             stderr,
             loaded: None,
         };
@@ -129,8 +132,35 @@ impl Worker {
         write_frame(&mut self.stdin, request, payload).map_err(|_| self.died())
     }
 
+    /// Live speech edges received so far (oldest first), without blocking.
+    pub fn speech_edges(&mut self) -> Vec<bool> {
+        let mut edges = Vec::new();
+        while let Ok(response) = self.responses.try_recv() {
+            match response {
+                Response::Speech { active } => edges.push(active),
+                other => self.pending.push_back(other),
+            }
+        }
+        edges
+    }
+
+    /// Next reply; live speech edges are skipped.
     pub fn recv(&mut self, timeout: Duration) -> Result<Response, String> {
-        match self.responses.recv_timeout(timeout) {
+        if let Some(response) = self.pending.pop_front() {
+            return Ok(response);
+        }
+        let deadline = std::time::Instant::now() + timeout;
+        loop {
+            let left = deadline.saturating_duration_since(std::time::Instant::now());
+            match self.responses.recv_timeout(left) {
+                Ok(Response::Speech { .. }) => {}
+                other => return self.reply(other),
+            }
+        }
+    }
+
+    fn reply(&mut self, received: Result<Response, RecvTimeoutError>) -> Result<Response, String> {
+        match received {
             Ok(response) => Ok(response),
             Err(RecvTimeoutError::Timeout) => {
                 let _ = self.child.kill();
