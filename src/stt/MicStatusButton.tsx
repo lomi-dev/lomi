@@ -24,7 +24,7 @@ export default function MicStatusButton({
 }: {
   /** Resolved when recording starts, so the text lands where speaking began. */
   target: () => DictationTarget | null;
-  /** Status-bar side; the button sits right after Source Control. */
+  /** Status-bar side; the button leads Source Control's group. */
   side: "left" | "right";
 }) {
   const { t } = useT();

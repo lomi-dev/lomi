@@ -4467,6 +4467,10 @@ export default function Workbench() {
             data-settings-hidden={settings.active || undefined}
           >
             {workspaceToggle}
+            <MicStatusButton
+              target={dictationTarget}
+              side={session.sidebarSides.git}
+            />
             {sidebarPanels.map((panel) => (
               <div
                 key={panel}
@@ -4516,10 +4520,6 @@ export default function Workbench() {
                 </SidebarToggle>
               </div>
             ))}
-            <MicStatusButton
-              target={dictationTarget}
-              side={session.sidebarSides.git}
-            />
             <div
               className="status-panel-control"
               data-side={session.terminalOverviewSide}
