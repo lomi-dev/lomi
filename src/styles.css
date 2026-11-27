@@ -1535,7 +1535,7 @@ svg {
   line-height: 18px;
 }
 .workspace-list-entry.is-active > .workspace-list-heading {
-  background: color-mix(in srgb, var(--color-surface-text) 6%, transparent);
+  background: color-mix(in srgb, var(--color-surface-text) 12%, transparent);
 }
 .workspace-list-entry.is-active .workspace-name {
   font-weight: 600;
@@ -1697,7 +1697,7 @@ svg {
   color: var(--color-surface-text);
 }
 .workspace-open-item[aria-current="true"] {
-  background: color-mix(in srgb, var(--color-surface-text) 8%, transparent);
+  background: color-mix(in srgb, var(--color-surface-text) 14%, transparent);
   color: var(--color-surface-text);
   font-weight: 600;
 }
@@ -7333,12 +7333,8 @@ h3 {
   padding: 12px 18px;
   border: var(--border-width) solid var(--color-outline);
   border-radius: 12px;
-  background: color-mix(
-    in srgb,
-    var(--color-surface-container-high) 88%,
-    transparent
-  );
-  backdrop-filter: blur(16px);
+  /* Same surface as menus and dropdowns so the hint reads as part of the app. */
+  background: var(--menu-background);
   box-shadow: 0 16px 40px rgb(0 0 0 / 0.28);
   color: var(--color-surface-text);
   font-size: var(--font-size-13);
@@ -7357,7 +7353,7 @@ h3 {
   position: absolute;
   inset: auto 0 0;
   height: 2px;
-  background: var(--color-primary);
+  background: var(--color-muted-text);
   transform-origin: left;
   animation: quit-hint-countdown 2s linear both;
 }
