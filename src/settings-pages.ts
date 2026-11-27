@@ -3,6 +3,7 @@ export const settingsPageIds = [
   "keybinds",
   "notifications",
   "terminal",
+  "speech",
   "themes",
   "plugins",
   "chat-providers",

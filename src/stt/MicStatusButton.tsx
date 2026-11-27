@@ -6,6 +6,7 @@ import { IconButton } from "../ui";
 import {
   copyUnsent,
   dictationState,
+  retryDictation,
   startDictation,
   stopDictation,
   subscribeDictation,
@@ -64,6 +65,7 @@ export default function MicStatusButton({
   function click() {
     if (recording) return stopDictation();
     if (state.unsent) return void copyUnsent().catch(() => {});
+    if (state.retryTarget) return retryDictation();
     if (busy) return;
     const next = target();
     if (!next) {
@@ -71,7 +73,14 @@ export default function MicStatusButton({
       return;
     }
     setHint(undefined);
-    void startDictation(next);
+    // Asked on every click: a model may have been downloaded or deleted meanwhile.
+    void api<{ modelReady: boolean }>("stt_status").then(
+      ({ modelReady }) =>
+        modelReady
+          ? startDictation(next)
+          : api("open_settings", { page: "speech" }),
+      () => {},
+    );
   }
 
   return (

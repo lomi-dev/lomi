@@ -1,0 +1,53 @@
+/* Settings → Speech: model cards. */
+.speech-settings-page .settings-section-body {
+  display: grid;
+  gap: 12px;
+}
+.speech-badge {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-container-high);
+  color: var(--color-accent-text);
+  font-size: var(--font-size-13);
+}
+.speech-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-accent-text);
+  font: inherit;
+  cursor: pointer;
+}
+.speech-link:hover {
+  text-decoration: underline;
+}
+.speech-progress {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+}
+.speech-progress progress {
+  width: 100%;
+}
+.speech-meta {
+  color: var(--color-muted-text);
+  font-size: var(--font-size-13);
+}
+.speech-error {
+  margin: 0;
+  color: var(--color-error);
+}
+.speech-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.speech-use {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

@@ -37,6 +37,7 @@ const NotificationSettingsPage = lazy(
 const RemoteSettingsPage = lazy(() => import("./RemoteSettingsPage"));
 const AccountSettingsPage = lazy(() => import("./auth/AccountSettingsPage"));
 const AndroidSettingsPage = lazy(() => import("./android/AndroidSettingsPage"));
+const SpeechSettingsPage = lazy(() => import("./stt/SpeechSettingsPage"));
 const AgentControlSettingsPage = lazy(
   () => import("./AgentControlSettingsPage"),
 );
@@ -186,6 +187,10 @@ export default function SettingsPanel({
             <GeneralSettingsPage />
           ) : page === "terminal" ? (
             <TerminalSettingsPage />
+          ) : page === "speech" ? (
+            <Suspense fallback={<SettingsLoading title={t("Speech")} />}>
+              <SpeechSettingsPage onNavigate={setPage} />
+            </Suspense>
           ) : page === "themes" ? (
             <Suspense fallback={<SettingsLoading title={t("Themes")} />}>
               <ThemesPage />

@@ -1,4 +1,11 @@
-import { Fragment, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Bell,
   Globe,
@@ -6,6 +13,7 @@ import {
   Keyboard,
   Layers,
   MessageSquare,
+  Mic,
   Palette,
   Puzzle,
   Search,
@@ -14,6 +22,7 @@ import {
   Smartphone,
   Terminal,
 } from "./icons";
+import { api } from "./api";
 import { msg, useT } from "./i18n";
 import type { SettingsPageId } from "./settings-pages";
 import {
@@ -57,6 +66,11 @@ const groups = [
         id: "terminal",
         label: msg("Terminal"),
         icon: Terminal,
+      },
+      {
+        id: "speech",
+        label: msg("Speech"),
+        icon: Mic,
       },
       {
         id: "android",
@@ -155,7 +169,20 @@ export default function SettingsNavigation({
   const [query, setQuery] = useState("");
   const [activeResult, setActiveResult] = useState(0);
   const searching = query.trim() !== "";
-  const results = useMemo(() => searchSettings(query), [query, locale]);
+  // Builds without dictation reject or report unavailable; hide the page.
+  const [speech, setSpeech] = useState(false);
+  useEffect(() => {
+    api<{ available: boolean }>("stt_status")
+      .then((status) => setSpeech(status.available))
+      .catch(() => {});
+  }, []);
+  const results = useMemo(
+    () =>
+      searchSettings(query).filter(
+        (entry) => speech || entry.page !== "speech",
+      ),
+    [query, locale, speech],
+  );
   const resultId = (index: number) => `settings-search-result-${index}`;
   const open = (entry: SettingsSearchEntry) => {
     if (entry.page === "remote" && !remoteAvailable) return;
@@ -278,49 +305,53 @@ export default function SettingsNavigation({
             {group.label && (
               <div className="settings-nav-group-label">{t(group.label)}</div>
             )}
-            {group.pages.map(({ id, label, icon: Icon }) => (
-              <button
-                key={id}
-                type="button"
-                className={`settings-nav-item${id === "account" ? " settings-nav-account" : id === "about" ? " settings-nav-about" : ""}`}
-                aria-current={page === id ? "page" : undefined}
-                disabled={id === "remote" && !remoteAvailable}
-                aria-description={
-                  id === "remote" && !remoteAvailable
-                    ? remoteDisabledReason
-                    : undefined
-                }
-                title={
-                  id === "remote" && !remoteAvailable
-                    ? remoteDisabledReason
-                    : undefined
-                }
-                onClick={() => onSelect(id)}
-                onKeyDown={(event) => {
-                  if (
-                    !["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)
-                  )
-                    return;
-                  event.preventDefault();
-                  event.stopPropagation();
-                  const buttons = enabledButtons();
-                  const index = buttons.indexOf(event.currentTarget);
-                  const next =
-                    event.key === "Home"
-                      ? 0
-                      : event.key === "End"
-                        ? buttons.length - 1
-                        : (index +
-                            (event.key === "ArrowDown" ? 1 : -1) +
-                            buttons.length) %
-                          buttons.length;
-                  buttons[next]?.focus();
-                }}
-              >
-                <Icon size={16} aria-hidden="true" />
-                <span className="settings-nav-label">{t(label)}</span>
-              </button>
-            ))}
+            {group.pages
+              .filter(({ id }) => speech || id !== "speech")
+              .map(({ id, label, icon: Icon }) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={`settings-nav-item${id === "account" ? " settings-nav-account" : id === "about" ? " settings-nav-about" : ""}`}
+                  aria-current={page === id ? "page" : undefined}
+                  disabled={id === "remote" && !remoteAvailable}
+                  aria-description={
+                    id === "remote" && !remoteAvailable
+                      ? remoteDisabledReason
+                      : undefined
+                  }
+                  title={
+                    id === "remote" && !remoteAvailable
+                      ? remoteDisabledReason
+                      : undefined
+                  }
+                  onClick={() => onSelect(id)}
+                  onKeyDown={(event) => {
+                    if (
+                      !["ArrowUp", "ArrowDown", "Home", "End"].includes(
+                        event.key,
+                      )
+                    )
+                      return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const buttons = enabledButtons();
+                    const index = buttons.indexOf(event.currentTarget);
+                    const next =
+                      event.key === "Home"
+                        ? 0
+                        : event.key === "End"
+                          ? buttons.length - 1
+                          : (index +
+                              (event.key === "ArrowDown" ? 1 : -1) +
+                              buttons.length) %
+                            buttons.length;
+                    buttons[next]?.focus();
+                  }}
+                >
+                  <Icon size={16} aria-hidden="true" />
+                  <span className="settings-nav-label">{t(label)}</span>
+                </button>
+              ))}
           </Fragment>
         ))
       )}

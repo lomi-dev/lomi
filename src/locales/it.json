@@ -2486,5 +2486,38 @@
   "Toggle dictation": "Attiva/disattiva dettatura",
   "Dictate into the active chat or terminal. Tap to start and stop, or hold to talk.": "Detta nella chat o nel terminale attivo. Premi per avviare e terminare oppure tieni premuto mentre parli.",
   "Lomi has no access to the microphone. Allow it in system settings.": "Lomi non ha accesso al microfono. Consentilo nelle impostazioni di sistema.",
-  "The dictation target was closed. Click to copy the text.": "La destinazione della dettatura è stata chiusa. Fai clic per copiare il testo."
+  "The dictation target was closed. Click to copy the text.": "La destinazione della dettatura è stata chiusa. Fai clic per copiare il testo.",
+  "Speech": "Voce",
+  "Speech model": "Modello vocale",
+  "Dictation shortcut": "Scorciatoia di dettatura",
+  "Tap to start and stop, or hold to talk.": "Tocca per avviare e fermare, oppure tieni premuto per parlare.",
+  "Download interrupted. Resume to continue.": "Download interrotto. Riprendi per continuare.",
+  "The file was damaged in transit and was removed. Download it again.": "Il file si è danneggiato durante il download ed è stato rimosso. Scaricalo di nuovo.",
+  "Not enough disk space.": "Spazio su disco insufficiente.",
+  "This model is in use. Try again when dictation ends.": "Questo modello è in uso. Riprova al termine della dettatura.",
+  "English": "Inglese",
+  "Dictation runs locally. Audio never leaves this computer.": "La dettatura funziona in locale. L'audio non lascia mai questo computer.",
+  "Polish {error}% errors": "Polacco: {error}% di errori",
+  "English {error}% errors": "Inglese: {error}% di errori",
+  "~{cpu} s CPU / ~{gpu} s GPU per 30 s of speech": "~{cpu} s CPU / ~{gpu} s GPU ogni 30 s di voce",
+  "Recommended": "Consigliato",
+  "Verifying…": "Verifica in corso…",
+  "{percent}% · {done} of {total} · {speed}/s": "{percent}% · {done} di {total} · {speed}/s",
+  "Resume": "Riprendi",
+  "Download": "Scarica",
+  "Change in Keybinds": "Cambia in Scorciatoie",
+  "Delete {name}?": "Eliminare {name}?",
+  "You can download it again later.": "Potrai scaricarlo di nuovo più tardi.",
+  "Polish and {count} more languages": {
+    "one": "Polacco e altre {count} lingua",
+    "many": "Polacco e altre {count} lingue",
+    "other": "Polacco e altre {count} lingue"
+  },
+  "{count} languages": {
+    "one": "{count} lingua",
+    "many": "{count} lingue",
+    "other": "{count} lingue"
+  },
+  "Speech recognition failed. Click to try again without speaking.": "Riconoscimento vocale non riuscito. Fai clic per riprovare senza parlare di nuovo.",
+  "The recording is no longer available. Dictate again.": "La registrazione non è più disponibile. Detta di nuovo."
 }

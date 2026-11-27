@@ -2517,5 +2517,40 @@
   "Toggle dictation": "Включить или выключить диктовку",
   "Dictate into the active chat or terminal. Tap to start and stop, or hold to talk.": "Диктуйте в активный чат или терминал. Нажмите, чтобы начать и закончить, или удерживайте, пока говорите.",
   "Lomi has no access to the microphone. Allow it in system settings.": "У Lomi нет доступа к микрофону. Разрешите его в настройках системы.",
-  "The dictation target was closed. Click to copy the text.": "Цель диктовки закрыта. Щёлкните, чтобы скопировать текст."
+  "The dictation target was closed. Click to copy the text.": "Цель диктовки закрыта. Щёлкните, чтобы скопировать текст.",
+  "Speech": "Речь",
+  "Speech model": "Речевая модель",
+  "Dictation shortcut": "Сочетание клавиш для диктовки",
+  "Tap to start and stop, or hold to talk.": "Нажмите, чтобы начать и остановить, или удерживайте, чтобы говорить.",
+  "Download interrupted. Resume to continue.": "Загрузка прервана. Возобновите, чтобы продолжить.",
+  "The file was damaged in transit and was removed. Download it again.": "Файл был повреждён при загрузке и удалён. Загрузите его снова.",
+  "Not enough disk space.": "Недостаточно места на диске.",
+  "This model is in use. Try again when dictation ends.": "Эта модель используется. Повторите попытку после окончания диктовки.",
+  "English": "Английский",
+  "Dictation runs locally. Audio never leaves this computer.": "Диктовка работает локально. Звук никогда не покидает этот компьютер.",
+  "Polish {error}% errors": "Польский: {error}% ошибок",
+  "English {error}% errors": "Английский: {error}% ошибок",
+  "~{cpu} s CPU / ~{gpu} s GPU per 30 s of speech": "~{cpu} с CPU / ~{gpu} с GPU на 30 с речи",
+  "Recommended": "Рекомендуется",
+  "Verifying…": "Проверка…",
+  "{percent}% · {done} of {total} · {speed}/s": "{percent}% · {done} из {total} · {speed}/с",
+  "Resume": "Возобновить",
+  "Download": "Загрузить",
+  "Change in Keybinds": "Изменить в сочетаниях клавиш",
+  "Delete {name}?": "Удалить {name}?",
+  "You can download it again later.": "Вы сможете загрузить её снова позже.",
+  "Polish and {count} more languages": {
+    "one": "польский и ещё {count} язык",
+    "few": "польский и ещё {count} языка",
+    "many": "польский и ещё {count} языков",
+    "other": "польский и ещё {count} языка"
+  },
+  "{count} languages": {
+    "one": "{count} язык",
+    "few": "{count} языка",
+    "many": "{count} языков",
+    "other": "{count} языка"
+  },
+  "Speech recognition failed. Click to try again without speaking.": "Не удалось распознать речь. Щёлкните, чтобы повторить без повторной диктовки.",
+  "The recording is no longer available. Dictate again.": "Запись больше недоступна. Продиктуйте снова."
 }

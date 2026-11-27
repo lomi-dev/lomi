@@ -6,6 +6,7 @@ import { t } from "../i18n";
 import { runningTerminal } from "../terminal-runtime";
 import { getDraft, setDraft } from "../ai-chat/thread-runtime";
 import { sanitizeDictation, spaceForInsert } from "./stt-insert";
+import { chosenModel } from "./stt-preferences";
 
 export type DictationTarget =
   { kind: "thread"; id: string } | { kind: "terminal"; id: string };
@@ -20,6 +21,8 @@ export type DictationState = {
   message?: string;
   /** Text whose target closed while recording; copied only on request. */
   unsent?: string;
+  /** The engine failed; its audio is kept briefly for `retryDictation`. */
+  retryTarget?: DictationTarget;
 };
 
 type NativeEvent =
@@ -67,6 +70,12 @@ function errorMessage(code: string, fallback: string) {
       return t("Nothing was heard");
     case "engine-failed":
       return t("Speech recognition failed");
+    case "engine-retry":
+      return t(
+        "Speech recognition failed. Click to try again without speaking.",
+      );
+    case "expired":
+      return t("The recording is no longer available. Dictate again.");
     default:
       return fallback;
   }
@@ -87,11 +96,28 @@ function end(next: Partial<DictationState>) {
   set({ level: 0, ...next });
 }
 
-export async function startDictation(target: DictationTarget) {
+export const startDictation = (target: DictationTarget) =>
+  run(target, "stt_start");
+
+/** Recognizes the audio kept from the last failed attempt again. */
+export function retryDictation() {
+  if (state.retryTarget) void run(state.retryTarget, "stt_retry");
+}
+
+async function run(
+  target: DictationTarget,
+  command: "stt_start" | "stt_retry",
+) {
   if (session) return;
   session = { target };
   window.addEventListener("keydown", onEscape, true);
-  set({ phase: "starting", level: 0, message: undefined, unsent: undefined });
+  set({
+    phase: command === "stt_retry" ? "transcribing" : "starting",
+    level: 0,
+    message: undefined,
+    unsent: undefined,
+    retryTarget: undefined,
+  });
   if (target.kind === "thread")
     threadElement(target.id)?.dispatchEvent(
       new CustomEvent("thread-dictation-start"),
@@ -127,6 +153,8 @@ export async function startDictation(target: DictationTarget) {
         end({
           phase: "error",
           message: errorMessage(event.code, event.message),
+          retryTarget:
+            event.code === "engine-retry" ? current.target : undefined,
         });
         break;
       case "cancelled":
@@ -135,7 +163,10 @@ export async function startDictation(target: DictationTarget) {
     }
   };
   try {
-    const id = await api<number>("stt_start", { events });
+    const id = await api<number>(command, {
+      events,
+      ...(command === "stt_start" && { modelId: chosenModel() }),
+    });
     current.id = id;
     // Cancelled before the native session existed: stop it now.
     if (session !== current) void api("stt_cancel", { id }).catch(() => {});

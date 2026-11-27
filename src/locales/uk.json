@@ -2517,5 +2517,40 @@
   "Toggle dictation": "Увімкнути або вимкнути диктування",
   "Dictate into the active chat or terminal. Tap to start and stop, or hold to talk.": "Диктуйте в активний чат або термінал. Натисніть, щоб почати й завершити, або утримуйте, поки говорите.",
   "Lomi has no access to the microphone. Allow it in system settings.": "Lomi не має доступу до мікрофона. Дозвольте його в налаштуваннях системи.",
-  "The dictation target was closed. Click to copy the text.": "Ціль диктування закрито. Клацніть, щоб скопіювати текст."
+  "The dictation target was closed. Click to copy the text.": "Ціль диктування закрито. Клацніть, щоб скопіювати текст.",
+  "Speech": "Мовлення",
+  "Speech model": "Мовна модель",
+  "Dictation shortcut": "Скорочення для диктування",
+  "Tap to start and stop, or hold to talk.": "Торкніться, щоб почати й зупинити, або утримуйте, щоб говорити.",
+  "Download interrupted. Resume to continue.": "Завантаження перервано. Відновіть, щоб продовжити.",
+  "The file was damaged in transit and was removed. Download it again.": "Файл пошкоджено під час завантаження, і його видалено. Завантажте його знову.",
+  "Not enough disk space.": "Недостатньо місця на диску.",
+  "This model is in use. Try again when dictation ends.": "Ця модель використовується. Спробуйте ще раз, коли диктування завершиться.",
+  "English": "Англійська",
+  "Dictation runs locally. Audio never leaves this computer.": "Диктування працює локально. Звук ніколи не залишає цей комп'ютер.",
+  "Polish {error}% errors": "Польська: {error}% помилок",
+  "English {error}% errors": "Англійська: {error}% помилок",
+  "~{cpu} s CPU / ~{gpu} s GPU per 30 s of speech": "~{cpu} с CPU / ~{gpu} с GPU на 30 с мовлення",
+  "Recommended": "Рекомендовано",
+  "Verifying…": "Перевірка…",
+  "{percent}% · {done} of {total} · {speed}/s": "{percent}% · {done} з {total} · {speed}/с",
+  "Resume": "Відновити",
+  "Download": "Завантажити",
+  "Change in Keybinds": "Змінити в скороченнях",
+  "Delete {name}?": "Видалити {name}?",
+  "You can download it again later.": "Ви зможете завантажити її знову пізніше.",
+  "Polish and {count} more languages": {
+    "one": "Польська та ще {count} мова",
+    "few": "Польська та ще {count} мови",
+    "many": "Польська та ще {count} мов",
+    "other": "Польська та ще {count} мови"
+  },
+  "{count} languages": {
+    "one": "{count} мова",
+    "few": "{count} мови",
+    "many": "{count} мов",
+    "other": "{count} мови"
+  },
+  "Speech recognition failed. Click to try again without speaking.": "Не вдалося розпізнати мовлення. Клацніть, щоб повторити без повторного диктування.",
+  "The recording is no longer available. Dictate again.": "Запис більше недоступний. Продиктуйте знову."
 }

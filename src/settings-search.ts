@@ -18,6 +18,7 @@ export const settingsPageLabels: Record<SettingsPageId, string> = {
   keybinds: msg("Keybinds"),
   notifications: msg("Notifications"),
   terminal: msg("Terminal"),
+  speech: msg("Speech"),
   android: msg("Android"),
   plugins: msg("Plugins"),
   "chat-providers": msg("Providers"),
@@ -820,12 +821,36 @@ const chatDefaults = build(
   ],
 );
 
+const speech = build(
+  "speech",
+  "dictation, speech recognition, voice, microphone, speech to text",
+  [
+    [
+      msg("Speech model"),
+      "dictation, whisper, parakeet, download, delete, language, offline",
+      [],
+    ],
+    [
+      msg("Shortcut"),
+      "keybinding, hotkey",
+      [
+        [
+          msg("Dictation shortcut"),
+          msg("Tap to start and stop, or hold to talk."),
+          "toggle dictation, push to talk, hold to talk",
+        ],
+      ],
+    ],
+  ],
+);
+
 export const settingsSearchIndex: SettingsSearchEntry[] = [
   ...general,
   ...themes,
   ...keybinds,
   ...notifications,
   ...terminal,
+  ...speech,
   ...android,
   ...plugins,
   ...chatProviders,
