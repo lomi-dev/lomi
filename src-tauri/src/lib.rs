@@ -20,6 +20,8 @@ mod cli_titles;
 mod cli_updates;
 mod cli_usage;
 mod credential_store;
+#[cfg(debug_assertions)]
+mod dev_ca;
 
 pub fn cursor_usage_keychain_authorization_entry() -> Option<i32> {
     credential_store::cursor_authorization_entry()

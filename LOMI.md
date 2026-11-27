@@ -696,6 +696,12 @@ or acronym.
 - Start the desktop app: `pnpm tauri dev`. Use `pnpm tauri:dev` to run it as
   Lomi Dev (`dev.lomi.desktop.dev`, from `src-tauri/tauri.dev.conf.json`) next
   to an installed Lomi; it keeps separate application data, locks and session.
+- Local Remote stack (debug builds only): pin the five `LOMI_HOST_*` values to
+  `https://localhost:<port>` origins at build time and set
+  `LOMI_DESKTOP_DEV_EXTRA_CA` to an absolute PEM path at run time
+  (`src-tauri/src/dev_ca.rs`). The CA is only added to the system/web roots
+  for account HTTP and the relay link; a bad path fails closed. Release builds
+  contain neither the loopback port rule nor the CA code.
 - Start only the browser frontend: `pnpm dev`.
 - Check TypeScript: `pnpm check`.
 - Check frontend/document formatting: `pnpm format:check`.

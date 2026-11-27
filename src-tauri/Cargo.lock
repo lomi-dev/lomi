@@ -3534,6 +3534,7 @@ dependencies = [
  "trash",
  "web-sys",
  "webkit2gtk",
+ "webpki-roots 1.0.9",
  "webview2-com",
  "windows 0.61.3",
  "windows-sys 0.61.2",

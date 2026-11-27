@@ -47,6 +47,7 @@ lomi-remote-protocol = { path = "../../lomi-remote/crates/lomi-remote-protocol" 
 lomi-remote-crypto-canonical = { package = "lomi-remote-crypto", path = "../../lomi-remote/crates/lomi-remote-crypto" }
 zeroize = { version = "=1.8.2", features = ["serde"] }
 tokio-tungstenite = { version = "=0.28.0", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
+webpki-roots = "1"
 lomi-mcp = { path = "crates/lomi-mcp" }
 lomi-control-core = { path = "crates/lomi-control-core" }
 lomi-control-protocol = { path = "crates/lomi-control-protocol" }

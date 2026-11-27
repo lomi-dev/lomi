@@ -171,7 +171,9 @@ fn parse_origin(origin: &str, allow_local_http: bool) -> Result<Url, String> {
     let local = is_loopback(host);
     let secure_owned_host = host == "lomi.dev" || host.ends_with(".lomi.dev");
     let valid_scheme = if parsed.scheme() == "https" {
-        parsed.port().is_none_or(|port| port == 443) && secure_owned_host
+        (parsed.port().is_none_or(|port| port == 443) && secure_owned_host)
+            // Debug builds only (`allow_local_http`): a local dev stack on an explicit port.
+            || (allow_local_http && local && parsed.port().is_some())
     } else {
         allow_local_http
             && parsed.scheme() == "http"
@@ -192,4 +194,56 @@ fn parse_origin(origin: &str, allow_local_http: bool) -> Result<Url, String> {
 
 fn is_loopback(host: &str) -> bool {
     matches!(host, "localhost" | "127.0.0.1" | "[::1]" | "::1")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn debug_accepts_explicit_port_loopback_https() {
+        for origin in [
+            "https://localhost:8443",
+            "https://127.0.0.1:8444",
+            "http://127.0.0.1:4321",
+        ] {
+            assert!(parse_origin(origin, true).is_ok(), "{origin}");
+        }
+        let config = AuthConfig::for_build(true, Some("https://localhost:8443"), None).unwrap();
+        assert_eq!(config.origin, "https://localhost:8443");
+        assert_eq!(config.environment, "development");
+    }
+
+    #[test]
+    fn release_rules_still_reject_the_local_stack() {
+        for origin in [
+            "https://localhost:8443",
+            "https://127.0.0.1:8444",
+            "https://localhost",
+            "https://auth.lomi.dev:8443",
+            "https://evil.example:8443",
+        ] {
+            assert!(parse_origin(origin, false).is_err(), "{origin}");
+        }
+        assert!(parse_origin("https://auth.lomi.dev", false).is_ok());
+        // Release ignores overrides entirely.
+        let config = AuthConfig::for_build(false, Some("https://localhost:8443"), None).unwrap();
+        assert_eq!(config.origin, DEFAULT_ORIGIN);
+    }
+
+    #[test]
+    fn debug_still_enforces_origin_shape() {
+        for origin in [
+            "https://localhost",
+            "https://localhost:443",
+            "https://localhost:8443/x",
+            "https://localhost:8443/?q=1",
+            "https://user@localhost:8443",
+            "https://localhost.evil.example:8443",
+            "https://192.168.1.2:8443",
+            "ftp://localhost:8443",
+        ] {
+            assert!(parse_origin(origin, true).is_err(), "{origin}");
+        }
+    }
 }

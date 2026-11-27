@@ -20,7 +20,11 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::{ipc::Channel as IpcChannel, Manager, State, Webview, Window};
 use tokio::sync::{mpsc, oneshot};
-use tokio_tungstenite::{connect_async, tungstenite::Message};
+#[cfg(not(debug_assertions))]
+use tokio_tungstenite::connect_async;
+#[cfg(debug_assertions)]
+use tokio_tungstenite::connect_async_tls_with_config;
+use tokio_tungstenite::tungstenite::Message;
 use vault::{FileVault, KeyringStore, Vault};
 
 const WIPE_RETRY: Duration = Duration::from_secs(5);
@@ -590,14 +594,32 @@ impl Actor {
     }
 }
 
+type Ws =
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+
+#[cfg(debug_assertions)]
+async fn dial(url: &str) -> Option<Ws> {
+    // A set but unusable dev CA fails closed: no connection at all.
+    let connector = crate::dev_ca::relay_connector().ok()?;
+    let (ws, _) = connect_async_tls_with_config(url, None, false, connector)
+        .await
+        .ok()?;
+    Some(ws)
+}
+
+#[cfg(not(debug_assertions))]
+async fn dial(url: &str) -> Option<Ws> {
+    connect_async(url).await.ok().map(|(ws, _)| ws)
+}
+
 async fn socket_task(
     url: String,
     gen: u64,
     io: mpsc::UnboundedSender<Io>,
     mut cmds: mpsc::UnboundedReceiver<SockCmd>,
 ) {
-    let opened = tokio::time::timeout(Duration::from_secs(10), connect_async(url.as_str())).await;
-    let Ok(Ok((ws, _))) = opened else {
+    let opened = tokio::time::timeout(Duration::from_secs(10), dial(url.as_str())).await;
+    let Ok(Some(ws)) = opened else {
         let _ = io.send(Io::Closed(gen));
         return;
     };

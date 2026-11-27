@@ -287,10 +287,14 @@ fn route_template_matches(template: &str, actual: &str) -> bool {
 impl ApiClient {
     pub fn new(config: AuthConfig) -> Result<Self, String> {
         let _ = rustls::crypto::ring::default_provider().install_default();
-        let client = Client::builder()
+        let builder = Client::builder()
             .connect_timeout(Duration::from_secs(5))
             .timeout(Duration::from_secs(12))
-            .redirect(reqwest::redirect::Policy::none())
+            .redirect(reqwest::redirect::Policy::none());
+        #[cfg(debug_assertions)]
+        let builder = crate::dev_ca::reqwest_builder(builder)
+            .map_err(|_| "Cannot initialize the secure account connection.".to_string())?;
+        let client = builder
             .build()
             .map_err(|_| "Cannot initialize the secure account connection.".to_string())?;
         let remote_origin = config.remote_origin().ok();
