@@ -161,7 +161,10 @@ pub fn stt_start(
         .and_then(|id| lomi_stt::catalog::find(&id))
         .filter(|m| m.role == "asr" && models::is_ready(&dir, m))
         .map(|m| models::path(&dir, m));
-    let model = chosen.or_else(|| ready_model(&dir)).ok_or("no-model")?;
+    let Some(model) = chosen.or_else(|| ready_model(&dir)) else {
+        eprintln!("lomi: dictation failed: no-model in {}", dir.display());
+        return Err("no-model".into());
+    };
     let vad_model = lomi_stt::catalog::vad();
     let vad = models::is_ready(&dir, vad_model).then(|| models::path(&dir, vad_model));
     let mut inner = state.0.lock().map_err(|_| "busy")?;
@@ -256,6 +259,8 @@ fn run_session(
         let _ = events.send(event);
     };
     let fail = |code: &'static str, message: String| {
+        // Codes and engine messages only; transcripts are never logged.
+        eprintln!("lomi: dictation failed: {code}: {message}");
         emit(Event::Error { code, message });
     };
 
@@ -427,6 +432,7 @@ fn report(
     retry: impl FnOnce() -> Retry,
 ) -> Option<Worker> {
     let fail = |code: &'static str, message: String| {
+        eprintln!("lomi: dictation failed: {code}: {message}");
         let _ = events.send(Event::Error { code, message });
     };
     match outcome {

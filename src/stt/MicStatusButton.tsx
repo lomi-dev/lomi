@@ -20,9 +20,12 @@ function elapsed(since: number) {
 
 export default function MicStatusButton({
   target,
+  side,
 }: {
   /** Resolved when recording starts, so the text lands where speaking began. */
   target: () => DictationTarget | null;
+  /** Status-bar side; the button sits right after Source Control. */
+  side: "left" | "right";
 }) {
   const { t } = useT();
   const state = useSyncExternalStore(subscribeDictation, dictationState);
@@ -84,7 +87,7 @@ export default function MicStatusButton({
   }
 
   return (
-    <>
+    <div className="status-panel-control" data-side={side}>
       <IconButton
         title={title}
         className="icon-button stt-mic"
@@ -118,6 +121,6 @@ export default function MicStatusButton({
             ? t("Recognizing speech…")
             : ""}
       </span>
-    </>
+    </div>
   );
 }

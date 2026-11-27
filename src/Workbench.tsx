@@ -4516,7 +4516,10 @@ export default function Workbench() {
                 </SidebarToggle>
               </div>
             ))}
-            <MicStatusButton target={dictationTarget} />
+            <MicStatusButton
+              target={dictationTarget}
+              side={session.sidebarSides.git}
+            />
             <div
               className="status-panel-control"
               data-side={session.terminalOverviewSide}
