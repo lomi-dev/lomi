@@ -384,11 +384,6 @@ export default function Workspaces({
                       />
                       <span className="workspace-name">{workspace.name}</span>
                       {hasUnread && <WorkspaceNotificationDot />}
-                      <ThreadStatusDot
-                        threadIds={workspaceItems.map((item) =>
-                          item.type === "thread" ? item.threadId : null,
-                        )}
-                      />
                       {shared && (
                         <span
                           className="workspace-remote-status"
