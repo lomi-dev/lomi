@@ -408,9 +408,11 @@ export default function ThreadComposer({
   useLayoutEffect(() => {
     if (focusKey !== undefined) editor?.commands.focus("end");
   }, [focusKey]);
+  const root = useRef<HTMLDivElement>(null);
   // Dictation results (src/stt/stt-runtime.ts) arrive as sanitized plain text.
   useEffect(() => {
-    const host = editor?.view.dom.closest("[data-thread-tab-id]");
+    // Not editor.view: Tiptap throws when it is read before the view mounts.
+    const host = root.current?.closest("[data-thread-tab-id]");
     if (!editor || !host) return;
     // Where the cursor was when dictation started, mapped through every edit
     // made while recording, so typing on does not move the insertion point.
@@ -482,7 +484,7 @@ export default function ThreadComposer({
     asked.current = !!question;
   }, [question, editor]);
   return (
-    <div className="thread-composer">
+    <div className="thread-composer" ref={root}>
       {question && (
         <ComposerQuestion
           key={question.requestId}
