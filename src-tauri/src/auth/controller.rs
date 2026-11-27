@@ -170,6 +170,16 @@ impl Core {
     }
 }
 
+/// Local account as the Remote core sees it. Offline, locked or checking states are
+/// `Unknown`: they never wipe the on-device directory, only a sign-out or another user does.
+#[cfg(feature = "remote-host")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum CoreIdentity {
+    SignedOut,
+    User(String),
+    Unknown,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct RemoteBinding {
     pub user_id: String,
@@ -600,6 +610,76 @@ impl AuthController {
         }
         let value = result?;
         Ok((current, value))
+    }
+
+    /// The shared Remote core's session exchange, under the same guards as
+    /// [`Self::remote_v2_request`]: the answer counts only while the exact local
+    /// session that sent the request is still current.
+    #[cfg(feature = "remote-host")]
+    pub(crate) async fn remote_core_session(
+        &self,
+        body: Vec<u8>,
+    ) -> Result<(RemoteBinding, u16, Vec<u8>), RemoteHttpError> {
+        if !crate::desktop_runtime::shared_host_enabled() {
+            return Err(RemoteHttpError::local_code("REMOTE_DISABLED"));
+        }
+        if !self
+            .inner
+            .config
+            .as_ref()
+            .is_some_and(AuthConfig::is_host_identity_origin)
+        {
+            return Err(RemoteHttpError::local_code("IDENTITY_MISMATCH"));
+        }
+        let (token, binding) = {
+            let core = self
+                .inner
+                .core
+                .lock()
+                .map_err(|_| RemoteHttpError::local_code("ACCOUNT_UNAVAILABLE"))?;
+            let binding = remote_binding(&core)
+                .map_err(|_| RemoteHttpError::local_code("AUTHORIZATION_REQUIRED"))?;
+            let token = core
+                .token
+                .clone()
+                .ok_or_else(|| RemoteHttpError::local_code("AUTHORIZATION_REQUIRED"))?;
+            (token, binding)
+        };
+        let result = self
+            .inner
+            .api
+            .as_ref()
+            .ok_or_else(|| RemoteHttpError::local_code("SERVICE_UNAVAILABLE"))?
+            .remote_core_session(token.exposed(), body)
+            .await;
+        let current = self
+            .remote_binding()
+            .map_err(|_| RemoteHttpError::local_code("AUTHORIZATION_REQUIRED"))?;
+        if !current.same_authority(&binding) {
+            return Err(RemoteHttpError::local_code("SESSION_CHANGED"));
+        }
+        let (status, bytes) = result?;
+        Ok((current, status, bytes))
+    }
+
+    /// What the Remote core needs to know about the local account without touching tokens.
+    #[cfg(feature = "remote-host")]
+    pub(crate) fn remote_core_identity(&self) -> CoreIdentity {
+        match self.inner.core.lock() {
+            Ok(core) if core.state.status == AuthStatus::SignedOut => CoreIdentity::SignedOut,
+            Ok(core) => match core.state.user.as_ref() {
+                Some(user)
+                    if matches!(
+                        core.state.status,
+                        AuthStatus::SignedIn | AuthStatus::Offline | AuthStatus::Checking
+                    ) =>
+                {
+                    CoreIdentity::User(user.id.clone())
+                }
+                _ => CoreIdentity::Unknown,
+            },
+            Err(_) => CoreIdentity::Unknown,
+        }
     }
 
     pub(crate) fn remote_environment(&self) -> Result<String, String> {
@@ -1641,6 +1721,10 @@ impl AuthController {
             let app = core.app.clone();
             (snapshot, app)
         };
+        #[cfg(feature = "remote-host")]
+        if let Some(app) = snapshot.1.as_ref() {
+            crate::remote_core::auth_changed(app);
+        }
         if let Some(app) = snapshot.1 {
             let _ = app.emit_to(
                 EventTarget::webview("main"),

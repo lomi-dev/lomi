@@ -406,6 +406,37 @@ impl ApiClient {
             .map_err(|_| RemoteHttpError::local(HttpProblem::InvalidResponse, "INVALID_RESPONSE"))
     }
 
+    /// `POST /remote/session` for the shared Remote core (plan-1.0 P2.19): the desktop
+    /// bearer authenticates, the body is the core's canonical request. The status and
+    /// body go back unparsed: the core owns their meaning.
+    #[cfg(feature = "remote-host")]
+    pub async fn remote_core_session(
+        &self,
+        token: &str,
+        body: Vec<u8>,
+    ) -> Result<(u16, Vec<u8>), RemoteHttpError> {
+        let origin = self
+            .host_remote_api_origin
+            .as_deref()
+            .ok_or_else(|| RemoteHttpError::local(HttpProblem::Rejected, "SERVICE_UNAVAILABLE"))?;
+        let url = reqwest::Url::parse(&format!("{origin}/remote/session"))
+            .map_err(|_| RemoteHttpError::local(HttpProblem::InvalidResponse, "INVALID_REQUEST"))?;
+        let response = self
+            .client
+            .post(url)
+            .bearer_auth(token)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(body)
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+            .map_err(|_| RemoteHttpError::local(HttpProblem::Transport, "TRANSPORT_UNKNOWN"))?;
+        let (response, bytes, _) = read_response_limit(response, 1 << 20)
+            .await
+            .map_err(|problem| RemoteHttpError::local(problem, problem_code(problem)))?;
+        Ok((response.status().as_u16(), bytes))
+    }
+
     pub async fn push_request(
         &self,
         token: &str,

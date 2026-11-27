@@ -34,7 +34,7 @@ incremental = false
 
 [features]
 default = []
-remote-host = ["lomi-control-core/remote-host"]
+remote-host = ["lomi-control-core/remote-host", "dep:lomi-remote-core"]
 experimental-macos-coalition-cleanup = ["lomi-terminal/experimental-macos-coalition-cleanup"]
 
 [build-dependencies]
@@ -58,6 +58,7 @@ lomi-native-files = { path = "../../lomi-remote/crates/lomi-native-files" }
 lomi-native-project-files = { path = "../../lomi-remote/crates/lomi-native-project-files" }
 lomi-platform = { path = "../../lomi-remote/crates/lomi-platform" }
 lomi-remote-protocol = { path = "../../lomi-remote/crates/lomi-remote-protocol" }
+lomi-remote-core = { path = "../../lomi-remote/crates/lomi-remote-core", optional = true }
 lomi-terminal = { path = "../../lomi-remote/crates/lomi-terminal" }
 tauri = { version = "2", features = ["macos-private-api", "unstable", "tray-icon"] }
 tauri-plugin-dialog = "2"

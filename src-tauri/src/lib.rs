@@ -53,6 +53,8 @@ mod native_git_effects;
 mod plugins;
 mod project_sources;
 mod project_write_guard;
+#[cfg(feature = "remote-host")]
+mod remote_core;
 mod remote_v2;
 #[cfg(unix)]
 mod settings_control;
@@ -243,6 +245,8 @@ pub fn run() {
         .register_asynchronous_uri_scheme_protocol("theme", themes::protocol)
         .register_asynchronous_uri_scheme_protocol("plugin", plugins::protocol)
         .setup(|app| {
+            #[cfg(feature = "remote-host")]
+            app.manage(remote_core::RemoteCore::default());
             external_files::enqueue(
                 app.handle(),
                 external_files::arguments(
@@ -515,6 +519,14 @@ pub fn run() {
                 remote_v2::remote_v2_terminal_resize,
                 remote_v2::remote_v2_terminal_release,
                 remote_v2::remote_v2_terminal_focus,
+                #[cfg(feature = "remote-host")]
+                remote_core::remote_v2_core_start,
+                #[cfg(feature = "remote-host")]
+                remote_core::remote_v2_core_names,
+                #[cfg(feature = "remote-host")]
+                remote_core::remote_v2_core_renew,
+                #[cfg(feature = "remote-host")]
+                remote_core::remote_v2_core_wipe,
                 files::list_directory,
                 files::watch::watch_explorer_directories,
                 files::search::search_project,
