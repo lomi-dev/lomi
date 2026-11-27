@@ -9,10 +9,10 @@ edition = "2021"
 publish = false
 
 [workspace]
-members = [".", "crates/lomi-control-protocol", "crates/lomi-control-core", "crates/lomi-mcp"]
+members = [".", "crates/lomi-control-protocol", "crates/lomi-control-core", "crates/lomi-mcp", "crates/lomi-stt"]
 default-members = ["."]
 resolver = "2"
-exclude = ["vendor/glib", "vendor/tao"]
+exclude = ["vendor/glib", "vendor/tao", "crates/lomi-stt-worker"]
 
 [patch.crates-io]
 # GTK 0.18 requires glib 0.18; retain the compatible upstream security backport.
@@ -36,6 +36,8 @@ incremental = false
 default = []
 remote-host = ["lomi-control-core/remote-host", "dep:lomi-remote-core"]
 experimental-macos-coalition-cleanup = ["lomi-terminal/experimental-macos-coalition-cleanup"]
+# Local dictation (stt/10-plan-budowy.md); needs the lomi-stt-worker sidecar.
+stt = ["dep:lomi-stt", "dep:cpal", "dep:rtrb"]
 
 [build-dependencies]
 protoc-bin-vendored = { version = "3.2.0" }
@@ -44,6 +46,9 @@ tonic-prost-build = { version = "0.14.6" }
 lomi-remote-protocol = { path = "../../lomi-remote/crates/lomi-remote-protocol" }
 
 [dependencies]
+lomi-stt = { path = "crates/lomi-stt", optional = true }
+cpal = { version = "0.18.2", optional = true }
+rtrb = { version = "0.4.1", optional = true }
 lomi-remote-crypto-canonical = { package = "lomi-remote-crypto", path = "../../lomi-remote/crates/lomi-remote-crypto" }
 zeroize = { version = "=1.8.2", features = ["serde"] }
 tokio-tungstenite = { version = "=0.28.0", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }

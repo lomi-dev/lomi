@@ -1,0 +1,29 @@
+[package]
+name = "lomi-stt-worker"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+description = "Dictation engine process for Lomi (the only binary that links ggml)"
+
+# Standalone on purpose: building it needs CMake and a C++ toolchain, which the
+# Lomi workspace (and `pnpm check:rust`) must not require. See
+# scripts/stt-worker-build.mjs.
+[workspace]
+
+[dependencies]
+lomi-stt = { path = "../lomi-stt" }
+transcribe-cpp = { version = "=0.5.1", default-features = false }
+libc = "0.2"
+
+[dev-dependencies]
+hound = "3"
+
+# Apple Silicon: static Metal. Intel Macs stay CPU-only (ggml-metal hangs on some
+# AMD GPUs at backend init). Windows/Linux x64 are CPU-only until Vulkan (E4).
+[target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
+transcribe-cpp = { version = "=0.5.1", default-features = false, features = ["metal"] }
+
+[profile.release]
+lto = "thin"
+strip = true

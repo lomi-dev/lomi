@@ -18,6 +18,7 @@
     "build": "pnpm check && vite build",
     "preview": "vite preview",
     "icon:macos": "node scripts/build-macos-icon.mjs",
+    "stt:worker": "node scripts/stt-worker-build.mjs",
     "icon:generate": "node scripts/generate-icons.mjs",
     "dmg:background": "node scripts/generate-dmg-background.mjs",
     "release:check": "node scripts/check-release.mjs",

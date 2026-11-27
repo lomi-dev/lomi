@@ -8,6 +8,8 @@ mod android_protocol;
 mod auth;
 mod browser;
 mod storage_guard;
+#[cfg(feature = "stt")]
+mod stt;
 
 mod cli_bin;
 mod cli_catalog;
@@ -248,6 +250,8 @@ pub fn run() {
         .setup(|app| {
             #[cfg(feature = "remote-host")]
             app.manage(remote_core::RemoteCore::default());
+            #[cfg(feature = "stt")]
+            app.manage(stt::Stt::default());
             external_files::enqueue(
                 app.handle(),
                 external_files::arguments(
@@ -613,6 +617,14 @@ pub fn run() {
                 terminal::quote_paths,
                 terminal::clipboard::paste_terminal_clipboard,
                 terminal::terminal_contexts,
+                #[cfg(feature = "stt")]
+                stt::stt_status,
+                #[cfg(feature = "stt")]
+                stt::stt_start,
+                #[cfg(feature = "stt")]
+                stt::stt_stop,
+                #[cfg(feature = "stt")]
+                stt::stt_cancel,
                 cli_titles::inspect_cli_titles,
                 cli_usage::inspect_cli_usage,
                 cli_usage::authorize_cursor_usage_keychain,

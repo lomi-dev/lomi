@@ -1,0 +1,15 @@
+[package]
+name = "lomi-stt"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+description = "Engine-free dictation core: worker protocol, audio DSP, VAD gate"
+
+# Deliberately no transcribe-cpp, ggml or Tauri here: the Lomi process links
+# this crate, the separate lomi-stt-worker binary owns the engine.
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rubato = "=5.1.0"
+audioadapter-buffers = "5.1"
