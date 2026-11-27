@@ -56,6 +56,9 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* Reserve the gutter on both sides so the column never shifts or narrows
+     when the scrollbar appears, and stays centered with the dock below. */
+  scrollbar-gutter: stable both-edges;
   /* Pinning is handled in code; browser scroll anchoring would fight it. */
   overflow-anchor: none;
 }
