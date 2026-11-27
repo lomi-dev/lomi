@@ -3239,6 +3239,48 @@ svg {
   background: var(--color-surface-container-high);
   color: var(--color-surface-text);
 }
+.statusbar .stt-mic[data-phase="recording"] {
+  width: auto;
+  gap: 4px;
+  padding: 0 6px;
+  background: color-mix(in srgb, var(--color-error) 22%, transparent);
+  color: var(--color-error);
+}
+.statusbar .stt-mic[data-phase="error"] {
+  color: var(--color-warning);
+}
+.stt-level {
+  width: 3px;
+  height: 10px;
+  border-radius: 1px;
+  background: currentColor;
+  transform-origin: bottom;
+  transition: transform 60ms linear;
+}
+.stt-time {
+  font-family: var(--font-family-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+}
+.stt-spin {
+  animation: close-progress-spin 1s linear infinite;
+}
+.stt-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+@media (prefers-reduced-motion: reduce) {
+  .stt-level {
+    transition: none;
+  }
+  .stt-spin {
+    animation: none;
+  }
+}
 .status-panel-control {
   display: flex;
   align-items: center;

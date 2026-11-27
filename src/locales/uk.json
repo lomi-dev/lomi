@@ -2501,5 +2501,17 @@
     "many": "{count} файлів не відновлено, бо вони змінилися відтоді.",
     "other": "{count} файлів не відновлено, бо вони змінилися відтоді."
   },
-  "Item actions": "Дії з елементом"
+  "Item actions": "Дії з елементом",
+  "Download a speech model to dictate": "Завантажте мовну модель, щоб диктувати",
+  "Dictation is already running": "Диктування вже триває",
+  "No microphone was found": "Мікрофон не знайдено",
+  "The microphone delivers no sound. Check microphone access in system settings.": "Мікрофон не передає звук. Перевірте доступ до мікрофона в налаштуваннях системи.",
+  "Nothing was heard": "Нічого не почуто",
+  "Speech recognition failed": "Не вдалося розпізнати мовлення",
+  "Stop dictation (Esc cancels)": "Завершити диктування (Esc — скасувати)",
+  "Recognizing speech…": "Розпізнавання мовлення…",
+  "Starting the microphone…": "Увімкнення мікрофона…",
+  "Dictate": "Диктувати",
+  "Click into an AI chat or a terminal to dictate": "Клацніть у чаті ШІ або в терміналі, щоб диктувати",
+  "Dictation started": "Диктування розпочато"
 }

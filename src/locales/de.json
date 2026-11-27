@@ -2439,5 +2439,17 @@
     "one": "{count} Datei wurde nicht wiederhergestellt, weil sie sich seitdem geändert hat.",
     "other": "{count} Dateien wurden nicht wiederhergestellt, weil sie sich seitdem geändert haben."
   },
-  "Item actions": "Elementaktionen"
+  "Item actions": "Elementaktionen",
+  "Download a speech model to dictate": "Lade ein Sprachmodell herunter, um zu diktieren",
+  "Dictation is already running": "Diktat läuft bereits",
+  "No microphone was found": "Kein Mikrofon gefunden",
+  "The microphone delivers no sound. Check microphone access in system settings.": "Das Mikrofon liefert keinen Ton. Prüfe den Mikrofonzugriff in den Systemeinstellungen.",
+  "Nothing was heard": "Nichts gehört",
+  "Speech recognition failed": "Spracherkennung fehlgeschlagen",
+  "Stop dictation (Esc cancels)": "Diktat beenden (Esc bricht ab)",
+  "Recognizing speech…": "Sprache wird erkannt…",
+  "Starting the microphone…": "Mikrofon wird gestartet…",
+  "Dictate": "Diktieren",
+  "Click into an AI chat or a terminal to dictate": "Klicke in einen KI-Chat oder ein Terminal, um zu diktieren",
+  "Dictation started": "Diktat gestartet"
 }

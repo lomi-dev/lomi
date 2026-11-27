@@ -2470,5 +2470,17 @@
     "many": "{count} file non sono stati ripristinati perché sono cambiati da allora.",
     "other": "{count} file non sono stati ripristinati perché sono cambiati da allora."
   },
-  "Item actions": "Azioni elemento"
+  "Item actions": "Azioni elemento",
+  "Download a speech model to dictate": "Scarica un modello vocale per dettare",
+  "Dictation is already running": "La dettatura è già in corso",
+  "No microphone was found": "Nessun microfono trovato",
+  "The microphone delivers no sound. Check microphone access in system settings.": "Il microfono non trasmette audio. Controlla l'accesso al microfono nelle impostazioni di sistema.",
+  "Nothing was heard": "Non è stato sentito nulla",
+  "Speech recognition failed": "Riconoscimento vocale non riuscito",
+  "Stop dictation (Esc cancels)": "Termina la dettatura (Esc annulla)",
+  "Recognizing speech…": "Riconoscimento vocale…",
+  "Starting the microphone…": "Avvio del microfono…",
+  "Dictate": "Detta",
+  "Click into an AI chat or a terminal to dictate": "Fai clic in una chat IA o in un terminale per dettare",
+  "Dictation started": "Dettatura avviata"
 }

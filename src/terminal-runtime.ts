@@ -1682,6 +1682,13 @@ export class TerminalRuntime {
     this.terminal.focus();
   }
 
+  /** Pastes sanitized dictation; bracketed paste keeps shells from running it. */
+  insertText(text: string) {
+    if (this.disposed) return;
+    this.terminal.paste(text);
+    this.terminal.focus();
+  }
+
   async pastePaths(paths: string[]) {
     const quoted = await api<string>("quote_paths", {
       profileId: this.profile.id,

@@ -22,6 +22,7 @@ import ComposerQuestion from "./ComposerQuestion";
 import { docToText, textToDoc } from "./composer-doc";
 import { FileMention, SlashCommand } from "./composer-nodes";
 import { mentionQuery, rankFiles } from "./mentions";
+import { spaceForInsert } from "../stt/stt-insert";
 import { threadCommands, type CommandSource } from "./thread-runtime";
 import type { Attachment, Question, ThreadCommand } from "./types";
 
@@ -406,6 +407,29 @@ export default function ThreadComposer({
   useLayoutEffect(() => {
     if (focusKey !== undefined) editor?.commands.focus("end");
   }, [focusKey]);
+  // Dictation results (src/stt/stt-runtime.ts) arrive as sanitized plain text.
+  useEffect(() => {
+    const host = editor?.view.dom.closest("[data-thread-tab-id]");
+    if (!editor || !host) return;
+    const listener = (event: Event) => {
+      const text = (event as CustomEvent<string>).detail;
+      const { from, to } = editor.state.selection;
+      const doc = editor.state.doc;
+      const before = doc.textBetween(Math.max(0, from - 1), from);
+      const after = doc.textBetween(to, Math.min(doc.content.size, to + 1));
+      // A text node, never an HTML string: dictated "<b>" stays literal.
+      editor
+        .chain()
+        .focus()
+        .insertContentAt(
+          { from, to },
+          { type: "text", text: spaceForInsert(before, text, after) },
+        )
+        .run();
+    };
+    host.addEventListener("thread-dictation", listener);
+    return () => host.removeEventListener("thread-dictation", listener);
+  }, [editor]);
   const canSend =
     !disabled && !importing && (!!value.trim() || attachments.length > 0);
   const modifier = macOS ? "⌘" : "Ctrl";

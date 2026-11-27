@@ -1,4 +1,6 @@
 import { newThreadTab, updateThread } from "./model";
+import MicStatusButton from "./stt/MicStatusButton";
+import type { DictationTarget } from "./stt/stt-runtime";
 import { pruneChatUsage } from "./chat-usage";
 import { workMode } from "./onboarding-state";
 import { useRemoteWorkspaces } from "./remote-workspaces";
@@ -322,6 +324,15 @@ export default function Workbench() {
   const tabStrip = useRef<HTMLDivElement>(null);
   const terminalStage = useRef<HTMLElement>(null);
   const selected = session ? active(session) : undefined;
+  // Read at click time from the latest session so the target is the panel
+  // that was active when dictation started.
+  const dictationTarget = (): DictationTarget | null => {
+    const current = currentSession.current && active(currentSession.current);
+    const panel = current && activePanel(current.tab);
+    if (panel?.type === "thread") return { kind: "thread", id: panel.id };
+    if (panel?.type === "terminal") return { kind: "terminal", id: panel.id };
+    return null;
+  };
   const localPanelIds = useMemo(
     () =>
       new Set(
@@ -4500,6 +4511,7 @@ export default function Workbench() {
                 </SidebarToggle>
               </div>
             ))}
+            <MicStatusButton target={dictationTarget} />
             <div
               className="status-panel-control"
               data-side={session.terminalOverviewSide}

@@ -144,6 +144,9 @@ export const WrapText = product("WrapText", Lucide.WrapText);
 export const X = product("X", Lucide.X);
 
 export const Bell = Lucide.Bell;
+export const Mic = Lucide.Mic;
+export const MicOff = Lucide.MicOff;
+export const LoaderCircle = Lucide.LoaderCircle;
 export const MessageSquare = Lucide.MessageSquare;
 export const Send = Lucide.Send;
 export const Github = Lucide.createLucideIcon("Github", [

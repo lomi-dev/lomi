@@ -2501,5 +2501,17 @@
     "many": "{count} plików nie zostało przywróconych, bo zmieniły się od tego czasu.",
     "other": "{count} plików nie zostało przywróconych, bo zmieniły się od tego czasu."
   },
-  "Item actions": "Działania elementu"
+  "Item actions": "Działania elementu",
+  "Download a speech model to dictate": "Pobierz model mowy, aby dyktować",
+  "Dictation is already running": "Dyktowanie już trwa",
+  "No microphone was found": "Nie znaleziono mikrofonu",
+  "The microphone delivers no sound. Check microphone access in system settings.": "Mikrofon nie przekazuje dźwięku. Sprawdź dostęp do mikrofonu w ustawieniach systemu.",
+  "Nothing was heard": "Nic nie usłyszano",
+  "Speech recognition failed": "Rozpoznawanie mowy nie powiodło się",
+  "Stop dictation (Esc cancels)": "Zakończ dyktowanie (Esc anuluje)",
+  "Recognizing speech…": "Rozpoznawanie mowy…",
+  "Starting the microphone…": "Włączanie mikrofonu…",
+  "Dictate": "Dyktuj",
+  "Click into an AI chat or a terminal to dictate": "Kliknij w czat AI lub terminal, aby dyktować",
+  "Dictation started": "Rozpoczęto dyktowanie"
 }

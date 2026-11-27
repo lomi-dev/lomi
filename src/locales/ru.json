@@ -2501,5 +2501,17 @@
     "many": "{count} файлов не восстановлено, так как они изменились с тех пор.",
     "other": "{count} файлов не восстановлено, так как они изменились с тех пор."
   },
-  "Item actions": "Действия с элементом"
+  "Item actions": "Действия с элементом",
+  "Download a speech model to dictate": "Скачайте речевую модель, чтобы диктовать",
+  "Dictation is already running": "Диктовка уже идёт",
+  "No microphone was found": "Микрофон не найден",
+  "The microphone delivers no sound. Check microphone access in system settings.": "Микрофон не передаёт звук. Проверьте доступ к микрофону в настройках системы.",
+  "Nothing was heard": "Ничего не слышно",
+  "Speech recognition failed": "Не удалось распознать речь",
+  "Stop dictation (Esc cancels)": "Завершить диктовку (Esc — отмена)",
+  "Recognizing speech…": "Распознавание речи…",
+  "Starting the microphone…": "Включение микрофона…",
+  "Dictate": "Диктовать",
+  "Click into an AI chat or a terminal to dictate": "Щёлкните в чате ИИ или в терминале, чтобы диктовать",
+  "Dictation started": "Диктовка начата"
 }
