@@ -552,9 +552,10 @@ or acronym.
 - `src-tauri/src/main.rs` contains a startup workaround for WebKitGTK's Wayland
   Error 71 on NVIDIA. Keep it scoped to that environment, preserve explicit user
   overrides, and set the process environment before Tauri starts GUI threads.
-  `linux_graphics.rs` also defaults `WEBKIT_SKIA_ENABLE_CPU_RENDERING=1` and
-  `WEBKIT_DISABLE_COMPOSITING_MODE=1` for the same loaded-NVIDIA-module Wayland
-  candidate. This is a process-wide WebKit page policy, not Android-only. Preserve
+  `linux_graphics.rs` also defaults `WEBKIT_SKIA_ENABLE_CPU_RENDERING=1` and,
+  on WebKitGTK older than 2.54 only, `WEBKIT_DISABLE_COMPOSITING_MODE=1` for the
+  same loaded-NVIDIA-module Wayland candidate (on 2.54 non-compositing mode
+  leaves the transparent window blank). This is a process-wide WebKit page policy, not Android-only. Preserve
   every caller value, including empty, `0` and non-Unicode values. Keep the
   DMA-BUF compatibility opt-in, Nouveau Kopper and explicit-sync policies
   independent. A separate Nouveau X11 candidate defaults only

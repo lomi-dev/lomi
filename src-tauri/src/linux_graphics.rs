@@ -20,6 +20,11 @@ pub fn configure() {
         "WEBKIT_SKIA_ENABLE_CPU_RENDERING",
         "WEBKIT_DISABLE_COMPOSITING_MODE",
     ] {
+        if name == "WEBKIT_DISABLE_COMPOSITING_MODE" && !webkit_before(2, 54) {
+            // Qualified on WebKitGTK 2.52 only. On 2.54 (Arch, RTX 3060 Ti,
+            // Hyprland) non-compositing mode leaves the transparent window blank.
+            continue;
+        }
         if should_default_nvidia_wayland(
             std::env::var_os("WAYLAND_DISPLAY").as_deref(),
             std::env::var_os("GDK_BACKEND").as_deref(),
@@ -54,6 +59,18 @@ pub fn configure() {
         // GPU compositing. This switch is unavailable in older WebKitGTK releases.
         std::env::set_var("WEBKIT_DMABUF_RENDERER_FORCE_SHM", "1");
     }
+}
+
+/// True when the loaded WebKitGTK library is older than `major.minor`.
+fn webkit_before(major: u32, minor: u32) -> bool {
+    // SAFETY: version getters of the linked library, without preconditions.
+    let loaded = unsafe {
+        (
+            webkit2gtk::ffi::webkit_get_major_version(),
+            webkit2gtk::ffi::webkit_get_minor_version(),
+        )
+    };
+    loaded < (major, minor)
 }
 
 fn should_force_nouveau_x11_shm(
