@@ -6,7 +6,11 @@ import { t } from "../i18n";
 import { runningTerminal } from "../terminal-runtime";
 import { getDraft, setDraft } from "../ai-chat/thread-runtime";
 import { sanitizeDictation, spaceForInsert } from "./stt-insert";
-import { chosenModel } from "./stt-preferences";
+import {
+  chosenModel,
+  microphoneGain,
+  microphoneOrder,
+} from "./stt-preferences";
 
 export type DictationTarget =
   { kind: "thread"; id: string } | { kind: "terminal"; id: string };
@@ -165,7 +169,11 @@ async function run(
   try {
     const id = await api<number>(command, {
       events,
-      ...(command === "stt_start" && { modelId: chosenModel() }),
+      ...(command === "stt_start" && {
+        modelId: chosenModel(),
+        microphones: microphoneOrder().map((entry) => entry.id),
+        gainDb: microphoneGain(),
+      }),
     });
     current.id = id;
     // Cancelled before the native session existed: stop it now.

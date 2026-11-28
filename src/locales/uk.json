@@ -2552,5 +2552,21 @@
     "other": "{count} мови"
   },
   "Speech recognition failed. Click to try again without speaking.": "Не вдалося розпізнати мовлення. Клацніть, щоб повторити без повторного диктування.",
-  "The recording is no longer available. Dictate again.": "Запис більше недоступний. Продиктуйте знову."
+  "The recording is no longer available. Dictate again.": "Запис більше недоступний. Продиктуйте знову.",
+  "In use": "Використовується",
+  "Microphone": "Мікрофон",
+  "Move {name} down": "Перемістити {name} вниз",
+  "Move {name} up": "Перемістити {name} вгору",
+  "Not connected": "Не підключено",
+  "Refresh microphones": "Оновити список мікрофонів",
+  "System default": "Системний за замовчуванням",
+  "Voice input uses the first connected microphone in this list.": "Голосове введення використовує перший підключений мікрофон із цього списку.",
+  "Input volume": "Гучність входу",
+  "Raise or lower the microphone level for dictation.": "Підвищте або знизьте рівень мікрофона для диктування.",
+  "{value} dB": "{value} dB",
+  "Microphone test": "Перевірка мікрофона",
+  "Speak to check the level. Nothing is recorded.": "Говоріть, щоб перевірити рівень. Нічого не записується.",
+  "Test microphone": "Перевірити мікрофон",
+  "Stop testing": "Зупинити перевірку",
+  "Microphone level": "Рівень мікрофона"
 }

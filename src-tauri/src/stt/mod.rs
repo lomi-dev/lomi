@@ -10,6 +10,7 @@ mod permission;
 mod worker;
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -153,8 +154,12 @@ pub fn stt_start(
     state: State<'_, Stt>,
     events: Channel<Event>,
     model_id: Option<String>,
+    microphones: Option<Vec<String>>,
+    gain_db: Option<f32>,
 ) -> Result<u64, String> {
     main_window(&window)?;
+    let microphones = microphone_list(microphones)?;
+    let gain_db = capture::gain_db(gain_db)?;
     let dir = models_dir(&app)?;
     // Only catalog ids are accepted; a missing choice falls back to any ready model.
     let chosen = model_id
@@ -183,7 +188,19 @@ pub fn stt_start(
         .name("stt-session".into())
         .spawn(move || {
             let worker = shared.lock().ok().and_then(|mut i| i.worker.take());
-            let worker = run_session(worker, model, vad, acceleration, controls, &events, &shared);
+            let worker = run_session(
+                worker,
+                Setup {
+                    model,
+                    vad,
+                    microphones,
+                    gain_db,
+                    acceleration,
+                },
+                controls,
+                &events,
+                &shared,
+            );
             if let Ok(mut inner) = shared.lock() {
                 inner.worker = worker;
                 if inner
@@ -223,6 +240,84 @@ pub fn stt_prepare(window: Window, state: State<'_, Stt>) -> Result<(), String> 
     Ok(())
 }
 
+fn microphone_list(microphones: Option<Vec<String>>) -> Result<Vec<String>, String> {
+    let microphones = microphones.unwrap_or_default();
+    if microphones.len() > 64 || microphones.iter().any(|id| id.len() > 1024) {
+        return Err("Invalid microphone list.".into());
+    }
+    Ok(microphones)
+}
+
+/// The Settings microphone test: live levels of the chosen input, nothing
+/// recorded or recognized. The gain can change while it runs.
+#[derive(Default)]
+pub struct MicTest {
+    capture: Mutex<Option<Capture>>,
+    gain_bits: Arc<AtomicU32>,
+}
+
+#[tauri::command]
+pub async fn stt_mic_test_start(
+    window: Window,
+    state: State<'_, MicTest>,
+    microphones: Option<Vec<String>>,
+    gain_db: Option<f32>,
+    levels: Channel<f32>,
+) -> Result<(), String> {
+    main_window(&window)?;
+    let microphones = microphone_list(microphones)?;
+    state
+        .gain_bits
+        .store(capture::gain_db(gain_db)?.to_bits(), Ordering::Relaxed);
+    let gain_bits = state.gain_bits.clone();
+    let mut meter = LevelMeter::default();
+    // Opening a device can block for seconds; keep it off the IPC thread.
+    let capture = tauri::async_runtime::spawn_blocking(move || {
+        Capture::start(microphones, move |chunk| {
+            if let Chunk::Audio(mut pcm) = chunk {
+                capture::apply_gain(&mut pcm, f32::from_bits(gain_bits.load(Ordering::Relaxed)));
+                if let Some(level) = meter.push(&pcm) {
+                    let _ = levels.send(level);
+                }
+            }
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    // Replacing a running test stops it.
+    *state.capture.lock().map_err(|_| "busy")? = Some(capture);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn stt_mic_test_gain(
+    window: Window,
+    state: State<'_, MicTest>,
+    gain_db: f32,
+) -> Result<(), String> {
+    main_window(&window)?;
+    let db = capture::gain_db(Some(gain_db))?;
+    state.gain_bits.store(db.to_bits(), Ordering::Relaxed);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn stt_mic_test_stop(window: Window, state: State<'_, MicTest>) -> Result<(), String> {
+    main_window(&window)?;
+    drop(state.capture.lock().map_err(|_| "busy")?.take());
+    Ok(())
+}
+
+/// Connected microphones for the Speech settings priority list.
+#[tauri::command]
+pub async fn stt_list_microphones(window: Window) -> Result<Vec<capture::Microphone>, String> {
+    main_window(&window)?;
+    // Device enumeration can block on CoreAudio/ALSA; keep it off the IPC thread.
+    tauri::async_runtime::spawn_blocking(capture::microphones)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn stt_stop(window: Window, state: State<'_, Stt>, id: u64) -> Result<(), String> {
     control(window, state, id, Control::Stop)
@@ -246,15 +341,29 @@ fn control(window: Window, state: State<'_, Stt>, id: u64, message: Control) -> 
 }
 
 /// Runs one dictation session; returns the worker when it is still healthy.
-fn run_session(
-    worker: Option<Worker>,
+/// What a session records with and recognizes with.
+struct Setup {
     model: PathBuf,
     vad: Option<PathBuf>,
+    microphones: Vec<String>,
+    gain_db: f32,
     acceleration: Acceleration,
+}
+
+fn run_session(
+    worker: Option<Worker>,
+    setup: Setup,
     controls: mpsc::Receiver<Control>,
     events: &Channel<Event>,
     shared: &Mutex<Inner>,
 ) -> Option<Worker> {
+    let Setup {
+        model,
+        vad,
+        microphones,
+        gain_db,
+        acceleration,
+    } = setup;
     let emit = |event: Event| {
         let _ = events.send(event);
     };
@@ -272,7 +381,10 @@ fn run_session(
         return worker;
     }
     let (audio_tx, audio) = mpsc::channel();
-    let capture = match Capture::start(move |chunk| {
+    let capture = match Capture::start(microphones, move |mut chunk| {
+        if let Chunk::Audio(pcm) = &mut chunk {
+            capture::apply_gain(pcm, gain_db);
+        }
         let _ = audio_tx.send(chunk);
     }) {
         Ok(capture) => capture,

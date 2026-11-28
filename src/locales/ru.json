@@ -2552,5 +2552,21 @@
     "other": "{count} языка"
   },
   "Speech recognition failed. Click to try again without speaking.": "Не удалось распознать речь. Щёлкните, чтобы повторить без повторной диктовки.",
-  "The recording is no longer available. Dictate again.": "Запись больше недоступна. Продиктуйте снова."
+  "The recording is no longer available. Dictate again.": "Запись больше недоступна. Продиктуйте снова.",
+  "In use": "Используется",
+  "Microphone": "Микрофон",
+  "Move {name} down": "Переместить {name} вниз",
+  "Move {name} up": "Переместить {name} вверх",
+  "Not connected": "Не подключён",
+  "Refresh microphones": "Обновить список микрофонов",
+  "System default": "Системный по умолчанию",
+  "Voice input uses the first connected microphone in this list.": "Голосовой ввод использует первый подключённый микрофон из этого списка.",
+  "Input volume": "Громкость входа",
+  "Raise or lower the microphone level for dictation.": "Повысьте или понизьте уровень микрофона для диктовки.",
+  "{value} dB": "{value} dB",
+  "Microphone test": "Проверка микрофона",
+  "Speak to check the level. Nothing is recorded.": "Говорите, чтобы проверить уровень. Ничего не записывается.",
+  "Test microphone": "Проверить микрофон",
+  "Stop testing": "Остановить проверку",
+  "Microphone level": "Уровень микрофона"
 }

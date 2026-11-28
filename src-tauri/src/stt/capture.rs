@@ -18,6 +18,27 @@ pub struct Capture {
     thread: Option<JoinHandle<()>>,
 }
 
+#[derive(serde::Serialize)]
+pub struct Microphone {
+    pub id: String,
+    pub name: String,
+}
+
+/// Connected input devices with their persistable ids.
+pub fn microphones() -> Vec<Microphone> {
+    let Ok(devices) = cpal::default_host().input_devices() else {
+        return Vec::new();
+    };
+    devices
+        .filter_map(|device| {
+            Some(Microphone {
+                id: device.id().ok()?.to_string(),
+                name: device.description().ok()?.name().to_string(),
+            })
+        })
+        .collect()
+}
+
 pub enum Chunk {
     /// 16 kHz mono audio.
     Audio(Vec<f32>),
@@ -26,15 +47,19 @@ pub enum Chunk {
 }
 
 impl Capture {
-    /// Opens the default input device in its native format and delivers
-    /// 16 kHz mono chunks to `sink` until stopped.
-    pub fn start(sink: impl FnMut(Chunk) + Send + 'static) -> Result<Self, String> {
+    /// Delivers 16 kHz mono chunks to `sink` until stopped.
+    /// Opens the first connected device of `preferred` (cpal device ids or
+    /// `DEFAULT`), else the system default.
+    pub fn start(
+        preferred: Vec<String>,
+        sink: impl FnMut(Chunk) + Send + 'static,
+    ) -> Result<Self, String> {
         let stop = Arc::new(AtomicBool::new(false));
         let (ready_tx, ready_rx) = std::sync::mpsc::channel();
         let thread_stop = stop.clone();
         let thread = std::thread::Builder::new()
             .name("stt-capture".into())
-            .spawn(move || run(thread_stop, ready_tx, sink))
+            .spawn(move || run(thread_stop, ready_tx, &preferred, sink))
             .map_err(|e| e.to_string())?;
         match ready_rx.recv_timeout(Duration::from_secs(10)) {
             Ok(Ok(())) => Ok(Self {
@@ -64,9 +89,10 @@ impl Drop for Capture {
 fn run(
     stop: Arc<AtomicBool>,
     ready: std::sync::mpsc::Sender<Result<(), String>>,
+    preferred: &[String],
     mut sink: impl FnMut(Chunk),
 ) {
-    let (stream, mut consumer, channels, rate, failed) = match open() {
+    let (stream, mut consumer, channels, rate, failed) = match open(preferred) {
         Ok(opened) => opened,
         Err(e) => {
             let _ = ready.send(Err(e));
@@ -127,9 +153,43 @@ type Opened = (
     Arc<std::sync::Mutex<Option<String>>>,
 );
 
-fn open() -> Result<Opened, String> {
-    let device = cpal::default_host()
-        .default_input_device()
+/// Largest boost or cut offered by the input-volume setting.
+pub const MAX_GAIN_DB: f32 = 10.0;
+
+/// Validates the input-volume setting from the webview.
+pub fn gain_db(value: Option<f32>) -> Result<f32, String> {
+    match value.unwrap_or(0.0) {
+        db if db.is_finite() && db.abs() <= MAX_GAIN_DB => Ok(db),
+        _ => Err("Invalid input volume.".into()),
+    }
+}
+
+/// Applies the input-volume setting; boosted peaks clip at full scale.
+pub fn apply_gain(pcm: &mut [f32], db: f32) {
+    if db != 0.0 {
+        let factor = 10f32.powf(db / 20.0);
+        for s in pcm {
+            *s = (*s * factor).clamp(-1.0, 1.0);
+        }
+    }
+}
+
+/// The priority-list entry for the system default input.
+pub const DEFAULT: &str = "default";
+
+fn open(preferred: &[String]) -> Result<Opened, String> {
+    let host = cpal::default_host();
+    let device = preferred
+        .iter()
+        .find_map(|id| {
+            if id == DEFAULT {
+                host.default_input_device()
+            } else {
+                host.device_by_id(&id.parse().ok()?)
+                    .filter(|d| d.description().is_ok_and(|d| d.supports_input()))
+            }
+        })
+        .or_else(|| host.default_input_device())
         .ok_or("No microphone was found.")?;
     let config = device
         .default_input_config()
@@ -186,4 +246,19 @@ fn open() -> Result<Opened, String> {
         .play()
         .map_err(|e| format!("The microphone cannot be started: {e}"))?;
     Ok((stream, consumer, channels, rate, failed))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gain_scales_clips_and_validates() {
+        let mut pcm = [0.1, -0.5, 0.0];
+        apply_gain(&mut pcm, 20.0 * 2f32.log10());
+        assert!((pcm[0] - 0.2).abs() < 1e-5 && pcm[1] == -1.0 && pcm[2] == 0.0);
+        assert_eq!(gain_db(None), Ok(0.0));
+        assert_eq!(gain_db(Some(-10.0)), Ok(-10.0));
+        assert!(gain_db(Some(10.5)).is_err() && gain_db(Some(f32::NAN)).is_err());
+    }
 }

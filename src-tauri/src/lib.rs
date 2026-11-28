@@ -253,6 +253,8 @@ pub fn run() {
             #[cfg(feature = "stt")]
             app.manage(stt::Stt::default());
             #[cfg(feature = "stt")]
+            app.manage(stt::MicTest::default());
+            #[cfg(feature = "stt")]
             app.manage(stt::models::Downloads::default());
             external_files::enqueue(
                 app.handle(),
@@ -631,6 +633,14 @@ pub fn run() {
                 stt::stt_cancel,
                 #[cfg(feature = "stt")]
                 stt::stt_retry,
+                #[cfg(feature = "stt")]
+                stt::stt_list_microphones,
+                #[cfg(feature = "stt")]
+                stt::stt_mic_test_start,
+                #[cfg(feature = "stt")]
+                stt::stt_mic_test_gain,
+                #[cfg(feature = "stt")]
+                stt::stt_mic_test_stop,
                 #[cfg(feature = "stt")]
                 stt::models::stt_list_models,
                 #[cfg(feature = "stt")]

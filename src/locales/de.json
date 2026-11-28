@@ -2486,5 +2486,21 @@
     "other": "{count} Sprachen"
   },
   "Speech recognition failed. Click to try again without speaking.": "Spracherkennung fehlgeschlagen. Klicke, um es ohne erneutes Sprechen noch einmal zu versuchen.",
-  "The recording is no longer available. Dictate again.": "Die Aufnahme ist nicht mehr verfügbar. Diktiere erneut."
+  "The recording is no longer available. Dictate again.": "Die Aufnahme ist nicht mehr verfügbar. Diktiere erneut.",
+  "In use": "In Verwendung",
+  "Microphone": "Mikrofon",
+  "Move {name} down": "{name} nach unten verschieben",
+  "Move {name} up": "{name} nach oben verschieben",
+  "Not connected": "Nicht verbunden",
+  "Refresh microphones": "Mikrofone aktualisieren",
+  "System default": "Systemstandard",
+  "Voice input uses the first connected microphone in this list.": "Die Spracheingabe verwendet das erste verbundene Mikrofon in dieser Liste.",
+  "Input volume": "Eingangslautstärke",
+  "Raise or lower the microphone level for dictation.": "Mikrofonpegel für das Diktieren anheben oder absenken.",
+  "{value} dB": "{value} dB",
+  "Microphone test": "Mikrofontest",
+  "Speak to check the level. Nothing is recorded.": "Sprich, um den Pegel zu prüfen. Es wird nichts aufgezeichnet.",
+  "Test microphone": "Mikrofon testen",
+  "Stop testing": "Test beenden",
+  "Microphone level": "Mikrofonpegel"
 }

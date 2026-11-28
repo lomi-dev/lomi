@@ -145,6 +145,7 @@ export const X = product("X", Lucide.X);
 
 export const Bell = Lucide.Bell;
 export const Mic = Lucide.Mic;
+export const GripVertical = Lucide.GripVertical;
 export const MicOff = Lucide.MicOff;
 export const LoaderCircle = Lucide.LoaderCircle;
 export const MessageSquare = Lucide.MessageSquare;

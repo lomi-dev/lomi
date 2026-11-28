@@ -12,6 +12,7 @@ import { useKeybindings } from "../KeybindingsProvider";
 import type { SettingsPageId } from "../settings-pages";
 import { SettingRow, SettingsPage, SettingsSection } from "../settings-ui";
 import { Modal } from "../ui";
+import MicrophoneList from "./MicrophoneList";
 import {
   chooseModel,
   chosenModel,
@@ -156,6 +157,10 @@ export default function SpeechSettingsPage({
 
   return (
     <SettingsPage title={t("Speech")} className="speech-settings-page">
+      <SettingsSection title={t("Input")}>
+        <MicrophoneList />
+      </SettingsSection>
+
       <SettingsSection
         title={t("Speech model")}
         description={t(

@@ -1,5 +1,5 @@
 /* Settings → Speech: model cards. */
-.speech-settings-page .settings-section-body {
+.speech-settings-page .settings-section-body:not(.settings-group) {
   display: grid;
   gap: 12px;
 }
@@ -50,4 +50,92 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+
+/* Input: microphone priority list, volume and level test. */
+.speech-settings-page .settings-group > .speech-microphone-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.speech-microphone {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 16px repeat(3, 28px);
+  align-items: center;
+  gap: var(--space-8);
+  min-height: 52px;
+  padding: var(--space-8) var(--space-24);
+}
+.speech-microphone + .speech-microphone {
+  border-top: var(--border-width) solid var(--sheet-line);
+}
+.speech-microphone[data-dragging] {
+  opacity: 0.5;
+}
+.speech-microphone-index {
+  color: var(--color-muted-text);
+  font-variant-numeric: tabular-nums;
+}
+.speech-microphone-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-8);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--font-size-14);
+}
+.speech-microphone-name .speech-badge {
+  margin-left: 0;
+}
+.speech-microphone-grip {
+  color: var(--color-muted-text);
+  cursor: grab;
+}
+.speech-gain {
+  width: 180px;
+  accent-color: var(--color-primary);
+}
+.speech-gain-value {
+  min-width: 48px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.speech-mic-test-row .setting-controls {
+  flex-direction: column;
+  align-items: stretch;
+}
+.speech-mic-test {
+  display: flex;
+  align-items: center;
+  gap: var(--space-16);
+}
+.speech-mic-test .button {
+  flex: none;
+  min-width: 148px;
+}
+.speech-meter {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 4px;
+  height: 36px;
+  min-width: 0;
+  overflow: hidden;
+}
+.speech-meter > span {
+  flex: 1;
+  min-width: 3px;
+  height: 100%;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-muted-text) 30%, transparent);
+  transition: background-color 60ms linear;
+}
+.speech-meter > span[data-lit] {
+  background: var(--color-primary);
+}
+@media (prefers-reduced-motion: reduce) {
+  .speech-meter > span {
+    transition: none;
+  }
 }
