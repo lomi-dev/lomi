@@ -37,12 +37,15 @@ export function useTerminalTitleReveal(enabled: boolean) {
     window.addEventListener("keydown", keydown, true);
     window.addEventListener("keyup", keyup, true);
     window.addEventListener("blur", reset);
+    // Holding Control for push-to-talk dictation is not a title peek.
+    window.addEventListener("lomi-dictation-shortcut", reset);
     document.addEventListener("visibilitychange", visibility);
     return () => {
       clearTimeout(timeout);
       window.removeEventListener("keydown", keydown, true);
       window.removeEventListener("keyup", keyup, true);
       window.removeEventListener("blur", reset);
+      window.removeEventListener("lomi-dictation-shortcut", reset);
       document.removeEventListener("visibilitychange", visibility);
     };
   }, [enabled]);

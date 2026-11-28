@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use lomi_stt::dsp::{is_digital_silence, LevelMeter};
 use lomi_stt::protocol::{pcm_to_bytes, Acceleration, ErrorKind, Request, Response};
@@ -34,6 +34,7 @@ const FEED_SAMPLES: usize = SAMPLE_RATE as usize / 10;
 const RESULT_TIMEOUT: Duration = Duration::from_secs(300);
 const CANCEL_TIMEOUT: Duration = Duration::from_secs(2);
 /// A forgotten microphone must not keep recording the room.
+const SLEEP_GAP: Duration = Duration::from_secs(5);
 const SILENCE_STOP: Duration = Duration::from_secs(30);
 
 #[derive(Default)]
@@ -127,6 +128,7 @@ impl Stt {
 pub struct Status {
     available: bool,
     model_ready: bool,
+    permission: &'static str,
 }
 
 fn models_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -144,7 +146,40 @@ pub fn stt_status(window: Window, app: tauri::AppHandle) -> Result<Status, Strin
     Ok(Status {
         available: worker::binary().is_ok(),
         model_ready: ready_model(&models_dir(&app)?).is_some(),
+        permission: permission::state(),
     })
+}
+
+/// Opens the system's microphone privacy settings (fixed URLs only).
+#[tauri::command]
+pub fn stt_open_privacy_settings(window: Window) -> Result<(), String> {
+    main_window(&window)?;
+    let url = if cfg!(target_os = "macos") {
+        "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+    } else if cfg!(windows) {
+        "ms-settings:privacy-microphone"
+    } else {
+        return Err("unsupported".into());
+    };
+    tauri_plugin_opener::open_url(url, None::<&str>).map_err(|e| e.to_string())
+}
+
+/// The loaded model holds hundreds of MB; free it after a quiet spell.
+const IDLE_UNLOAD: Duration = Duration::from_secs(10 * 60);
+
+/// Drops the engine if no session started since session `id` ended.
+fn unload_when_idle(shared: Arc<Mutex<Inner>>, id: u64) {
+    let _ = std::thread::Builder::new()
+        .name("stt-idle".into())
+        .spawn(move || {
+            std::thread::sleep(IDLE_UNLOAD);
+            let idle = shared
+                .lock()
+                .ok()
+                .filter(|inner| inner.active.is_none() && inner.next_id == id)
+                .and_then(|mut inner| inner.worker.take());
+            drop(idle);
+        });
 }
 
 #[tauri::command]
@@ -203,6 +238,7 @@ pub fn stt_start(
             );
             if let Ok(mut inner) = shared.lock() {
                 inner.worker = worker;
+                unload_when_idle(shared.clone(), id);
                 if inner
                     .active
                     .as_ref()
@@ -419,8 +455,22 @@ fn run_session(
     // Without a VAD there are no speech edges, so only the 5 min limit applies.
     let mut quiet_since = Some(Instant::now());
     let mut capture = Some(capture);
+    // macOS and Linux monotonic clocks pause during system sleep while the
+    // wall clock runs on; a gap between them ends the session. A slow engine
+    // start blocks both clocks alike, so it never looks like sleep.
+    // shortcut: Windows' monotonic clock counts sleep, so there the device
+    // error ends the session instead; listen for power events if that fails.
+    let mut clocks = (Instant::now(), SystemTime::now());
 
     loop {
+        let now = (Instant::now(), SystemTime::now());
+        let mono = now.0 - clocks.0;
+        let wall = now.1.duration_since(clocks.1).unwrap_or_default();
+        clocks = now;
+        if stop_at.is_none() && wall > mono + SLEEP_GAP {
+            eprintln!("lomi: dictation stopped after system sleep");
+            stop_at = Some(Instant::now());
+        }
         match controls.try_recv() {
             Ok(Control::Stop) if stop_at.is_none() => stop_at = Some(Instant::now() + STOP_TAIL),
             Ok(Control::Cancel) => {
@@ -645,6 +695,7 @@ pub fn stt_retry(
             });
             if let Ok(mut inner) = shared.lock() {
                 inner.worker = worker;
+                unload_when_idle(shared.clone(), id);
                 if inner
                     .active
                     .as_ref()

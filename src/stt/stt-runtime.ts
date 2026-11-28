@@ -27,6 +27,8 @@ export type DictationState = {
   unsent?: string;
   /** The engine failed; its audio is kept briefly for `retryDictation`. */
   retryTarget?: DictationTarget;
+  /** Where the current or last session delivers its text. */
+  target?: DictationTarget;
 };
 
 type NativeEvent =
@@ -117,6 +119,7 @@ async function run(
   window.addEventListener("keydown", onEscape, true);
   set({
     phase: command === "stt_retry" ? "transcribing" : "starting",
+    target,
     level: 0,
     message: undefined,
     unsent: undefined,

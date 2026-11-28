@@ -3239,14 +3239,14 @@ svg {
   background: var(--color-surface-container-high);
   color: var(--color-surface-text);
 }
-.statusbar .stt-mic[data-phase="recording"] {
+.stt-mic[data-phase="recording"] {
   width: auto;
   gap: 4px;
   padding: 0 6px;
   background: color-mix(in srgb, var(--color-error) 22%, transparent);
   color: var(--color-error);
 }
-.statusbar .stt-mic[data-phase="error"] {
+.stt-mic[data-phase="error"] {
   color: var(--color-warning);
 }
 .stt-level {
@@ -3264,6 +3264,10 @@ svg {
 }
 .stt-spin {
   animation: close-progress-spin 1s linear infinite;
+}
+.stt-menu-spacer {
+  width: 14px;
+  flex: none;
 }
 .stt-live {
   position: absolute;

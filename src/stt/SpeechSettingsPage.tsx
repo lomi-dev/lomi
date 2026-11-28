@@ -10,7 +10,12 @@ import { useT } from "../i18n";
 import { formatShortcut } from "../keybindings";
 import { useKeybindings } from "../KeybindingsProvider";
 import type { SettingsPageId } from "../settings-pages";
-import { SettingRow, SettingsPage, SettingsSection } from "../settings-ui";
+import {
+  SettingRow,
+  SettingsNotice,
+  SettingsPage,
+  SettingsSection,
+} from "../settings-ui";
 import { Modal } from "../ui";
 import MicrophoneList from "./MicrophoneList";
 import {
@@ -50,6 +55,7 @@ export default function SpeechSettingsPage({
   const keybindings = useKeybindings();
   const chosen = useSyncExternalStore(subscribeChosenModel, chosenModel);
   const [available, setAvailable] = useState(false);
+  const [permission, setPermission] = useState<string>();
   const [models, setModels] = useState<ModelView[]>([]);
   const [progress, setProgress] = useState<{ id: string } & Progress>();
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -63,9 +69,10 @@ export default function SpeechSettingsPage({
     [],
   );
   useEffect(() => {
-    api<{ available: boolean }>("stt_status")
+    api<{ available: boolean; permission: string }>("stt_status")
       .then((status) => {
         setAvailable(status.available);
+        setPermission(status.permission);
         if (status.available) void refresh();
       })
       .catch(() => {});
@@ -157,6 +164,26 @@ export default function SpeechSettingsPage({
 
   return (
     <SettingsPage title={t("Speech")} className="speech-settings-page">
+      {permission === "denied" && (
+        <SettingsNotice
+          tone="warning"
+          action={
+            <button
+              type="button"
+              className="button"
+              onClick={() =>
+                void api("stt_open_privacy_settings").catch(() => {})
+              }
+            >
+              {t("Open system settings")}
+            </button>
+          }
+        >
+          {t(
+            "Lomi has no access to the microphone. Allow it in system settings, then restart Lomi. Programs started in Lomi terminals use the same permission.",
+          )}
+        </SettingsNotice>
+      )}
       <SettingsSection title={t("Input")}>
         <MicrophoneList />
       </SettingsSection>

@@ -2535,5 +2535,11 @@
   "Speak to check the level. Nothing is recorded.": "Parla per controllare il livello. Non viene registrato nulla.",
   "Test microphone": "Prova microfono",
   "Stop testing": "Interrompi test",
-  "Microphone level": "Livello del microfono"
+  "Microphone level": "Livello del microfono",
+  "Speech models": "Modelli vocali",
+  "Dictation models are downloaded from Hugging Face in the GGUF format converted by Handy.": "I modelli di dettatura vengono scaricati da Hugging Face nel formato GGUF convertito da Handy.",
+  "Speech settings": "Impostazioni vocali",
+  "Dictation": "Dettatura",
+  "Open system settings": "Apri impostazioni di sistema",
+  "Lomi has no access to the microphone. Allow it in system settings, then restart Lomi. Programs started in Lomi terminals use the same permission.": "Lomi non ha accesso al microfono. Consentilo nelle impostazioni di sistema, poi riavvia Lomi. I programmi avviati nei terminali di Lomi usano lo stesso permesso."
 }

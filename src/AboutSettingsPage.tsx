@@ -23,6 +23,27 @@ const issueUrl = "https://github.com/lomi-dev/lomi/issues";
 const websiteUrl = "https://lomi.dev";
 const documentationUrl = "https://docs.lomi.dev";
 
+// Original authors of the dictation models (Settings → Speech); CC BY 4.0
+// requires crediting them alongside the license.
+const modelAuthors: Record<string, string> = {
+  parakeet: "NVIDIA",
+  canary: "NVIDIA",
+  whisper: "OpenAI",
+  silero: "Silero Team",
+};
+const licenseNames: Record<string, string> = {
+  "cc-by-4.0": "CC BY 4.0",
+  "apache-2.0": "Apache 2.0",
+  mit: "MIT",
+};
+
+interface SpeechModel {
+  id: string;
+  name: string;
+  license: string;
+  repository: string;
+}
+
 function platformName(platform: string) {
   switch (platform) {
     case "macos":
@@ -48,6 +69,25 @@ export default function AboutSettingsPage({
   const { t } = useT();
   const [info, setInfo] = useState<AboutInfo | null>(null);
   const [metadataReady, setMetadataReady] = useState(!native);
+  // Absent in builds without dictation: the section stays hidden.
+  const [speechModels, setSpeechModels] = useState<SpeechModel[]>([]);
+  useEffect(() => {
+    if (native)
+      void api<SpeechModel[]>("stt_list_models")
+        // The voice-activity model is downloaded with the first speech model.
+        .then((models) =>
+          setSpeechModels([
+            ...models,
+            {
+              id: "silero-vad",
+              name: "Silero VAD",
+              license: "mit",
+              repository: "handy-computer/silero-vad-v6.2-gguf",
+            },
+          ]),
+        )
+        .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!native) return;
@@ -147,6 +187,37 @@ export default function AboutSettingsPage({
           </button>
         </SettingRow>
       </SettingsSection>
+      {speechModels.length > 0 && (
+        <SettingsSection
+          title={t("Speech models")}
+          description={t(
+            "Dictation models are downloaded from Hugging Face in the GGUF format converted by Handy.",
+          )}
+        >
+          {speechModels.map((model) => (
+            <SettingRow
+              key={model.id}
+              label={model.name}
+              description={[
+                modelAuthors[model.id.split("-")[0]],
+                licenseNames[model.license] ?? model.license,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            >
+              <button
+                className="button"
+                onClick={() =>
+                  openExternal(`https://huggingface.co/${model.repository}`)
+                }
+              >
+                <ExternalLink size={14} aria-hidden="true" />
+                {t("Source")}
+              </button>
+            </SettingRow>
+          ))}
+        </SettingsSection>
+      )}
       <SettingsSection title={t("Build details")}>
         <SettingRow label={t("Build")}>
           <span className="setting-value">{build}</span>

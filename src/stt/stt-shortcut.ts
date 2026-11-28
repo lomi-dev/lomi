@@ -35,6 +35,7 @@ export function dictationShortcut(
   code: string,
   target: () => DictationTarget | null,
 ) {
+  window.dispatchEvent(new Event("lomi-dictation-shortcut"));
   const { phase } = dictationState();
   if (phase === "recording" || phase === "starting") return stopDictation();
   if (phase === "transcribing" || held) return;

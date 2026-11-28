@@ -636,6 +636,8 @@ pub fn run() {
                 #[cfg(feature = "stt")]
                 stt::stt_list_microphones,
                 #[cfg(feature = "stt")]
+                stt::stt_open_privacy_settings,
+                #[cfg(feature = "stt")]
                 stt::stt_mic_test_start,
                 #[cfg(feature = "stt")]
                 stt::stt_mic_test_gain,

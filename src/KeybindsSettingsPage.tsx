@@ -3,7 +3,7 @@ import type { KeyboardEvent } from "react";
 import { t as translate, useT } from "./i18n";
 import { Plus, RotateCcw, Search, X } from "./icons";
 import { IconButton } from "./ui";
-import { errorMessage } from "./api";
+import { api, errorMessage } from "./api";
 import Keycaps from "./Keycaps";
 import Select from "./Select";
 import {
@@ -56,6 +56,13 @@ function recordKey(
 export default function KeybindsSettingsPage({ active }: { active: boolean }) {
   const { t } = useT();
   const preferences = useKeybindings();
+  const [dictation, setDictation] = useState(false);
+  useEffect(() => {
+    api<{ available: boolean }>("stt_status").then(
+      (status) => setDictation(status.available),
+      () => {},
+    );
+  }, []);
   const [recording, setRecording] = useState<Recording>(null);
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
@@ -127,8 +134,12 @@ export default function KeybindsSettingsPage({ active }: { active: boolean }) {
   };
 
   const terms = query.toLocaleLowerCase().trim().split(/\s+/).filter(Boolean);
+  // Dictation exists only in builds with the `stt` feature.
+  const actions = preferences.actions.filter(
+    (action) => action.id !== "toggleDictation" || dictation,
+  );
   // Only assigned keybindings are listed; unassigned actions are added explicitly.
-  const assigned = preferences.actions.filter(
+  const assigned = actions.filter(
     (action) =>
       preferences.bindings[action.id] &&
       terms.every((term) =>
@@ -137,7 +148,7 @@ export default function KeybindsSettingsPage({ active }: { active: boolean }) {
           .includes(term),
       ),
   );
-  const unassigned = preferences.actions.filter(
+  const unassigned = actions.filter(
     (action) => !preferences.bindings[action.id],
   );
   const groups = [...new Set(assigned.map((action) => action.group))];

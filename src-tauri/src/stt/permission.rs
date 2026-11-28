@@ -9,6 +9,17 @@ pub enum Access {
     Denied,
 }
 
+/// "granted", "denied" or "undetermined" (macOS asks on the first dictation).
+#[cfg(target_os = "macos")]
+pub fn state() -> &'static str {
+    mac::state()
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn state() -> &'static str {
+    "granted"
+}
+
 /// Blocks until the user decided when macOS has not asked yet.
 #[cfg(target_os = "macos")]
 pub fn ensure() -> Access {
@@ -50,6 +61,14 @@ mod mac {
                 class!(AVCaptureDevice),
                 authorizationStatusForMediaType: AVMediaTypeAudio
             ]
+        }
+    }
+
+    pub fn state() -> &'static str {
+        match status() {
+            AUTHORIZED => "granted",
+            NOT_DETERMINED => "undetermined",
+            _ => "denied",
         }
     }
 

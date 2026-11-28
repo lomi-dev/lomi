@@ -10,6 +10,7 @@ import type { ReactNode } from "react";
 import { api, macOS } from "../api";
 import { useT } from "../i18n";
 import { ArrowUp, ListPlus, Paperclip, Square } from "../icons";
+import MicStatusButton from "../stt/MicStatusButton";
 import { IconButton } from "../ui";
 import { PendingAttachments } from "./Attachments";
 import {
@@ -409,6 +410,15 @@ export default function ThreadComposer({
     if (focusKey !== undefined) editor?.commands.focus("end");
   }, [focusKey]);
   const root = useRef<HTMLDivElement>(null);
+  // The thread tab this composer belongs to, for its dictation button.
+  const [thread, setThread] = useState<string | null>(null);
+  useEffect(() => {
+    setThread(
+      root.current
+        ?.closest("[data-thread-tab-id]")
+        ?.getAttribute("data-thread-tab-id") ?? null,
+    );
+  }, []);
   // Dictation results (src/stt/stt-runtime.ts) arrive as sanitized plain text.
   useEffect(() => {
     // Not editor.view: Tiptap throws when it is read before the view mounts.
@@ -470,6 +480,12 @@ export default function ThreadComposer({
       >
         <Paperclip size={16} />
       </IconButton>
+      {thread && (
+        <MicStatusButton
+          scope={thread}
+          target={() => ({ kind: "thread", id: thread })}
+        />
+      )}
       {picker}
       {effort}
       {permissions}
