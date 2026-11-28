@@ -116,6 +116,8 @@ export default defineConfig({
     port: 1420,
     // Tauri's devUrl must point to this exact port.
     strictPort: true,
+    // Desktop imports sources from the sibling Remote checkouts.
+    fs: { allow: [".", "../remote-web", "../lomi-remote"] },
     watch: {
       ignored: ["**/src-tauri/**"],
     },
