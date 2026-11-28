@@ -105,8 +105,28 @@ assets except `.json` and `.sig` files, because the updater fetches
 file as the only commit on the `badges` branch; keep that branch.
 
 Lomi selects Xcode 26.3 to compile its Icon Composer source and uses its
-own pnpm version. It does not need Simple Voice's audio, Vulkan, or ONNX build
-dependencies. Windows installers are not Authenticode-signed. Tauri updater
+own pnpm version. It does not need Simple Voice's Vulkan or ONNX build
+dependencies.
+
+### Dictation (speech to text)
+
+Release builds include local dictation. Before `tauri-action`, the workflow
+runs `pnpm stt:worker`, which builds the `lomi-stt-worker` sidecar (the only
+binary that links ggml, through CMake and the platform C++ toolchain) for
+the matrix target into `src-tauri/binaries/`. `tauri build` then receives
+`--config src-tauri/tauri.stt.conf.json --features stt`; the overlay bundles
+the sidecar, adds the macOS audio-input entitlement for the hardened runtime
+(the bundler signs the sidecar with the app), and declares ALSA as a DEB/RPM
+dependency. Ubuntu runners install `libasound2-dev`; CMake comes with the
+runner images. Linux and Windows workers are built without `GGML_NATIVE` and
+check for an x86-64-v3 CPU at load; Apple Silicon uses Metal, Intel Macs the
+CPU. The AUR source package builds the worker the same way and both AUR
+packages depend on `alsa-lib`.
+
+Speech models are not shipped: users download them from Hugging Face in
+Settings → Speech. On a Windows machine whose CMake does not recognize the
+newest Visual Studio, set `CMAKE_GENERATOR=Visual Studio 17 2022` before
+`pnpm stt:worker`. Windows installers are not Authenticode-signed. Tauri updater
 signatures verify downloaded updates independently of Apple signing and Windows
 Authenticode. macOS app archives are still published as downloads.
 

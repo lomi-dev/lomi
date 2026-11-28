@@ -6,7 +6,7 @@ pkgdesc='A workspace for terminal-driven development'
 arch=('x86_64')
 url='https://github.com/lomi-dev/lomi'
 license=('Apache-2.0')
-depends=('gtk3' 'webkit2gtk-4.1' 'hicolor-icon-theme')
+depends=('gtk3' 'webkit2gtk-4.1' 'hicolor-icon-theme' 'alsa-lib')
 optdepends=(
   'git: source control and repository history'
   'org.freedesktop.secrets: remember account sessions and securely store AI API keys'

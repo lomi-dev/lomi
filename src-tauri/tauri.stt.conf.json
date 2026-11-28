@@ -4,6 +4,14 @@
     "externalBin": ["binaries/lomi-stt-worker"],
     "macOS": {
       "entitlements": "Entitlements.plist"
+    },
+    "linux": {
+      "deb": {
+        "depends": ["libasound2"]
+      },
+      "rpm": {
+        "depends": ["alsa-lib"]
+      }
     }
   }
 }

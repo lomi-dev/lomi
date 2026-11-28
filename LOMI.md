@@ -267,7 +267,8 @@ or acronym.
   by `pnpm stt:worker`; `tauri.stt.conf.json` adds it and the macOS
   audio-input entitlement). `crates/lomi-stt` holds the engine-free protocol,
   DSP and VAD gate. Audio stays in memory, never on disk, in logs or in the
-  inbox; transcripts are not logged. Recording starts only from a local
+  inbox; transcripts are not logged. Release builds enable it (`release.yml` builds the worker and passes the
+  overlay; see `docs/releases.md`). Recording starts only from a local
   gesture in main (status-bar mic, `toggleDictation`); never expose the
   `stt_*` commands to MCP, Remote or browser views. The target is the chat or
   terminal panel active at start. Inserted text is stripped of all C0/C1

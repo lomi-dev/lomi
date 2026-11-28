@@ -80,6 +80,7 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libayatana-appindicator3-dev \
             librsvg2-dev \
+            libasound2-dev \
             patchelf
 
       - name: verify the release version and license
@@ -90,6 +91,15 @@ jobs:
 
       - name: install frontend dependencies
         run: pnpm install --frozen-lockfile
+
+      # Dictation runs its engine in the separate lomi-stt-worker sidecar, the
+      # only binary that links ggml. It must exist before Tauri bundles
+      # `externalBin` from src-tauri/tauri.stt.conf.json.
+      - name: build the dictation engine
+        shell: bash
+        env:
+          TAURI_ENV_TARGET_TRIPLE: ${{ matrix.target }}
+        run: pnpm stt:worker
 
       - name: read release notes
         id: notes
@@ -132,7 +142,9 @@ jobs:
           prerelease: false
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
-          args: ${{ matrix.args }} -- --locked
+          # The `stt` overlay adds the worker sidecar and the macOS
+          # audio-input entitlement used with the hardened runtime.
+          args: ${{ matrix.args }} --config src-tauri/tauri.stt.conf.json --features stt -- --locked
 
       - name: verify AppImage backend selection before publishing
         if: runner.os == 'Linux'

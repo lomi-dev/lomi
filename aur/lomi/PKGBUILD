@@ -6,12 +6,12 @@ pkgdesc='A workspace for terminal-driven development'
 arch=('x86_64')
 url='https://github.com/lomi-dev/lomi'
 license=('Apache-2.0')
-depends=('gtk3' 'webkit2gtk-4.1' 'hicolor-icon-theme')
+depends=('gtk3' 'webkit2gtk-4.1' 'hicolor-icon-theme' 'alsa-lib')
 optdepends=(
   'git: source control and repository history'
   'org.freedesktop.secrets: remember account sessions and securely store AI API keys'
 )
-makedepends=('rust' 'nodejs' 'pnpm' 'librsvg')
+makedepends=('rust' 'nodejs' 'pnpm' 'librsvg' 'cmake')
 provides=('lomi')
 conflicts=('lomi-bin')
 source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
@@ -26,7 +26,10 @@ prepare() {
 build() {
   cd "${pkgname}-${pkgver}"
   export CARGO_TARGET_DIR="${srcdir}/cargo-target"
-  pnpm tauri build --bundles deb -- --locked
+  # Dictation engine sidecar (links ggml); bundled through tauri.stt.conf.json.
+  pnpm stt:worker
+  pnpm tauri build --bundles deb --config src-tauri/tauri.stt.conf.json \
+    --features stt -- --locked
 }
 
 package() {
