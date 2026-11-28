@@ -9,7 +9,9 @@ import { sanitizeDictation, spaceForInsert } from "./stt-insert";
 import {
   chosenModel,
   microphoneGain,
+  MAX_VOCABULARY,
   microphoneOrder,
+  vocabularyLines,
 } from "./stt-preferences";
 
 export type DictationTarget =
@@ -174,8 +176,11 @@ async function run(
       events,
       ...(command === "stt_start" && {
         modelId: chosenModel(),
-        microphones: microphoneOrder().map((entry) => entry.id),
-        gainDb: microphoneGain(),
+        preferences: {
+          microphones: microphoneOrder().map((entry) => entry.id),
+          gainDb: microphoneGain(),
+          vocabulary: vocabularyLines().slice(0, MAX_VOCABULARY),
+        },
       }),
     });
     current.id = id;

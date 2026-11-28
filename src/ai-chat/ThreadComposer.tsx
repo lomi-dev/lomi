@@ -5,12 +5,24 @@ import { Text } from "@tiptap/extension-text";
 import { Placeholder, UndoRedo } from "@tiptap/extensions";
 import type { Transaction } from "@tiptap/pm/state";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { ReactNode } from "react";
 import { api, macOS } from "../api";
 import { useT } from "../i18n";
 import { ArrowUp, ListPlus, Paperclip, Square } from "../icons";
 import MicStatusButton from "../stt/MicStatusButton";
+import {
+  dictationState,
+  stopDictation,
+  subscribeDictation,
+} from "../stt/stt-runtime";
 import { IconButton } from "../ui";
 import { PendingAttachments } from "./Attachments";
 import {
@@ -358,7 +370,7 @@ export default function ThreadComposer({
     )
       return false;
     event.preventDefault();
-    if (canSend) onSend(queue);
+    send(queue);
     return true;
   }
   // The editor reads its handlers through this ref, always from the last render.
@@ -412,6 +424,28 @@ export default function ThreadComposer({
   const root = useRef<HTMLDivElement>(null);
   // The thread tab this composer belongs to, for its dictation button.
   const [thread, setThread] = useState<string | null>(null);
+  // Sending while dictating here finishes the dictation, then sends.
+  const sendAfterDictation = useRef<boolean>(undefined);
+  // Re-renders the send button as dictation starts and ends.
+  useSyncExternalStore(subscribeDictation, dictationState);
+  const [queuedSend, setQueuedSend] = useState<{ queue: boolean }>();
+  useEffect(() => {
+    if (queuedSend) onSend(queuedSend.queue);
+  }, [queuedSend]);
+  function dictatingHere() {
+    const { phase, target } = dictationState();
+    return (
+      (phase === "starting" || phase === "recording") &&
+      target?.kind === "thread" &&
+      target.id === thread
+    );
+  }
+  function send(queue: boolean) {
+    if (dictatingHere()) {
+      sendAfterDictation.current = queue;
+      stopDictation();
+    } else if (canSend) onSend(queue);
+  }
   useEffect(() => {
     setThread(
       root.current
@@ -435,6 +469,7 @@ export default function ThreadComposer({
         };
     };
     const start = () => {
+      sendAfterDictation.current = undefined;
       const { from, to } = editor.state.selection;
       anchor = { from, to };
     };
@@ -458,6 +493,10 @@ export default function ThreadComposer({
           { type: "text", text: spaceForInsert(before, text, after) },
         )
         .run();
+      const queue = sendAfterDictation.current;
+      sendAfterDictation.current = undefined;
+      // Sent after the draft state includes the dictated words.
+      if (queue !== undefined) setQueuedSend({ queue });
     };
     editor.on("transaction", track);
     host.addEventListener("thread-dictation-start", start);
@@ -469,7 +508,9 @@ export default function ThreadComposer({
     };
   }, [editor]);
   const canSend =
-    !disabled && !importing && (!!value.trim() || attachments.length > 0);
+    !disabled &&
+    !importing &&
+    (!!value.trim() || attachments.length > 0 || dictatingHere());
   const modifier = macOS ? "⌘" : "Ctrl";
   const lead = (
     <>
@@ -596,7 +637,7 @@ export default function ThreadComposer({
                   shortcut: "Alt+Enter",
                 })}
                 disabled={!canSend}
-                onClick={() => onSend(true)}
+                onClick={() => send(true)}
               >
                 <ListPlus size={16} />
               </IconButton>
@@ -615,7 +656,7 @@ export default function ThreadComposer({
               })}
               className="thread-send"
               disabled={!canSend}
-              onClick={() => onSend(false)}
+              onClick={() => send(false)}
             >
               <ArrowUp size={16} />
             </IconButton>

@@ -139,3 +139,10 @@
     transition: none;
   }
 }
+.speech-vocabulary {
+  width: 100%;
+  min-height: 120px;
+  padding: var(--space-8) var(--space-12);
+  font-family: var(--font-family-mono);
+  resize: vertical;
+}

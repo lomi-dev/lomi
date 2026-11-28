@@ -6,6 +6,7 @@ pub mod catalog;
 pub mod dsp;
 pub mod protocol;
 pub mod vad;
+pub mod vocab;
 
 /// Sample rate of every buffer that crosses the worker boundary.
 pub const SAMPLE_RATE: u32 = 16_000;

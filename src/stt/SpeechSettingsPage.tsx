@@ -21,7 +21,10 @@ import MicrophoneList from "./MicrophoneList";
 import {
   chooseModel,
   chosenModel,
+  MAX_VOCABULARY,
+  setVocabulary,
   subscribeChosenModel,
+  vocabulary,
 } from "./stt-preferences";
 
 interface ModelView {
@@ -54,6 +57,10 @@ export default function SpeechSettingsPage({
   const { t, tp, locale } = useT();
   const keybindings = useKeybindings();
   const chosen = useSyncExternalStore(subscribeChosenModel, chosenModel);
+  const vocabularyText = useSyncExternalStore(subscribeChosenModel, vocabulary);
+  const vocabularyCount = vocabularyText
+    .split("\n")
+    .filter((line) => line.trim()).length;
   const [available, setAvailable] = useState(false);
   const [permission, setPermission] = useState<string>();
   const [models, setModels] = useState<ModelView[]>([]);
@@ -314,6 +321,39 @@ export default function SpeechSettingsPage({
             </div>
           );
         })}
+      </SettingsSection>
+
+      <SettingsSection
+        title={t("Vocabulary")}
+        description={t(
+          "Names and terms dictation should spell your way, one per line. After “=”, list how they get misheard: Tauri = tory, tałri",
+        )}
+      >
+        <SettingRow
+          stacked
+          label={t("Words and phrases")}
+          htmlFor="speech-vocabulary"
+          description={
+            vocabularyCount > MAX_VOCABULARY
+              ? t("Only the first {max} lines are used.", {
+                  max: MAX_VOCABULARY,
+                })
+              : t("{count} of {max}", {
+                  count: vocabularyCount,
+                  max: MAX_VOCABULARY,
+                })
+          }
+        >
+          <textarea
+            id="speech-vocabulary"
+            className="speech-vocabulary"
+            rows={6}
+            spellCheck={false}
+            value={vocabularyText}
+            placeholder={"Lomi\nTauri = tory\ncommit = co mit"}
+            onChange={(event) => setVocabulary(event.target.value)}
+          />
+        </SettingRow>
       </SettingsSection>
 
       <SettingsSection title={t("Shortcut")}>

@@ -17,6 +17,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use lomi_stt::dsp::{is_digital_silence, LevelMeter};
 use lomi_stt::protocol::{pcm_to_bytes, Acceleration, ErrorKind, Request, Response};
+use lomi_stt::vocab::{self, Vocabulary};
 use lomi_stt::SAMPLE_RATE;
 use serde::Serialize;
 use tauri::ipc::Channel;
@@ -55,6 +56,7 @@ struct Retry {
     audio: Vec<f32>,
     model: PathBuf,
     vad: Option<PathBuf>,
+    vocabulary: Arc<Vocabulary>,
     until: Instant,
 }
 
@@ -182,6 +184,15 @@ fn unload_when_idle(shared: Arc<Mutex<Inner>>, id: u64) {
         });
 }
 
+/// Per-device dictation preferences from Settings → Speech.
+#[derive(serde::Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Preferences {
+    microphones: Option<Vec<String>>,
+    gain_db: Option<f32>,
+    vocabulary: Vec<String>,
+}
+
 #[tauri::command]
 pub fn stt_start(
     window: Window,
@@ -189,12 +200,16 @@ pub fn stt_start(
     state: State<'_, Stt>,
     events: Channel<Event>,
     model_id: Option<String>,
-    microphones: Option<Vec<String>>,
-    gain_db: Option<f32>,
+    preferences: Option<Preferences>,
 ) -> Result<u64, String> {
     main_window(&window)?;
-    let microphones = microphone_list(microphones)?;
-    let gain_db = capture::gain_db(gain_db)?;
+    let preferences = preferences.unwrap_or_default();
+    let microphones = microphone_list(preferences.microphones)?;
+    let gain_db = capture::gain_db(preferences.gain_db)?;
+    if preferences.vocabulary.len() > 4 * vocab::MAX_ENTRIES {
+        return Err("The vocabulary has too many entries.".into());
+    }
+    let vocabulary = Arc::new(Vocabulary::parse(&preferences.vocabulary)?);
     let dir = models_dir(&app)?;
     // Only catalog ids are accepted; a missing choice falls back to any ready model.
     let chosen = model_id
@@ -231,6 +246,7 @@ pub fn stt_start(
                     microphones,
                     gain_db,
                     acceleration,
+                    vocabulary,
                 },
                 controls,
                 &events,
@@ -384,6 +400,7 @@ struct Setup {
     microphones: Vec<String>,
     gain_db: f32,
     acceleration: Acceleration,
+    vocabulary: Arc<Vocabulary>,
 }
 
 fn run_session(
@@ -399,7 +416,9 @@ fn run_session(
         microphones,
         gain_db,
         acceleration,
+        vocabulary,
     } = setup;
+    let terms = vocabulary.terms();
     let emit = |event: Event| {
         let _ = events.send(event);
     };
@@ -483,7 +502,7 @@ fn run_session(
         if worker.is_none() && load_error.is_none() {
             match loaded.try_recv() {
                 Ok(Ok(mut w)) => {
-                    if begin(&mut w).is_ok() {
+                    if begin(&mut w, &terms).is_ok() {
                         worker = Some(w);
                     } else {
                         load_error = Some("The speech engine stopped unexpectedly.".to_string());
@@ -561,7 +580,7 @@ fn run_session(
                 Err,
             )
             .and_then(|mut w| {
-                begin(&mut w)?;
+                begin(&mut w, &terms)?;
                 feed(&mut w, &recorded)?;
                 Ok(w)
             })
@@ -573,15 +592,18 @@ fn run_session(
             if let Ok(mut inner) = shared.lock() {
                 inner.cpu_only = true;
             }
-            replay(&model, vad.as_deref(), &recorded, Acceleration::Cpu)
+            replay(&model, vad.as_deref(), &recorded, &terms, Acceleration::Cpu)
         }
         other => other,
     };
-    report(outcome, device_lost, events, shared, || Retry {
-        audio: recorded,
-        model,
-        vad,
-        until: Instant::now() + RETRY_KEEP,
+    report(outcome, device_lost, events, shared, &vocabulary, || {
+        Retry {
+            audio: recorded,
+            model,
+            vad,
+            vocabulary: vocabulary.clone(),
+            until: Instant::now() + RETRY_KEEP,
+        }
     })
 }
 
@@ -591,8 +613,10 @@ fn report(
     device_lost: bool,
     events: &Channel<Event>,
     shared: &Mutex<Inner>,
+    vocabulary: &Vocabulary,
     retry: impl FnOnce() -> Retry,
 ) -> Option<Worker> {
+    let outcome = outcome.map(|(worker, text)| (worker, vocabulary.correct(&text)));
     let fail = |code: &'static str, message: String| {
         eprintln!("lomi: dictation failed: {code}: {message}");
         let _ = events.send(Event::Error { code, message });
@@ -625,12 +649,13 @@ fn replay(
     model: &std::path::Path,
     vad: Option<&std::path::Path>,
     audio: &[f32],
+    terms: &[String],
     acceleration: Acceleration,
 ) -> Result<(Worker, String), Failure> {
     let mut worker = Worker::spawn().map_err(Failure::Retryable)?;
     worker
         .ensure_loaded(model, vad, acceleration)
-        .and_then(|()| begin(&mut worker))
+        .and_then(|()| begin(&mut worker, terms))
         .and_then(|()| feed(&mut worker, audio))
         .map_err(Failure::Retryable)?;
     finish(worker)
@@ -683,13 +708,15 @@ pub fn stt_retry(
         .name("stt-retry".into())
         .spawn(move || {
             let _ = events.send(Event::Transcribing);
+            let vocabulary = retry.vocabulary.clone();
             let outcome = replay(
                 &retry.model,
                 retry.vad.as_deref(),
                 &retry.audio,
+                &vocabulary.terms(),
                 acceleration,
             );
-            let worker = report(outcome, false, &events, &shared, || Retry {
+            let worker = report(outcome, false, &events, &shared, &vocabulary, || Retry {
                 until: Instant::now() + RETRY_KEEP,
                 ..retry
             });
@@ -709,11 +736,11 @@ pub fn stt_retry(
     Ok(id)
 }
 
-fn begin(worker: &mut Worker) -> Result<(), String> {
+fn begin(worker: &mut Worker, terms: &[String]) -> Result<(), String> {
     worker.send(
         &Request::Begin {
             language: None,
-            vocabulary: Vec::new(),
+            vocabulary: terms.to_vec(),
             filter_silence: true,
         },
         &[],

@@ -2574,5 +2574,10 @@
   "Speech settings": "Налаштування мовлення",
   "Dictation": "Диктування",
   "Open system settings": "Відкрити системні налаштування",
-  "Lomi has no access to the microphone. Allow it in system settings, then restart Lomi. Programs started in Lomi terminals use the same permission.": "Lomi не має доступу до мікрофона. Дозвольте його в системних налаштуваннях і перезапустіть Lomi. Програми, запущені в терміналах Lomi, використовують той самий дозвіл."
+  "Lomi has no access to the microphone. Allow it in system settings, then restart Lomi. Programs started in Lomi terminals use the same permission.": "Lomi не має доступу до мікрофона. Дозвольте його в системних налаштуваннях і перезапустіть Lomi. Програми, запущені в терміналах Lomi, використовують той самий дозвіл.",
+  "Vocabulary": "Словник",
+  "Words and phrases": "Слова й фрази",
+  "Only the first {max} lines are used.": "Використовуються лише перші {max} рядків.",
+  "{count} of {max}": "{count} з {max}",
+  "Names and terms dictation should spell your way, one per line. After “=”, list how they get misheard: Tauri = tory, tałri": "Назви й терміни, які диктування має писати по-вашому, по одному в рядку. Після «=» перелічіть, як їх помилково розпізнають: Tauri = tory, tałri"
 }

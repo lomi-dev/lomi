@@ -98,3 +98,37 @@ export function setMicrophoneGain(db: number) {
   }
   listeners.forEach((listener) => listener());
 }
+
+/** Vocabulary lines: `term` or `term = misheard, misheard`. */
+const VOCABULARY_KEY = "lomi.stt.vocabulary";
+export const MAX_VOCABULARY = 100;
+export const MAX_VOCABULARY_LINE = 200;
+let vocabularyText: string | undefined;
+
+export function vocabulary(): string {
+  if (vocabularyText === undefined) {
+    try {
+      vocabularyText = localStorage.getItem(VOCABULARY_KEY) ?? "";
+    } catch {
+      vocabularyText = "";
+    }
+  }
+  return vocabularyText;
+}
+
+/** Non-empty lines, as sent to the native side. */
+export const vocabularyLines = () =>
+  vocabulary()
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && line.length <= MAX_VOCABULARY_LINE);
+
+export function setVocabulary(text: string) {
+  vocabularyText = text;
+  try {
+    localStorage.setItem(VOCABULARY_KEY, text);
+  } catch {
+    // The list still applies for this run.
+  }
+  listeners.forEach((listener) => listener());
+}
