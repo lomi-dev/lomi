@@ -97,7 +97,8 @@ export default function MicStatusButton({
               : t("Dictate"));
 
   function click() {
-    if (recording) return stopDictation();
+    // A starting microphone can take ~1.5 s to deliver sound; allow stopping.
+    if (recording || state.phase === "starting") return stopDictation();
     if (state.unsent) return void copyUnsent().catch(() => {});
     if (state.retryTarget) return retryDictation();
     if (busy || elsewhere) return;

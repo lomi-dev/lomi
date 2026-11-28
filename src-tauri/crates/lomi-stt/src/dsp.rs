@@ -18,15 +18,29 @@ pub fn u16_to_f32(x: u16) -> f32 {
     (f32::from(x) - 32768.0) / 32768.0
 }
 
-/// Averages channels per frame; a trailing partial frame is ignored.
+/// Mono from interleaved frames; a trailing partial frame is ignored.
+///
+/// Stereo is averaged. Wider devices (audio interfaces expose 4–14 inputs,
+/// usually with one microphone in use) give their loudest channel of this
+/// chunk: averaging would cut that microphone by up to 23 dB.
 pub fn downmix(interleaved: &[f32], channels: usize) -> Vec<f32> {
     match channels {
         0 => Vec::new(),
         1 => interleaved.to_vec(),
-        n => interleaved
-            .chunks_exact(n)
-            .map(|f| f.iter().sum::<f32>() / n as f32)
+        2 => interleaved
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|[left, right]| (left + right) / 2.0)
             .collect(),
+        n => {
+            let frames = interleaved.chunks_exact(n);
+            let energy = |c: usize| frames.clone().map(|f| f[c] * f[c]).sum::<f32>();
+            let loudest = (0..n)
+                .max_by(|&a, &b| energy(a).total_cmp(&energy(b)))
+                .unwrap_or(0);
+            frames.map(|f| f[loudest]).collect()
+        }
     }
 }
 
@@ -234,6 +248,9 @@ mod tests {
         assert_eq!(downmix(&[0.1, 0.2], 1), vec![0.1, 0.2]);
         assert_eq!(downmix(&[1.0, 0.0, 0.5, 0.5], 2), vec![0.5, 0.5]);
         assert_eq!(downmix(&[6.0; 12], 6), vec![6.0, 6.0]);
+        // Only the third of four inputs carries the microphone.
+        let quad = [0.0, 0.01, 0.5, 0.0, 0.0, -0.01, -0.4, 0.0];
+        assert_eq!(downmix(&quad, 4), vec![0.5, -0.4]);
         assert_eq!(downmix(&[1.0, 3.0, 9.0], 2), vec![2.0]);
         assert!(downmix(&[1.0], 0).is_empty());
     }

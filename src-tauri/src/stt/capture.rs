@@ -201,6 +201,17 @@ fn open(preferred: &[String]) -> Result<Opened, String> {
     let on_error = {
         let failed = failed.clone();
         move |e: cpal::Error| {
+            // Glitch reports keep the stream running: Windows audio interfaces
+            // report an overrun right after start, and a default-device stream
+            // reroutes itself on a route change.
+            if matches!(
+                e.kind(),
+                cpal::ErrorKind::Xrun
+                    | cpal::ErrorKind::DeviceChanged
+                    | cpal::ErrorKind::RealtimeDenied
+            ) {
+                return;
+            }
             if let Ok(mut slot) = failed.lock() {
                 slot.get_or_insert_with(|| e.to_string());
             }

@@ -35,6 +35,9 @@ const FEED_SAMPLES: usize = SAMPLE_RATE as usize / 10;
 const RESULT_TIMEOUT: Duration = Duration::from_secs(300);
 const CANCEL_TIMEOUT: Duration = Duration::from_secs(2);
 /// A forgotten microphone must not keep recording the room.
+/// Longest wait for a starting microphone to deliver sound before "Recording"
+/// is shown anyway (a muted microphone stays digitally silent).
+const MIC_WARMUP_MAX: Duration = Duration::from_millis(2500);
 const SLEEP_GAP: Duration = Duration::from_secs(5);
 const SILENCE_STOP: Duration = Duration::from_secs(30);
 
@@ -325,12 +328,17 @@ pub async fn stt_mic_test_start(
     let mut meter = LevelMeter::default();
     // Opening a device can block for seconds; keep it off the IPC thread.
     let capture = tauri::async_runtime::spawn_blocking(move || {
-        Capture::start(microphones, move |chunk| {
-            if let Chunk::Audio(mut pcm) = chunk {
+        Capture::start(microphones, move |chunk| match chunk {
+            Chunk::Audio(mut pcm) => {
                 capture::apply_gain(&mut pcm, f32::from_bits(gain_bits.load(Ordering::Relaxed)));
                 if let Some(level) = meter.push(&pcm) {
                     let _ = levels.send(level);
                 }
+            }
+            // A negative level tells the page the device stopped.
+            Chunk::Lost(message) => {
+                eprintln!("lomi: microphone test stopped: {message}");
+                let _ = levels.send(-1.0);
             }
         })
     })
@@ -448,7 +456,11 @@ fn run_session(
             return worker;
         }
     };
-    emit(Event::Recording);
+    // Some USB interfaces (a Focusrite Vocaster on Windows) deliver ~1.5 s of
+    // exact zeros after the device starts. "Recording" is announced with the
+    // first real sound, so the user starts speaking when the microphone hears.
+    let mut announced = false;
+    let warmup_until = Instant::now() + MIC_WARMUP_MAX;
 
     // The model loads while the user is already speaking; audio waits here.
     let (loaded_tx, loaded) = mpsc::channel();
@@ -526,6 +538,10 @@ fn run_session(
         match chunk {
             Ok(Chunk::Audio(pcm)) => {
                 heard |= !is_digital_silence(&pcm);
+                if !announced && (heard || Instant::now() >= warmup_until) {
+                    announced = true;
+                    emit(Event::Recording);
+                }
                 if let Some(value) = meter.push(&pcm) {
                     emit(Event::Level { value });
                 }

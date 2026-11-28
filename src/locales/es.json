@@ -2546,5 +2546,6 @@
   "Words and phrases": "Palabras y frases",
   "Only the first {max} lines are used.": "Solo se usan las primeras {max} líneas.",
   "{count} of {max}": "{count} de {max}",
-  "Names and terms dictation should spell your way, one per line. After “=”, list how they get misheard: Tauri = tory, tałri": "Nombres y términos que el dictado debe escribir a tu manera, uno por línea. Tras «=», indica cómo se reconocen mal: Tauri = tory, tałri"
+  "Names and terms dictation should spell your way, one per line. After “=”, list how they get misheard: Tauri = tory, tałri": "Nombres y términos que el dictado debe escribir a tu manera, uno por línea. Tras «=», indica cómo se reconocen mal: Tauri = tory, tałri",
+  "The microphone stopped. Check the connection and try again.": "El micrófono dejó de funcionar. Comprueba la conexión e inténtalo de nuevo."
 }

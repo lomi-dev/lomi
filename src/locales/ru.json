@@ -2579,5 +2579,6 @@
   "Words and phrases": "Слова и фразы",
   "Only the first {max} lines are used.": "Используются только первые {max} строк.",
   "{count} of {max}": "{count} из {max}",
-  "Names and terms dictation should spell your way, one per line. After “=”, list how they get misheard: Tauri = tory, tałri": "Имена и термины, которые диктовка должна писать по-вашему, по одному в строке. После «=» перечислите, как их ошибочно распознают: Tauri = tory, tałri"
+  "Names and terms dictation should spell your way, one per line. After “=”, list how they get misheard: Tauri = tory, tałri": "Имена и термины, которые диктовка должна писать по-вашему, по одному в строке. После «=» перечислите, как их ошибочно распознают: Tauri = tory, tałri",
+  "The microphone stopped. Check the connection and try again.": "Микрофон перестал работать. Проверьте подключение и попробуйте снова."
 }

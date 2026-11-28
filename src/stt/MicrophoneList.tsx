@@ -181,6 +181,8 @@ function MicrophoneTest({ gain }: { gain: number }) {
   const { t } = useT();
   const [testing, setTesting] = useState(false);
   const [level, setLevel] = useState(0);
+  // Some interfaces send silence for ~1.5 s after starting.
+  const [heard, setHeard] = useState(false);
   const [error, setError] = useState<string>();
   // Bumped on every stop and unmount, so a start that resolves late is undone.
   const run = useRef(0);
@@ -201,10 +203,17 @@ function MicrophoneTest({ gain }: { gain: number }) {
     const token = ++run.current;
     setError(undefined);
     setLevel(0);
+    setHeard(false);
     setTesting(true);
     const levels = new Channel<number>();
     levels.onmessage = (value) => {
-      if (run.current === token) setLevel(value);
+      if (run.current !== token) return;
+      if (value > 0) setHeard(true);
+      if (value >= 0) return setLevel(value);
+      setError(
+        t("The microphone stopped. Check the connection and try again."),
+      );
+      stop();
     };
     try {
       await api("stt_mic_test_start", {
@@ -238,7 +247,11 @@ function MicrophoneTest({ gain }: { gain: number }) {
           className="button button-primary"
           onClick={testing ? stop : () => void start()}
         >
-          {testing ? t("Stop testing") : t("Test microphone")}
+          {!testing
+            ? t("Test microphone")
+            : heard
+              ? t("Stop testing")
+              : t("Starting the microphone…")}
         </button>
         <div
           className="speech-meter"
